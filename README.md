@@ -44,7 +44,7 @@ HarmonyAI 不是一个音乐生成项目，而是一个**基于知识驱动（Kn
 | 角色 | 姓名 |
 |------|------|
 | Project Leader & AI Architect | 陈家智 |
-| Medical Knowledge Engineer | 待定 |
+| Medical Knowledge Engineer | nob |
 | AI Engineering Lead | 钟睿宸 |
 | Backend Platform Engineer | 蔡子鑫 |
 | Client Engineer | 彭翔 |
