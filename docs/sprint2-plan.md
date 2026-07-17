@@ -161,17 +161,19 @@ stub 只是把契约里的示例 JSON 返回出来，半天就能写完一个。
 
 ---
 
-## 第七章：启动会议程（Day 1，90 分钟）
+## 第七章：启动会议程（Day 1，120 分钟）
 
-**Sprint 1 还没验收，不能直接开 Sprint 2。** 启动会 = Sprint 1 Review + Sprint 2 Planning：
+**Sprint 1 还没验收，不能直接开 Sprint 2。** 启动会 = Sprint 1 验收 + Sprint 2 Planning，验收细则见 `docs/sprint1-acceptance.md`：
 
 | 时间 | 内容 |
 |------|------|
-| 0:00-0:30 | **Sprint 1 Review**：每人 5 分钟演示 Sprint 1 交付物（Issue #8-#12 对照验收）；未完成项显式决定：补进 Sprint 2 第一周 or 砍掉 |
-| 0:30-0:40 | Sprint 2 宣言：不再写文档，开始写系统；唯一目标 = 五 Agent 跑通；画主链图 |
-| 0:40-0:50 | 讲解 Walking Skeleton 策略与 Day 4 / Day 14 两个里程碑 |
-| 0:50-1:10 | 分任务：逐人过 Sprint 2 Issue（具体到"这周完成哪几个接口"） |
-| 1:10-1:30 | 定制度：日报模板 + Review 节奏 + DoD；确定 Sprint 起始日期 |
+| 0:00-0:05 | 宣读验收三原则（验可交接性 / Issue 写什么验什么 / 只演示不 PPT） |
+| 0:05-0:55 | **Sprint 1 分人验收**：每人 10 分钟现场演示，对照 sprint1-acceptance.md 第三章逐项打勾（含对陈家智的四问测试）；每项当场三选一：通过 / 补课 / 砍掉 |
+| 0:55-1:05 | **认知对齐总验收**：每人回答"明天开始 Sprint 2，你第一天写什么？"；通过则宣布四份 Architecture 文档升 V1.0，关闭 Issue #8-#12 |
+| 1:05-1:15 | Sprint 2 宣言：不再写文档，开始写系统；唯一目标 = 五 Agent 跑通；画主链图 |
+| 1:15-1:25 | 讲解 Walking Skeleton 策略与 Day 4 / Day 14 两个里程碑 |
+| 1:25-1:45 | 分任务：逐人过 Sprint 2 Issue #14-#18（具体到"这周完成哪几个接口"），补课项并入第一周 |
+| 1:45-2:00 | 定制度：日报模板 + Review 节奏 + DoD；确定 Sprint 2 起始日期 |
 
 ---
 
@@ -181,7 +183,7 @@ stub 只是把契约里的示例 JSON 返回出来，半天就能写完一个。
 
 | 时间 | 里程碑 | 验收方式 |
 |------|--------|---------|
-| Day 1 | Sprint 1 Review + Sprint 2 Planning（90min） | 会议纪要 + Issue 分配 |
+| Day 1 | Sprint 1 验收 + Sprint 2 Planning（120min） | 签字表 + 会议纪要 + Issue 分配 |
 | Day 2-3 | 五个 stub Agent + 五个接口骨架 + 前端问卷页 | Swagger 可访问 |
 | **Day 4** | **★ 假数据全链路闭环跑通** | 五人围观演示 |
 | Day 5-8 | Assessment + Diagnosis 换真，曲库就位 | demo 脚本运行 |
