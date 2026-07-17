@@ -93,3 +93,16 @@ Idea → RFC → Architecture → Schema → Development → Review → Merge �
 ## License
 
 MIT
+
+---
+
+## AI Engineering Sprint 1 本地演示
+
+当前版本包含一个不依赖外部模型服务的 AI 工程最小闭环：评估节点 → 音乐处方节点 → Prompt Engine。运行环境要求 Python 3.10+。
+
+```powershell
+python -m pytest -q
+python -m backend.ai_engine.demo
+```
+
+外部 Qwen、Chroma 和 LangGraph 服务尚未作为运行时依赖接入；Provider 接口与本地 fallback 已预留，便于后续替换。
