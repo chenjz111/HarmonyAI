@@ -1,0 +1,141 @@
+{
+  "mapping_id": "emotion-to-syndrome",
+  "version": "0.2.0",
+  "created": "2026-07-17",
+  "author": "陈家智（初始版）；肖宇翔（核验签收+补充现代文献出处）",
+  "status": "reviewed-by-nob",
+  "spec_ref": "docs/knowledge-architecture.md 第2.1-2.2节 + 第3.1节",
+  "note": "一对多映射：同一情绪可对应多个证型，实际辨证由②辨证Agent结合五维分数综合判断。现代文献出处已由肖宇翔核验补充（2026-07-17）。",
+  "emotions": ["anxiety", "depression", "anger", "fear", "overthinking"],
+  "mappings": [
+    {
+      "emotion": "anxiety",
+      "emotion_label": "焦虑",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_001",
+          "syndrome_name": "肝郁化火",
+          "priority": 1,
+          "typical_signs": ["烦躁", "易怒", "口苦"],
+          "credibility_level": "B",
+          "source": "《黄帝内经》七情学说：怒伤肝，郁而化火；专家共识",
+          "modern_source": "k_007（金敏燕2025，肝气郁结型血透患者焦虑显著改善）; k_003（Li 2025 Meta，老年焦虑阳性证据，HAMA MD=-3.89 P<0.0001）"
+        },
+        {
+          "syndrome_id": "syd_003",
+          "syndrome_name": "心火上炎",
+          "priority": 2,
+          "typical_signs": ["烦躁", "失眠", "口舌生疮"],
+          "credibility_level": "C",
+          "source": "专家共识（焦虑伴失眠烦躁者多见）",
+          "modern_source": "k_014（刘娟丽2023，徵调改善心系失眠伴焦虑，PSQI P<0.05）"
+        },
+        {
+          "syndrome_id": "syd_008",
+          "syndrome_name": "心肾不交",
+          "priority": 3,
+          "typical_signs": ["失眠", "心悸", "多梦"],
+          "credibility_level": "C",
+          "source": "专家共识（焦虑伴失眠心悸者多见）",
+          "modern_source": "k_017（谢薇2022个案，徵调+羽调联合用于烦躁/失眠）; k_014（刘娟丽2023，徵调-心系失眠，PSQI P<0.05）; k_009/k_012（《素问》心-徵、肾-羽经典配属）"
+        }
+      ]
+    },
+    {
+      "emotion": "depression",
+      "emotion_label": "抑郁",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_002",
+          "syndrome_name": "肝气郁结",
+          "priority": 1,
+          "typical_signs": ["闷闷不乐", "善太息", "胸胁胀满"],
+          "credibility_level": "B",
+          "source": "《黄帝内经》七情学说：肝主疏泄，郁则气结",
+          "modern_source": "k_005（林奕2018，角调-肝气郁结-卒中后抑郁，77.5% vs 47.5% P<0.01）; k_007（金敏燕2025，肝气郁结型血透患者抑郁改善）; k_001（Yang 2021 Meta，抑郁SMD=-1.11 P<0.00001）"
+        },
+        {
+          "syndrome_id": "syd_006",
+          "syndrome_name": "肺气虚",
+          "priority": 2,
+          "typical_signs": ["悲伤欲哭", "气短", "神疲"],
+          "credibility_level": "C",
+          "source": "《黄帝内经》：悲则气消，悲忧伤肺；专家共识",
+          "modern_source": "k_016（商调-肺-肺癌心理护理，124例RCT）; k_011（《素问》：憂傷肺，在音為商）"
+        }
+      ]
+    },
+    {
+      "emotion": "anger",
+      "emotion_label": "愤怒",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_001",
+          "syndrome_name": "肝郁化火",
+          "priority": 1,
+          "typical_signs": ["易怒", "面红目赤", "头胀痛"],
+          "credibility_level": "B",
+          "source": "《黄帝内经·素问·阴阳应象大论》：怒伤肝，在志为怒",
+          "modern_source": "k_008（《素问》：怒傷肝，在音為角）; k_007（金敏燕2025，肝气郁结型患者焦虑/愤怒情绪改善）"
+        },
+        {
+          "syndrome_id": "syd_003",
+          "syndrome_name": "心火上炎",
+          "priority": 2,
+          "typical_signs": ["烦躁易怒", "失眠"],
+          "credibility_level": "C",
+          "source": "专家共识（肝火扰心，心肝火旺并见）",
+          "modern_source": "k_014（刘娟丽2023，徵调-心系失眠，PSQI P<0.05）; k_017（谢薇2022个案，徵调+羽调联合用于烦躁失眠）; k_009（《素问》：心屬火，在音為徵）"
+        }
+      ]
+    },
+    {
+      "emotion": "fear",
+      "emotion_label": "恐惧",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_007",
+          "syndrome_name": "肾阴不足",
+          "priority": 1,
+          "typical_signs": ["恐惧不安", "腰酸", "五心烦热"],
+          "credibility_level": "B",
+          "source": "《黄帝内经》：恐伤肾，在志为恐",
+          "modern_source": "k_012（《素问》：恐傷腎，在音為羽）; k_017（个案报告，羽调入肾定志用于恐惧心态）"
+        },
+        {
+          "syndrome_id": "syd_008",
+          "syndrome_name": "心肾不交",
+          "priority": 2,
+          "typical_signs": ["惊悸", "失眠", "多梦易醒"],
+          "credibility_level": "C",
+          "source": "专家共识（恐伤肾，肾水不能上济心火）",
+          "modern_source": "k_017（谢薇2022个案，羽调入肾定志，徵调+羽调联合用于恐惧失眠）; k_014（刘娟丽2023，徵调-心系失眠）; k_012/k_009（《素问》肾-羽、心-徵经典配属）"
+        }
+      ]
+    },
+    {
+      "emotion": "overthinking",
+      "emotion_label": "过度思考",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_004",
+          "syndrome_name": "心脾两虚",
+          "priority": 1,
+          "typical_signs": ["健忘", "心悸", "食少"],
+          "credibility_level": "B",
+          "source": "《黄帝内经》：思伤脾，思则气结；思虑过度暗耗心血",
+          "modern_source": "k_014（刘娟丽2023，徵调-心系失眠）; k_018（陈默岩2021，脾胃不和失眠个案，宫调+角调）; k_010（《素问》：思傷脾，在音為宮）"
+        },
+        {
+          "syndrome_id": "syd_005",
+          "syndrome_name": "脾虚湿困",
+          "priority": 2,
+          "typical_signs": ["疲倦", "头身困重", "食欲不振"],
+          "credibility_level": "C",
+          "source": "专家共识（久思伤脾，脾虚生湿）",
+          "modern_source": "k_015（宫调-脾瘅-糖尿病前期，总有效率90%，针对'脾气亏虚、脾不散精'效果最优）; k_018（脾胃不和失眠个案，宫调健脾）"
+        }
+      ]
+    }
+  ]
+}
