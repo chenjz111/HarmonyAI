@@ -1,10 +1,11 @@
 {
   "collection_id": "literature",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "created": "2026-07-17",
-  "author": "陈家智（代nob整理初版，深度检索+三票对抗验证+原文核验）；肖宇翔（核验签收+补充Level D文献+补全4证型现代文献+补充山东中医杂志2024）",
+  "last_modified": "2026-07-18",
+  "author": "陈家智（代nob整理初版，深度检索+三票对抗验证+原文核验）；肖宇翔（核验签收+补充Level D文献+补全4证型现代文献+补充山东中医杂志2024+修正 k_018 证型待核标记+补充 identifier 缺口标记）",
   "status": "reviewed-by-nob",
-  "spec_ref": "docs/knowledge-architecture.md 第4.3节",
+  "spec_ref": "要求/knowledge-architecture.md 第4.3节（陈家智 V0.1，2026-07-15）",
   "quota_status": {
     "total": 18,
     "level_A": { "count": 4, "required": 2, "met": true },
@@ -29,7 +30,7 @@
       "applicable_syndromes": [],
       "applicable_emotions": ["depression"],
       "tags": ["五行音乐", "Meta分析", "抑郁", "癌症人群", "焦虑阴性警示"],
-      "notes": "原文未做中医证型分层，applicable_syndromes留空",
+      "notes": "原文未做中医证型分层，applicable_syndromes留空。⚠️ mapping cite 标记：[人群限定: 癌症人群]，焦虑阴性结果只适用于癌症人群。",
       "verify_status": "肖宇翔已签收 2026-07-17（PubMed官方页面逐字比对复核通过）"
     },
     {
@@ -47,6 +48,7 @@
       "applicable_syndromes": [],
       "applicable_emotions": ["anxiety", "depression"],
       "tags": ["五行音乐", "RCT", "焦虑", "抑郁", "联合干预"],
+      "notes": "⚠️ mapping cite 标记：[直接证据: RCT, 联合干预无法分离纯音乐效应]，焦虑端因 k_001 Meta 显示癌症人群焦虑无效，本条目仅在抑郁侧引用。",
       "verify_status": "肖宇翔已签收 2026-07-17（PubMed官方页面逐字比对复核通过）"
     },
     {
@@ -82,6 +84,7 @@
       "applicable_syndromes": [],
       "applicable_emotions": ["depression", "anxiety"],
       "tags": ["五行音乐", "RCT", "中度抑郁", "五行音乐vs西方音乐"],
+      "notes": "⚠️ mapping cite 标记：[直接证据: 五行音乐>西方音乐, 未做证型分层]。本项目最关键的竞争优势证据——直接证明五行音乐优于西方音乐。焦虑侧 k_004 为次要结局引用，与 k_001 癌症焦虑阴性无冲突（不同人群）。",
       "verify_status": "肖宇翔已签收 2026-07-17（PubMed官方页面逐字比对复核通过）"
     },
     {
@@ -99,7 +102,7 @@
       "applicable_syndromes": ["syd_002"],
       "applicable_emotions": ["depression"],
       "tags": ["角调", "肝气郁结", "抑郁", "脑卒中", "有效率77.5%"],
-      "notes": "随机对照设计但单中心、无盲法描述，保守定级C（若nob核验全文认定为严格RCT可升级）",
+      "notes": "随机对照设计但单中心、无盲法描述，保守定级C（若nob核验全文认定为严格RCT可升级）。⚠️ mapping cite 标记：[直接证据]，syd_002 肝气郁结的最佳直接证据。",
       "verify_status": "肖宇翔已签收 2026-07-17（期刊官网+万方等4源交叉确认）"
     },
     {
@@ -117,7 +120,7 @@
       "applicable_syndromes": [],
       "applicable_emotions": [],
       "tags": ["角调", "肝郁血瘀", "银屑病", "有效率96.67%"],
-      "notes": "肝郁血瘀不在Sprint 1的8证型内，作为角调-肝郁类的旁证收录；仅总有效率与试验设计通过核验",
+      "notes": "肝郁血瘀不在Sprint 1的8证型内，作为角调-肝郁类的旁证收录；仅总有效率与试验设计通过核验。⚠️ mapping cite 标记：[旁证-同类证型: 肝郁血瘀≠肝郁化火/肝气郁结]，仅供角调-肝五行归属旁证。",
       "verify_status": "肖宇翔已签收 2026-07-17（部分核验：万方+SinoMed确认总有效率与设计；分项结论已剔除，勿引用SAS/SDS/IL-2部分）"
     },
     {
@@ -132,10 +135,10 @@
       "url": "https://www.sinomed.ac.cn/article.do?ui=2025166296",
       "credibility_level": "C",
       "credibility_score": 0.65,
-      "applicable_syndromes": ["syd_002", "syd_008"],
+      "applicable_syndromes": ["syd_002"],
       "applicable_emotions": ["anxiety", "depression"],
       "tags": ["角调", "肝气郁结", "焦虑", "抑郁", "失眠", "血液透析"],
-      "notes": "角调效应与叙事护理存在混杂，五行音乐单独组仍优于对照可部分归因",
+      "notes": "角调效应与叙事护理存在混杂，五行音乐单独组仍优于对照可部分归因。⚠️ mapping cite 标记：[病机相关: 肝气郁结→肝郁化火演变链]，原证型为肝气郁结，引用至 syd_001 肝郁化火时按病机相关处理。",
       "verify_status": "肖宇翔已签收 2026-07-17（SinoMed+2个独立全文/索引源交叉确认）"
     },
     {
@@ -246,14 +249,14 @@
       "source_author": "刘娟丽, 孟繁琨, 杨丹",
       "source_year": 2023,
       "source_journal": "新疆中医药 41(3)",
-      "identifiers": {},
-      "url": "http://wfo.lib.ustc.edu.cn/D/Periodical_xjzyy202303012.aspx",
+      "identifiers": { "cnki_id": "XJZY202303012" },
+      "url": "https://read.cnki.net/web/Journal/Article/XJZY202303012.html",
       "credibility_level": "C",
       "credibility_score": 0.65,
-      "applicable_syndromes": ["syd_003", "syd_004"],
+      "applicable_syndromes": [],
       "applicable_emotions": ["anxiety"],
       "tags": ["徵调", "失眠", "冠心病", "耳穴贴压", "PSQI", "心"],
-      "notes": "单中心、样本中等。为4个缺现代文献证型中的心火上炎(syd_003)和心脾两虚(syd_004)提供徵调临床佐证。",
+      "notes": "单中心、样本中等。患者证型为冠心病痰瘀互结，不在8个核心证型内。⚠️ mapping cite 标记：[旁证-同类证型: 胸痹痰瘀互结≠心火上炎/心脾两虚]，仅供心系病机同类研究。结论提及'缓解焦虑状态'。",
       "verify_status": "肖宇翔已签收 2026-07-17（USTC图书馆+cqvip二源确认）"
     },
     {
@@ -264,14 +267,18 @@
       "source_author": "彭思涵",
       "source_year": 2020,
       "source_journal": "成都中医药大学",
-      "identifiers": {},
-      "url": "https://search.napstic.cn/literature/degree/0620201100121185",
+      "identifiers": {
+        "wanfang_id": "D01864463",
+        "cnki_degree_id": "1019632186",
+        "doi": "10.13192/j.issn.1000-1719.2021.01.031"
+      },
+      "url": "https://d.wanfangdata.com.cn/thesis/D01864463",
       "credibility_level": "C",
       "credibility_score": 0.60,
-      "applicable_syndromes": ["syd_005"],
-      "applicable_emotions": [],
+      "applicable_syndromes": [],
+      "applicable_emotions": ["anxiety", "depression"],
       "tags": ["宫调", "脾瘅", "糖尿病前期", "脾气亏虚", "总有效率90%", "脾"],
-      "notes": "学位论文，保守定级C。为4个缺现代文献证型中的脾虚湿困(syd_005)提供宫调临床佐证。",
+      "notes": "学位论文（导师：谢春光），同期发表同名期刊论文（辽宁中医杂志），DOI已补。⚠️ mapping cite 标记：[病机相关: 脾瘅≠脾虚湿困但均属脾系]，原证型为脾瘅（消渴病早期），病机为中满内热而非湿困，引用至 syd_005 时按病机相关处理。论文实测焦虑抑郁量表（3组均有改善P<0.05，组间无显著差异），情绪改善不可单独归因于五音疗法。",
       "verify_status": "肖宇翔已签收 2026-07-17（CNKI学位论文库+cqvip确认）"
     },
     {
@@ -282,15 +289,15 @@
       "source_author": "梁飞红，李春姗，黎柳娟，霍佳妮，吕梦玉，谭丽丹",
       "source_year": 2021,
       "source_journal": "大众科技",
-      "identifiers": {},
-      "url": "https://www.medsci.cn/article/show_article.do?id=bef52206302b",
+      "identifiers": { "cnki_id": "DZJI202104021" },
+      "url": "https://wap.cnki.net/touch/web/Journal/Article/DZJI202104021.html",
       "credibility_level": "C",
       "credibility_score": 0.60,
-      "applicable_syndromes": ["syd_006"],
+      "applicable_syndromes": [],
       "applicable_emotions": ["depression"],
       "tags": ["商调", "肺", "肺癌", "五脏相音", "阳春白雪", "生存质量"],
-      "notes": "为4个缺现代文献证型中的肺气虚(syd_006)提供商调临床佐证。",
-      "verify_status": "肖宇翔已签收 2026-07-17（MedSci/知网确认）"
+      "notes": "⚠️ mapping cite 标记：[旁证-证型未严格分层: 肺癌未做肺气虚分层]，原文献为晚期肺癌住院患者，未做中医证型分层，肺癌患者可见肺阴虚/肺气虚/痰湿等多种证型。引用至 syd_006 时按'商调-肺-肺癌'同类研究处理。",
+      "verify_status": "肖宇翔已签收 2026-07-17（MedSci＋知网确认）"
     },
     {
       "knowledge_id": "k_017",
@@ -307,7 +314,7 @@
       "applicable_syndromes": ["syd_004", "syd_002", "syd_007"],
       "applicable_emotions": ["anxiety", "fear", "overthinking"],
       "tags": ["个案报告", "五音疗法", "直肠癌术后", "宫调", "角调", "羽调", "耳穴贴压", "多调式联合"],
-      "notes": "Level D个案报告。贵州中医药大学第一附属医院。展示临床实践中多调式联合选曲策略。",
+      "notes": "Level D个案报告。贵州中医药大学第一附属医院。展示临床实践中多调式联合选曲策略。⚠️ mapping cite 标记：[旁证-五行归属: 个案证型为湿毒蕴结≠目标证型]，原证型为湿毒蕴结（直肠癌术后），仅作为五音-五脏五行归属的旁证，不能作为具体证型（syd_002/syd_004/syd_007）的临床证据。",
       "verify_status": "肖宇翔已签收 2026-07-17（中西医结合临床案例库+DOI确认）"
     },
     {
@@ -322,11 +329,12 @@
       "url": "https://www.tcmjc.com/jhhl/doi/10.55111/j.issn2709-1961.202111162",
       "credibility_level": "D",
       "credibility_score": 0.45,
-      "applicable_syndromes": ["syd_005", "syd_004"],
+      "applicable_syndromes": [],
       "applicable_emotions": [],
       "tags": ["个案报告", "宫调", "脾胃不和", "失眠", "经穴推拿", "北京中医药大学东方医院"],
-      "notes": "Level D个案报告。北京中医药大学东方医院脾胃肝胆科。为宫调-脾虚映射提供临床个案佐证。nob补充。",
-      "verify_status": "肖宇翔已签收 2026-07-17（期刊官网+DOI确认）"
+      "notes": "Level D个案报告。北京中医药大学东方医院脾胃肝胆科。⚠️ 标题-正文不一致：title 写'脾胃不和'，content 写'肝胃不和'，此二为不同证型。建议：① 全文复核原文证型诊断；② 若原文确为'肝胃不和'，title 需改为'肝胃不和'，mapping 引用时仅作'脾胃系'旁证，不能作为心脾两虚/脾虚湿困的直接证据。⚠️ mapping cite 标记：[旁证-证型不一致: 原文为肝胃不和, 待核]。",
+      "verify_status": "肖宇翔已签收 2026-07-17（期刊官网+DOI确认；证型复核待办）"
     }
   ]
 }
+
