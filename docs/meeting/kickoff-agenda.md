@@ -3,7 +3,7 @@
 > **日期：** 2026-07-15（今晚 21:00）
 > **时长：** 30 分钟
 > **主持：** 陈家智（Project Leader & AI Architect）
-> **参会：** nob、钟睿宸、蔡子鑫、彭翔
+> **参会：** 肖宇翔、钟睿宸、蔡子鑫、彭翔
 
 ---
 
@@ -59,7 +59,7 @@
 - `mvp-definition.md`
 - GitHub 仓库 + 看板 + Issue
 
-### nob — Medical Knowledge Engineer
+### 肖宇翔 — Medical Knowledge Engineer
 
 > "你是整个系统的知识源头。没有你的文献，AI 就是瞎猜。"
 
@@ -120,7 +120,7 @@
 | 人员 | Must Have（完不成 = Sprint 失败） |
 |------|----------------------------------|
 | 陈家智 | 3 份 Architecture 文档 + GitHub 看板可用 |
-| nob | 8 条核心映射 + 10 篇文献入库 |
+| 肖宇翔 | 8 条核心映射 + 10 篇文献入库 |
 | 钟睿宸 | LangGraph Demo 跑通 ①→②→③→④ 四步 |
 | 蔡子鑫 | API 能接收问卷、返回处方 JSON |
 | 彭翔 | uni-app 4 页面能走通完整流程 |
@@ -130,7 +130,7 @@
 | 人员 | Nice to Have |
 |------|-------------|
 | 陈家智 | ADR 独立文档 |
-| nob | 20 篇文献 |
+| 肖宇翔 | 20 篇文献 |
 | 钟睿宸 | ⑤反馈Agent闭环 |
 | 蔡子鑫 | Docker 部署脚本 |
 | 彭翔 | 播放器进度条动画 |
@@ -163,7 +163,7 @@
 main        ← 保护分支，只通过 PR 合并
   └─ dev    ← 集成分支
        ├─ feat/chenjz   ← 陈家智（文档 + 架构）
-       ├─ feat/nob       ← nob（知识库）
+       ├─ feat/肖宇翔       ← 肖宇翔（知识库）
        ├─ feat/zhongrc   ← 钟睿宸（AI 引擎）
        ├─ feat/caizx     ← 蔡子鑫（后端）
        └─ feat/pengx     ← 彭翔（前端）
@@ -191,6 +191,6 @@ main        ← 保护分支，只通过 PR 合并
 | 项目计划书 | `docs/项目计划书.md` | 全员 |
 | 团队分工书 | `docs/团队分工书.md` | 全员 |
 | 系统架构 | `docs/architecture/system-architecture.md` | 全员（重点看第1章和第2章） |
-| Knowledge Architecture | `docs/knowledge-architecture.md` | nob + 钟睿宸（必读） |
+| Knowledge Architecture | `docs/knowledge-architecture.md` | 肖宇翔 + 钟睿宸（必读） |
 | JSON Schema | `docs/architecture/agent-schemas.md` | 钟睿宸 + 蔡子鑫（必读） |
 | 开发手册 | `docs/development-handbook.md` | 全员（重点看 Principles 和 DoD） |
