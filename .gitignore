@@ -1,31 +1,18 @@
-# 原始文档（已消化为 docs/*.md）
-*.docx
+# 环境变量 — 包含密码，不要上传
+.env
 
 # Python
 __pycache__/
-*.py[cod]
-*.egg-info/
-venv/
-.env
-
-# 前端
-node_modules/
-dist/
-.unpackage/
+*.pyc
+*.pyo
 
 # IDE
-.idea/
 .vscode/
-*.swp
-*.swo
+.idea/
 
 # 日志
-logs/*.log
+logs/
+*.log
 
-# 系统
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# 部署
-deploy/data/
+# 数据库
+*.db
