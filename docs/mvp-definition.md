@@ -100,13 +100,13 @@
 
 | # | Must Have | 验收标准 |
 |---|-----------|----------|
-| 1 | `knowledge-architecture.md` | 五章完整，nob 确认可据此整理知识库 |
+| 1 | `knowledge-architecture.md` | 五章完整，肖宇翔 确认可据此整理知识库 |
 | 2 | `prompt-architecture.md` | 六章完整，钟睿宸确认可据此实现 Prompt Engine |
 | 3 | `agent-architecture.md` | 六章完整，钟睿宸 + 蔡子鑫确认可据此实现 |
 | 4 | `mvp-definition.md` | 全员确认 Sprint 1 范围 |
 | 5 | GitHub 仓库 + 看板 | 5 个 Issue + 5 条 feature 分支 + Projects 看板可访问 |
 
-### nob（Medical Knowledge Engineer）
+### 肖宇翔（Medical Knowledge Engineer）
 
 | # | Must Have | 验收标准 |
 |---|-----------|----------|
@@ -153,7 +153,7 @@
 | 3 | ⑤ 反馈Agent 闭环实现 | 钟睿宸 | 低 |
 | 4 | Docker 部署脚本 | 蔡子鑫 | 低 |
 | 5 | ADR 独立文档抽取 | 陈家智 | 低 |
-| 6 | 文献 ≥ 20 篇 | nob | 低 |
+| 6 | 文献 ≥ 20 篇 | 肖宇翔 | 低 |
 | 7 | 反馈数据缓存到 Redis | 蔡子鑫 | 低 |
 
 ---
@@ -185,11 +185,11 @@
 Day 1 (7/15 周二)
 ├── 上午：Kickoff Meeting（今晚 21:00）
 ├── 陈家智完成剩余 Architecture 文档
-├── nob 开始找文献
+├── 肖宇翔 开始找文献
 └── 钟睿宸开始搭 LangGraph 环境
 
 Day 2 (7/16 周三)
-├── nob 继续文献 + 写第 1 个映射 JSON
+├── 肖宇翔 继续文献 + 写第 1 个映射 JSON
 ├── 钟睿宸 LangGraph Demo v0.1
 ├── 蔡子鑫 FastAPI 脚手架
 └── 彭翔 Figma 首页设计
@@ -198,19 +198,19 @@ Day 3 (7/17 周四)
 ├── 钟睿宸 Prompt Engine 雏形
 ├── 蔡子鑫 MySQL 建表 + 第 1 个 API
 ├── 彭翔 uni-app 项目骨架
-└── nob 第 2 个映射 JSON
+└── 肖宇翔 第 2 个映射 JSON
 
 Day 4 (7/18 周五)
 ├── 钟睿宸 Chroma 向量库搭建
 ├── 蔡子鑫 全部 3 个 API 端点
 ├── 彭翔 问卷页 + 评估结果页
-└── nob 第 3 个映射 JSON
+└── 肖宇翔 第 3 个映射 JSON
 
 Day 5 (7/19 周六)
 ├── 钟睿宸 ①→②→③→④ 联调
 ├── 蔡子鑫 API 联调
 ├── 彭翔 播放器 + 反馈页
-└── nob 文献入库 Chroma
+└── 肖宇翔 文献入库 Chroma
 
 Day 6 (7/20 周日)
 ├── 全员联调：前端 → API → AI → 返回

@@ -12,7 +12,7 @@
 这份文档定义了 HarmonyAI 的**知识流动规则**——数据如何从"用户输入"一步步变成"音乐参数"。
 
 **读者：**
-- Medical Knowledge Engineer（nob）：按此标准填充知识库和映射 JSON
+- Medical Knowledge Engineer（肖宇翔）：按此标准填充知识库和映射 JSON
 - AI Engineering Lead（钟睿宸）：按此标准实现 Prompt Engine 和 RAG 检索
 - Backend Engineer（蔡子鑫）：按此标准设计数据库 ER 图
 - Client Engineer（彭翔）：按此标准理解数据流，设计 UI 交互
@@ -457,7 +457,7 @@ Agent ⑤ confidence = 用户反馈一致性
 
 ### 4.3 Medical Knowledge Engineer 的工作标准
 
-nob 在整理知识库时，**每条知识必须标注：**
+肖宇翔 在整理知识库时，**每条知识必须标注：**
 
 ```json
 {
