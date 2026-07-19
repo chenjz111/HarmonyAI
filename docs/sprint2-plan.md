@@ -108,10 +108,10 @@ stub 只是把契约里的示例 JSON 返回出来，半天就能写完一个。
 - 对接全部五个真接口
 - Day 14 验收全程录屏（录屏直接作为给老师的汇报素材）
 
-### 4.5 nob —— Medical Knowledge Engineer
+### 4.5 肖宇翔 —— Medical Knowledge Engineer
 
 **Sprint 2 不再泛查论文**，只做四件有清单的事：
-1. 按 `knowledge/v1/核验清单-nob.md` 签收 literature.json 12 篇（15-30 分钟）
+1. 按 `knowledge/v1/核验清单-肖宇翔.md` 签收 literature.json 12 篇（15-30 分钟）
 2. 补明确缺口：Level D ≥2 篇 + 四个证型（心火上炎/脾虚湿困/肺气虚/肾阴不足）现代文献 + 《山东中医杂志》2024 定位
 3. **新核心任务：把文献切成 Chroma 可入库的知识块**（格式与钟睿宸对齐，供 RAG 检索）
 4. 维护 `knowledge/v1/mapping/*.json` 作为 AI 直接读取的唯一真源（替换全部"待补充"占位符）

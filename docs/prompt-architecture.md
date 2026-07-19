@@ -15,7 +15,7 @@
 
 **读者：**
 - AI Engineering Lead（钟睿宸）：按此标准实现 Prompt Engine
-- Medical Knowledge Engineer（nob）：理解 Prompt 参数来源，确保知识库可被参数化
+- Medical Knowledge Engineer（肖宇翔）：理解 Prompt 参数来源，确保知识库可被参数化
 - Backend Engineer（蔡子鑫）：理解 Prompt 存储方式（template_id + parameters，不存完整字符串）
 
 ---
@@ -417,7 +417,7 @@ MAJOR.MINOR.PATCH
 
 3. 通知受影响方：
    - 钟睿宸（AI）：Prompt Engine 适配
-   - nob（Medical）：参数语义是否变化
+   - 肖宇翔（Medical）：参数语义是否变化
    - 蔡子鑫（Backend）：数据库 template 表是否需要新记录
 
 4. 旧模板保留 2 个 Sprint 后废弃

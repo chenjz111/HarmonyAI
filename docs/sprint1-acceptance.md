@@ -81,7 +81,7 @@
 | 5 | 播放器能播（音频 URL → 播放/暂停/进度条） | 补课 | 现场操作 |
 | 6 | 页面有 loading / success / error 三态 | 补课 | 抽查一个页面 |
 
-### 3.5 nob —— Medical Knowledge Engineer（对照 Issue #9）
+### 3.5 肖宇翔 —— Medical Knowledge Engineer（对照 Issue #9）
 
 > 验收的不是"论文多"，是"知识有标准、别人看得懂"。
 
@@ -92,7 +92,7 @@
 | 3 | Level 配额：A≥2 / B≥3 / C≥3 达标；**D≥2 未达标** | 补课 | 对照 quota_status 字段 |
 | 4 | knowledge/ 目录结构别人看得懂 | ★ | 让钟睿宸现场说出他将怎么读取 |
 
-**如实说明：** 文献库与映射 JSON v0.1 由陈家智代整理（nob 本周有事），**签收核验责任在 nob**，签收 + Level D 补齐 + 4 个证型缺口已列入 Sprint 2 Issue #18——验收会上照此口径陈述，不含糊为"已完成"。
+**如实说明：** 文献库与映射 JSON v0.1 由陈家智代整理（肖宇翔 本周有事），**签收核验责任在 肖宇翔**，签收 + Level D 补齐 + 4 个证型缺口已列入 Sprint 2 Issue #18——验收会上照此口径陈述，不含糊为"已完成"。
 
 ---
 
@@ -143,7 +143,7 @@
 | 钟睿宸 | Qwen 调用 + LangGraph Demo + Prompt Engine 雏形 | 运行 `python demo.py` | ☐ | |
 | 蔡子鑫 | FastAPI+Swagger + 3 接口骨架 + MySQL 6 表 | 浏览器 /docs + SHOW TABLES | ☐ | |
 | 彭翔 | 4 页面流程可走通（静态可接受） | 真机/录屏演示 | ☐ | |
-| nob | 12 篇文献 + 3 个 Mapping JSON + 目录可读 | 打开 JSON 展示 | ☐ | |
+| 肖宇翔 | 12 篇文献 + 3 个 Mapping JSON + 目录可读 | 打开 JSON 展示 | ☐ | |
 | **全员** | 认知对齐测试（第五章） | 逐人回答 | ☐ | |
 
 验收人签字：＿＿＿＿＿＿　日期：＿＿＿＿＿＿

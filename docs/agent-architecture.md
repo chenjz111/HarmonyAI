@@ -16,7 +16,7 @@
 **读者：**
 - AI Engineering Lead（钟睿宸）：全文必读，这是你的施工规范
 - Backend Engineer（蔡子鑫）：通用字段 → 数据库列设计；生命周期 → API 状态码设计
-- Medical Knowledge Engineer（nob）：理解 Agent 怎么用你的知识库
+- Medical Knowledge Engineer（肖宇翔）：理解 Agent 怎么用你的知识库
 - Client Engineer（彭翔）：理解 Agent 生命周期 → 前端 loading/error/success 状态
 
 **前置阅读：** `docs/architecture/agent-schemas.md`（五 Agent I/O Schema 已定义）
