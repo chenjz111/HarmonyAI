@@ -4,7 +4,7 @@
   "created": "2026-07-17",
   "last_modified": "2026-07-18",
   "author": "陈家智（初始版，权重取自 knowledge-architecture.md 第2.4节权重矩阵）；肖宇翔（核验签收+补充现代文献出处+补全 credibility_level 字段+修正cite证据等级标记）",
-  "status": "reviewed-by-nob",
+  "status": "reviewed-by-肖宇翔",
   "spec_ref": "要求/knowledge-architecture.md 第2.4节 + 第3.2节（生克选调规则）（陈家智 V0.1，2026-07-15）",
   "evidence_legend": {
     "modern_source 字段中": "采用 [直接证据] / [病机相关] / [旁证-同类证型] / [旁证-五行归属] / [经典理论] / [理论依据] 六级标记",
