@@ -4,7 +4,7 @@
   "created": "2026-07-17",
   "last_modified": "2026-07-18",
   "author": "陈家智（初始版，依据 knowledge-architecture.md 第2.5节乐器库 + 第3.4节乐器选择规则）；肖宇翔（核验签收+文献交叉参照+修正cite证据等级标记）",
-  "status": "reviewed-by-nob",
+  "status": "reviewed-by-肖宇翔",
   "spec_ref": "要求/knowledge-architecture.md 第2.5节 + 第3.4节（陈家智 V0.1，2026-07-15）",
   "note": "选配规则：主乐器与调式五行相同；辅乐器取生我/我生之五行；权重之和 = 1.0。角调组合取自架构文档第5.1节示例，其余四调为按规则推导的初始值。EXP_v1.0（专家经验库）已建，5 调式×15 条乐器配置已发专家核验（待签回更新状态）。文献交叉参照：k_016确认商调《阳春白雪》、k_017确认宫调/角调/羽调选曲。\n\n⚠️ 重要：本文件整体 credibility_level 仅为 C 级（参考级），待≥3位专家核验通过后考虑是否升级。",
   "instrument_library": ["guzheng", "guqin", "zhudi", "xiao", "pipa", "erhu", "bianzhong", "sheng", "xun"],

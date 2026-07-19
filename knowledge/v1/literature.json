@@ -2,7 +2,7 @@
   "collection_id": "literature",
   "version": "0.1.0",
   "created": "2026-07-17",
-  "author": "陈家智（代nob整理初版，深度检索+三票对抗验证+原文核验）",
+  "author": "陈家智（代肖宇翔整理初版，深度检索+三票对抗验证+原文核验）",
   "status": "draft",
   "spec_ref": "docs/knowledge-architecture.md 第4.3节",
   "quota_status": {
@@ -10,7 +10,7 @@
     "level_A": { "count": 4, "required": 2, "met": true },
     "level_B": { "count": 5, "required": 3, "met": true },
     "level_C": { "count": 3, "required": 3, "met": true },
-    "level_D": { "count": 0, "required": 2, "met": false, "note": "个案报告在线难以核验，留给nob从知网补充" }
+    "level_D": { "count": 0, "required": 2, "met": false, "note": "个案报告在线难以核验，留给肖宇翔从知网补充" }
   },
   "verification_note": "所有条目均经在线核验：英文文献逐条比对PubMed官方页面；中文文献经万方/SinoMed/期刊官网≥2个独立来源交叉确认；《素问》原文在ctext.org逐字核验。未经核验的候选一律未收录。",
   "entries": [
@@ -99,7 +99,7 @@
       "applicable_syndromes": ["syd_002"],
       "applicable_emotions": ["depression"],
       "tags": ["角调", "肝气郁结", "抑郁", "脑卒中", "有效率77.5%"],
-      "notes": "随机对照设计但单中心、无盲法描述，保守定级C（若nob核验全文认定为严格RCT可升级）",
+      "notes": "随机对照设计但单中心、无盲法描述，保守定级C（若肖宇翔核验全文认定为严格RCT可升级）",
       "verify_status": "已核验（期刊官网+万方等4源交叉确认，2026-07-17）"
     },
     {
@@ -152,7 +152,7 @@
       "applicable_syndromes": ["syd_001", "syd_002"],
       "applicable_emotions": ["anger", "anxiety", "depression"],
       "tags": ["角调", "木", "肝", "怒", "经典配属"],
-      "notes": "source_year取约公元前1世纪成书说，仅作排序用；建议nob补充人卫版《黄帝内经素问》校注本页码",
+      "notes": "source_year取约公元前1世纪成书说，仅作排序用；建议肖宇翔补充人卫版《黄帝内经素问》校注本页码",
       "verify_status": "已核验（ctext.org原文逐字比对，2026-07-17）"
     },
     {

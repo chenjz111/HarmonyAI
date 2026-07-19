@@ -4,12 +4,12 @@
   "created": "2026-07-17",
   "last_modified": "2026-07-18",
   "author": "陈家智（初始版）；肖宇翔（核验签收+补充现代文献出处+修正cite证据等级标记）",
-  "status": "reviewed-by-nob",
+  "status": "reviewed-by-肖宇翔",
   "spec_ref": "要求/knowledge-architecture.md 第1.2节 + 第2.1-2.2节 + 第3.1节（陈家智 V0.1，2026-07-15）",
   "evidence_legend": {
     "modern_source 字段中": "采用 [直接证据] / [病机相关] / [旁证-同类证型] / [旁证-五行归属] / [经典理论] 五级标记，AI 检索时按级加权",
     "标记规则": "[直接证据] 患者证型与目标证型完全一致；[病机相关] 病机演变链或同类脏腑；[旁证-同类证型] 病种一致但证型不同；[旁证-五行归属] 仅作为五音-五脏对应旁证，不作证型临床证据；[经典理论] 引自《黄帝内经》",
-    "状态": "本标记体系为 nob 本地扩展，仅在 knowledge/v2 mapping JSON 中使用，未写入陈家智 knowledge-architecture.md spec。"
+    "状态": "本标记体系为 肖宇翔 本地扩展，仅在 knowledge/v2 mapping JSON 中使用，未写入陈家智 knowledge-architecture.md spec。"
   },
   "note": "一对多映射：同一情绪可对应多个证型，实际辨证由②辨证Agent结合五维分数综合判断。现代文献出处已由肖宇翔核验补充（2026-07-17），并按证据等级重新标记（2026-07-18）。",
   "emotions": ["anxiety", "depression", "anger", "fear", "overthinking"],
