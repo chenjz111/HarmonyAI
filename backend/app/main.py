@@ -1,12 +1,14 @@
-"""HarmonyAI FastAPI Application — MVP Sprint 1.
+"""HarmonyAI FastAPI Application — Sprint 2.
 
-3 consolidated API endpoints per mvp-definition.md:
-  POST /api/assess       → Agent ①+② (questionnaire → assessment + diagnosis)
-  GET  /api/prescription  → Agent ③+④ (syndrome → daily plan + audio)
-  POST /api/feedback      → Agent ⑤   (rating → decision)
+5 independent Agent API endpoints per agent-schemas.md + agent-architecture.md:
+  POST /api/v1/assessment   → Agent 1 评估Agent
+  POST /api/v1/diagnosis    → Agent 2 辨证Agent
+  POST /api/v1/prescription → Agent 3 处方Agent
+  POST /api/v1/generation   → Agent 4 生成Agent
+  POST /api/v1/feedback     → Agent 5 反馈Agent
 
 Start:
-  cd HarmonyAI/
+  cd HarmonyAI_repo/
   set PYTHONPATH=.
   python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 
@@ -18,8 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.core.config import settings
 from backend.app.routers import (
     health_router,
-    assess_router,
+    assessment_router,
+    diagnosis_router,
     prescription_router,
+    generation_router,
     feedback_router,
 )
 
@@ -28,23 +32,21 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description=(
         "五音疗愈平台 —— 基于中医五音理论的 AI 音乐辅助调理系统\n\n"
-        "## MVP Sprint 1 端点\n"
-        "| 端点 | 方法 | 说明 |\n"
-        "|------|------|------|\n"
-        "| `/api/assess` | POST | 提交问卷 → 返回评估+辨证 |\n"
-        "| `/api/prescription` | GET | 获取音乐处方+音频 |\n"
-        "| `/api/feedback` | POST | 提交反馈 → 返回决策 |\n\n"
-        "## 设计原则\n"
-        "- Schema 即合约（与 agent-schemas.md 严格一致）\n"
-        "- Prompt 不入库（运行时组装）\n"
-        "- 每层说自己的语言"
+        "## Sprint 2 — 五 Agent 独立端点\n"
+        "| 端点 | Agent | 说明 |\n"
+        "|------|-------|------|\n"
+        "| `/api/v1/assessment` | 1 评估 | 问卷 → 健康画像 |\n"
+        "| `/api/v1/diagnosis` | 2 辨证 | 画像 → 证型诊断 |\n"
+        "| `/api/v1/prescription` | 3 处方 | 证型 → 音乐处方 |\n"
+        "| `/api/v1/generation` | 4 生成 | 处方 → 音频 |\n"
+        "| `/api/v1/feedback` | 5 反馈 | 评分 → 决策 |\n\n"
+        "每个端点返回 Universal Shell（agent-architecture.md 第 1 章）"
     ),
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -53,18 +55,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
 app.include_router(health_router.router, tags=["Health"])
-app.include_router(assess_router.router, prefix="/api", tags=["MVP — 评估+辨证"])
-app.include_router(prescription_router.router, prefix="/api", tags=["MVP — 处方+音频"])
-app.include_router(feedback_router.router, prefix="/api", tags=["MVP — 反馈"])
+app.include_router(assessment_router.router, prefix="/api/v1", tags=["Agent 1 — 评估"])
+app.include_router(diagnosis_router.router, prefix="/api/v1", tags=["Agent 2 — 辨证"])
+app.include_router(prescription_router.router, prefix="/api/v1", tags=["Agent 3 — 处方"])
+app.include_router(generation_router.router, prefix="/api/v1", tags=["Agent 4 — 生成"])
+app.include_router(feedback_router.router, prefix="/api/v1", tags=["Agent 5 — 反馈"])
 
 
 @app.get("/", include_in_schema=False)
 async def root():
-    return {
-        "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "docs": "/docs",
-        "redoc": "/redoc",
-    }
+    return {"app": settings.APP_NAME, "version": settings.APP_VERSION, "docs": "/docs"}
