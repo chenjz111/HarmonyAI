@@ -105,4 +105,12 @@ python -m pytest -q
 python -m backend.ai_engine.demo
 ```
 
-外部 Qwen、Chroma 和 LangGraph 服务尚未作为运行时依赖接入；Provider 接口与本地 fallback 已预留，便于后续替换。
+外部 Qwen 和 Chroma 服务尚未作为运行时依赖接入；Provider 接口与本地 fallback 已预留，便于后续替换。
+
+### Sprint 2 Day 4 Stub 演示
+
+五个 Agent 的 LangGraph stub 可在不启动模型、数据库或音乐 API 的情况下，演示正常闭环和低可信度安全分支：
+
+```powershell
+python -m backend.ai_engine.sprint2_demo
+```
