@@ -1,94 +1,237 @@
 /**
- * HarmonyAI API 接口层
- * Sprint 1 阶段可开启 mock 数据，后端 ready 后把 USE_MOCK 设为 false
+ * HarmonyAI API 接口层 — Sprint 2
+ * 5个 Agent 接口链式调用，格式对齐蔡子鑫后端 (agent_stubs.py)
+ * 路由前缀: /api/v1
+ * 链式流程: assessment -> diagnosis -> prescription -> generation -> feedback
  */
 
-const BASE_URL = 'http://localhost:8000'  // 后端 Stub 地址，正式后端 ready 后替换
+const BASE_URL = 'http://localhost:8000'
 
-// 是否使用 mock 数据
-// - true：前端自己模拟返回，不发送真实 HTTP 请求
-// - false：请求真实后端（运行 backend-stub/run.bat 或正式后端）
+// 是否使用 mock 数据（true=前端模拟，false=请求真实后端）
 const USE_MOCK = false
 
-// mock 失败概率，用于验证 error 三态。0 表示永远成功，0.3 表示 30% 失败
-const MOCK_FAIL_RATE = 0
-
 /**
- * 提交健康评估问卷
- * @param {Object} payload - { emotion, tone, answers }
- * @returns {Promise} 评估+辨证结果
+ * Agent 1 — 评估
+ * @param {Object} emotionScores - 情绪评分 { emotion, answers, ... }
+ * @returns {Promise} assessment envelope
  */
-export function submitAssessment(payload) {
+export function submitAssessment(emotionScores) {
   if (USE_MOCK) {
     return mockRequest({
-      session_id: 'mock-session-' + Date.now(),
-      agent_id: 'agent-1-assessment',
-      confidence: 0.78,
+      agent_id: 'evaluation_agent',
+      agent_name: '评估Agent',
+      agent_layer: 'medical_analysis',
+      run_id: 'run_mock_eval',
+      session_id: 'sess_mock_' + Date.now(),
+      user_id: 'u_001',
+      status: 'success',
+      confidence: 0.85,
+      reason: ['mock：使用提交的情绪评分'],
+      warnings: [],
+      input: { emotion_scores: emotionScores },
+      output: { emotion_profile: emotionScores },
+      processing_time_ms: 200,
       timestamp: new Date().toISOString(),
-      emotion: payload.emotion,
-      tone: payload.tone,
-      syndrome: '肝郁化火',
-      recommended_tone: '角',
-      tone_weights: { '角': 0.75, '宫': 0.15, '羽': 0.10 },
-      reasoning: '情绪以怒为主，伴焦虑失眠，辨证属肝郁化火，推荐角调疏肝。'
+      retry_count: 0
     })
   }
 
   return request({
-    url: `${BASE_URL}/api/assess`,
+    url: `${BASE_URL}/api/v1/assessment`,
     method: 'POST',
-    data: payload
+    data: {
+      user_id: 'u_001',
+      emotion_scores: emotionScores
+    }
   })
 }
 
 /**
- * 获取音乐处方
- * @param {String} sessionId - 评估会话 ID
- * @returns {Promise} 处方详情（含音频 URL）
+ * Agent 2 — 辨证
+ * @param {String} sessionId - 会话ID
+ * @param {Object} assessmentEnvelope - Agent 1 返回的完整 envelope
+ * @returns {Promise} diagnosis envelope
  */
-export function getPrescription(sessionId) {
+export function submitDiagnosis(sessionId, assessmentEnvelope) {
   if (USE_MOCK) {
     return mockRequest({
+      agent_id: 'diagnosis_agent',
+      agent_name: '辨证Agent',
+      agent_layer: 'medical_analysis',
+      run_id: 'run_mock_diag',
       session_id: sessionId,
-      agent_id: 'agent-3-prescription',
-      confidence: 0.82,
+      user_id: 'u_001',
+      status: 'success',
+      confidence: 0.85,
+      reason: ['mock：怒情绪映射为肝郁化火'],
+      warnings: [],
+      input: { assessment: assessmentEnvelope.output },
+      output: {
+        syndrome_diagnosis: {
+          primary: {
+            name: '肝郁化火',
+            element: '木',
+            organ: '肝',
+            emotion: '怒',
+            severity_level: 3,
+            severity_name: '中度'
+          }
+        },
+        search_keywords: ['肝郁化火', '角调式', '疏肝解郁']
+      },
+      processing_time_ms: 150,
       timestamp: new Date().toISOString(),
-      tone: '角',
-      tone_weight: 0.75,
-      instrument: '古筝',
-      bpm: 68,
-      reasoning: '肝郁化火 → 角调疏肝理气，辅以宫调健脾安神',
-      prompt: '古筝独奏，角调，BPM 68，舒缓宁静',
-      // 公开可访问的古筝样例音频（无版权争议的演示用）
-      audio_url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
+      retry_count: 0
     })
   }
 
   return request({
-    url: `${BASE_URL}/api/prescription/${sessionId}`,
-    method: 'GET'
+    url: `${BASE_URL}/api/v1/diagnosis`,
+    method: 'POST',
+    data: {
+      user_id: 'u_001',
+      session_id: sessionId,
+      assessment: assessmentEnvelope
+    }
   })
 }
 
 /**
- * 提交用户反馈
- * @param {Object} payload - { rating, session_id, completed }
- * @returns {Promise}
+ * Agent 3 — 处方
+ * @param {String} sessionId - 会话ID
+ * @param {Object} diagnosisEnvelope - Agent 2 返回的完整 envelope
+ * @returns {Promise} prescription envelope
  */
-export function submitFeedback(payload) {
+export function submitPrescription(sessionId, diagnosisEnvelope) {
   if (USE_MOCK) {
     return mockRequest({
-      success: true,
-      agent_id: 'agent-5-feedback',
+      agent_id: 'prescription_agent',
+      agent_name: '处方Agent',
+      agent_layer: 'knowledge_mapping',
+      run_id: 'run_mock_rx',
+      session_id: sessionId,
+      user_id: 'u_001',
+      status: 'success',
+      confidence: 0.82,
+      reason: ['mock：肝郁化火对应角调式、68BPM与古筝'],
+      warnings: [],
+      input: { diagnosis: diagnosisEnvelope.output },
+      output: {
+        music_feature: {
+          tone_id: 'jiao',
+          tone_name: '角调式',
+          bpm: 68,
+          instruments: ['古筝', '古琴']
+        },
+        prompt_template: {
+          template_id: 'CN_V1',
+          template_version: '1.0.0',
+          parameters: { duration: 15, bpm: 68, tone: '角调式' }
+        },
+        rendered_prompt: '古筝独奏，角调式，BPM 68，舒缓宁静'
+      },
+      processing_time_ms: 180,
       timestamp: new Date().toISOString(),
-      decision: 'accepted'
+      retry_count: 0
     })
   }
 
   return request({
-    url: `${BASE_URL}/api/feedback`,
+    url: `${BASE_URL}/api/v1/prescription`,
     method: 'POST',
-    data: payload
+    data: {
+      user_id: 'u_001',
+      session_id: sessionId,
+      diagnosis: diagnosisEnvelope
+    }
+  })
+}
+
+/**
+ * Agent 4 — 生成
+ * @param {String} sessionId - 会话ID
+ * @param {Object} prescriptionEnvelope - Agent 3 返回的完整 envelope
+ * @returns {Promise} generation envelope
+ */
+export function submitGeneration(sessionId, prescriptionEnvelope) {
+  if (USE_MOCK) {
+    return mockRequest({
+      agent_id: 'generation_agent',
+      agent_name: '生成Agent',
+      agent_layer: 'ai_generation',
+      run_id: 'run_mock_gen',
+      session_id: sessionId,
+      user_id: 'u_001',
+      status: 'degraded',
+      confidence: 0.71,
+      reason: ['mock：使用本地曲库示例音频'],
+      warnings: ['当前为 Sprint 2 本地曲库 stub'],
+      input: { prescription: prescriptionEnvelope.output },
+      output: {
+        audio: {
+          url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+          format: 'mp3'
+        }
+      },
+      processing_time_ms: 300,
+      timestamp: new Date().toISOString(),
+      retry_count: 0
+    })
+  }
+
+  return request({
+    url: `${BASE_URL}/api/v1/generation`,
+    method: 'POST',
+    data: {
+      user_id: 'u_001',
+      session_id: sessionId,
+      prescription: prescriptionEnvelope
+    }
+  })
+}
+
+/**
+ * Agent 5 — 反馈
+ * @param {String} sessionId - 会话ID
+ * @param {Object} generationEnvelope - Agent 4 返回的完整 envelope
+ * @param {Number} satisfaction - 满意度评分 1-5
+ * @returns {Promise} feedback envelope
+ */
+export function submitFeedback(sessionId, generationEnvelope, satisfaction) {
+  if (USE_MOCK) {
+    return mockRequest({
+      agent_id: 'feedback_agent',
+      agent_name: '反馈Agent',
+      agent_layer: 'ai_generation',
+      run_id: 'run_mock_fb',
+      session_id: sessionId,
+      user_id: 'u_001',
+      status: 'success',
+      confidence: 0.8,
+      reason: [`mock：用户评分${satisfaction}分，继续当前方案`],
+      warnings: [],
+      input: { audio: generationEnvelope.output.audio },
+      output: {
+        decision: {
+          action: satisfaction >= 4 ? 'continue' : 'adjust',
+          next_step: satisfaction >= 4 ? 'push_next_day' : 'adjust_prescription'
+        }
+      },
+      processing_time_ms: 100,
+      timestamp: new Date().toISOString(),
+      retry_count: 0
+    })
+  }
+
+  return request({
+    url: `${BASE_URL}/api/v1/feedback`,
+    method: 'POST',
+    data: {
+      user_id: 'u_001',
+      session_id: sessionId,
+      generation: generationEnvelope,
+      overall_satisfaction: satisfaction
+    }
   })
 }
 
@@ -123,17 +266,11 @@ function request(options) {
 
 /**
  * mock 请求模拟器
- * @param {Object} data - 要返回的数据
- * @param {Number} delay - 延迟毫秒
  */
 function mockRequest(data, delay = 1200) {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
-      if (MOCK_FAIL_RATE > 0 && Math.random() < MOCK_FAIL_RATE) {
-        reject(new Error('网络异常，请稍后重试'))
-      } else {
-        resolve(data)
-      }
+      resolve(data)
     }, delay)
   })
 }
