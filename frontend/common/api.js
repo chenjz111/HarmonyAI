@@ -97,8 +97,12 @@ export function submitFeedback(payload) {
  */
 function request(options) {
   return new Promise((resolve, reject) => {
+    const isObject = typeof options.data === 'object' && options.data !== null && !(options.data instanceof FormData)
+    const body = isObject ? JSON.stringify(options.data) : options.data
+
     uni.request({
       ...options,
+      data: body,
       header: {
         'Content-Type': 'application/json',
         ...(options.header || {})
