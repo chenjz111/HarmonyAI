@@ -1,9 +1,11 @@
 @echo off
 chcp 65001 >nul
-echo 正在安装依赖（首次运行需要）...
+echo.
+echo Installing dependencies (first run may take a while)...
 pip install -r requirements.txt -q
 echo.
-echo 启动 HarmonyAI 后端 Stub...
-echo 接口文档：http://localhost:8000/docs
+echo Starting HarmonyAI backend stub...
+echo API docs: http://localhost:8000/docs
+echo.
 python server.py
 pause
