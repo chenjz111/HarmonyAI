@@ -3,10 +3,12 @@
  * Sprint 1 阶段可开启 mock 数据，后端 ready 后把 USE_MOCK 设为 false
  */
 
-const BASE_URL = 'http://localhost:8000'  // 后端 FastAPI 地址，联调时替换
+const BASE_URL = 'http://localhost:8000'  // 后端 Stub 地址，正式后端 ready 后替换
 
-// 是否使用 mock 数据（后端未就绪或本地演示时为 true）
-const USE_MOCK = true
+// 是否使用 mock 数据
+// - true：前端自己模拟返回，不发送真实 HTTP 请求
+// - false：请求真实后端（运行 backend-stub/run.bat 或正式后端）
+const USE_MOCK = false
 
 // mock 失败概率，用于验证 error 三态。0 表示永远成功，0.3 表示 30% 失败
 const MOCK_FAIL_RATE = 0
