@@ -1,5 +1,5 @@
 <script>
-import { getPrescription, submitFeedback } from '@/common/api.js'
+import { submitPrescription, submitGeneration, submitFeedback } from '@/common/api.js'
 
 export default {
   data() {
@@ -7,16 +7,18 @@ export default {
       // 页面状态：loading / success / error
       status: 'loading',
       errorMsg: '',
-      // 评估结果（从本地存储读取）
-      assessment: null,
-      // 处方信息（从后端/mock 获取）
+      // 5步链式的 envelope（从 storage 或 API 获取）
+      assessmentEnvelope: null,
+      diagnosisEnvelope: null,
+      prescriptionEnvelope: null,
+      generationEnvelope: null,
+      // 处方信息（从 envelope 提取，用于 UI 展示）
       prescription: {
         sessionId: '',
         toneName: '角调',
-        toneWeight: '75%',
         instrument: '古筝',
         bpm: 68,
-        reasoning: '肝郁化火 → 角调疏肝理气，辅以宫调健脾安神',
+        reasoning: '',
         syndrome: '肝郁化火',
         confidence: 0.78,
         audioUrl: ''
@@ -28,7 +30,9 @@ export default {
       duration: 0,
       // 评分
       rating: 0,
-      stars: [1, 2, 3, 4, 5]
+      stars: [1, 2, 3, 4, 5],
+      // 反馈提交状态：idle / submitting / success
+      feedbackStatus: 'idle'
     }
   },
   onShow() {
@@ -61,7 +65,27 @@ export default {
       this.isPlaying = false
       this.currentTime = 0
       this.duration = 0
+      // rating / feedbackStatus 不在此处重置，
+      // 由 loadAssessmentAndPrescription 根据 storage 中已保存的反馈记录恢复
+    },
+
+    restoreFeedbackStatus() {
+      try {
+        const fb = uni.getStorageSync('harmony_latest_feedback')
+        if (fb) {
+          const feedback = JSON.parse(fb)
+          if (feedback.session_id === this.prescription.sessionId) {
+            this.rating = feedback.rating || 0
+            this.feedbackStatus = 'success'
+            return
+          }
+        }
+      } catch (e) {
+        console.error('恢复反馈状态失败：', e)
+      }
+      // 没有匹配记录：重置为未提交状态
       this.rating = 0
+      this.feedbackStatus = 'idle'
     },
 
     async loadAssessmentAndPrescription() {
@@ -69,21 +93,28 @@ export default {
       this.errorMsg = ''
 
       try {
-        const data = uni.getStorageSync('harmony_latest_assessment')
-        if (!data) {
-          // 没有评估数据：展示默认 mock 处方（便于直接预览播放页）
+        // 从本地存储读取辨证结果（Agent 2 的输出）
+        const diagnosisData = uni.getStorageSync('harmony_diagnosis')
+        if (!diagnosisData) {
+          // 没有辨证数据：展示默认处方（便于直接预览播放页）
           this.setDefaultPrescription()
           this.initAudio()
           this.status = 'success'
           return
         }
 
-        this.assessment = JSON.parse(data)
-        const sessionId = this.assessment.session_id || 'mock-session'
+        this.diagnosisEnvelope = JSON.parse(diagnosisData)
+        const sessionId = this.diagnosisEnvelope.session_id
 
-        // 获取处方（含音频 URL）
-        const prescriptionData = await getPrescription(sessionId)
-        this.applyPrescription(prescriptionData)
+        // === Agent 3: 处方 ===
+        this.prescriptionEnvelope = await submitPrescription(sessionId, this.diagnosisEnvelope)
+
+        // === Agent 4: 生成 ===
+        this.generationEnvelope = await submitGeneration(sessionId, this.prescriptionEnvelope)
+
+        // 提取处方信息用于 UI 展示
+        this.applyPrescription(this.prescriptionEnvelope, this.generationEnvelope)
+        this.restoreFeedbackStatus()
         this.initAudio()
         this.status = 'success'
       } catch (e) {
@@ -97,7 +128,6 @@ export default {
       this.prescription = {
         sessionId: 'default',
         toneName: '角调',
-        toneWeight: '75%',
         instrument: '古筝',
         bpm: 68,
         reasoning: '肝郁化火 → 角调疏肝理气，辅以宫调健脾安神',
@@ -105,33 +135,43 @@ export default {
         confidence: 0.78,
         audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
       }
+      this.restoreFeedbackStatus()
     },
 
-    applyPrescription(data) {
-      const tone = data.tone || data.recommended_tone || '角'
+    applyPrescription(prescriptionEnvelope, generationEnvelope) {
+      // 从 Universal Shell envelope 提取处方信息
+      const out = prescriptionEnvelope.output || {}
+      const mf = out.music_feature || {}
+      const sd = (this.diagnosisEnvelope && this.diagnosisEnvelope.output)
+        ? this.diagnosisEnvelope.output.syndrome_diagnosis || {}
+        : {}
+      const primary = sd.primary || {}
+
+      // 音调映射表
       const toneMap = {
-        '角': { name: '角调', instrument: '古筝', syndrome: '肝郁化火', reasoning: '角调疏肝理气，辅以宫调健脾安神' },
-        '徵': { name: '徵调', instrument: '笛子', syndrome: '心火旺盛', reasoning: '徵调清心降火，辅以羽调滋水涵木' },
-        '宫': { name: '宫调', instrument: '埙', syndrome: '脾虚湿困', reasoning: '宫调健脾化湿，辅以商调宣肺理气' },
-        '商': { name: '商调', instrument: '编钟', syndrome: '肺气不足', reasoning: '商调补肺益气，辅以宫调培土生金' },
-        '羽': { name: '羽调', instrument: '古琴', syndrome: '肾阳不足', reasoning: '羽调温补肾阳，辅以角调疏肝解郁' }
+        'jiao': { name: '角调', instrument: '古筝', syndrome: '肝郁化火' },
+        'zhi': { name: '徵调', instrument: '笛子', syndrome: '心火旺盛' },
+        'gong': { name: '宫调', instrument: '埙', syndrome: '脾虚湿困' },
+        'shang': { name: '商调', instrument: '编钟', syndrome: '肺气不足' },
+        'yu': { name: '羽调', instrument: '古琴', syndrome: '肾阳不足' }
       }
-      const info = toneMap[tone] || toneMap['角']
-      const weights = data.tone_weights || data.tone_weight || { '角': 0.75 }
-      const mainWeight = typeof weights === 'number'
-        ? Math.round(weights * 100)
-        : Math.round((weights[tone] || 0.75) * 100)
+      const info = toneMap[mf.tone_id] || toneMap['jiao']
+      const instruments = mf.instruments || [info.instrument]
+
+      // 从 generation envelope 提取音频 URL
+      const audio = (generationEnvelope && generationEnvelope.output)
+        ? generationEnvelope.output.audio || {}
+        : {}
 
       this.prescription = {
-        sessionId: data.session_id || 'mock-session',
-        toneName: info.name,
-        toneWeight: mainWeight + '%',
-        instrument: data.instrument || info.instrument,
-        bpm: data.bpm || 68,
-        reasoning: data.reasoning || info.reasoning,
-        syndrome: data.syndrome || info.syndrome,
-        confidence: data.confidence || 0.78,
-        audioUrl: data.audio_url || data.audioUrl || ''
+        sessionId: prescriptionEnvelope.session_id || 'session',
+        toneName: mf.tone_name || info.name,
+        instrument: instruments[0] || info.instrument,
+        bpm: mf.bpm || 68,
+        reasoning: (prescriptionEnvelope.reason && prescriptionEnvelope.reason[0]) || '',
+        syndrome: primary.name || info.syndrome,
+        confidence: prescriptionEnvelope.confidence || 0.78,
+        audioUrl: audio.url || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
       }
     },
 
@@ -217,20 +257,34 @@ export default {
         uni.showToast({ title: '请先评分', icon: 'none' })
         return
       }
+      this.feedbackStatus = 'submitting'
       try {
-        await submitFeedback({
+        // === Agent 5: 反馈 ===
+        const sessionId = this.prescription.sessionId
+        const feedbackEnvelope = await submitFeedback(
+          sessionId,
+          this.generationEnvelope,
+          this.rating
+        )
+
+        this.feedbackStatus = 'success'
+        // 把本次反馈也记录到本地，首页可以展示历史
+        uni.setStorageSync('harmony_latest_feedback', JSON.stringify({
           rating: this.rating,
-          session_id: this.prescription.sessionId,
-          completed: true
-        })
-        uni.showToast({ title: '感谢您的反馈！', icon: 'success' })
-        setTimeout(() => {
-          uni.switchTab({ url: '/pages/index/index' })
-        }, 1500)
+          session_id: sessionId,
+          action: feedbackEnvelope.output.decision.action,
+          timestamp: new Date().toISOString()
+        }))
       } catch (err) {
         console.error('提交反馈失败：', err)
+        this.feedbackStatus = 'idle'
         uni.showToast({ title: '提交失败，请重试', icon: 'none' })
       }
+    },
+
+    backToHome() {
+      this.destroyAudio()
+      uni.switchTab({ url: '/pages/index/index' })
     },
 
     reAssess() {
@@ -250,8 +304,8 @@ export default {
     <!-- Loading 状态 -->
     <view class="status-card loading-card" v-if="status === 'loading'">
       <view class="loading-spinner"></view>
-      <text class="status-title">正在加载调理方案...</text>
-      <text class="status-desc">AI 正在根据您的评估结果生成音乐处方</text>
+      <text class="status-title">正在生成音乐处方...</text>
+      <text class="status-desc">AI 正根据辨证结果生成音乐处方并准备音频</text>
     </view>
 
     <!-- Error 状态 -->
@@ -274,7 +328,7 @@ export default {
         </view>
         <view class="prescription-main">
           <text class="prescription-tone">{{ prescription.toneName }}</text>
-          <text class="prescription-weight">{{ prescription.toneWeight }}</text>
+          <text class="prescription-weight">{{ prescription.instrument }}</text>
         </view>
         <view class="prescription-detail">
           <view class="detail-row">
@@ -318,8 +372,8 @@ export default {
         </view>
       </view>
 
-      <!-- 评分组件 -->
-      <view class="rating-section">
+      <!-- 评分与反馈：idle 状态 -->
+      <view class="rating-section" v-if="feedbackStatus === 'idle'">
         <text class="rating-title">聆听感受如何？</text>
         <view class="stars-row">
           <text
@@ -335,8 +389,29 @@ export default {
         </view>
       </view>
 
+      <!-- 提交中 -->
+      <view class="status-card feedback-card" v-if="feedbackStatus === 'submitting'">
+        <view class="loading-spinner"></view>
+        <text class="status-title">正在提交反馈...</text>
+        <text class="status-desc">您的评价将帮助我们优化调理方案</text>
+      </view>
+
+      <!-- 提交成功 -->
+      <view class="status-card feedback-card feedback-success" v-if="feedbackStatus === 'success'">
+        <text class="success-icon">✓</text>
+        <text class="status-title">反馈提交成功</text>
+        <text class="status-desc">感谢您的聆听，愿五音疗愈伴您身心平和</text>
+        <view class="rating-summary" v-if="rating > 0">
+          <text class="rating-summary-stars">{{ '★'.repeat(rating) + '☆'.repeat(5 - rating) }}</text>
+          <text class="rating-summary-label">{{ ['', '不太满意', '一般', '还行', '不错', '非常疗愈'][rating] }}</text>
+        </view>
+        <view class="retry-btn" @click="backToHome">
+          <text class="retry-btn-text">返回首页</text>
+        </view>
+      </view>
+
       <!-- 底部操作 -->
-      <view class="action-group">
+      <view class="action-group" v-if="feedbackStatus === 'idle'">
         <view class="action-btn action-btn-primary" @click="submitFeedback">
           <text class="action-btn-text">提交反馈</text>
         </view>
@@ -625,5 +700,45 @@ export default {
 }
 .action-btn-primary .action-btn-text {
   color: #fff;
+}
+
+/* 反馈提交状态卡片 */
+.feedback-card {
+  background: #fff;
+  border-radius: 28rpx;
+  padding: 60rpx 40rpx;
+  text-align: center;
+  margin-bottom: 30rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+}
+.feedback-success .success-icon {
+  width: 100rpx;
+  height: 100rpx;
+  line-height: 100rpx;
+  border-radius: 50%;
+  background: #E1F5EE;
+  color: #4A9D6E;
+  font-size: 52rpx;
+  font-weight: 700;
+  display: inline-block;
+  margin-bottom: 24rpx;
+}
+.rating-summary {
+  background: #FAF7F0;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin: 24rpx 0;
+}
+.rating-summary-stars {
+  font-size: 40rpx;
+  color: #FAC775;
+  display: block;
+  margin-bottom: 8rpx;
+  letter-spacing: 8rpx;
+}
+.rating-summary-label {
+  font-size: 26rpx;
+  color: #854F0B;
+  font-weight: 500;
 }
 </style>
