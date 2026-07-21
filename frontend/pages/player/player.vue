@@ -1,5 +1,5 @@
 <script>
-import { submitFeedback } from '@/common/api.js'
+import { getPrescription, submitFeedback } from '@/common/api.js'
 
 export default {
   data() {
@@ -9,49 +9,106 @@ export default {
       errorMsg: '',
       // 评估结果（从本地存储读取）
       assessment: null,
-      // 播放状态
-      isPlaying: false,
-      currentTime: '0:00',
-      totalTime: '3:45',
-      progress: 0,
-      // 评分
-      rating: 0,
-      stars: [1, 2, 3, 4, 5],
-      // 处方信息
+      // 处方信息（从后端/mock 获取）
       prescription: {
+        sessionId: '',
         toneName: '角调',
         toneWeight: '75%',
         instrument: '古筝',
         bpm: 68,
         reasoning: '肝郁化火 → 角调疏肝理气，辅以宫调健脾安神',
-        syndrome: '肝郁化火'
-      }
+        syndrome: '肝郁化火',
+        confidence: 0.78,
+        audioUrl: ''
+      },
+      // 音频播放
+      audioContext: null,
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+      // 评分
+      rating: 0,
+      stars: [1, 2, 3, 4, 5]
     }
   },
   onShow() {
-    // 每次显示页面时从本地存储读取最新评估结果
-    this.loadAssessment()
+    // 每次显示页面时重新加载评估结果和处方
+    this.resetPlayer()
+    this.loadAssessmentAndPrescription()
+  },
+  onHide() {
+    // 离开页面时暂停，不销毁实例
+    this.pauseAudio()
+  },
+  onUnload() {
+    this.destroyAudio()
+  },
+  computed: {
+    progress() {
+      if (!this.duration) return 0
+      return Math.round((this.currentTime / this.duration) * 100)
+    },
+    currentTimeText() {
+      return this.formatTime(this.currentTime)
+    },
+    totalTimeText() {
+      return this.formatTime(this.duration)
+    }
   },
   methods: {
-    loadAssessment() {
+    resetPlayer() {
+      this.pauseAudio()
+      this.isPlaying = false
+      this.currentTime = 0
+      this.duration = 0
+      this.rating = 0
+    },
+
+    async loadAssessmentAndPrescription() {
+      this.status = 'loading'
+      this.errorMsg = ''
+
       try {
         const data = uni.getStorageSync('harmony_latest_assessment')
-        if (data) {
-          this.assessment = JSON.parse(data)
-          this.updatePrescriptionByAssessment(this.assessment)
+        if (!data) {
+          // 没有评估数据：展示默认 mock 处方（便于直接预览播放页）
+          this.setDefaultPrescription()
+          this.initAudio()
           this.status = 'success'
-        } else {
-          // 没有评估数据，展示默认 mock
-          this.status = 'success'
+          return
         }
+
+        this.assessment = JSON.parse(data)
+        const sessionId = this.assessment.session_id || 'mock-session'
+
+        // 获取处方（含音频 URL）
+        const prescriptionData = await getPrescription(sessionId)
+        this.applyPrescription(prescriptionData)
+        this.initAudio()
+        this.status = 'success'
       } catch (e) {
-        console.error('读取评估结果失败：', e)
+        console.error('加载处方失败：', e)
         this.status = 'error'
-        this.errorMsg = '读取评估结果失败'
+        this.errorMsg = e.message || '加载调理方案失败，请重试'
       }
     },
-    updatePrescriptionByAssessment(assessment) {
-      const tone = assessment.recommended_tone || '角'
+
+    setDefaultPrescription() {
+      this.prescription = {
+        sessionId: 'default',
+        toneName: '角调',
+        toneWeight: '75%',
+        instrument: '古筝',
+        bpm: 68,
+        reasoning: '肝郁化火 → 角调疏肝理气，辅以宫调健脾安神',
+        syndrome: '肝郁化火',
+        confidence: 0.78,
+        audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
+      }
+    },
+
+    applyPrescription(data) {
+      const tone = data.tone || data.recommended_tone || '角'
       const toneMap = {
         '角': { name: '角调', instrument: '古筝', syndrome: '肝郁化火', reasoning: '角调疏肝理气，辅以宫调健脾安神' },
         '徵': { name: '徵调', instrument: '笛子', syndrome: '心火旺盛', reasoning: '徵调清心降火，辅以羽调滋水涵木' },
@@ -60,23 +117,101 @@ export default {
         '羽': { name: '羽调', instrument: '古琴', syndrome: '肾阳不足', reasoning: '羽调温补肾阳，辅以角调疏肝解郁' }
       }
       const info = toneMap[tone] || toneMap['角']
-      const weights = assessment.tone_weights || { '角': 0.75 }
-      const mainWeight = Math.round((weights[tone] || 0.75) * 100)
-      this.prescription.toneName = info.name
-      this.prescription.toneWeight = mainWeight + '%'
-      this.prescription.instrument = info.instrument
-      this.prescription.syndrome = info.syndrome
-      this.prescription.reasoning = info.reasoning
-    },
-    togglePlay() {
-      this.isPlaying = !this.isPlaying
-      if (this.isPlaying) {
-        uni.showToast({ title: '播放中（mock）', icon: 'none' })
+      const weights = data.tone_weights || data.tone_weight || { '角': 0.75 }
+      const mainWeight = typeof weights === 'number'
+        ? Math.round(weights * 100)
+        : Math.round((weights[tone] || 0.75) * 100)
+
+      this.prescription = {
+        sessionId: data.session_id || 'mock-session',
+        toneName: info.name,
+        toneWeight: mainWeight + '%',
+        instrument: data.instrument || info.instrument,
+        bpm: data.bpm || 68,
+        reasoning: data.reasoning || info.reasoning,
+        syndrome: data.syndrome || info.syndrome,
+        confidence: data.confidence || 0.78,
+        audioUrl: data.audio_url || data.audioUrl || ''
       }
     },
+
+    initAudio() {
+      // 先销毁旧实例
+      this.destroyAudio()
+
+      const url = this.prescription.audioUrl
+      if (!url) {
+        console.warn('没有音频地址')
+        return
+      }
+
+      const ctx = uni.createInnerAudioContext()
+      ctx.src = url
+      ctx.loop = true
+
+      ctx.onCanplay(() => {
+        this.duration = ctx.duration || 0
+      })
+
+      ctx.onTimeUpdate(() => {
+        this.currentTime = ctx.currentTime || 0
+        this.duration = ctx.duration || this.duration || 0
+      })
+
+      ctx.onEnded(() => {
+        this.isPlaying = false
+        this.currentTime = 0
+      })
+
+      ctx.onError((err) => {
+        console.error('音频播放错误：', err)
+        this.isPlaying = false
+        uni.showToast({ title: '音频加载失败', icon: 'none' })
+      })
+
+      this.audioContext = ctx
+    },
+
+    togglePlay() {
+      if (!this.audioContext) {
+        uni.showToast({ title: '音频未准备好', icon: 'none' })
+        return
+      }
+
+      if (this.isPlaying) {
+        this.pauseAudio()
+      } else {
+        this.audioContext.play()
+        this.isPlaying = true
+      }
+    },
+
+    pauseAudio() {
+      if (this.audioContext && this.isPlaying) {
+        this.audioContext.pause()
+        this.isPlaying = false
+      }
+    },
+
+    destroyAudio() {
+      if (this.audioContext) {
+        this.audioContext.stop()
+        this.audioContext.destroy()
+        this.audioContext = null
+      }
+    },
+
+    formatTime(seconds) {
+      if (!seconds || isNaN(seconds)) return '0:00'
+      const m = Math.floor(seconds / 60)
+      const s = Math.floor(seconds % 60)
+      return `${m}:${s < 10 ? '0' + s : s}`
+    },
+
     setRating(star) {
       this.rating = star
     },
+
     async submitFeedback() {
       if (this.rating === 0) {
         uni.showToast({ title: '请先评分', icon: 'none' })
@@ -85,7 +220,7 @@ export default {
       try {
         await submitFeedback({
           rating: this.rating,
-          assessment_id: this.assessment ? 'mock-assessment-id' : '',
+          session_id: this.prescription.sessionId,
           completed: true
         })
         uni.showToast({ title: '感谢您的反馈！', icon: 'success' })
@@ -97,8 +232,14 @@ export default {
         uni.showToast({ title: '提交失败，请重试', icon: 'none' })
       }
     },
+
     reAssess() {
+      this.destroyAudio()
       uni.navigateTo({ url: '/pages/emotion/emotion' })
+    },
+
+    retry() {
+      this.loadAssessmentAndPrescription()
     }
   }
 }
@@ -110,6 +251,7 @@ export default {
     <view class="status-card loading-card" v-if="status === 'loading'">
       <view class="loading-spinner"></view>
       <text class="status-title">正在加载调理方案...</text>
+      <text class="status-desc">AI 正在根据您的评估结果生成音乐处方</text>
     </view>
 
     <!-- Error 状态 -->
@@ -117,7 +259,7 @@ export default {
       <text class="status-icon">⚠️</text>
       <text class="status-title">加载失败</text>
       <text class="status-desc">{{ errorMsg }}</text>
-      <view class="retry-btn" @click="loadAssessment">
+      <view class="retry-btn" @click="retry">
         <text class="retry-btn-text">重新加载</text>
       </view>
     </view>
@@ -128,7 +270,7 @@ export default {
       <view class="prescription-card">
         <view class="prescription-header">
           <text class="prescription-title">AI 调理方案</text>
-          <text class="prescription-confidence">可信度 78%</text>
+          <text class="prescription-confidence">可信度 {{ Math.round((prescription.confidence || 0) * 100) }}%</text>
         </view>
         <view class="prescription-main">
           <text class="prescription-tone">{{ prescription.toneName }}</text>
@@ -155,7 +297,7 @@ export default {
 
       <!-- 播放器 -->
       <view class="player-section">
-        <view class="album-cover">
+        <view class="album-cover" :class="{ rotating: isPlaying }">
           <text class="album-icon">🎵</text>
         </view>
         <view
@@ -170,8 +312,8 @@ export default {
             <view class="progress-fill" :style="{ width: progress + '%' }"></view>
           </view>
           <view class="time-row">
-            <text class="time-text">{{ currentTime }}</text>
-            <text class="time-text">{{ totalTime }}</text>
+            <text class="time-text">{{ currentTimeText }}</text>
+            <text class="time-text">{{ totalTimeText }}</text>
           </view>
         </view>
       </view>
@@ -357,6 +499,13 @@ export default {
   align-items: center;
   justify-content: center;
   margin-bottom: 30rpx;
+}
+.album-cover.rotating {
+  animation: rotate 8s linear infinite;
+}
+@keyframes rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 .album-icon {
   font-size: 80rpx;

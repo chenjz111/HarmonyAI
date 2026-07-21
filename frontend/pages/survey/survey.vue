@@ -146,7 +146,7 @@ export default {
       } catch (err) {
         console.error('提交失败：', err)
         this.status = 'error'
-        this.errorMsg = '分析失败，请检查网络后重试'
+        this.errorMsg = err.message || '分析失败，请检查网络后重试'
         uni.showToast({
           title: '分析失败，请重试',
           icon: 'none'
