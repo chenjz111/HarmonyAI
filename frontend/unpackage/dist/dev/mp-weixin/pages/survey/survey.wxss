@@ -1,0 +1,203 @@
+.container.data-v-21101f15 {
+  padding: 30rpx;
+  padding-bottom: 160rpx;
+  min-height: 100vh;
+  background: #F8F8F8;
+}
+
+/* 页面顶部标题 */
+.page-header.data-v-21101f15 {
+  margin-bottom: 30rpx;
+}
+.page-title.data-v-21101f15 {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #2C2C2A;
+  display: block;
+}
+.page-subtitle.data-v-21101f15 {
+  font-size: 24rpx;
+  color: #888780;
+  margin-top: 8rpx;
+  display: block;
+}
+
+/* 进度条 */
+.progress-bar.data-v-21101f15 {
+  margin-bottom: 40rpx;
+}
+.progress-track.data-v-21101f15 {
+  height: 8rpx;
+  background: #E8E8E8;
+  border-radius: 4rpx;
+  overflow: hidden;
+}
+.progress-fill.data-v-21101f15 {
+  height: 100%;
+  background: #534AB7;
+  border-radius: 4rpx;
+  transition: width 0.3s;
+}
+.progress-text.data-v-21101f15 {
+  font-size: 24rpx;
+  color: #888780;
+  margin-top: 12rpx;
+  display: block;
+}
+
+/* 题目卡片 */
+.question-item.data-v-21101f15 {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 36rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+}
+.question-text.data-v-21101f15 {
+  font-size: 30rpx;
+  color: #2C2C2A;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 30rpx;
+  line-height: 1.5;
+}
+
+/* 选项 */
+.options-row.data-v-21101f15 {
+  display: flex;
+  justify-content: space-between;
+  gap: 10rpx;
+}
+.option-item.data-v-21101f15 {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10rpx;
+}
+.option-circle.data-v-21101f15 {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  border: 4rpx solid #E8E8E8;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.option-item.selected .option-circle.data-v-21101f15 {
+  border-color: #534AB7;
+  background: #534AB7;
+}
+.option-item.selected .option-num.data-v-21101f15 {
+  color: #fff;
+}
+.option-num.data-v-21101f15 {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #888780;
+}
+.option-item.selected .option-label.data-v-21101f15 {
+  color: #534AB7;
+  font-weight: 500;
+}
+.option-label.data-v-21101f15 {
+  font-size: 20rpx;
+  color: #888780;
+  text-align: center;
+}
+
+/* 状态卡片：loading / error */
+.status-card.data-v-21101f15 {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 60rpx 40rpx;
+  margin-top: 60rpx;
+  text-align: center;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+}
+.loading-spinner.data-v-21101f15 {
+  width: 80rpx;
+  height: 80rpx;
+  border: 6rpx solid #E8E8E8;
+  border-top-color: #534AB7;
+  border-radius: 50%;
+  margin: 0 auto 30rpx;
+  animation: spin-21101f15 1s linear infinite;
+}
+@keyframes spin-21101f15 {
+0% { transform: rotate(0deg);
+}
+100% { transform: rotate(360deg);
+}
+}
+.status-icon.data-v-21101f15 {
+  font-size: 64rpx;
+  display: block;
+  margin-bottom: 16rpx;
+}
+.status-title.data-v-21101f15 {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #2C2C2A;
+  display: block;
+  margin-bottom: 12rpx;
+}
+.status-desc.data-v-21101f15 {
+  font-size: 26rpx;
+  color: #888780;
+  display: block;
+  margin-bottom: 30rpx;
+}
+.retry-btn.data-v-21101f15 {
+  display: inline-block;
+  background: #534AB7;
+  padding: 20rpx 60rpx;
+  border-radius: 44rpx;
+}
+.retry-btn-text.data-v-21101f15 {
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+/* 底部按钮 */
+.btn-group.data-v-21101f15 {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 20rpx;
+  padding: 20rpx 30rpx;
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  background: #fff;
+  box-shadow: 0 -2rpx 12rpx rgba(0,0,0,0.04);
+}
+.btn.data-v-21101f15 {
+  flex: 1;
+  height: 88rpx;
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-primary.data-v-21101f15 {
+  background: #534AB7;
+}
+.btn-primary .btn-text.data-v-21101f15 {
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+.btn-secondary.data-v-21101f15 {
+  background: #F1EFE8;
+}
+.btn-secondary .btn-text.data-v-21101f15 {
+  color: #5F5E5A;
+  font-size: 30rpx;
+}
+.btn-secondary.disabled.data-v-21101f15 {
+  opacity: 0.4;
+}

@@ -1,0 +1,270 @@
+.container.data-v-0391012f {
+  padding: 30rpx;
+  padding-bottom: 120rpx;
+  min-height: 100vh;
+  background: #F8F8F8;
+}
+
+/* 状态卡片 */
+.status-card.data-v-0391012f {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 60rpx 40rpx;
+  margin-top: 60rpx;
+  text-align: center;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+}
+.loading-spinner.data-v-0391012f {
+  width: 80rpx;
+  height: 80rpx;
+  border: 6rpx solid #E8E8E8;
+  border-top-color: #534AB7;
+  border-radius: 50%;
+  margin: 0 auto 30rpx;
+  animation: spin-0391012f 1s linear infinite;
+}
+@keyframes spin-0391012f {
+0% { transform: rotate(0deg);
+}
+100% { transform: rotate(360deg);
+}
+}
+.status-icon.data-v-0391012f {
+  font-size: 64rpx;
+  display: block;
+  margin-bottom: 16rpx;
+}
+.status-title.data-v-0391012f {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #2C2C2A;
+  display: block;
+  margin-bottom: 12rpx;
+}
+.status-desc.data-v-0391012f {
+  font-size: 26rpx;
+  color: #888780;
+  display: block;
+  margin-bottom: 30rpx;
+}
+.retry-btn.data-v-0391012f {
+  display: inline-block;
+  background: #534AB7;
+  padding: 20rpx 60rpx;
+  border-radius: 44rpx;
+}
+.retry-btn-text.data-v-0391012f {
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+/* 处方卡片 */
+.prescription-card.data-v-0391012f {
+  background: linear-gradient(135deg, #534AB7, #7F77DD);
+  border-radius: 28rpx;
+  padding: 40rpx;
+  margin-bottom: 40rpx;
+}
+.prescription-header.data-v-0391012f {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+.prescription-title.data-v-0391012f {
+  font-size: 28rpx;
+  color: rgba(255,255,255,0.8);
+}
+.prescription-confidence.data-v-0391012f {
+  font-size: 22rpx;
+  color: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.15);
+  padding: 6rpx 16rpx;
+  border-radius: 20rpx;
+}
+.prescription-main.data-v-0391012f {
+  display: flex;
+  align-items: baseline;
+  gap: 16rpx;
+  margin-bottom: 30rpx;
+}
+.prescription-tone.data-v-0391012f {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: #fff;
+}
+.prescription-weight.data-v-0391012f {
+  font-size: 32rpx;
+  color: rgba(255,255,255,0.7);
+}
+.prescription-detail.data-v-0391012f {
+  margin-bottom: 24rpx;
+}
+.detail-row.data-v-0391012f {
+  display: flex;
+  justify-content: space-between;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid rgba(255,255,255,0.1);
+}
+.detail-label.data-v-0391012f {
+  font-size: 26rpx;
+  color: rgba(255,255,255,0.6);
+}
+.detail-value.data-v-0391012f {
+  font-size: 26rpx;
+  color: #fff;
+  font-weight: 500;
+}
+.reasoning-box.data-v-0391012f {
+  background: rgba(255,255,255,0.12);
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-top: 20rpx;
+}
+.reasoning-text.data-v-0391012f {
+  font-size: 24rpx;
+  color: rgba(255,255,255,0.85);
+  line-height: 1.6;
+}
+
+/* 播放器 */
+.player-section.data-v-0391012f {
+  background: #fff;
+  border-radius: 28rpx;
+  padding: 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 30rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+}
+.album-cover.data-v-0391012f {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #EEEDFE, #E1F5EE);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 30rpx;
+}
+.album-icon.data-v-0391012f {
+  font-size: 80rpx;
+}
+.play-button.data-v-0391012f {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  background: #534AB7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 30rpx;
+  box-shadow: 0 8rpx 30rpx rgba(83,74,183,0.3);
+  transition: all 0.2s;
+}
+.play-button.playing.data-v-0391012f {
+  transform: scale(0.95);
+}
+.play-icon.data-v-0391012f {
+  font-size: 48rpx;
+  color: #fff;
+  margin-left: 8rpx;
+}
+.play-button.playing .play-icon.data-v-0391012f {
+  margin-left: 0;
+  font-size: 40rpx;
+}
+
+/* 进度条 */
+.progress-section.data-v-0391012f {
+  width: 100%;
+}
+.progress-track.data-v-0391012f {
+  height: 8rpx;
+  background: #E8E8E8;
+  border-radius: 4rpx;
+  overflow: hidden;
+}
+.progress-fill.data-v-0391012f {
+  height: 100%;
+  background: #534AB7;
+  border-radius: 4rpx;
+  transition: width 0.3s;
+}
+.time-row.data-v-0391012f {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12rpx;
+}
+.time-text.data-v-0391012f {
+  font-size: 22rpx;
+  color: #888780;
+}
+
+/* 评分 */
+.rating-section.data-v-0391012f {
+  background: #fff;
+  border-radius: 28rpx;
+  padding: 40rpx;
+  text-align: center;
+  margin-bottom: 30rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+}
+.rating-title.data-v-0391012f {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #2C2C2A;
+  display: block;
+  margin-bottom: 24rpx;
+}
+.stars-row.data-v-0391012f {
+  display: flex;
+  justify-content: center;
+  gap: 24rpx;
+}
+.star.data-v-0391012f {
+  font-size: 60rpx;
+  color: #E8E8E8;
+  transition: all 0.15s;
+}
+.star.active.data-v-0391012f {
+  color: #FAC775;
+  transform: scale(1.1);
+}
+.rating-labels.data-v-0391012f {
+  margin-top: 16rpx;
+}
+.rating-label.data-v-0391012f {
+  font-size: 26rpx;
+  color: #854F0B;
+  font-weight: 500;
+}
+
+/* 底部操作 */
+.action-group.data-v-0391012f {
+  display: flex;
+  gap: 20rpx;
+}
+.action-btn.data-v-0391012f {
+  flex: 1;
+  height: 88rpx;
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+}
+.action-btn-text.data-v-0391012f {
+  font-size: 28rpx;
+  color: #5F5E5A;
+  font-weight: 500;
+}
+.action-btn-primary.data-v-0391012f {
+  background: #534AB7;
+}
+.action-btn-primary .action-btn-text.data-v-0391012f {
+  color: #fff;
+}

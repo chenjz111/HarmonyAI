@@ -1,0 +1,31 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/emotion/emotion",
+    "pages/survey/survey",
+    "pages/player/player"
+  ],
+  "window": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "HarmonyAI",
+    "navigationBarBackgroundColor": "#534AB7",
+    "backgroundColor": "#F8F8F8"
+  },
+  "tabBar": {
+    "color": "#888780",
+    "selectedColor": "#534AB7",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/player/player",
+        "text": "播放"
+      }
+    ]
+  },
+  "usingComponents": {}
+}

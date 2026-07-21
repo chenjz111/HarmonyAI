@@ -1,0 +1,16 @@
+/* 全局样式 */
+page {
+  background-color: #F8F8F8;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #2C2C2A;
+}
+
+/* 五行五音配色变量 */
+:root {
+  --color-mu: #4A9D6E;   /* 木-青 */
+  --color-huo: #E25C4E;  /* 火-赤 */
+  --color-tu: #E8B547;   /* 土-黄 */
+  --color-jin: #B8C5D6;  /* 金-白 */
+  --color-shui: #3B5067; /* 水-黑 */
+}
+page{--status-bar-height:25px;--top-window-height:0px;--window-top:0px;--window-bottom:0px;--window-left:0px;--window-right:0px;--window-magin:0px}[data-c-h="true"]{display: none !important;}
