@@ -1,5 +1,5 @@
 <script>
-import { submitAssessment } from '@/common/api.js'
+import { submitAssessment, submitDiagnosis } from '@/common/api.js'
 
 export default {
   data() {
@@ -126,16 +126,25 @@ export default {
       this.status = 'loading'
 
       try {
-        // 调用 API 提交问卷
-        const assessment = await submitAssessment({
+        // === Agent 1: 评估 ===
+        // 把问卷答案转成 emotion_scores
+        const emotionScores = {
           emotion: this.emotion,
           tone: this.tone,
+          answer_count: Object.keys(this.answers).length,
+          total_questions: 30,
           answers: this.answers
-        })
+        }
 
-        // 把评估结果存到本地，供播放页读取
-        // 因为 player 是 tabBar 页面，不能通过 URL 传参
-        uni.setStorageSync('harmony_latest_assessment', JSON.stringify(assessment))
+        const assessmentEnvelope = await submitAssessment(emotionScores)
+        const sessionId = assessmentEnvelope.session_id
+
+        // === Agent 2: 辨证 ===
+        const diagnosisEnvelope = await submitDiagnosis(sessionId, assessmentEnvelope)
+
+        // 把两个 envelope 存到本地，供播放页读取
+        uni.setStorageSync('harmony_assessment', JSON.stringify(assessmentEnvelope))
+        uni.setStorageSync('harmony_diagnosis', JSON.stringify(diagnosisEnvelope))
 
         this.status = 'success'
 
@@ -206,8 +215,8 @@ export default {
     <!-- Loading 状态：分析中 -->
     <view class="status-card loading-card" v-if="status === 'loading'">
       <view class="loading-spinner"></view>
-      <text class="status-title">正在分析您的健康状态...</text>
-      <text class="status-desc">AI 正在结合中医五行理论生成调理方案</text>
+      <text class="status-title">正在评估与辨证...</text>
+      <text class="status-desc">AI 正在结合中医五行理论进行健康评估与辨证分析</text>
     </view>
 
     <!-- Error 状态：出错 -->
