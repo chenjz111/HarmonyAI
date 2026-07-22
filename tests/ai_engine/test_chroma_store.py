@@ -17,6 +17,10 @@ def test_upsert_persists_chunks_for_a_new_store_instance(tmp_path):
     reopened = ChromaKnowledgeStore(tmp_path)
 
     assert reopened.count() == 1
+    hits = reopened.query("焦虑 角调", limit=1)
+    assert hits[0].text == "焦虑时可使用角调音乐进行放松。"
+    assert hits[0].metadata["source_type"] == "demo"
+    assert hits[0].distance is not None
 
 
 def test_query_returns_matching_document_and_traceability_metadata(tmp_path):
@@ -40,6 +44,7 @@ def test_query_returns_matching_document_and_traceability_metadata(tmp_path):
 
     assert hits[0].text == "焦虑时可使用角调音乐进行放松。"
     assert hits[0].metadata["credibility_level"] == "D"
+    assert hits[0].distance is not None
 
 
 def test_blank_query_returns_no_hits(tmp_path):
@@ -48,7 +53,27 @@ def test_blank_query_returns_no_hits(tmp_path):
 
 def test_demo_ingests_three_seed_chunks_and_returns_traceable_hit(tmp_path):
     hits = run_demo(tmp_path)
+    store = ChromaKnowledgeStore(tmp_path)
 
     assert hits
+    assert store.count() == 3
     assert hits[0].metadata["source_type"] == "demo"
     assert hits[0].metadata["credibility_level"] == "D"
+
+
+def test_embedding_versions_use_separate_collections(tmp_path):
+    hash_store = ChromaKnowledgeStore(tmp_path, embedding_version="hash-v1")
+    hash_store.upsert(
+        [
+            KnowledgeChunk(
+                "demo_001",
+                "焦虑时可使用角调音乐进行放松。",
+                {"source_type": "demo"},
+            )
+        ]
+    )
+
+    next_store = ChromaKnowledgeStore(tmp_path, embedding_version="bge-m3-v1")
+
+    assert hash_store.count() == 1
+    assert next_store.count() == 0

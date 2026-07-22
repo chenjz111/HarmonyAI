@@ -12,8 +12,9 @@ class LLMProvider(Protocol):
 @dataclass(frozen=True)
 class KnowledgeHit:
     text: str
-    metadata: dict[str, str]
+    metadata: dict[str, object]
     score: float
+    distance: float | None = None
 
 
 class VectorStore(Protocol):

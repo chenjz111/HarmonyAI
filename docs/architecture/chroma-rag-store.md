@@ -34,9 +34,9 @@ Chroma metadata 只存标量字段；数组类标签在导入时以 JSON 字符�
 
 ## 接口
 
-- `ChromaKnowledgeStore(persist_directory, collection_name="harmony_knowledge")`
+- `ChromaKnowledgeStore(persist_directory, collection_name="harmony_knowledge", embedding_version="hash-v1")`
 - `upsert(chunks)`：按 `chunk_id` 幂等写入知识块。
-- `query(query_text, limit=3)`：返回 `text`、`metadata` 和 `distance`。
+- `query(query_text, limit=3)`：返回 `text`、`metadata`、`distance` 和由距离换算的 `score`。
 - `count()`：返回当前集合的条目数。
 
 ## 验收与安全
@@ -49,3 +49,5 @@ Chroma metadata 只存标量字段；数组类标签在导入时以 JSON 字符�
 4. 检索结果带有来源和证据等级元数据。
 
 演示数据明确标为 `demo` / `D` 级，仅用于验证工程链路，不能作为临床建议或正式证据。
+
+`embedding_version` 会被加入 Chroma collection 名称。切换到 BGE-M3 时必须使用新的版本名（例如 `bge-m3-v1`）并重新入库，避免不同维度的向量混入同一集合。

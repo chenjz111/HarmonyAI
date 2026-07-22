@@ -24,12 +24,14 @@ class ChromaKnowledgeStore:
         self,
         persist_directory: Path | str,
         collection_name: str = "harmony_knowledge",
+        embedding_version: str = "hash-v1",
     ) -> None:
         directory = Path(persist_directory)
         directory.mkdir(parents=True, exist_ok=True)
         self._client = chromadb.PersistentClient(path=str(directory))
+        self.embedding_version = embedding_version
         self._collection = self._client.get_or_create_collection(
-            name=collection_name,
+            name=f"{collection_name}_{embedding_version.replace('-', '_')}",
             embedding_function=None,
         )
 
@@ -63,7 +65,8 @@ class ChromaKnowledgeStore:
             KnowledgeHit(
                 text=document,
                 metadata=dict(metadata or {}),
-                score=float(distance),
+                score=1.0 / (1.0 + float(distance)),
+                distance=float(distance),
             )
             for document, metadata, distance in zip(documents, metadatas, distances)
             if document is not None and distance is not None
