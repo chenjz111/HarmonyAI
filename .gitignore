@@ -29,3 +29,6 @@ desktop.ini
 
 # 部署
 deploy/data/
+
+# 本地隔离开发工作树
+.worktrees/
