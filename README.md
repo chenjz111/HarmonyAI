@@ -96,6 +96,14 @@ MIT
 
 ---
 
+### Chroma 知识库演示
+
+```powershell
+python -m backend.ai_engine.chroma_demo
+```
+
+该命令写入 `knowledge/demo_chunks.jsonl` 中的 3 条 D 级演示知识块，并对“焦虑 角调”执行真实 Chroma 查询。演示数据仅验证工程链路，不构成医疗建议；后续可将本地确定性 embedding 替换为 BGE-M3。
+
 ## AI Engineering Sprint 1 本地演示
 
 当前版本包含一个不依赖外部模型服务的 AI 工程最小闭环：评估节点 → 音乐处方节点 → Prompt Engine。运行环境要求 Python 3.10+。

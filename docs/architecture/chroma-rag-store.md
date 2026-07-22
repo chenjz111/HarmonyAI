@@ -9,9 +9,9 @@
 - 使用 `chromadb.PersistentClient` 保存集合。
 - 随代码提供 3 条演示知识块，验证真实查询链路。
 - 暴露写入、查询和集合计数接口。
-- 用 Chroma 默认 embedding 保障离线、轻依赖的 Sprint 1 演示。
+- 用内置的确定性哈希 embedding 保障离线、可复现的 Sprint 1 演示。
 
-不包含 Qwen 调用、医学诊断、正式文献批量入库或 BGE-M3 模型下载。后续可在不改变调用方的前提下替换 embedding 函数并导入正式切块数据。
+不包含 Qwen 调用、医学诊断、正式文献批量入库或 BGE-M3 模型下载。后续可在不改变调用方的前提下将内置 embedding 替换为 BGE-M3 并导入正式切块数据。
 
 ## 数据结构
 
