@@ -1,0 +1,84 @@
+{
+  "mapping_id": "syndrome-to-tone",
+  "version": "0.1.0",
+  "created": "2026-07-17",
+  "author": "陈家智（初始版，权重取自 knowledge-architecture.md 第2.4节权重矩阵）",
+  "status": "draft",
+  "spec_ref": "docs/knowledge-architecture.md 第2.4节 + 第3.2节（生克选调规则）",
+  "note": "权重为 Sprint 1 初始值，后期可被反馈数据优化。每行权重之和 = 1.0。基础文献为《黄帝内经》五行五音对应，现代 RCT/临床文献出处待 肖宇翔 补充核验。",
+  "tone_ids": { "jiao": "角(Mi/木)", "zhi": "徵(Sol/火)", "gong": "宫(Do/土)", "shang": "商(Re/金)", "yu": "羽(La/水)" },
+  "mappings": [
+    {
+      "syndrome_id": "syd_001",
+      "syndrome_name": "肝郁化火",
+      "primary_tone": "jiao",
+      "weights": { "jiao": 0.75, "zhi": 0.05, "gong": 0.15, "shang": 0.00, "yu": 0.05 },
+      "strategy": "主调角调疏肝（本脏之音）；木克土，辅宫调护脾胃防传变；水生木，佐羽调滋水涵木",
+      "literature_source": "《黄帝内经·素问·阴阳应象大论》：肝属木，在音为角",
+      "modern_source": "待肖宇翔补充（知网核验，建议检索：角调 肝郁 焦虑 临床观察）"
+    },
+    {
+      "syndrome_id": "syd_002",
+      "syndrome_name": "肝气郁结",
+      "primary_tone": "jiao",
+      "weights": { "jiao": 0.70, "zhi": 0.05, "gong": 0.15, "shang": 0.00, "yu": 0.10 },
+      "strategy": "主调角调疏肝解郁；辅宫调防木克土；羽调滋水涵木（郁久易耗阴）",
+      "literature_source": "《黄帝内经·素问·阴阳应象大论》：肝属木，在音为角",
+      "modern_source": "待肖宇翔补充（知网核验）"
+    },
+    {
+      "syndrome_id": "syd_003",
+      "syndrome_name": "心火上炎",
+      "primary_tone": "zhi",
+      "weights": { "jiao": 0.10, "zhi": 0.60, "gong": 0.05, "shang": 0.00, "yu": 0.25 },
+      "strategy": "主调徵调入心（本脏之音）；水克火，重用羽调清降心火；佐角调条达气机",
+      "literature_source": "《黄帝内经·素问·阴阳应象大论》：心属火，在音为徵",
+      "modern_source": "待肖宇翔补充（知网核验）"
+    },
+    {
+      "syndrome_id": "syd_004",
+      "syndrome_name": "心脾两虚",
+      "primary_tone": "zhi",
+      "weights": { "jiao": 0.15, "zhi": 0.50, "gong": 0.30, "shang": 0.00, "yu": 0.05 },
+      "strategy": "心脾同调：主徵调养心，重辅宫调健脾（双主脏）；佐角调疏肝助运",
+      "literature_source": "《黄帝内经·素问·阴阳应象大论》：心属火在音为徵，脾属土在音为宫",
+      "modern_source": "待肖宇翔补充（知网核验）"
+    },
+    {
+      "syndrome_id": "syd_005",
+      "syndrome_name": "脾虚湿困",
+      "primary_tone": "gong",
+      "weights": { "jiao": 0.15, "zhi": 0.05, "gong": 0.70, "shang": 0.00, "yu": 0.10 },
+      "strategy": "主调宫调健脾（本脏之音）；火生土，佐徵调温运；角调疏木以助土运",
+      "literature_source": "《黄帝内经·素问·阴阳应象大论》：脾属土，在音为宫",
+      "modern_source": "待肖宇翔补充（知网核验）"
+    },
+    {
+      "syndrome_id": "syd_006",
+      "syndrome_name": "肺气虚",
+      "primary_tone": "shang",
+      "weights": { "jiao": 0.00, "zhi": 0.05, "gong": 0.10, "shang": 0.75, "yu": 0.10 },
+      "strategy": "主调商调补肺（本脏之音）；土生金，辅宫调培土生金（虚则补其母）；佐羽调金水相生",
+      "literature_source": "《黄帝内经·素问·阴阳应象大论》：肺属金，在音为商",
+      "modern_source": "待肖宇翔补充（知网核验）"
+    },
+    {
+      "syndrome_id": "syd_007",
+      "syndrome_name": "肾阴不足",
+      "primary_tone": "yu",
+      "weights": { "jiao": 0.05, "zhi": 0.00, "gong": 0.05, "shang": 0.10, "yu": 0.80 },
+      "strategy": "主调羽调滋肾（本脏之音）；金生水，辅商调金水相生（虚则补其母）",
+      "literature_source": "《黄帝内经·素问·阴阳应象大论》：肾属水，在音为羽",
+      "modern_source": "待肖宇翔补充（知网核验）"
+    },
+    {
+      "syndrome_id": "syd_008",
+      "syndrome_name": "心肾不交",
+      "primary_tone": "zhi",
+      "weights": { "jiao": 0.05, "zhi": 0.45, "gong": 0.05, "shang": 0.00, "yu": 0.45 },
+      "strategy": "心肾同调：徵调与羽调等权并用，交通心肾、水火既济；佐角调条达气机",
+      "literature_source": "《黄帝内经·素问·阴阳应象大论》：心属火在音为徵，肾属水在音为羽",
+      "modern_source": "待肖宇翔补充（知网核验）"
+    }
+  ]
+}
