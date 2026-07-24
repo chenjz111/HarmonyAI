@@ -26,6 +26,24 @@ def test_assessment_fallback_maps_sleep_problem_to_anxiety():
     assert result["status"] == "degraded"
 
 
+def test_assessment_rejects_malformed_llm_json():
+    result = AssessmentAgent(llm=FakeJsonLLM({})).run(
+        {"questionnaire": {"sleep": "poor"}}
+    )["assessment"]
+
+    assert result["status"] == "degraded"
+    assert result["confidence"] <= 0.3
+
+
+def test_diagnosis_rejects_malformed_llm_json():
+    result = DiagnosisAgent(llm=FakeJsonLLM({})).run(
+        {"assessment": {"confidence": 0.8, "output": {"emotion_profile": {"dominant_emotion": "anxiety"}}}}
+    )["diagnosis"]
+
+    assert result["status"] == "degraded"
+    assert result["confidence"] <= 0.3
+
+
 def test_diagnosis_uses_structured_llm_json_when_available():
     llm = FakeJsonLLM({"syndrome_id": "syd_001", "confidence": 0.78})
     result = DiagnosisAgent(llm=llm).run(
@@ -83,6 +101,16 @@ def test_prescription_returns_chroma_evidence_and_prompt():
     assert result["output"]["music_feature"]["tone_id"] == "jiao"
     assert result["output"]["evidence"]
     assert result["output"]["prompt_template"]["template_id"] == "CN_V1"
+
+
+def test_prescription_blocks_low_confidence_diagnosis():
+    result = PrescriptionAgent(knowledge_store=None).run(
+        {"diagnosis": {"confidence": 0.2, "output": {}}}
+    )["prescription"]
+
+    assert result["status"] == "degraded"
+    assert result["output"]["action"] == "recommend_professional"
+    assert "music_feature" not in result["output"]
 
 
 def test_feedback_agent_persists_rating(tmp_path):

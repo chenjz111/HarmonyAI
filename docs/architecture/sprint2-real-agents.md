@@ -46,7 +46,7 @@ questionnaire
 - `real_agents.py`：Assessment、Diagnosis、Prescription、Feedback 的真实适配器；
 - `real_workflow.py`：把真实 Agent 接入现有 LangGraph 状态流，保留低置信度安全分支；
 - `feedback_store.py`：FeedbackStore 协议与 SQLite 实现；
-- `*_demo.py`：四个可现场运行的离线/真实适配器 Demo；
+- `*_demo.py`：四个固定离线、可现场运行的适配器 Demo；真实 Qwen 由 `run_real_workflow` 按环境变量启用；
 - `tests/`：覆盖真实 provider 的请求解析、fallback、Agent 输出、Chroma 检索和 SQLite 持久化。
 
 ## Safety and Error Handling

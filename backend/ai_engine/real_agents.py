@@ -48,12 +48,17 @@ def _envelope(
     output_data: dict[str, object],
 ) -> dict[str, object]:
     run_id, session_id, user_id = _context(state)
-    return make_agent_result(
+    result = make_agent_result(
         agent_id=agent_id, agent_name=agent_name, agent_layer=layer,
         run_id=run_id, session_id=session_id, user_id=user_id, status=status,
         confidence=confidence, reason=reason, warnings=warnings,
         input_data=input_data, output_data=output_data,
     )
+    result["degradation_triggered"] = status != "success" or any(
+        "fallback" in warning.lower() or "degraded" in warning.lower()
+        for warning in warnings
+    )
+    return result
 
 
 class AssessmentAgent:
@@ -68,8 +73,13 @@ class AssessmentAgent:
                     "Return JSON only. Assess emotions; do not diagnose medical disease.",
                     json.dumps(questionnaire, ensure_ascii=False),
                 )
-                profile = dict(response.get("emotion_profile", response))
-                dominant = str(profile.get("dominant_emotion", "anxiety"))
+                if not isinstance(response, dict):
+                    raise ValueError("assessment response must be a JSON object")
+                profile_raw = response.get("emotion_profile")
+                if not isinstance(profile_raw, dict) or not profile_raw.get("dominant_emotion"):
+                    raise ValueError("assessment JSON missing emotion_profile.dominant_emotion")
+                profile = dict(profile_raw)
+                dominant = str(profile["dominant_emotion"])
                 profile.setdefault("dominant_emotion", dominant)
                 profile.setdefault("dominant_score", 70)
                 return {"assessment": _envelope(
@@ -77,7 +87,7 @@ class AssessmentAgent:
                     state=state, status="success", confidence=0.8, reason=["Qwen-compatible structured assessment"],
                     warnings=[], input_data={"questionnaire": questionnaire}, output_data={"emotion_profile": profile},
                 )}
-            except (LLMProviderError, ValueError, TypeError, KeyError):
+            except (LLMProviderError, ValueError, TypeError, KeyError, AttributeError):
                 pass
 
         text = " ".join(str(value) for value in questionnaire.values())
@@ -89,7 +99,7 @@ class AssessmentAgent:
         }
         return {"assessment": _envelope(
             agent_id="assessment_agent", agent_name="Assessment Agent", layer="medical_analysis",
-            state=state, status="degraded", confidence=0.3 if not questionnaire else 0.55,
+            state=state, status="degraded", confidence=(0.3 if self.llm is not None else (0.3 if not questionnaire else 0.55)),
             reason=["local rule fallback: questionnaire keyword mapping"],
             warnings=["Qwen unavailable or not configured; local fallback used"],
             input_data={"questionnaire": questionnaire}, output_data={"emotion_profile": profile},
@@ -115,15 +125,22 @@ class DiagnosisAgent:
                     "Return JSON only with syndrome_id and confidence. Use only the supplied MVP syndrome IDs.",
                     json.dumps({"emotion_profile": profile, "allowed_ids": list(MVP_SYNDROMES)}, ensure_ascii=False),
                 )
-                proposed_id = str(response.get("syndrome_id", syndrome_id))
+                if not isinstance(response, dict):
+                    raise ValueError("diagnosis response must be a JSON object")
+                proposed_id = response.get("syndrome_id")
+                proposed_confidence = response.get("confidence")
+                if not proposed_id or not isinstance(proposed_confidence, (int, float)):
+                    raise ValueError("diagnosis JSON missing syndrome_id or numeric confidence")
+                proposed_id = str(proposed_id)
                 if proposed_id in MVP_SYNDROMES:
                     syndrome_id = proposed_id
-                    confidence = max(0.0, min(1.0, float(response.get("confidence", confidence))))
+                    confidence = max(0.0, min(1.0, float(proposed_confidence)))
                     reason = ["Qwen-compatible structured diagnosis validated against MVP rules"]
                 else:
                     warnings.append("Qwen proposed an unknown syndrome; rule mapping retained")
-            except (LLMProviderError, ValueError, TypeError, KeyError):
+            except (LLMProviderError, ValueError, TypeError, KeyError, AttributeError):
                 warnings.append("Qwen unavailable or not configured; local rule fallback used")
+                confidence = min(confidence, 0.3)
 
         syndrome = dict(MVP_SYNDROMES[syndrome_id])
         syndrome.update({"syndrome_id": syndrome_id, "severity_level": 3, "severity_name": "中度"})
@@ -141,6 +158,16 @@ class PrescriptionAgent:
 
     def run(self, state: Mapping[str, object]) -> dict[str, object]:
         diagnosis = dict(state.get("diagnosis", {}))
+        diagnosis_confidence = float(diagnosis.get("confidence", 0.55))
+        if diagnosis_confidence < 0.4:
+            return {"prescription": _envelope(
+                agent_id="prescription_agent", agent_name="Prescription Agent", layer="knowledge_mapping",
+                state=state, status="degraded", confidence=diagnosis_confidence,
+                reason=["diagnosis confidence below safety threshold"],
+                warnings=["prescription withheld pending higher-confidence assessment"],
+                input_data={"diagnosis": dict(diagnosis.get("output", {}))},
+                output_data={"action": "recommend_professional"},
+            )}
         diagnosis_output = dict(diagnosis.get("output", {}))
         primary = dict(dict(diagnosis_output.get("syndrome_diagnosis", {})).get("primary", {}))
         syndrome_id = str(primary.get("syndrome_id", "syd_001"))
@@ -185,7 +212,7 @@ class PrescriptionAgent:
         }
         return {"prescription": _envelope(
             agent_id="prescription_agent", agent_name="Prescription Agent", layer="knowledge_mapping",
-            state=state, status="success", confidence=float(diagnosis.get("confidence", 0.55)),
+            state=state, status="success", confidence=diagnosis_confidence,
             reason=["rule-based tone weights with Chroma evidence"], warnings=warnings,
             input_data={"diagnosis": diagnosis_output}, output_data=output,
         )}

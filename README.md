@@ -125,7 +125,7 @@ $env:QWEN_API_KEY = "your-api-key"
 $env:QWEN_MODEL = "Qwen2.5-7B-Instruct"
 ```
 
-现场 Demo：
+四个现场 Demo 固定使用本地规则/临时存储，保证无网络也可运行；`run_real_workflow` 在配置上述变量时才会调用 Qwen：
 
 ```powershell
 python -m backend.ai_engine.assessment_demo
