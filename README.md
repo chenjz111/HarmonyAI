@@ -96,6 +96,14 @@ MIT
 
 ---
 
+### Chroma 知识库演示
+
+```powershell
+python -m backend.ai_engine.chroma_demo
+```
+
+该命令写入 `knowledge/demo_chunks.jsonl` 中的 3 条 D 级演示知识块，并对“焦虑 角调”执行真实 Chroma 查询。演示数据仅验证工程链路，不构成医疗建议；后续可将本地确定性 embedding 替换为 BGE-M3。
+
 ## AI Engineering Sprint 1 本地演示
 
 当前版本包含一个不依赖外部模型服务的 AI 工程最小闭环：评估节点 → 音乐处方节点 → Prompt Engine。运行环境要求 Python 3.10+。
@@ -105,7 +113,28 @@ python -m pytest -q
 python -m backend.ai_engine.demo
 ```
 
-外部 Qwen 和 Chroma 服务尚未作为运行时依赖接入；Provider 接口与本地 fallback 已预留，便于后续替换。
+外部 Qwen 服务通过可选的 Qwen-compatible Provider 接入；Chroma 已提供本地持久化和真实查询，Provider 未配置时使用本地 fallback。
+
+### Sprint 2 Real Agent 演示
+
+真实 Agent 通过以下环境变量接入 Qwen/OpenAI-compatible `/chat/completions` 接口；未配置时自动使用本地规则 fallback：
+
+```powershell
+$env:QWEN_BASE_URL = "https://your-qwen-compatible-endpoint/v1"
+$env:QWEN_API_KEY = "your-api-key"
+$env:QWEN_MODEL = "Qwen2.5-7B-Instruct"
+```
+
+四个现场 Demo 固定使用本地规则/临时存储，保证无网络也可运行；`run_real_workflow` 在配置上述变量时才会调用 Qwen：
+
+```powershell
+python -m backend.ai_engine.assessment_demo
+python -m backend.ai_engine.diagnosis_demo
+python -m backend.ai_engine.prescription_demo
+python -m backend.ai_engine.feedback_demo
+```
+
+Assessment、Diagnosis、Prescription 和 Feedback 支持真实适配器；模型未配置或请求失败时会输出降级 warning。Generation 当前仍使用本地曲库 stub，不调用外部音乐生成服务。
 
 ### Sprint 2 Day 4 Stub 演示
 
