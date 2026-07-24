@@ -36,6 +36,7 @@ async def assessment(body: dict, db: Session = Depends(get_db)):
     # Persist to DB
     db_session = db.query(Session).filter(Session.session_id == session_id).first()
     if not db_session:
+        # MVP: user_id hardcoded to 1 until auth system is in place (Sprint 3)
         db.add(Session(user_id=1, session_id=session_id, status="active",
                        current_agent="evaluation"))
     else:
@@ -43,7 +44,7 @@ async def assessment(body: dict, db: Session = Depends(get_db)):
 
     es = emotion_scores
     db.add(EmotionAssessment(
-        user_id=1, session_id=session_id, input_channel="questionnaire",
+        user_id=1, session_id=session_id, input_channel="questionnaire",  # MVP: hardcoded until auth is in place (Sprint 3)
         emotion_anxiety=es.get("anxiety"), emotion_depression=es.get("depression"),
         emotion_anger=es.get("anger"), emotion_fear=es.get("fear"),
         emotion_overthinking=es.get("overthinking"),

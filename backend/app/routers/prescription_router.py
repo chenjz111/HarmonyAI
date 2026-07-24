@@ -48,7 +48,7 @@ async def prescription(body: dict, db: Session = Depends(get_db)):
     rx_id = f"rx_{today_str}_001"
 
     db_rx = Prescription(
-        user_id=1, session_id=session_id, prescription_id=rx_id,
+        user_id=1, session_id=session_id, prescription_id=rx_id,  # MVP: hardcoded until auth is in place (Sprint 3)
         daily_plan=json.dumps([{"day": 1, "tone": mf.get("tone_name"), "bpm": mf.get("bpm"),
                                 "instruments": mf.get("instruments", [])}], ensure_ascii=False),
         prompt_template_id=pt.get("template_id", "CN_V1"),
