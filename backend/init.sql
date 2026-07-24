@@ -1,8 +1,8 @@
 -- ============================================================================
--- HarmonyAI Database Schema — MVP Sprint 1
+-- HarmonyAI Database Schema — Sprint 2
 -- MySQL 8.0
 --
--- 6 tables per mvp-definition.md §3:
+-- 6 tables with FOREIGN KEY constraints:
 --   users / sessions / emotion_assessments / syndrome_diagnoses / prescriptions / feedbacks
 -- ============================================================================
 
@@ -12,7 +12,7 @@ CREATE DATABASE IF NOT EXISTS harmonyai
 
 USE harmonyai;
 
--- Drop old tables if they exist (clean migration)
+-- Drop old tables (order matters due to FK)
 DROP TABLE IF EXISTS feedbacks;
 DROP TABLE IF EXISTS generations;
 DROP TABLE IF EXISTS prescriptions;
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- 2. sessions
+-- 2. sessions  (FK → users.id)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sessions (
     id              INT             AUTO_INCREMENT PRIMARY KEY,
@@ -54,11 +54,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_sessions_user (user_id),
-    UNIQUE INDEX idx_sessions_id (session_id)
+    UNIQUE INDEX idx_sessions_id (session_id),
+    CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- 3. emotion_assessments (Agent ① output)
+-- 3. emotion_assessments — Agent 1 output  (FK → users.id + sessions.session_id)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS emotion_assessments (
     id              INT             AUTO_INCREMENT PRIMARY KEY,
@@ -98,11 +99,13 @@ CREATE TABLE IF NOT EXISTS emotion_assessments (
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_ea_user (user_id),
-    INDEX idx_ea_session (session_id)
+    INDEX idx_ea_session (session_id),
+    CONSTRAINT fk_ea_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ea_session FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- 4. syndrome_diagnoses (Agent ② output)
+-- 4. syndrome_diagnoses — Agent 2 output  (FK → users.id + sessions.session_id)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS syndrome_diagnoses (
     id              INT             AUTO_INCREMENT PRIMARY KEY,
@@ -111,7 +114,6 @@ CREATE TABLE IF NOT EXISTS syndrome_diagnoses (
     agent_id        VARCHAR(64)     DEFAULT 'diagnosis_agent',
     agent_version   VARCHAR(16)     DEFAULT '1.0.0',
 
-    -- Primary syndrome
     primary_name            VARCHAR(64)  NOT NULL,
     primary_element         VARCHAR(8)   NULL,
     primary_organ           VARCHAR(8)   NULL,
@@ -119,10 +121,8 @@ CREATE TABLE IF NOT EXISTS syndrome_diagnoses (
     primary_severity_level  INT          NULL,
     primary_severity_name   VARCHAR(16)  NULL,
 
-    -- Secondary syndromes JSON
     secondary_syndromes     TEXT         NULL,
 
-    -- Confidence
     confidence_overall      FLOAT        NOT NULL,
     confidence_rule_engine  FLOAT        NULL,
     confidence_llm          FLOAT        NULL,
@@ -142,11 +142,13 @@ CREATE TABLE IF NOT EXISTS syndrome_diagnoses (
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_sd_user (user_id),
-    INDEX idx_sd_session (session_id)
+    INDEX idx_sd_session (session_id),
+    CONSTRAINT fk_sd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_sd_session FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- 5. prescriptions (Agent ③ + ④ merged)
+-- 5. prescriptions — Agent 3 + 4 merged  (FK → users.id + sessions.session_id)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS prescriptions (
     id              INT             AUTO_INCREMENT PRIMARY KEY,
@@ -156,18 +158,16 @@ CREATE TABLE IF NOT EXISTS prescriptions (
     agent_version   VARCHAR(16)     DEFAULT '1.0.0',
     prescription_id VARCHAR(64)     NOT NULL UNIQUE COMMENT 'rx_YYYYMMDD_NNN',
 
-    -- Agent ③: Daily plan
     daily_plan              TEXT    NOT NULL COMMENT '每日处方 JSON',
     prompt_template_id      VARCHAR(32) NULL,
     prompt_template_version VARCHAR(16) NULL,
     prompt_parameters       TEXT    NULL,
 
-    -- Explanation
     explanation_summary     TEXT    NULL,
     explanation_user_facing TEXT    NULL,
     explanation_warnings    TEXT    NULL,
 
-    -- Agent ④: Audio (merged)
+    -- Agent 4: Audio
     audio_url               TEXT    NULL,
     audio_duration_seconds  INT     NULL,
     audio_file_size_bytes   INT     NULL,
@@ -187,11 +187,13 @@ CREATE TABLE IF NOT EXISTS prescriptions (
 
     INDEX idx_rx_user (user_id),
     INDEX idx_rx_session (session_id),
-    UNIQUE INDEX idx_rx_id (prescription_id)
+    UNIQUE INDEX idx_rx_id (prescription_id),
+    CONSTRAINT fk_rx_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_rx_session FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- 6. feedbacks (Agent ⑤ output)
+-- 6. feedbacks — Agent 5 output  (FK → users.id + sessions.session_id)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS feedbacks (
     id              INT             AUTO_INCREMENT PRIMARY KEY,
@@ -232,7 +234,9 @@ CREATE TABLE IF NOT EXISTS feedbacks (
 
     INDEX idx_fb_user (user_id),
     INDEX idx_fb_session (session_id),
-    UNIQUE INDEX idx_fb_id (feedback_id)
+    UNIQUE INDEX idx_fb_id (feedback_id),
+    CONSTRAINT fk_fb_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_fb_session FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
