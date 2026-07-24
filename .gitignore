@@ -17,6 +17,9 @@ logs/
 # 数据库
 *.db
 
+# 运行时数据 (Chroma, SQLite)
+data/
+
 # 系统
 .DS_Store
 Thumbs.db
