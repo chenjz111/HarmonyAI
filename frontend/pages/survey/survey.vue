@@ -127,8 +127,8 @@ export default {
 
       try {
         // === Agent 1: 评估 ===
-        // 把问卷答案转成 emotion_scores
-        const emotionScores = {
+        // 把问卷答案组装成 questionnaire 格式
+        const questionnaire = {
           emotion: this.emotion,
           tone: this.tone,
           answer_count: Object.keys(this.answers).length,
@@ -136,7 +136,7 @@ export default {
           answers: this.answers
         }
 
-        const assessmentEnvelope = await submitAssessment(emotionScores)
+        const assessmentEnvelope = await submitAssessment(questionnaire)
         const sessionId = assessmentEnvelope.session_id
 
         // === Agent 2: 辨证 ===

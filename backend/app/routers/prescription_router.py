@@ -1,6 +1,6 @@
 """Agent 3 — prescription_agent: POST /api/v1/prescription
 
-Integrated with AI Engine (钟睿宸) agent_stubs.prescription_stub().
+Integrated with AI Engine: real agents when HARMONYAI_REAL_AGENTS=true, stubs otherwise.
 """
 from datetime import datetime, timezone
 import json
@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
+from backend.app.core.agent_config import use_real_agents, get_knowledge_store
 from backend.app.models.prescription import Prescription
 from backend.app.models.session import Session
-from backend.ai_engine.agent_stubs import prescription_stub
 from backend.app.schemas.common import make_run_id
 
 router = APIRouter()
@@ -28,15 +28,27 @@ async def prescription(body: dict, db: Session = Depends(get_db)):
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required")
 
-    # Call AI Engine stub
-    result = prescription_stub({
-        "run_id": run_id, "session_id": session_id,
-        "user_id": user_id,
-        "diagnosis": diagnosis_envelope or {
-            "confidence": 0.77,
-            "output": {"syndrome_diagnosis": {"primary": {"name": "肝郁化火", "element": "木"}}},
-        },
-    })
+    if use_real_agents():
+        from backend.ai_engine.real_agents import PrescriptionAgent
+        agent = PrescriptionAgent(knowledge_store=get_knowledge_store())
+        result = agent.run({
+            "run_id": run_id, "session_id": session_id,
+            "user_id": user_id,
+            "diagnosis": diagnosis_envelope or {
+                "confidence": 0.77,
+                "output": {"syndrome_diagnosis": {"primary": {"name": "肝郁化火", "element": "木"}}},
+            },
+        })
+    else:
+        from backend.ai_engine.agent_stubs import prescription_stub
+        result = prescription_stub({
+            "run_id": run_id, "session_id": session_id,
+            "user_id": user_id,
+            "diagnosis": diagnosis_envelope or {
+                "confidence": 0.77,
+                "output": {"syndrome_diagnosis": {"primary": {"name": "肝郁化火", "element": "木"}}},
+            },
+        })
 
     envelope = result["prescription"]
 
@@ -53,8 +65,8 @@ async def prescription(body: dict, db: Session = Depends(get_db)):
                                 "instruments": mf.get("instruments", [])}], ensure_ascii=False),
         prompt_template_id=pt.get("template_id", "CN_V1"),
         prompt_template_version=pt.get("template_version", "1.0.0"),
-        prompt_parameters=json.dumps(pt.get("parameters", {}), ensure_ascii=False),
-        explanation_summary=f"AI引擎: {mf.get('tone_name')} {mf.get('bpm')}BPM",
+        prompt_parameters=json.dumps(pt.get("parameters", pt.get("text", "")), ensure_ascii=False),
+        explanation_summary=f"AI引擎: {mf.get('tone_name', '未知')} {mf.get('bpm', '?')}BPM",
         confidence=envelope["confidence"],
         reason=json.dumps(envelope["reason"], ensure_ascii=False),
         processing_time_ms=envelope.get("processing_time_ms", 0),
