@@ -1,6 +1,6 @@
 """Agent 2 — diagnosis_agent: POST /api/v1/diagnosis
 
-Integrated with AI Engine (钟睿宸) agent_stubs.diagnosis_stub().
+Integrated with AI Engine: real agents when HARMONYAI_REAL_AGENTS=true, stubs otherwise.
 """
 from datetime import datetime, timezone
 import json
@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
+from backend.app.core.agent_config import use_real_agents, get_llm_provider
 from backend.app.models.syndrome_diagnosis import SyndromeDiagnosis
 from backend.app.models.session import Session
-from backend.ai_engine.agent_stubs import diagnosis_stub
 from backend.app.schemas.common import make_run_id
 
 router = APIRouter()
@@ -28,15 +28,27 @@ async def diagnosis(body: dict, db: Session = Depends(get_db)):
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required")
 
-    # Call AI Engine stub
-    result = diagnosis_stub({
-        "run_id": run_id, "session_id": session_id,
-        "user_id": user_id,
-        "assessment": assessment_envelope or {
-            "confidence": 0.85,
-            "output": {"emotion_profile": body.get("emotion_scores", {})},
-        },
-    })
+    if use_real_agents():
+        from backend.ai_engine.real_agents import DiagnosisAgent
+        agent = DiagnosisAgent(llm=get_llm_provider())
+        result = agent.run({
+            "run_id": run_id, "session_id": session_id,
+            "user_id": user_id,
+            "assessment": assessment_envelope or {
+                "confidence": 0.85,
+                "output": {"emotion_profile": {"dominant_emotion": "anxiety"}},
+            },
+        })
+    else:
+        from backend.ai_engine.agent_stubs import diagnosis_stub
+        result = diagnosis_stub({
+            "run_id": run_id, "session_id": session_id,
+            "user_id": user_id,
+            "assessment": assessment_envelope or {
+                "confidence": 0.85,
+                "output": {"emotion_profile": body.get("emotion_scores", {})},
+            },
+        })
 
     envelope = result["diagnosis"]
 

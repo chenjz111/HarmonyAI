@@ -1,6 +1,6 @@
-"""Agent 1 — evaluation_agent: POST /api/v1/assessment
+"""Agent 1 — assessment_agent: POST /api/v1/assessment
 
-Integrated with AI Engine (钟睿宸) agent_stubs.assessment_stub().
+Integrated with AI Engine: real agents when HARMONYAI_REAL_AGENTS=true, stubs otherwise.
 """
 from datetime import datetime, timezone
 import json
@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
+from backend.app.core.agent_config import use_real_agents, get_llm_provider
 from backend.app.models.emotion_assessment import EmotionAssessment
 from backend.app.models.session import Session
-from backend.ai_engine.agent_stubs import assessment_stub
 from backend.app.schemas.common import make_run_id
 
 router = APIRouter()
@@ -22,14 +22,23 @@ async def assessment(body: dict, db: Session = Depends(get_db)):
     """接收问卷 → AI引擎评估 → 返回健康画像。"""
     session_id = body.get("session_id", f"sess_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}")
     user_id = body.get("user_id", "u_001")
-    emotion_scores = body.get("emotion_scores", {})
+    # Accept both Sprint 2 "questionnaire" and legacy "emotion_scores"
+    questionnaire = body.get("questionnaire", body.get("emotion_scores", {}))
     run_id = body.get("run_id", make_run_id("eval"))
 
-    # Call AI Engine stub
-    result = assessment_stub({
-        "run_id": run_id, "session_id": session_id,
-        "user_id": user_id, "emotion_scores": emotion_scores,
-    })
+    if use_real_agents():
+        from backend.ai_engine.real_agents import AssessmentAgent
+        agent = AssessmentAgent(llm=get_llm_provider())
+        result = agent.run({
+            "run_id": run_id, "session_id": session_id,
+            "user_id": user_id, "questionnaire": questionnaire,
+        })
+    else:
+        from backend.ai_engine.agent_stubs import assessment_stub
+        result = assessment_stub({
+            "run_id": run_id, "session_id": session_id,
+            "user_id": user_id, "emotion_scores": questionnaire,
+        })
 
     envelope = result["assessment"]
 
@@ -42,7 +51,7 @@ async def assessment(body: dict, db: Session = Depends(get_db)):
     else:
         db_session.current_agent = "evaluation"
 
-    es = emotion_scores
+    es = questionnaire
     db.add(EmotionAssessment(
         user_id=1, session_id=session_id, input_channel="questionnaire",  # MVP: hardcoded until auth is in place (Sprint 3)
         emotion_anxiety=es.get("anxiety"), emotion_depression=es.get("depression"),
