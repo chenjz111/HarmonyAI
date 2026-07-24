@@ -46,7 +46,7 @@ async def feedback(body: dict, db: Session = Depends(get_db)):
     feedback_id = f"fb_{today_str}_001"
 
     db_fb = Feedback(
-        user_id=1, session_id=session_id, feedback_id=feedback_id,
+        user_id=1, session_id=session_id, feedback_id=feedback_id,  # MVP: hardcoded until auth is in place (Sprint 3)
         subjective_satisfaction=satisfaction,
         decision_action=decision.get("action", "continue"),
         decision_detail=decision.get("next_step", ""),

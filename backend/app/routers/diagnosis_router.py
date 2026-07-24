@@ -45,7 +45,7 @@ async def diagnosis(body: dict, db: Session = Depends(get_db)):
     sd = out.get("syndrome_diagnosis", {})
     primary = sd.get("primary", {})
     db.add(SyndromeDiagnosis(
-        user_id=1, session_id=session_id,
+        user_id=1, session_id=session_id,  # MVP: hardcoded until auth is in place (Sprint 3)
         primary_name=primary.get("name", ""),
         primary_element=primary.get("element"),
         primary_organ=primary.get("organ"),

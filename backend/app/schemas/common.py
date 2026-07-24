@@ -42,7 +42,7 @@ class WarningInfo(BaseModel):
 # ---------------------------------------------------------------------------
 class UniversalOutput(BaseModel):
     """Base for all Agent responses — agent-architecture.md §1.2"""
-    agent_id: str = Field(..., description="Agent unique ID, e.g. 'evaluation_agent'")
+    agent_id: str = Field(..., description="Agent unique ID, e.g. 'assessment_agent'")
     agent_version: str = Field(default="1.0.0")
     agent_name: str = Field(..., description="Chinese name for frontend display")
     agent_layer: AgentLayer
@@ -54,7 +54,7 @@ class UniversalOutput(BaseModel):
     status: AgentStatus
     confidence: float = Field(..., ge=0, le=1)
     reason: list[str] = Field(default_factory=list)
-    warnings: list[WarningInfo] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
     input: Optional[dict] = Field(None, description="Input snapshot")
     output: Optional[dict] = Field(None, description="Output data per agent-schemas.md")
@@ -66,6 +66,9 @@ class UniversalOutput(BaseModel):
     # Upstream degradation propagation (Chapter 3.3)
     upstream_degraded: bool = False
     upstream_warnings: list[str] = Field(default_factory=list)
+
+    # Sprint 2: real-agent degradation flag
+    degradation_triggered: bool = Field(default=False, description="Set when any agent degrades to rule fallback")
 
 
 def make_run_id(agent: str) -> str:
