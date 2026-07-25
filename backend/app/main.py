@@ -14,8 +14,11 @@ Start:
 
 Swagger: http://localhost:8000/docs
 """
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.app.core.config import settings
 from backend.app.routers import (
@@ -54,6 +57,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve static files (demo audio for Sprint 2)
+_static_dir = Path(__file__).resolve().parents[2] / "frontend" / "static"
+if _static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 app.include_router(health_router.router, tags=["Health"])
 app.include_router(assessment_router.router, prefix="/api/v1", tags=["Agent 1 — 评估"])
