@@ -27,16 +27,26 @@ async def assessment(body: dict, db: Session = Depends(get_db)):
     user_id = body.get("user_id", "u_001")
     # Accept both Sprint 2 "questionnaire" and legacy "emotion_scores"
     questionnaire = body.get("questionnaire", body.get("emotion_scores", {}))
+    # Sanitize narrative_text: trim, cap at 1000 chars, treat empty as None
+    narrative_raw = body.get("narrative_text")
+    narrative_text: str | None = None
+    if narrative_raw and isinstance(narrative_raw, str):
+        trimmed = narrative_raw.strip()
+        if trimmed:
+            narrative_text = trimmed[:1000]
     run_id = body.get("run_id", make_run_id("eval"))
 
     try:
         if use_real_agents():
             from backend.ai_engine.real_agents import AssessmentAgent
             agent = AssessmentAgent(llm=get_llm_provider())
-            result = agent.run({
+            agent_state: dict[str, object] = {
                 "run_id": run_id, "session_id": session_id,
                 "user_id": user_id, "questionnaire": questionnaire,
-            })
+            }
+            if narrative_text:
+                agent_state["narrative_text"] = narrative_text
+            result = agent.run(agent_state)
         else:
             from backend.ai_engine.agent_stubs import assessment_stub
             result = assessment_stub({
