@@ -18,6 +18,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.core.config import settings
@@ -74,3 +75,10 @@ app.include_router(feedback_router.router, prefix="/api/v1", tags=["Agent 5 — 
 @app.get("/", include_in_schema=False)
 async def root():
     return {"app": settings.APP_NAME, "version": settings.APP_VERSION, "docs": "/docs"}
+
+
+@app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
+async def demo():
+    """Serve the standalone demo page."""
+    demo_path = Path(__file__).resolve().parents[2] / "frontend" / "demo.html"
+    return demo_path.read_text(encoding="utf-8")
