@@ -45,10 +45,12 @@ class FakeNarrativeLLM:
 
 
 class FakeInvalidJSONLLM:
-    """Returns invalid JSON — triggers retry then fallback."""
+    """Returns truly invalid JSON (wrong types) — triggers retry then fallback."""
 
     def complete_json(self, system_prompt, user_prompt):
-        return {"invalid_key": "missing required fields"}
+        # emotion_signals item with wrong intensity type
+        return {"emotion_signals": [{"emotion": "anxiety", "intensity": "high", "evidence": "x"}],
+                "evidence": "some text", "summary": "test"}
 
 
 class FakeErrorLLM:
@@ -176,13 +178,13 @@ def test_safety_alert_blocks_llm_and_returns_help_recommendation():
 
 # ── Pydantic schema validation ──
 
-def test_narrative_analysis_schema_rejects_missing_fields():
-    """NarrativeAnalysis requires emotion and evidence fields."""
+def test_narrative_analysis_schema_rejects_invalid_types():
+    """NarrativeAnalysis rejects invalid types for required fields."""
     import pytest
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        NarrativeAnalysis(life_events=[{"bad_key": "x"}])
+        NarrativeAnalysis(emotion_signals=[{"emotion": "anxiety", "intensity": "not_a_number"}])
 
 
 def test_narrative_analysis_schema_accepts_valid_data():

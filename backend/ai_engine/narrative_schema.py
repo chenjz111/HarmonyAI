@@ -5,9 +5,16 @@ The model MUST NOT output medical diagnoses or TCM syndrome labels.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _coerce_evidence(v: Any) -> str:
+    """Accept str or list[str]; join lists with semicolons."""
+    if isinstance(v, list):
+        return "; ".join(str(item) for item in v if item)
+    return str(v) if v else ""
 
 
 class LifeEvent(BaseModel):
@@ -18,7 +25,9 @@ class LifeEvent(BaseModel):
 class EmotionSignal(BaseModel):
     emotion: str = Field(..., description="Detected emotion label (anxiety/depression/anger/fear/overthinking/fatigue/grief/insomnia)")
     intensity: int = Field(..., ge=0, le=100, description="Intensity score 0-100")
-    evidence: str = Field(..., description="Quote or paraphrase from user text supporting this")
+    evidence: str = Field(default="", description="Quote or paraphrase from user text supporting this")
+
+    _coerce_evidence = field_validator("evidence", mode="before")(_coerce_evidence)
 
 
 class PhysicalSignal(BaseModel):
@@ -26,23 +35,28 @@ class PhysicalSignal(BaseModel):
     severity: str = Field(default="moderate", description="mild/moderate/severe")
     evidence: str = Field(default="", description="Supporting text from user")
 
+    _coerce_evidence = field_validator("evidence", mode="before")(_coerce_evidence)
+
 
 class NarrativeAnalysis(BaseModel):
     """Structured output from Qwen after analyzing user free-text.
 
     The model is instructed NOT to output medical diagnoses or TCM labels.
     This output feeds into the existing AssessmentAgent pipeline, not Diagnosis directly.
-
-    At minimum, 'summary' and 'evidence' must be non-empty strings to pass validation.
     """
     model_config = {"extra": "ignore"}
 
     life_events: list[LifeEvent] = Field(default_factory=list)
-    emotion_signals: list[EmotionSignal] = Field(default_factory=list, min_length=1)
+    emotion_signals: list[EmotionSignal] = Field(default_factory=list)
     physical_signals: list[PhysicalSignal] = Field(default_factory=list)
-    evidence: str = Field(..., min_length=1, description="Key phrases from user text supporting the analysis")
-    summary: str = Field(..., min_length=1, description="One-sentence summary of user's state, in user's own framing")
+    evidence: str = Field(default="", description="Key phrases from user text supporting the analysis")
+    summary: str = Field(default="", description="One-sentence summary of user's state, in user's own framing")
     needs_confirmation: bool = Field(default=False)
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _coerce_top_evidence(cls, v: Any) -> str:
+        return _coerce_evidence(v)
 
 
 # ---------------------------------------------------------------------------
