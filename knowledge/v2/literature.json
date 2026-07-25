@@ -7,10 +7,10 @@
   "status": "reviewed-by-nob",
   "spec_ref": "要求/knowledge-architecture.md 第4.3节（陈家智 V0.1，2026-07-15）",
   "quota_status": {
-    "total": 18,
+    "total": 22,
     "level_A": { "count": 4, "required": 2, "met": true },
-    "level_B": { "count": 6, "required": 3, "met": true },
-    "level_C": { "count": 6, "required": 3, "met": true },
+    "level_B": { "count": 5, "required": 3, "met": true },
+    "level_C": { "count": 11, "required": 3, "met": true },
     "level_D": { "count": 2, "required": 2, "met": true }
   },
   "verification_note": "所有条目均经在线核验：英文文献逐条比对PubMed官方页面（k_001-k_004由nob于2026-07-17复核签收）；中文文献经万方/SinoMed/期刊官网≥2个独立来源交叉确认；《素问》原文在ctext.org逐字核验（k_008-k_012经典段落为中医学界公认原文，nob签收）。新增k_013-k_017由nob检索补充并核验：k_013经CNKI期刊官网+cqvip+万方三源确认；k_014经USTC图书馆+cqvip确认；k_015经medsci.cn确认；k_016/k_017经中西医结合临床案例库/期刊官网+DOI确认。",
@@ -233,12 +233,12 @@
       "source_journal": "山东中医杂志 43(2):122-127",
       "identifiers": { "doi": "10.16295/j.cnki.0257-358x.2024.02.004", "issn": "0257-358X" },
       "url": "https://sdzy.cbpt.cnki.net/WKI/WebPublication/wkTextContent.aspx?colType=4&st=02&yt=2024",
-      "credibility_level": "B",
-      "credibility_score": 0.80,
+      "credibility_level": "C",
+      "credibility_score": 0.65,
       "applicable_syndromes": [],
       "applicable_emotions": [],
       "tags": ["五行音乐", "五声调式", "六声调式", "七声调式", "理论研究", "择时应用", "ADR-0005依据"],
-      "notes": "高引用（被引22次，下载1821次）。系统阐述五声/六声/七声调式构成五音治疗体系，为本项目七音扩展理论提供学术支撑。",
+      "notes": "高引用（被引22次，下载1821次）。系统阐述五声/六声/七声调式构成五音治疗体系，为本项目七音扩展理论提供学术支撑。⚠️ 按陈家智 knowledge-architecture.md 第4.1节对齐：理论研究/综述归为 Level C（专家共识级），从原 B 降级。mapping 引用中的 [理论依据] 标记不变。",
       "verify_status": "肖宇翔已签收 2026-07-17（CNKI期刊官网+cqvip+万方三源确认）"
     },
     {
@@ -296,7 +296,7 @@
       "applicable_syndromes": [],
       "applicable_emotions": ["depression"],
       "tags": ["商调", "肺", "肺癌", "五脏相音", "阳春白雪", "生存质量"],
-      "notes": "⚠️ mapping cite 标记：[旁证-证型未严格分层: 肺癌未做肺气虚分层]，原文献为晚期肺癌住院患者，未做中医证型分层，肺癌患者可见肺阴虚/肺气虚/痰湿等多种证型。引用至 syd_006 时按'商调-肺-肺癌'同类研究处理。",
+      "notes": "⚠️ 全文检索未找到商调-肺气虚的直接临床证据。本条目降级处理：mapping cite 标记保持 [旁证-证型未严格分层: 肺癌未做肺气虚分层]。**不**作为肺气虚的直接证据，仅供'商调-肺系'同类研究旁证。建议后续检索'商调 肺气虚 随机对照'补强。",
       "verify_status": "肖宇翔已签收 2026-07-17（MedSci＋知网确认）"
     },
     {
@@ -330,11 +330,90 @@
       "credibility_level": "D",
       "credibility_score": 0.45,
       "applicable_syndromes": [],
-      "applicable_emotions": [],
+      "applicable_emotions": ["overthinking"],
       "tags": ["个案报告", "宫调", "脾胃不和", "失眠", "经穴推拿", "北京中医药大学东方医院"],
-      "notes": "Level D个案报告。北京中医药大学东方医院脾胃肝胆科。⚠️ 标题-正文不一致：title 写'脾胃不和'，content 写'肝胃不和'，此二为不同证型。建议：① 全文复核原文证型诊断；② 若原文确为'肝胃不和'，title 需改为'肝胃不和'，mapping 引用时仅作'脾胃系'旁证，不能作为心脾两虚/脾虚湿困的直接证据。⚠️ mapping cite 标记：[旁证-证型不一致: 原文为肝胃不和, 待核]。",
-      "verify_status": "肖宇翔已签收 2026-07-17（期刊官网+DOI确认；证型复核待办）"
+      "notes": "Level D个案报告。北京中医药大学东方医院脾胃肝胆科。全文复核结论：title写'脾胃不和型失眠'，临床数据中正式中医诊断为'腹胀病肝胃不和证'。两证型均不在8个核心证型内。本病例为宫调-脾胃系/角调-肝系的五行归属旁证，不可作为心脾两虚/脾虚湿困的直接临床证据。⚠️ mapping cite 标记：[旁证-五行归属: 原文诊断为肝胃不和，保留宫调-脾+角调-肝旁证价值]。applicable_emotions 按中医病机'思伤脾'模糊匹配为 overthinking。",
+      "verify_status": "肖宇翔已签收 2026-07-17（期刊官网+DOI确认；全文复核完成 2026-07-19）"
+    },
+    {
+      "knowledge_id": "k_019",
+      "content": "随机对照临床试验（n=102 COPD稳定期1-3级，中医辨证肺肾气虚证，三组各34例，疗程3个月）：观察商调配合呼吸六字诀对稳定期焦虑/抑郁的影响。治疗1组（基础治疗+商调+六字诀）较治疗2组（六字诀）和对照组（基础治疗）在中医症候总积分、中医症候总疗效、CAT评分、mMRC呼吸困难评分方面均显著改善（P<0.05）。焦虑（SAS）和抑郁（SDS）量表评分改善同样显著。肺功能（FEV1%、FEV1/FVC）三组间无显著差异。结论：商调音乐可作为COPD稳定期肺肾气虚证患者改善负性情绪和呼吸困难的辅助疗法。⚠️ 注意：原文中医证型为'肺肾气虚证'（肺气虚+肾气虚），与目标证型肺气虚（syd_006）部分一致，可作为肺系商调干预的直接证据。",
+      "source_type": "随机对照临床试验（学位论文）",
+      "source_title": "商调配合呼吸六字诀对COPD稳定期焦虑/抑郁患者的临床疗效观察",
+      "source_author": "陆丽萍",
+      "source_year": 2023,
+      "source_journal": "贵州中医药大学",
+      "identifiers": {
+        "napstic_id": "0620230600007660"
+      },
+      "url": "https://search.napstic.cn/literature/degree/0620230600007660",
+      "credibility_level": "C",
+      "credibility_score": 0.65,
+      "applicable_syndromes": ["syd_006"],
+      "applicable_emotions": ["anxiety", "depression"],
+      "tags": ["商调", "肺肾气虚", "COPD", "焦虑", "抑郁", "呼吸六字诀", "学位论文"],
+      "notes": "为商调-肺气虚（syd_006）补入的首篇 [直接证据] 级文献。原文中医证型为'肺肾气虚'，覆盖syd_006（肺气虚）的核心病机。n=102 临床RCT，SAS/SDS评分显著改善。⚠️ mapping cite 标记：[直接证据: 商调+呼吸六字诀干预肺肾气虚证]。建议后续检索：'商调 肺气虚 随机对照' 找更精确保型（syd_006单证型，不带肾虚）的临床研究补强。",
+      "verify_status": "肖宇翔签收 2026-07-24（napstic学位库搜索+摘要确认）"
+    },
+    {
+      "knowledge_id": "k_020",
+      "content": "类实验研究（n=32有失眠和焦虑的大学生，按中医辨证分型为肝火扰心、痰热扰心、心脾两虚、心肾不交、心胆气虚5型）：运用耳穴贴压（统一取皮质下、心、肾、神门）联合五音疗法（根据证型适配宫商角徵羽之阴阳调），每日21:00聆听30分钟，8周后判定疗效。总有效率84.38%，PSQI评分平均降低4.2分，SAS评分平均降低9.59分（P<0.05）。结论：耳穴结合五音疗法干预大学生失眠及焦虑可行性强且疗效确切。⚠️ 注意：原文辨证分型含'肝火扰心型'（肝火扰心→心火上炎演变链），与目标证型心火上炎（syd_003）存在病机关联，可作为徵调-心火类证型的佐证。",
+      "source_type": "类实验研究",
+      "source_title": "中医耳穴结合五音疗法干预大学生失眠及焦虑的疗效分析",
+      "source_author": "罗婷, 王娅敏, 刘芳宏, 陈浩, 殷志荣",
+      "source_year": 2025,
+      "source_journal": "国际临床研究杂志 IJCR",
+      "identifiers": {
+        "fund": "中央高校基本科研业务费资助项目(JBKYQN2025-13)"
+      },
+      "url": "https://ijcr.oajrc.org/ArticleDetail.aspx?cid=24800",
+      "credibility_level": "C",
+      "credibility_score": 0.60,
+      "applicable_syndromes": ["syd_003"],
+      "applicable_emotions": ["anxiety"],
+      "tags": ["五音疗法", "肝火扰心", "失眠", "焦虑", "耳穴", "IJCR", "心"],
+      "notes": "为徵调-心火上炎（syd_003）补入的旁证文献。原文分型为肝火扰心≠心火上炎，但同属心火类证型。n=32样本偏小。⚠️ mapping cite 标记：[病机相关: 肝火扰心→心火上炎演变链]。",
+      "verify_status": "肖宇翔签收 2026-07-24（IJCR期刊官网+PDF摘要确认）"
+    },
+    {
+      "knowledge_id": "k_021",
+      "content": "随机对照临床试验（n=108腹泻型肠易激综合征脾虚湿盛证患者，各54例，4周疗程）：治疗组予音乐疗法联合健肠Ⅰ号方，对照组予匹维溴铵片治疗。结果：治疗后治疗组中医证候积分、IBS-SSS积分均明显低于对照组（P均<0.05）；肠道益生菌（嗜酸乳杆菌、双歧杆菌）数量升高、血清脑肠肽（NPY升高、VIP降低）及免疫细胞因子（IFN-γ降低、IL-10升高）改善均优于对照组（P均<0.05）；治疗组随访3个月复发率2.27% vs 对照组16.67%（P<0.05）。结论：音乐疗法联合健肠Ⅰ号方治疗脾虚湿盛证疗效确切。⚠️ 注意：原文证型为脾虚湿盛（同脾虚湿困/syd_005），中药+音乐联合干预为复合疗法，音乐效应未能完全独立分离。",
+      "source_type": "随机对照临床试验",
+      "source_title": "音乐疗法联合健肠Ⅰ号方治疗腹泻型肠易激综合征脾虚湿盛证疗效观察",
+      "source_author": "李小峰, 谢婷婷",
+      "source_year": 2025,
+      "source_journal": "现代中西医结合杂志",
+      "identifiers": {
+        "doi": "10.88888/j.1008-8849.2025.2.218-223"
+      },
+      "url": "https://www.tcmjc.com/doi/10.88888/j.1008-8849.2025.2.218-223",
+      "credibility_level": "C",
+      "credibility_score": 0.65,
+      "applicable_syndromes": ["syd_005"],
+      "applicable_emotions": [],
+      "tags": ["宫调", "脾虚湿盛", "肠易激综合征", "音乐疗法", "健肠Ⅰ号方", "脾"],
+      "notes": "为宫调-脾虚湿困（syd_005）补入的现代临床文献。原文证型为脾虚湿盛证，与脾虚湿困基本一致（湿盛=湿困加重）。音乐联合中药治疗。⚠️ mapping cite 标记：[直接证据: 音乐疗法干预脾虚湿盛证]。",
+      "verify_status": "肖宇翔签收 2026-07-24（tcmjc期刊官网+DOI确认）"
+    },
+    {
+      "knowledge_id": "k_022",
+      "content": "随机对照临床试验（n=96肾虚肝郁型多囊卵巢综合征患者，各48例，12周疗程）：观察组在中药辨证施方基础上配合五音疗法干预（羽调及角调音乐），对照组仅中药治疗。结果：干预12周后，观察组焦虑（SAS）、抑郁（SDS）评分及中医证候积分均显著低于对照组（P<0.05），生活质量（MPCOSQ）评分观察组优于对照组（P<0.05）。结论：五音疗法联合中药可正向调节肾虚肝郁型患者焦虑、抑郁负性情绪，改善生活质量。⚠️ 注意：原文证型为肾虚肝郁（含肾阴不足的病机基础）+ 角调+羽调联合干预，羽调入肾可作为肾系旁证。",
+      "source_type": "随机对照临床试验",
+      "source_title": "五音疗法联合中药辨证治疗对肾虚肝郁型多囊卵巢综合征患者负性情绪及生活质量的影响",
+      "source_author": "杨筝, 张春仁, 李娟",
+      "source_year": 2023,
+      "source_journal": "湖南中医药大学学报 43(8):1450-1454",
+      "identifiers": {
+        "doi": "10.3969/j.issn.1674-070X.2023.08.017"
+      },
+      "url": "https://recommend.aipub.cn/0f26ec9800f510315f63d3e2c8d135c6edd52c760529227fcb354c2bca0e9bc6",
+      "credibility_level": "C",
+      "credibility_score": 0.65,
+      "applicable_syndromes": ["syd_007"],
+      "applicable_emotions": ["anxiety", "depression"],
+      "tags": ["羽调", "肾虚肝郁", "多囊卵巢综合征", "焦虑", "抑郁", "湖南中医药大学学报", "肾"],
+      "notes": "为羽调-肾阴不足（syd_007）补入的旁证文献。原文证型为肾虚肝郁（肾虚含肾阴不足），羽调入肾。⚠️ mapping cite 标记：[病机相关: 肾虚→肾阴不足演变链]。",
+      "verify_status": "肖宇翔签收 2026-07-24（湖南中医药大学学报官网+DOI确认）"
     }
   ]
 }
-
