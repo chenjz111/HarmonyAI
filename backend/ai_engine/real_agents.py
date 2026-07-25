@@ -1,14 +1,23 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any, Mapping
 
 from .agent_stubs import make_agent_result
 from .feedback_store import SQLiteFeedbackStore
+from .narrative_schema import (
+    NARRATIVE_SYSTEM_PROMPT,
+    NarrativeAnalysis,
+    check_safety_alert,
+    sanitize_narrative,
+)
 from .prompt_engine import PromptEngine, TemplateNotFoundError
 from .providers import JsonLLMProvider, LLMProviderError
+
+logger = logging.getLogger(__name__)
 
 
 MVP_SYNDROMES: dict[str, dict[str, object]] = {
@@ -67,17 +76,70 @@ class AssessmentAgent:
 
     def run(self, state: Mapping[str, object]) -> dict[str, object]:
         questionnaire = dict(state.get("questionnaire", {}))
+        narrative_raw = state.get("narrative_text")
+        narrative_text = sanitize_narrative(str(narrative_raw) if narrative_raw else None)
+        analysis_mode = "questionnaire_only"
+        degraded = True  # assume degraded unless proven otherwise
+        narrative_result: dict[str, object] | None = None
+        warnings: list[str] = []
+
+        # ── narrative analysis path ──
+        if narrative_text and self.llm is not None:
+            # Safety check before calling LLM
+            safety_alert = check_safety_alert(narrative_text)
+
+            if safety_alert:
+                logger.warning("narrative_text safety alert triggered; skipping LLM analysis")
+                return {"assessment": _envelope(
+                    agent_id="assessment_agent", agent_name="Assessment Agent", layer="medical_analysis",
+                    state=state, status="degraded", confidence=0.0,
+                    reason=["safety_alert: potential self-harm content detected"],
+                    warnings=["请寻求专业心理健康帮助。本系统不提供危机干预。如需立即帮助，请拨打心理援助热线。"],
+                    input_data={"questionnaire": questionnaire, "narrative_length": len(narrative_text)},
+                    output_data={"action": "recommend_professional_help", "analysis_mode": "questionnaire_only",
+                                 "degraded": True},
+                )}
+
+            # Try LLM analysis (with one retry on schema failure)
+            for attempt in range(2):
+                try:
+                    raw = self.llm.complete_json(
+                        NARRATIVE_SYSTEM_PROMPT,
+                        json.dumps({"narrative": narrative_text}, ensure_ascii=False),
+                    )
+                    validated = NarrativeAnalysis(**raw)
+                    narrative_result = validated.model_dump()
+                    analysis_mode = "text_and_questionnaire"
+                    degraded = False
+                    break
+                except (LLMProviderError, ValueError, TypeError, KeyError, AttributeError) as exc:
+                    logger.warning("narrative analysis attempt %d failed: %s", attempt + 1, exc)
+                    if attempt == 1:  # second failure
+                        analysis_mode = "questionnaire_only"
+                        degraded = True
+                        warnings.append(f"narrative analysis failed after retry: {exc}")
+                        narrative_result = None
+
+        # ── questionnaire analysis path (always runs) ──
         if self.llm is not None and questionnaire:
-            try:
-                response = self.llm.complete_json(
-                    "You are a medical assessment assistant. Analyze the user's questionnaire "
-                    "and return a JSON object with an emotion_profile containing: "
-                    "dominant_emotion (one of: anxiety, depression, anger, fear, overthinking, fatigue, grief, insomnia), "
-                    "dominant_score (0-100 integer), "
-                    "dimensions (object with each detected emotion as key, each containing score 0-100 and severity: mild/medium/severe). "
-                    "Return ONLY valid JSON, no explanation.",
-                    json.dumps(questionnaire, ensure_ascii=False),
+            # Build augmented prompt if narrative analysis succeeded
+            user_prompt = json.dumps(questionnaire, ensure_ascii=False)
+            system_prompt = (
+                "You are a medical assessment assistant. Analyze the user's questionnaire "
+                "and return a JSON object with an emotion_profile containing: "
+                "dominant_emotion (one of: anxiety, depression, anger, fear, overthinking, fatigue, grief, insomnia), "
+                "dominant_score (0-100 integer), "
+                "dimensions (object with each detected emotion as key, each containing score 0-100 and severity: mild/medium/severe). "
+                "Return ONLY valid JSON, no explanation."
+            )
+            if narrative_result:
+                system_prompt += (
+                    " Also consider this structured analysis of the user's free-text narrative: "
+                    + json.dumps(narrative_result, ensure_ascii=False)
                 )
+
+            try:
+                response = self.llm.complete_json(system_prompt, user_prompt)
                 if not isinstance(response, dict):
                     raise ValueError("assessment response must be a JSON object")
                 profile_raw = response.get("emotion_profile")
@@ -87,14 +149,29 @@ class AssessmentAgent:
                 dominant = str(profile["dominant_emotion"])
                 profile.setdefault("dominant_emotion", dominant)
                 profile.setdefault("dominant_score", 70)
+                # Questionnaire analysis succeeded — mark not degraded
+                degraded = False
+
+                output: dict[str, object] = {"emotion_profile": profile, "analysis_mode": analysis_mode,
+                                              "degraded": degraded}
+                if narrative_result:
+                    output["narrative_analysis"] = narrative_result
+
+                reason = ["Qwen-compatible structured assessment"]
+                if analysis_mode == "text_and_questionnaire":
+                    reason.insert(0, "narrative text analysis integrated")
+
                 return {"assessment": _envelope(
                     agent_id="assessment_agent", agent_name="Assessment Agent", layer="medical_analysis",
-                    state=state, status="success", confidence=0.8, reason=["Qwen-compatible structured assessment"],
-                    warnings=[], input_data={"questionnaire": questionnaire}, output_data={"emotion_profile": profile},
+                    state=state, status="success", confidence=0.8, reason=reason,
+                    warnings=warnings, input_data={"questionnaire": questionnaire,
+                                                    "narrative_length": len(narrative_text) if narrative_text else 0},
+                    output_data=output,
                 )}
             except (LLMProviderError, ValueError, TypeError, KeyError, AttributeError):
                 pass
 
+        # ── fallback: rule-based ──
         text = " ".join(str(value) for value in questionnaire.values())
         dominant = "anxiety" if any(token in text for token in ("睡", "焦虑", "担心", "紧张")) else "anxiety"
         profile = {
@@ -102,12 +179,21 @@ class AssessmentAgent:
             "dominant_score": 70 if questionnaire else 0,
             "dimensions": {dominant: {"score": 70 if questionnaire else 0, "severity": "medium"}},
         }
+        # degraded already reflects narrative analysis result
+        fallback_degraded = degraded
+        fallback_output: dict[str, object] = {"emotion_profile": profile, "analysis_mode": analysis_mode,
+                                               "degraded": fallback_degraded}
+        if narrative_result:
+            fallback_output["narrative_analysis"] = narrative_result
+
+        fallback_warnings = list(warnings) if warnings else ["Qwen unavailable or not configured; local fallback used"]
         return {"assessment": _envelope(
             agent_id="assessment_agent", agent_name="Assessment Agent", layer="medical_analysis",
             state=state, status="degraded", confidence=0.55 if questionnaire else 0.3,
             reason=["local rule fallback: questionnaire keyword mapping"],
-            warnings=["Qwen unavailable or not configured; local fallback used"],
-            input_data={"questionnaire": questionnaire}, output_data={"emotion_profile": profile},
+            warnings=fallback_warnings,
+            input_data={"questionnaire": questionnaire, "narrative_length": len(narrative_text) if narrative_text else 0},
+            output_data=fallback_output,
         )}
 
 

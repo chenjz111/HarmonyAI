@@ -29,7 +29,11 @@ export function submitAssessment(questionnaire) {
       reason: ['mock：使用提交的问卷数据'],
       warnings: [],
       input: { questionnaire },
-      output: { emotion_profile: { dominant_emotion: 'anxiety', dominant_score: 70 } },
+      output: {
+        emotion_profile: { dominant_emotion: 'anxiety', dominant_score: 70 },
+        analysis_mode: 'questionnaire_only',
+        degraded: false
+      },
       processing_time_ms: 200,
       timestamp: new Date().toISOString(),
       retry_count: 0,
@@ -37,13 +41,19 @@ export function submitAssessment(questionnaire) {
     })
   }
 
+  const data = {
+    user_id: 'u_001',
+    questionnaire
+  }
+  // Attach narrative_text if present in questionnaire
+  if (questionnaire.narrative_text) {
+    data.narrative_text = questionnaire.narrative_text
+  }
+
   return request({
     url: `${BASE_URL}/api/v1/assessment`,
     method: 'POST',
-    data: {
-      user_id: 'u_001',
-      questionnaire
-    }
+    data
   })
 }
 
