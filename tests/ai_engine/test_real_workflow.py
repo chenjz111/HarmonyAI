@@ -15,7 +15,7 @@ def test_real_workflow_runs_offline_and_persists_feedback(tmp_path):
     assert result["assessment"]["status"] in {"success", "degraded"}
     assert result["diagnosis"]["output"]["syndrome_diagnosis"]["primary"]["syndrome_id"] == "syd_001"
     assert result["prescription"]["output"]["prompt_template"]["template_id"] == "CN_V1"
-    assert result["generation"]["output"]["audio"]["url"].startswith("local://")
+    assert result["generation"]["output"]["audio"]["url"].endswith(".wav")
     assert result["feedback"]["status"] == "success"
     assert store.count() == 1
 
