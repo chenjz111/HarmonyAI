@@ -70,7 +70,12 @@ class AssessmentAgent:
         if self.llm is not None and questionnaire:
             try:
                 response = self.llm.complete_json(
-                    "Return JSON only. Assess emotions; do not diagnose medical disease.",
+                    "You are a medical assessment assistant. Analyze the user's questionnaire "
+                    "and return a JSON object with an emotion_profile containing: "
+                    "dominant_emotion (one of: anxiety, depression, anger, fear, overthinking, fatigue, grief, insomnia), "
+                    "dominant_score (0-100 integer), "
+                    "dimensions (object with each detected emotion as key, each containing score 0-100 and severity: mild/medium/severe). "
+                    "Return ONLY valid JSON, no explanation.",
                     json.dumps(questionnaire, ensure_ascii=False),
                 )
                 if not isinstance(response, dict):
@@ -122,7 +127,10 @@ class DiagnosisAgent:
         if self.llm is not None:
             try:
                 response = self.llm.complete_json(
-                    "Return JSON only with syndrome_id and confidence. Use only the supplied MVP syndrome IDs.",
+                    "You are a TCM (Traditional Chinese Medicine) diagnosis assistant. "
+                    "Based on the emotion profile, determine the most likely syndrome from the allowed_ids list. "
+                    "Return JSON with: syndrome_id (must be one of allowed_ids), confidence (0-1 float). "
+                    "Return ONLY valid JSON, no explanation.",
                     json.dumps({"emotion_profile": profile, "allowed_ids": list(MVP_SYNDROMES)}, ensure_ascii=False),
                 )
                 if not isinstance(response, dict):
