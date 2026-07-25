@@ -9,10 +9,15 @@ export default {
       // 页面状态：idle（初始） / loading（分析中） / error（出错）
       status: 'idle',
       errorMsg: '',
-      currentStep: 1,
-      totalSteps: 3,
+      currentStep: 0,
+      totalSteps: 4,
+      // 用户自由描述
+      freeText: '',
       steps: [
         {
+          title: '自由描述',
+          isFreeText: true
+        },
           title: '情绪状态',
           questions: [
             '我经常感到焦虑不安',
@@ -75,16 +80,22 @@ export default {
     this.tone = options.tone || ''
   },
   computed: {
+    isFreeTextStep() {
+      return this.steps[this.currentStep] && this.steps[this.currentStep].isFreeText
+    },
     currentQuestions() {
-      return this.steps[this.currentStep - 1].questions
+      const step = this.steps[this.currentStep]
+      return step && step.questions ? step.questions : []
     },
     currentTitle() {
-      return this.steps[this.currentStep - 1].title
+      return this.steps[this.currentStep] ? this.steps[this.currentStep].title : ''
     },
     progress() {
-      return Math.round((this.currentStep / this.totalSteps) * 100)
+      return Math.round(((this.currentStep) / (this.totalSteps - 1)) * 100)
     },
     canSubmit() {
+      // Free text step is optional — can always proceed
+      if (this.isFreeTextStep) return true
       const currentQs = this.currentQuestions
       for (let i = 0; i < currentQs.length; i++) {
         const key = `step${this.currentStep}_q${i}`
@@ -111,14 +122,14 @@ export default {
         return
       }
 
-      if (this.currentStep < this.totalSteps) {
+      if (this.currentStep < this.totalSteps - 1) {
         this.currentStep++
       } else {
         this.submitSurvey()
       }
     },
     prevStep() {
-      if (this.currentStep > 1) {
+      if (this.currentStep > 0) {
         this.currentStep--
       }
     },
@@ -134,6 +145,10 @@ export default {
           answer_count: Object.keys(this.answers).length,
           total_questions: 30,
           answers: this.answers
+        }
+        // Attach free text if user entered anything
+        if (this.freeText && this.freeText.trim()) {
+          questionnaire.free_text = this.freeText.trim()
         }
 
         const assessmentEnvelope = await submitAssessment(questionnaire)
@@ -184,7 +199,21 @@ export default {
       <view class="progress-track">
         <view class="progress-fill" :style="{ width: progress + '%' }"></view>
       </view>
-      <text class="progress-text">{{ currentStep }} / {{ totalSteps }} {{ currentTitle }}</text>
+      <text class="progress-text">{{ currentStep + 1 }} / {{ totalSteps }} {{ currentTitle }}</text>
+    </view>
+
+    <!-- 自由描述（第一步，可选） -->
+    <view class="free-text-card" v-if="isFreeTextStep && (status === 'idle' || status === 'error')">
+      <text class="free-text-label">用你自己的话描述一下（可选）</text>
+      <text class="free-text-hint">比如：最近发生了什么事、心情怎么样、身体有什么不舒服... 越详细 AI 越能理解你</text>
+      <textarea
+        class="free-text-area"
+        v-model="freeText"
+        placeholder="这两天工作压力很大，昨晚又没睡好，整个人都很焦虑..."
+        maxlength="500"
+        auto-height
+      ></textarea>
+      <text class="free-text-count">{{ freeText.length }}/500</text>
     </view>
 
     <!-- 正常问卷内容 -->
@@ -289,6 +318,47 @@ export default {
 .progress-text {
   font-size: 24rpx;
   color: #888780;
+  margin-top: 12rpx;
+  display: block;
+}
+
+/* 自由描述卡片 */
+.free-text-card {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 36rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+  border-left: 8rpx solid #534AB7;
+}
+.free-text-label {
+  font-size: 30rpx;
+  color: #2C2C2A;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 12rpx;
+}
+.free-text-hint {
+  font-size: 24rpx;
+  color: #888780;
+  display: block;
+  margin-bottom: 24rpx;
+  line-height: 1.6;
+}
+.free-text-area {
+  width: 100%;
+  min-height: 240rpx;
+  background: #F8F8F8;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  font-size: 28rpx;
+  color: #2C2C2A;
+  box-sizing: border-box;
+}
+.free-text-count {
+  text-align: right;
+  font-size: 22rpx;
+  color: #C8C8C8;
   margin-top: 12rpx;
   display: block;
 }
