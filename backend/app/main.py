@@ -82,3 +82,10 @@ async def demo():
     """Serve the standalone demo page."""
     demo_path = Path(__file__).resolve().parents[2] / "frontend" / "demo.html"
     return demo_path.read_text(encoding="utf-8")
+
+
+@app.get("/full-demo", response_class=HTMLResponse, include_in_schema=False)
+async def full_demo():
+    """Serve the full demo page (narrative + 30 questions + complete flow)."""
+    demo_path = Path(__file__).resolve().parents[2] / "frontend" / "full-demo.html"
+    return demo_path.read_text(encoding="utf-8")

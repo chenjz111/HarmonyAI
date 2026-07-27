@@ -11,13 +11,13 @@ export default {
       errorMsg: '',
       currentStep: 0,
       totalSteps: 4,
-      // 用户自由描述
-      freeText: '',
+      narrativeText: '',
       steps: [
         {
-          title: '自由描述',
-          isFreeText: true
+          title: '最近发生了什么？',
+          isNarrative: true
         },
+        {
           title: '情绪状态',
           questions: [
             '我经常感到焦虑不安',
@@ -80,8 +80,8 @@ export default {
     this.tone = options.tone || ''
   },
   computed: {
-    isFreeTextStep() {
-      return this.steps[this.currentStep] && this.steps[this.currentStep].isFreeText
+    isNarrativeStep() {
+      return this.steps[this.currentStep] && this.steps[this.currentStep].isNarrative
     },
     currentQuestions() {
       const step = this.steps[this.currentStep]
@@ -94,8 +94,7 @@ export default {
       return Math.round(((this.currentStep) / (this.totalSteps - 1)) * 100)
     },
     canSubmit() {
-      // Free text step is optional — can always proceed
-      if (this.isFreeTextStep) return true
+      if (this.isNarrativeStep) return true
       const currentQs = this.currentQuestions
       for (let i = 0; i < currentQs.length; i++) {
         const key = `step${this.currentStep}_q${i}`
@@ -146,9 +145,9 @@ export default {
           total_questions: 30,
           answers: this.answers
         }
-        // Attach free text if user entered anything
-        if (this.freeText && this.freeText.trim()) {
-          questionnaire.free_text = this.freeText.trim()
+        // Attach narrative_text if user entered anything
+        if (this.narrativeText && this.narrativeText.trim()) {
+          questionnaire.narrative_text = this.narrativeText.trim()
         }
 
         const assessmentEnvelope = await submitAssessment(questionnaire)
@@ -202,22 +201,23 @@ export default {
       <text class="progress-text">{{ currentStep + 1 }} / {{ totalSteps }} {{ currentTitle }}</text>
     </view>
 
-    <!-- 自由描述（第一步，可选） -->
-    <view class="free-text-card" v-if="isFreeTextStep && (status === 'idle' || status === 'error')">
-      <text class="free-text-label">用你自己的话描述一下（可选）</text>
-      <text class="free-text-hint">比如：最近发生了什么事、心情怎么样、身体有什么不舒服... 越详细 AI 越能理解你</text>
+    <!-- 叙事输入（第一步，可选） -->
+    <view class="narrative-card" v-if="isNarrativeStep && (status === 'idle' || status === 'error')">
+      <text class="narrative-title">最近发生了什么？</text>
+      <text class="narrative-hint">描述最近几天经历的事情、身体状态和感受。越详细，AI 越能理解你。AI 不会根据这段文字直接诊断，只是辅助理解你的状态。</text>
+      <text class="narrative-privacy">请勿填写姓名、电话、身份证等个人敏感信息</text>
       <textarea
-        class="free-text-area"
-        v-model="freeText"
-        placeholder="这两天工作压力很大，昨晚又没睡好，整个人都很焦虑..."
-        maxlength="500"
+        class="narrative-area"
+        v-model="narrativeText"
+        placeholder="比如：这两周工作压力很大，老板催项目催得紧，昨晚又失眠了，今天胸口闷闷的..."
+        :maxlength="500"
         auto-height
       ></textarea>
-      <text class="free-text-count">{{ freeText.length }}/500</text>
+      <text class="narrative-count">{{ narrativeText.length }}/500</text>
     </view>
 
     <!-- 正常问卷内容 -->
-    <view class="question-list" v-if="status === 'idle' || status === 'error'">
+    <view class="question-list" v-if="!isNarrativeStep && (status === 'idle' || status === 'error')">
       <view
         v-for="(question, index) in currentQuestions"
         :key="index"
@@ -262,13 +262,13 @@ export default {
     <view class="btn-group" v-if="status === 'idle' || status === 'error'">
       <view
         class="btn btn-secondary"
-        :class="{ disabled: currentStep === 1 }"
+        :class="{ disabled: currentStep === 0 }"
         @click="prevStep"
       >
         <text class="btn-text">上一步</text>
       </view>
       <view class="btn btn-primary" @click="nextStep">
-        <text class="btn-text">{{ currentStep < totalSteps ? '下一步' : '提交评估' }}</text>
+        <text class="btn-text">{{ isNarrativeStep ? '开始问卷' : (currentStep < totalSteps - 1 ? '下一步' : '提交评估') }}</text>
       </view>
     </view>
   </view>
@@ -322,8 +322,8 @@ export default {
   display: block;
 }
 
-/* 自由描述卡片 */
-.free-text-card {
+/* 叙事输入卡片 */
+.narrative-card {
   background: #fff;
   border-radius: 24rpx;
   padding: 36rpx;
@@ -331,21 +331,27 @@ export default {
   box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
   border-left: 8rpx solid #534AB7;
 }
-.free-text-label {
-  font-size: 30rpx;
+.narrative-title {
+  font-size: 32rpx;
   color: #2C2C2A;
   font-weight: 600;
   display: block;
   margin-bottom: 12rpx;
 }
-.free-text-hint {
+.narrative-hint {
   font-size: 24rpx;
   color: #888780;
   display: block;
-  margin-bottom: 24rpx;
+  margin-bottom: 10rpx;
   line-height: 1.6;
 }
-.free-text-area {
+.narrative-privacy {
+  font-size: 22rpx;
+  color: #E74C3C;
+  display: block;
+  margin-bottom: 20rpx;
+}
+.narrative-area {
   width: 100%;
   min-height: 240rpx;
   background: #F8F8F8;
@@ -355,7 +361,7 @@ export default {
   color: #2C2C2A;
   box-sizing: border-box;
 }
-.free-text-count {
+.narrative-count {
   text-align: right;
   font-size: 22rpx;
   color: #C8C8C8;
