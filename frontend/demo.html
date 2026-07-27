@@ -164,10 +164,14 @@ async function analyze() {
   try {
     // Step 1: Assessment
     updateDot(0);
+    const assessBody = { questionnaire: { free_text: freeText } };
+    if (freeText) {
+      assessBody.narrative_text = freeText;
+    }
     const assessResp = await fetch(`${BASE_URL}/api/v1/assessment`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ questionnaire: { free_text: freeText } })
+      body: JSON.stringify(assessBody)
     });
     const assessment = await assessResp.json();
     updateDot(1);
@@ -189,6 +193,11 @@ async function analyze() {
     document.getElementById('emotionBars').innerHTML = barsHtml;
     document.getElementById('dominant').textContent = `${ep.dominant_emotion} ${ep.dominant_score}分`;
     document.getElementById('confidence').textContent = `${Math.round(assessment.confidence * 100)}%`;
+    // Show analysis mode
+    const modeTag = document.createElement('span');
+    modeTag.style.cssText = 'font-size:11px;background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:10px;margin-left:8px;';
+    modeTag.textContent = assessment.output?.analysis_mode === 'text_and_questionnaire' ? '文本+问卷' : '仅问卷';
+    document.getElementById('confidence').appendChild(modeTag);
 
     if (assessment.degradation_triggered || assessment.status === 'degraded') {
       const w = document.getElementById('degraded-warning');
