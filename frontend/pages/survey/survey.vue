@@ -17,6 +17,7 @@ export default {
           title: '最近发生了什么？',
           isNarrative: true
         },
+        {
           title: '情绪状态',
           questions: [
             '我经常感到焦虑不安',
