@@ -160,7 +160,7 @@ OCR 降级响应仍可使用 HTTP 200，并以业务状态表达：
 {
   "session_id": "sess_20260728_a13f9c",
   "confirmed": true,
-  "confirmed_text": "主诉：近一周入睡困难，白天疲惫。",
+  "document_text": "主诉：近一周入睡困难，白天疲惫。",
   "redactions_confirmed": true
 }
 ```
@@ -172,6 +172,7 @@ OCR 降级响应仍可使用 HTTP 200，并以业务状态表达：
   "success": true,
   "data": {
     "document_id": "doc_20260728_21c8e4",
+    "document_text": "主诉：近一周入睡困难，白天疲惫。",
     "ocr_status": "confirmed",
     "confirmed_at": "2026-07-28T20:02:00+08:00"
   },
@@ -193,8 +194,9 @@ OCR 降级响应仍可使用 HTTP 200，并以业务状态表达：
   "user_id": "demo_user_001",
   "inputs": {
     "document_id": "doc_20260728_21c8e4",
+    "document_text": "主诉：近一周入睡困难，白天疲惫。",
     "narrative_text": "最近要考试，晚上脑子停不下来，白天很累。",
-    "questionnaire": {
+    "questionnaire_answers": {
       "schema_version": "questionnaire_v2.0",
       "time_window_days": 7,
       "answers": [
@@ -220,7 +222,7 @@ OCR 降级响应仍可使用 HTTP 200，并以业务状态表达：
     "session_id": "sess_20260728_a13f9c",
     "agent_id": "assessment_agent",
     "status": "success",
-    "analysis_mode": "document_text_questionnaire",
+    "analysis_mode": "document_narrative_questionnaire",
     "sources_used": [
       {
         "source": "document",
@@ -235,32 +237,34 @@ OCR 降级响应仍可使用 HTTP 200，并以业务状态表达：
         "status": "used"
       }
     ],
-    "state_summary": {
+    "emotion_profile": {
       "primary_states": ["紧张", "反复思虑"],
       "secondary_states": ["疲惫", "睡眠困扰"],
-      "summary": "你过去一周较常出现考试相关担忧和反复思虑，并伴有睡眠与精力变化。"
+      "dimension_scores": {
+        "tension_worry": 75,
+        "overthinking": 75
+      },
+      "tcm_emotion_candidates": [
+        {
+          "emotion": "思",
+          "confidence": 0.78
+        },
+        {
+          "emotion": "恐",
+          "confidence": 0.35
+        }
+      ]
     },
-    "dimensions": {
-      "tension_worry": 75,
-      "overthinking": 75,
+    "physical_profile": {
       "sleep_disturbance": 75,
-      "low_energy": 75
-    },
-    "context": {
-      "triggers": ["考试压力", "担心表现不理想"],
+      "low_energy": 75,
       "physical_signals": ["入睡困难", "白天疲惫"]
     },
-    "tcm_emotion_candidates": [
-      {
-        "emotion": "思",
-        "confidence": 0.78
-      },
-      {
-        "emotion": "恐",
-        "confidence": 0.35
-      }
-    ],
-    "evidence": [
+    "life_events": {
+      "triggers": ["考试压力", "担心表现不理想"]
+    },
+    "assessment_summary": "你过去一周较常出现考试相关担忧和反复思虑，并伴有睡眠与精力变化。",
+    "extracted_evidence": [
       {
         "claim": "反复思虑较明显",
         "sources": ["narrative", "questionnaire:q03"],
@@ -269,10 +273,7 @@ OCR 降级响应仍可使用 HTTP 200，并以业务状态表达：
     ],
     "conflicts": [],
     "missing_information": [],
-    "safety": {
-      "level": "none",
-      "flags": []
-    },
+    "safety_flags": [],
     "degradation": {
       "triggered": false,
       "fallback": null
@@ -303,10 +304,22 @@ Qwen 降级响应：
         "status": "unavailable"
       }
     ],
-    "dimensions": {
-      "tension_worry": 75,
-      "overthinking": 75
+    "emotion_profile": {
+      "primary_states": ["紧张", "反复思虑"],
+      "secondary_states": [],
+      "dimension_scores": {
+        "tension_worry": 75,
+        "overthinking": 75
+      },
+      "tcm_emotion_candidates": []
     },
+    "physical_profile": {
+      "sleep_disturbance": 0,
+      "low_energy": 0,
+      "physical_signals": []
+    },
+    "extracted_evidence": [],
+    "safety_flags": [],
     "degradation": {
       "triggered": true,
       "reason_code": "QWEN_UNAVAILABLE",
@@ -319,6 +332,15 @@ Qwen 降级响应：
   "error": null
 }
 ```
+
+`analysis_mode` 只使用以下枚举：
+
+- `document_narrative_questionnaire`：材料、自由描述和问卷均参与；
+- `document_questionnaire`：自由描述跳过或不可用；
+- `narrative_questionnaire`：未上传材料；
+- `questionnaire_only`：材料与自由描述均未使用，或 OCR/Qwen 降级。
+
+Assessment v2 的规范字段固定为 `document_id`、`document_text`、`narrative_text`、`questionnaire_answers`、`analysis_mode`、`emotion_profile`、`physical_profile`、`extracted_evidence` 和 `safety_flags`。其他展示字段不得替代这些契约字段。
 
 ### `PATCH /api/v2/assessments/{assessment_id}/confirmation`
 
@@ -434,34 +456,27 @@ Qwen 降级响应：
     "agent_id": "music_agent",
     "legacy_alias": "generation_agent",
     "status": "success",
-    "generation_mode": "matched",
-    "track": {
-      "track_id": "local_gong_001",
-      "title": "宫调·静心",
-      "audio_url": "/static/music/gong-demo.wav",
-      "duration_seconds": 900,
-      "source": "local_library",
-      "rights_note": "比赛演示授权曲目"
-    },
-    "music_parameters": {
-      "tone_id": "gong",
-      "tone_name": "宫调",
-      "bpm": 58,
-      "instruments": ["古琴", "洞箫"],
-      "ambient_sounds": ["流水"],
-      "recommended_duration_minutes": 15
-    },
+    "music_id": "music_gong_001",
+    "title": "宫调·静心",
+    "source_type": "matched",
+    "stream_url": "/static/music/gong-demo.wav",
+    "mode": "宫调",
+    "bpm": 58,
+    "duration_seconds": 900,
+    "instruments": ["古琴", "洞箫"],
+    "ambient_sounds": ["流水"],
+    "rights_note": "比赛演示授权曲目",
     "match_explanation": [
       "处方要求较低 BPM 和柔和国风乐器",
       "个人偏好保留古琴并降低高频元素"
     ],
-    "fallback_track_id": "local_default_001"
+    "fallback_music_id": "music_default_001"
   },
   "error": null
 }
 ```
 
-P0 只允许 `mode=matched`。`generated` 可保留为未来枚举，但当前请求应返回 `MODE_NOT_AVAILABLE`，不能伪装为已生成。
+P0 的 `source_type` 只允许 `matched`，表示本地曲库匹配结果，不表示 AI 实时生成。`generated` 可保留为未来枚举，但当前请求应返回 `MODE_NOT_AVAILABLE`，不能伪装为已生成。
 
 ## 8. Feedback
 
@@ -513,7 +528,7 @@ P0 只允许 `mode=matched`。`generated` 可保留为未来枚举，但当前�
     "links": {
       "assessment_id": "asmt_20260728_7d01bf",
       "prescription_id": "rx_20260728_98e0c2",
-      "track_id": "local_gong_001"
+      "music_id": "music_gong_001"
     }
   },
   "error": null
@@ -579,5 +594,6 @@ P0 只允许 `mode=matched`。`generated` 可保留为未来枚举，但当前�
 - 用户确认前不使用 OCR 原文作为可靠来源；
 - Session 查询不泄露完整敏感原文；
 - Feedback 响应固定 `global_rule_update=false`；
-- Music 响应明确 `generation_mode=matched`；
+- Music 响应统一使用 `music_id`、`title`、`source_type`、`stream_url`、`mode`、`bpm`、`duration_seconds` 和 `instruments`；
+- Music 响应明确 `source_type=matched`，且页面说明这是本地曲库匹配结果；
 - 所有用户可见文案避免医学诊断。

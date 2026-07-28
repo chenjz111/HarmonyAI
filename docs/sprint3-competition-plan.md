@@ -68,7 +68,7 @@ Sprint 3 不推翻 Sprint 2 已跑通的五 Agent 链路，而是在保持旧版
 | C-08 | `evaluation_agent` 与 `assessment_agent` 两种 ID 并存 | 需要清晰的 Agent 展示 | v2 规范使用 `assessment_agent`，读取旧数据时接受 `evaluation_agent` 别名 |
 | C-09 | `schemas/v1.0` 为空，部分路由直接接收 `dict` | 多源输入和反馈需要稳定契约 | v2 使用明确的 Pydantic/JSON Schema；v1 不破坏 |
 | C-10 | 安全检测目前主要覆盖自由文本中的自伤词 | 还需覆盖严重胸痛、呼吸困难等风险 | 安全规则前置到所有来源，并阻断普通音乐建议链路 |
-| C-11 | 生成接口目前始终返回本地音频 | P0 要求 Music Agent 结构化输出，但不做 SkyMusic | 明确标记 `generation_mode: matched`，不伪装实时生成 |
+| C-11 | 生成接口目前始终返回本地音频 | P0 要求 Music Agent 结构化输出，但不做 SkyMusic | 明确标记 `source_type: matched`，不伪装实时生成 |
 | C-12 | 新流程文字列出 9 个阶段，但要求文档描述 8 个页面 | 页面数量需一致 | 将“AI 分析中”作为“评估结果页”的加载状态，共 8 个路由页面 |
 
 ## 4. 范围

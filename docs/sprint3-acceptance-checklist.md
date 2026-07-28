@@ -148,9 +148,9 @@
 
 ### 4.3 Music Agent
 
-- [ ] 输出 `generation_mode`
+- [ ] 输出 `source_type=matched`
 - [ ] P0 只返回 `matched`
-- [ ] 输出 `track_id`、标题、URL、时长和来源
+- [ ] 输出 `music_id`、`title`、`stream_url`、`mode`、`bpm`、`duration_seconds`、`instruments` 和来源
 - [ ] 输出结构化音乐参数
 - [ ] 输出匹配解释
 - [ ] 不把本地曲目描述为实时 AI 生成
@@ -207,6 +207,7 @@
 - [ ] 个人偏好可以更新和撤销
 - [ ] 任何反馈都不能自动修改全局医学规则
 - [ ] 页面明确显示“用户主观反馈”
+- [ ] 页面明确说明五星评价不能证明辅助辨证结果正确
 
 ## 7. 隐私与安全验收
 

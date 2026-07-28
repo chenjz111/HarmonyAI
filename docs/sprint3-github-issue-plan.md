@@ -309,6 +309,7 @@ Sprint 2 已跑通五 Agent 链路，但入口、问卷、接口字段和用户�
 #### 详细任务
 
 - 接收用户确认后的病例提取文本；
+- 接收 `document_id` 与用户确认后的 `document_text`；
 - 接收 `narrative_text`；
 - 接收 `questionnaire_answers`；
 - 输出统一 `emotion_profile`、`physical_profile`、`life_events`；
@@ -484,7 +485,7 @@ Sprint 2 已跑通五 Agent 链路，但入口、问卷、接口字段和用户�
 - 扩展反馈请求和响应 Schema；
 - 保存整体星级、听前听后状态、放松程度和音乐匹配度；
 - 保存是否继续、是否收藏、不喜欢的音乐特征和文字反馈；
-- 关联 `session_id`、`prescription_id` 与 `track_id`；
+- 关联 `session_id`、`prescription_id` 与 `music_id`；
 - 兼容旧版 `rating`/`overall_satisfaction`；
 - 增量迁移可回退；
 - 固定禁止全局医学规则自动更新。
@@ -599,7 +600,7 @@ Sprint 2 已跑通五 Agent 链路，但入口、问卷、接口字段和用户�
 - 实现 AI 分析加载、成功、降级和安全阻断状态；
 - 展示多维状态画像、辅助辨证倾向和输入依据；
 - 展示音乐推荐原因；
-- 根据 `track_id` 与 `audio_url/stream_url` 播放；
+- 根据 `music_id` 与 `stream_url` 播放；
 - 实现 Feedback 2.0 表单；
 - 增加错误、重试和降级提示；
 - 完成页只展示真实保存结果。
@@ -733,7 +734,8 @@ Sprint 2 已跑通五 Agent 链路，但入口、问卷、接口字段和用户�
 - 有稳定演示视频；
 - 报名材料完整；
 - 可以回退到 Sprint 2 稳定版本；
-- 本地匹配音乐不被描述为实时生成。
+- Music 输出统一使用 `music_id`、`title`、`source_type`、`stream_url`、`mode`、`bpm`、`duration_seconds` 和 `instruments`；
+- `source_type=matched` 的音乐明确为本地曲库匹配，不被描述为实时生成。
 
 #### 依赖 Issue
 

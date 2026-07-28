@@ -127,7 +127,8 @@
 
 - 依赖肖宇翔冻结问卷维度和安全规则；
 - 依赖蔡子鑫提供文档 OCR 确认文本与持久化接口；
-- 输出 Schema 是彭翔联调的前置依赖。
+- 输出 Schema 是彭翔联调的前置依赖；
+- Assessment Schema 固定使用 `document_id`、`document_text`、`narrative_text`、`questionnaire_answers`、`analysis_mode`、`emotion_profile`、`physical_profile`、`extracted_evidence` 和 `safety_flags`。
 
 ## 5. 蔡子鑫：Backend Platform Engineer
 
@@ -224,6 +225,7 @@
 
 - 依赖肖宇翔提供最终问卷和文案；
 - 依赖钟睿宸、蔡子鑫提供固定 Schema、mock 和错误码；
+- 播放器统一消费 `music_id`、`title`、`source_type`、`stream_url`、`mode`、`bpm`、`duration_seconds` 和 `instruments`。
 - 由陈家智统一验收视觉与演示节奏。
 
 ## 7. 任务依赖

@@ -48,7 +48,7 @@ Feedback 2.0 将当前“1—5 星 + 选填评论”升级为可用于比较听�
 疲劳变化 = 听后疲劳 - 听前疲劳
 ```
 
-负数表示用户主观评分下降。页面必须标注“用户主观反馈”，不能写成治疗效果。
+负数表示用户主观评分下降。页面必须标注“用户主观反馈”，不能写成治疗效果。五星评价只代表用户对本次音乐体验的主观满意度，不能用于证明辅助辨证结果正确。
 
 ## 3. 反馈字段
 
@@ -88,7 +88,7 @@ Feedback 2.0 将当前“1—5 星 + 选填评论”升级为可用于比较听�
   "schema_version": "feedback_v2.0",
   "session_id": "sess_20260728_ab12cd",
   "prescription_id": "rx_20260728_ab12cd",
-  "track_id": "local_gong_001",
+  "music_id": "music_gong_001",
   "pre_state": {
     "tension": 7,
     "body_tension": 6,
@@ -175,7 +175,7 @@ Sprint 3 建议做增量迁移，不删除旧字段：
 
 - `schema_version`
 - `prescription_id`
-- `track_id`
+- `music_id`
 - `pre_state_json`
 - `post_state_json`
 - `subjective_change_label`
@@ -316,4 +316,5 @@ Feedback Agent 不应只将星级映射为 `continue/adjust/stop`。建议输出
 - 保存失败不伪造成功；
 - 单次反馈不会修改全局医学规则；
 - Qwen 关闭时反馈仍可计算 delta 并更新个人偏好；
-- 页面明确说明变化是用户主观反馈。
+- 页面明确说明变化是用户主观反馈；
+- 页面明确说明五星评价不能证明辅助辨证结果正确。
