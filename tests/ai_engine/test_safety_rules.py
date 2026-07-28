@@ -452,6 +452,27 @@ def test_candidate_exclusion_does_not_quadratically_rescan_clause_prefix(
     assert doubled_scan <= max(64, smaller_scan * 3)
 
 
+def test_local_context_rfind_is_bounded_to_candidate_window():
+    rfind_calls = []
+
+    class TrackingClause(str):
+        def rfind(self, substring, start=0, end=None):
+            rfind_calls.append((substring, start, end))
+            return super().rfind(
+                substring,
+                start,
+                len(self) if end is None else end,
+            )
+
+    clause = TrackingClause("x" * 200)
+
+    assert safety_rules._local_context(clause, 200) == (152, "x" * 48)
+    assert rfind_calls == [
+        (",", 152, 200),
+        ("，", 152, 200),
+    ]
+
+
 @pytest.mark.parametrize(
     ("narrative_text", "expected_flag", "expected_reason_code"),
     [

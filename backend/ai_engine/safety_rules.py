@@ -286,11 +286,10 @@ def _candidate_is_excluded(
     context: _ClauseContext,
 ) -> bool:
     candidate_start = candidate.start()
-    delimiter_index = max(
-        clause.rfind(",", 0, candidate_start),
-        clause.rfind("，", 0, candidate_start),
+    local_start, nearby_prefix = _local_context(
+        clause,
+        candidate_start,
     )
-    local_start = max(delimiter_index + 1, candidate_start - 48)
     if (
         context.has_guidance
         and _has_position_between(
@@ -301,7 +300,6 @@ def _candidate_is_excluded(
     ):
         return True
 
-    nearby_prefix = clause[local_start:candidate_start]
     if (
         _CHINESE_NEGATION_RE.search(nearby_prefix)
         or _ENGLISH_NEGATION_RE.search(nearby_prefix)
@@ -313,6 +311,19 @@ def _candidate_is_excluded(
         candidate,
         context,
     )
+
+
+def _local_context(
+    clause: str,
+    candidate_start: int,
+) -> tuple[int, str]:
+    window_start = max(0, candidate_start - 48)
+    delimiter_index = max(
+        clause.rfind(",", window_start, candidate_start),
+        clause.rfind("，", window_start, candidate_start),
+    )
+    local_start = max(window_start, delimiter_index + 1)
+    return local_start, clause[local_start:candidate_start]
 
 
 def _has_position_between(
