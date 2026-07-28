@@ -42,7 +42,8 @@ _RISK_PATTERNS = {
         re.compile(
             r"\b(?:want(?:ing)?|plan(?:ning)?|intend(?:ing)?|"
             r"think(?:ing)?|consider(?:ing)?|feel(?:ing)?)\b"
-            r".{0,32}\b(?:die|suicide|suicidal|self[- ]harm)\b"
+            r"(?:(?![,，;；]|\b(?:but|however|yet)\b).){0,32}?"
+            r"\b(?:die|suicide|suicidal|self[- ]harm)\b"
         ),
         re.compile(
             r"\b(?:suicidal\s+(?:thoughts?|plan)|"

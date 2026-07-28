@@ -474,6 +474,27 @@ def test_local_context_rfind_is_bounded_to_candidate_window():
 
 
 @pytest.mark.parametrize(
+    "narrative_text",
+    [
+        "I do not want to die, but I am now planning suicide.",
+        "I am not thinking about suicide, but I now plan to kill myself.",
+    ],
+)
+def test_negated_intent_does_not_consume_later_direct_self_harm_risk(
+    narrative_text,
+):
+    result = evaluate_safety(narrative_text=narrative_text)
+
+    assert result == {
+        "status": "blocked_safety",
+        "level": "high",
+        "flags": ["self_harm_thoughts"],
+        "reason_codes": ["SAFETY_SELF_HARM_OR_SUICIDE"],
+        "block_standard_prescription": True,
+    }
+
+
+@pytest.mark.parametrize(
     ("narrative_text", "expected_flag", "expected_reason_code"),
     [
         (
