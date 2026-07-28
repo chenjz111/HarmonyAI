@@ -86,15 +86,20 @@ def run_diagnosis_v2(
             warnings.append(warning)
             reason_codes.append(reason_code)
         elif model_selection is not None:
-            selected = _candidate_for_id(model_selection, candidates) or _tendency(
-                model_selection,
-                75.0,
-                list(_LOCAL_RULES[model_selection][:2]),
-            )
-            primary = selected
-            secondary = [
-                candidate for candidate in candidates if candidate["id"] != selected["id"]
-            ]
+            model_candidate = _candidate_for_id(model_selection, candidates)
+            if model_candidate is None:
+                warnings.append(
+                    "LLM建议未通过本地多维证据门槛，已保留本地候选。"
+                )
+                reason_codes.append("LLM_UNSUPPORTED_TENDENCY")
+            else:
+                selected = model_candidate
+                primary = selected
+                secondary = [
+                    candidate
+                    for candidate in candidates
+                    if candidate["id"] != selected["id"]
+                ]
 
     if assessment_data.get("status") == "degraded":
         reason_codes.append("ASSESSMENT_DEGRADED")
@@ -134,7 +139,7 @@ def _local_candidates(value: object) -> list[dict[str, object]]:
         supported = [
             dimension
             for dimension in rule_dimensions
-            if _score(dimensions.get(dimension)) >= 50
+            if _score(dimensions.get(dimension)) > 0
         ]
         if len(supported) < 2:
             continue

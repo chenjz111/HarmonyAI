@@ -43,6 +43,12 @@ class FailingKnowledgeStore:
         raise OSError("knowledge unavailable")
 
 
+class RuntimeFailingKnowledgeStore:
+    def query(self, query_text, limit=3):
+        del query_text, limit
+        raise RuntimeError("unexpected knowledge failure")
+
+
 def assessment(
     *,
     status="success",
@@ -128,7 +134,22 @@ def normal_diagnosis(**overrides):
 def test_multiple_independent_dimensions_create_explainable_whitelisted_tendency():
     from backend.ai_engine.diagnosis_v2 import run_diagnosis_v2
 
-    result = run_diagnosis_v2(assessment())
+    result = run_diagnosis_v2(
+        assessment(
+            dimensions={
+                "tension_worry": 100,
+                "overthinking": 0,
+                "irritability_anger": 75,
+                "low_mood": 0,
+                "interest_loss": 0,
+                "fear_unease": 0,
+                "sleep_disturbance": 0,
+                "low_energy": 0,
+                "appetite_change": 0,
+                "daily_impact": 0,
+            }
+        )
+    )
 
     assert result["status"] == "success"
     assert result["presentation"] == {"title": "辅助辨证倾向"}
@@ -189,6 +210,37 @@ def test_one_question_cannot_directly_determine_a_tendency():
     assert result["degradation"] == {
         "active": True,
         "reason_codes": ["INSUFFICIENT_INDEPENDENT_DIMENSIONS"],
+    }
+
+
+def test_two_independent_positive_dimension_scores_are_a_local_candidate():
+    from backend.ai_engine.diagnosis_v2 import run_diagnosis_v2
+
+    result = run_diagnosis_v2(
+        assessment(
+            dimensions={
+                "tension_worry": 25,
+                "overthinking": 25,
+                "irritability_anger": 0,
+                "low_mood": 0,
+                "interest_loss": 0,
+                "fear_unease": 0,
+                "sleep_disturbance": 0,
+                "low_energy": 0,
+                "appetite_change": 0,
+                "daily_impact": 0,
+            }
+        )
+    )
+
+    assert result["status"] == "success"
+    assert result["primary_tendency"] == {
+        "id": "syd_002",
+        "label": "肝气郁结",
+        "score": 25.0,
+        "element": "木",
+        "organs": ["肝"],
+        "supporting_dimensions": ["tension_worry", "overthinking"],
     }
 
 
@@ -264,19 +316,71 @@ def test_invalid_or_unknown_llm_suggestion_falls_back_to_local_rules(
     assert result["degradation"]["active"] is True
 
 
-def test_valid_llm_can_only_select_an_allowed_tendency_without_medical_conclusion():
+def test_llm_whitelist_cannot_claim_a_sleep_supported_tendency_when_sleep_is_zero():
     from backend.ai_engine.diagnosis_v2 import run_diagnosis_v2
 
     result = run_diagnosis_v2(
-        assessment(),
+        assessment(
+            dimensions={
+                "tension_worry": 100,
+                "overthinking": 0,
+                "irritability_anger": 75,
+                "low_mood": 0,
+                "interest_loss": 0,
+                "fear_unease": 0,
+                "sleep_disturbance": 0,
+                "low_energy": 0,
+                "appetite_change": 0,
+                "daily_impact": 0,
+            }
+        ),
         llm=FixedJsonLLM({"tendency_id": "syd_003", "confidence": 0.75}),
     )
 
-    assert result["status"] == "success"
-    assert result["primary_tendency"]["id"] == "syd_003"
-    assert result["primary_tendency"]["score"] == 75.0
-    assert result["warnings"] == []
-    assert result["degradation"] == {"active": False, "reason_codes": []}
+    assert result["status"] == "degraded"
+    assert result["primary_tendency"]["id"] == "syd_001"
+    assert result["primary_tendency"]["supporting_dimensions"] == [
+        "tension_worry",
+        "irritability_anger",
+    ]
+    assert result["secondary_tendencies"] == []
+    assert "sleep_disturbance" not in json.dumps(result, ensure_ascii=False)
+    assert result["warnings"] == [
+        "LLM建议未通过本地多维证据门槛，已保留本地候选。"
+    ]
+    assert result["degradation"] == {
+        "active": True,
+        "reason_codes": ["LLM_UNSUPPORTED_TENDENCY"],
+    }
+
+
+def test_llm_cannot_create_a_tendency_when_no_local_multidimensional_candidate_exists():
+    from backend.ai_engine.diagnosis_v2 import run_diagnosis_v2
+    from backend.ai_engine.prescription_v2 import run_prescription_v2
+
+    result = run_diagnosis_v2(
+        assessment(
+            dimensions={
+                "tension_worry": 0,
+                "overthinking": 0,
+                "irritability_anger": 75,
+                "low_mood": 0,
+                "interest_loss": 0,
+                "fear_unease": 0,
+                "sleep_disturbance": 0,
+                "low_energy": 0,
+                "appetite_change": 0,
+                "daily_impact": 0,
+            }
+        ),
+        llm=FixedJsonLLM({"tendency_id": "syd_003", "confidence": 0.75}),
+    )
+
+    assert result["status"] == "degraded"
+    assert result["primary_tendency"] is None
+    assert result["secondary_tendencies"] == []
+    assert result["confidence"] == {"level": "low", "score": 0.2}
+    assert run_prescription_v2(result)["generation_mode"] == "withheld"
 
 
 def test_malformed_llm_json_exception_falls_back_to_local_rules():
@@ -366,6 +470,25 @@ def test_prescription_degrades_knowledge_but_keeps_reviewed_local_music_rules(
     assert result["knowledge_degradation"] == {
         "active": True,
         "reason_codes": [expected_reason],
+    }
+
+
+def test_runtime_error_from_knowledge_query_degrades_without_losing_local_music_parameters():
+    from backend.ai_engine.prescription_v2 import run_prescription_v2
+
+    result = run_prescription_v2(
+        normal_diagnosis(),
+        knowledge_store=RuntimeFailingKnowledgeStore(),
+    )
+
+    assert result["status"] == "success"
+    assert result["generation_mode"] == "matched"
+    assert result["music_feature"]["tone_id"] == "jiao"
+    assert result["evidence"] == []
+    assert result["warnings"] == ["知识检索失败，已使用审核本地规则。"]
+    assert result["knowledge_degradation"] == {
+        "active": True,
+        "reason_codes": ["KNOWLEDGE_RETRIEVAL_FAILED"],
     }
 
 

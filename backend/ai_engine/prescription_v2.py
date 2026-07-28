@@ -133,7 +133,7 @@ def _knowledge_evidence(
             }
             for hit in hits
         ]
-    except (AttributeError, OSError, TypeError, ValueError):
+    except Exception:
         return (
             [],
             {"active": True, "reason_codes": ["KNOWLEDGE_RETRIEVAL_FAILED"]},
