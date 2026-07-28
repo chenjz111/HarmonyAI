@@ -105,6 +105,62 @@ def test_high_risk_chinese_and_english_text_blocks_standard_prescription(
     assert result["block_standard_prescription"] is True
 
 
+@pytest.mark.parametrize(
+    ("narrative_text", "expected_flag", "expected_reason_code"),
+    [
+        (
+            "我现在想去死。",
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            "我有明确的自杀计划。",
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            "I plan to commit suicide.",
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            "胸痛两个小时了。",
+            "severe_chest_pain",
+            "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
+        ),
+        (
+            "I have had chest pain for two hours.",
+            "severe_chest_pain",
+            "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
+        ),
+        (
+            "呼吸困难到一句完整话都说不出来。",
+            "severe_breathing_difficulty",
+            "SAFETY_SEVERE_BREATHING_DIFFICULTY",
+        ),
+        (
+            "I am too breathless to speak.",
+            "severe_breathing_difficulty",
+            "SAFETY_SEVERE_BREATHING_DIFFICULTY",
+        ),
+    ],
+)
+def test_composable_risk_concepts_block_without_full_sentence_enumeration(
+    narrative_text,
+    expected_flag,
+    expected_reason_code,
+):
+    result = evaluate_safety(narrative_text=narrative_text)
+
+    assert result == {
+        "status": "blocked_safety",
+        "level": "high",
+        "flags": [expected_flag],
+        "reason_codes": [expected_reason_code],
+        "block_standard_prescription": True,
+    }
+
+
 def test_exact_q12_safety_flags_map_to_fixed_reason_codes():
     result = evaluate_safety(
         questionnaire_safety_flags=[
@@ -204,6 +260,72 @@ def test_negated_resolved_and_conditional_contexts_do_not_block(narrative_text):
         "flags": [],
         "reason_codes": [],
         "block_standard_prescription": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "narrative_text",
+    [
+        "没有想自杀。",
+        "我不想伤害自己。",
+        "I do not want to die.",
+        "I am not thinking about suicide.",
+        "我曾经想自杀但现在已无这种想法。",
+        "I had thoughts of suicide in the past but no longer do.",
+        "患者没有严重胸痛。",
+        "No severe difficulty breathing.",
+        "如出现严重胸痛请立即就医。",
+        "如果喘不上气请立即就医。",
+    ],
+)
+def test_candidate_context_excludes_negated_resolved_and_conditional_risk(
+    narrative_text,
+):
+    result = evaluate_safety(narrative_text=narrative_text)
+
+    assert result == {
+        "status": "success",
+        "level": "none",
+        "flags": [],
+        "reason_codes": [],
+        "block_standard_prescription": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("narrative_text", "expected_flag", "expected_reason_code"),
+    [
+        (
+            "我不想自杀；但我现在想去死。",
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            "The patient denies severe chest pain; "
+            "I have had chest pain for two hours.",
+            "severe_chest_pain",
+            "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
+        ),
+        (
+            "未见明显呼吸困难。\n呼吸困难到一句完整话都说不出来。",
+            "severe_breathing_difficulty",
+            "SAFETY_SEVERE_BREATHING_DIFFICULTY",
+        ),
+    ],
+)
+def test_excluded_clause_does_not_hide_later_direct_risk(
+    narrative_text,
+    expected_flag,
+    expected_reason_code,
+):
+    result = evaluate_safety(narrative_text=narrative_text)
+
+    assert result == {
+        "status": "blocked_safety",
+        "level": "high",
+        "flags": [expected_flag],
+        "reason_codes": [expected_reason_code],
+        "block_standard_prescription": True,
     }
 
 
