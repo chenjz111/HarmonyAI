@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+import backend.ai_engine.assessment_v2 as assessment_v2
 from backend.ai_engine.assessment_v2 import run_assessment_v2
 from backend.ai_engine.providers import LLMProviderError
 
@@ -39,6 +40,16 @@ def questionnaire_answers():
         "q11_daily_impact": 0,
         "q12_physical_safety": ["fatigue"],
     }
+
+
+def assessment_submission(**overrides):
+    submission = {
+        "session_id": "session-task4",
+        "user_id": "user-task4",
+        "questionnaire": questionnaire_answers(),
+    }
+    submission.update(overrides)
+    return submission
 
 
 def assert_deterministic_questionnaire_fallback(result, reason_codes):
@@ -132,7 +143,7 @@ def test_qwen_not_configured_degrades_without_raising(monkeypatch):
     )
 
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
     )
 
     assert_deterministic_questionnaire_fallback(
@@ -153,7 +164,7 @@ def test_provider_timeout_and_error_degrade_without_raising(
     expected_reason,
 ):
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
         llm=ErrorJsonLLM(error),
     )
 
@@ -163,9 +174,84 @@ def test_provider_timeout_and_error_degrade_without_raising(
     )
 
 
+def test_unexpected_complete_json_error_degrades_without_raising():
+    result = run_assessment_v2(
+        assessment_submission(),
+        llm=ErrorJsonLLM(RuntimeError("unexpected provider failure")),
+    )
+
+    assert_deterministic_questionnaire_fallback(
+        result,
+        ["LLM_UNEXPECTED_ERROR"],
+    )
+
+
+def test_unexpected_provider_resolution_error_degrades_without_raising(
+    monkeypatch,
+):
+    def raise_unexpected_error():
+        raise RuntimeError("unexpected provider resolution failure")
+
+    monkeypatch.setattr(
+        "backend.ai_engine.assessment_v2.qwen_provider_from_env",
+        raise_unexpected_error,
+    )
+
+    result = run_assessment_v2(
+        assessment_submission(),
+    )
+
+    assert_deterministic_questionnaire_fallback(
+        result,
+        ["LLM_UNEXPECTED_ERROR"],
+    )
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_reason"),
+    [
+        (TimeoutError("resolution timeout"), "LLM_TIMEOUT"),
+        (LLMProviderError("resolution failed"), "LLM_PROVIDER_ERROR"),
+        (
+            json.JSONDecodeError("resolution json", "not-json", 0),
+            "LLM_INVALID_JSON",
+        ),
+    ],
+)
+def test_known_provider_resolution_errors_keep_specific_reasons(
+    monkeypatch,
+    error,
+    expected_reason,
+):
+    def raise_known_error():
+        raise error
+
+    monkeypatch.setattr(
+        "backend.ai_engine.assessment_v2.qwen_provider_from_env",
+        raise_known_error,
+    )
+
+    result = run_assessment_v2(
+        assessment_submission(),
+    )
+
+    assert_deterministic_questionnaire_fallback(
+        result,
+        [expected_reason],
+    )
+
+
+def test_base_exceptions_are_not_converted_to_degradation():
+    with pytest.raises(SystemExit):
+        run_assessment_v2(
+            assessment_submission(),
+            llm=ErrorJsonLLM(SystemExit(7)),
+        )
+
+
 def test_non_object_model_result_is_treated_as_invalid_json():
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
         llm=ResultJsonLLM("not-json-object"),
     )
 
@@ -177,7 +263,7 @@ def test_non_object_model_result_is_treated_as_invalid_json():
 
 def test_json_decode_error_degrades_without_raising():
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
         llm=ErrorJsonLLM(
             json.JSONDecodeError("invalid model json", "not-json", 0)
         ),
@@ -191,7 +277,7 @@ def test_json_decode_error_degrades_without_raising():
 
 def test_missing_required_model_field_discards_the_whole_result():
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
         llm=ResultJsonLLM(
             {
                 "state_summary": {"summary": "不得局部保留"},
@@ -210,18 +296,105 @@ def test_missing_required_model_field_discards_the_whole_result():
     "invalid_result",
     [
         {
-            "state_summary": "not-an-object",
-            "context": {},
+            "state_summary": {},
+            "context": {
+                "triggers": [],
+                "physical_signals": [],
+            },
             "evidence": [],
         },
         {
-            "state_summary": {},
+            "state_summary": {"summary": " \n "},
+            "context": {
+                "triggers": [],
+                "physical_signals": [],
+            },
+            "evidence": [],
+        },
+        {
+            "state_summary": {
+                "summary": "状态摘要",
+                "confidence": 0.8,
+            },
+            "context": {
+                "triggers": [],
+                "physical_signals": [],
+            },
+            "evidence": [],
+        },
+        {
+            "state_summary": "not-an-object",
+            "context": {
+                "triggers": [],
+                "physical_signals": [],
+            },
+            "evidence": [],
+        },
+        {
+            "state_summary": {"summary": "状态摘要"},
             "context": [],
             "evidence": [],
         },
         {
-            "state_summary": {},
+            "state_summary": {"summary": "状态摘要"},
             "context": {},
+            "evidence": [],
+        },
+        {
+            "state_summary": {"summary": "状态摘要"},
+            "context": {
+                "triggers": None,
+                "physical_signals": [],
+            },
+            "evidence": [],
+        },
+        {
+            "state_summary": {"summary": "状态摘要"},
+            "context": {
+                "triggers": "工作压力",
+                "physical_signals": [],
+            },
+            "evidence": [],
+        },
+        {
+            "state_summary": {"summary": "状态摘要"},
+            "context": {
+                "triggers": [],
+                "physical_signals": "fatigue",
+            },
+            "evidence": [],
+        },
+        {
+            "state_summary": {"summary": "状态摘要"},
+            "context": {
+                "triggers": ["工作压力", "工作压力"],
+                "physical_signals": [],
+            },
+            "evidence": [],
+        },
+        {
+            "state_summary": {"summary": "状态摘要"},
+            "context": {
+                "triggers": [" "],
+                "physical_signals": [],
+            },
+            "evidence": [],
+        },
+        {
+            "state_summary": {"summary": "状态摘要"},
+            "context": {
+                "triggers": [],
+                "physical_signals": [],
+                "sources_used": ["questionnaire"],
+            },
+            "evidence": [],
+        },
+        {
+            "state_summary": {"summary": "状态摘要"},
+            "context": {
+                "triggers": [],
+                "physical_signals": [],
+            },
             "evidence": [
                 {
                     "claim": "wrong type",
@@ -231,8 +404,11 @@ def test_missing_required_model_field_discards_the_whole_result():
             ],
         },
         {
-            "state_summary": {},
-            "context": {},
+            "state_summary": {"summary": "状态摘要"},
+            "context": {
+                "triggers": [],
+                "physical_signals": [],
+            },
             "evidence": [
                 {
                     "claim": "extra evidence field",
@@ -246,7 +422,7 @@ def test_missing_required_model_field_discards_the_whole_result():
 )
 def test_illegal_model_field_types_discard_the_whole_result(invalid_result):
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
         llm=ResultJsonLLM(invalid_result),
     )
 
@@ -271,11 +447,14 @@ def test_unknown_or_unavailable_evidence_source_discards_whole_model_result(
     unknown_source,
 ):
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
         llm=ResultJsonLLM(
             {
                 "state_summary": {"summary": "不得局部保留"},
-                "context": {},
+                "context": {
+                    "triggers": [],
+                    "physical_signals": [],
+                },
                 "evidence": [
                     {
                         "claim": "非法来源",
@@ -296,11 +475,15 @@ def test_unknown_or_unavailable_evidence_source_discards_whole_model_result(
 @pytest.mark.parametrize("medical_field", ["syndrome", "diagnosis"])
 def test_medical_conclusion_fields_discard_whole_model_result(medical_field):
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
         llm=ResultJsonLLM(
             {
                 "state_summary": {"summary": "不得局部保留"},
-                "context": {medical_field: "医学结论"},
+                "context": {
+                    "triggers": [],
+                    "physical_signals": [],
+                    medical_field: "医学结论",
+                },
                 "evidence": [],
             }
         ),
@@ -314,11 +497,14 @@ def test_medical_conclusion_fields_discard_whole_model_result(medical_field):
 
 def test_unknown_conflict_source_discards_whole_model_result():
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
         llm=ResultJsonLLM(
             {
                 "state_summary": {"summary": "不得局部保留"},
-                "context": {},
+                "context": {
+                    "triggers": [],
+                    "physical_signals": [],
+                },
                 "evidence": [],
                 "conflicts": [
                     {

@@ -2,7 +2,9 @@ import json
 
 import pytest
 
+import backend.ai_engine.assessment_v2 as assessment_v2
 from backend.ai_engine.assessment_v2 import run_assessment_v2
+from backend.ai_engine.questionnaire_v2 import QuestionnaireValidationError
 
 
 class RecordingJsonLLM:
@@ -32,6 +34,16 @@ def questionnaire_answers(q12=None):
     }
 
 
+def assessment_submission(**overrides):
+    submission = {
+        "session_id": "session-task4",
+        "user_id": "user-task4",
+        "questionnaire": questionnaire_answers(),
+    }
+    submission.update(overrides)
+    return submission
+
+
 def valid_model_response():
     return {
         "state_summary": {"summary": "近期压力感较明显。"},
@@ -48,6 +60,202 @@ def valid_model_response():
         ],
         "conflicts": [],
     }
+
+
+def test_typed_dict_input_contract_has_required_and_optional_fields():
+    assert assessment_v2.AssessmentV2Submission.__required_keys__ == frozenset(
+        {"session_id", "user_id", "questionnaire"}
+    )
+    assert assessment_v2.AssessmentV2Submission.__optional_keys__ == frozenset(
+        {"document", "narrative_text"}
+    )
+    assert assessment_v2.AssessmentDocumentInput.__required_keys__ == frozenset(
+        {"ocr_status", "confirmed_text"}
+    )
+
+
+@pytest.mark.parametrize("invalid_submission", [None, [], "submission"])
+def test_submission_must_be_a_mapping(invalid_submission):
+    with pytest.raises(assessment_v2.AssessmentValidationError) as error:
+        run_assessment_v2(invalid_submission)
+
+    assert str(error.value) == "submission must be a mapping"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value", "expected_message"),
+    [
+        (
+            "session_id",
+            "",
+            "session_id must be a non-empty string",
+        ),
+        (
+            "session_id",
+            " \n ",
+            "session_id must be a non-empty string",
+        ),
+        (
+            "session_id",
+            7,
+            "session_id must be a non-empty string",
+        ),
+        (
+            "user_id",
+            "",
+            "user_id must be a non-empty string",
+        ),
+        (
+            "user_id",
+            None,
+            "user_id must be a non-empty string",
+        ),
+    ],
+)
+def test_session_and_user_ids_must_be_non_empty_strings(
+    field,
+    invalid_value,
+    expected_message,
+):
+    submission = assessment_submission()
+    submission[field] = invalid_value
+
+    with pytest.raises(assessment_v2.AssessmentValidationError) as error:
+        run_assessment_v2(submission)
+
+    assert str(error.value) == expected_message
+
+
+@pytest.mark.parametrize("missing_field", ["session_id", "user_id"])
+def test_session_and_user_ids_are_required(missing_field):
+    submission = assessment_submission()
+    del submission[missing_field]
+
+    with pytest.raises(assessment_v2.AssessmentValidationError) as error:
+        run_assessment_v2(submission)
+
+    assert str(error.value) == (
+        f"{missing_field} must be a non-empty string"
+    )
+
+
+@pytest.mark.parametrize(
+    ("document", "expected_message"),
+    [
+        ("document text", "document must be a mapping or None"),
+        ([], "document must be a mapping or None"),
+        (
+            {"confirmed_text": "文本"},
+            "document.ocr_status is invalid",
+        ),
+        (
+            {
+                "ocr_status": "queued",
+                "confirmed_text": "文本",
+            },
+            "document.ocr_status is invalid",
+        ),
+        (
+            {"ocr_status": "pending"},
+            "document.confirmed_text must be a string or None",
+        ),
+        (
+            {
+                "ocr_status": "confirmed",
+                "confirmed_text": 123456,
+            },
+            "document.confirmed_text must be a string or None",
+        ),
+    ],
+)
+def test_document_runtime_contract_is_validated(document, expected_message):
+    with pytest.raises(assessment_v2.AssessmentValidationError) as error:
+        run_assessment_v2(assessment_submission(document=document))
+
+    assert str(error.value) == expected_message
+
+
+@pytest.mark.parametrize("narrative_text", [42, [], {"text": "描述"}])
+def test_narrative_must_be_text_or_none(narrative_text):
+    with pytest.raises(assessment_v2.AssessmentValidationError) as error:
+        run_assessment_v2(
+            assessment_submission(narrative_text=narrative_text)
+        )
+
+    assert str(error.value) == "narrative_text must be a string or None"
+
+
+@pytest.mark.parametrize(
+    ("questionnaire", "extra_input", "expected_flag"),
+    [
+        (
+            {
+                **questionnaire_answers(["self_harm_thoughts"]),
+                "q11_daily_impact": None,
+            },
+            {},
+            "self_harm_thoughts",
+        ),
+        (
+            {},
+            {"narrative_text": "我现在有明确的自杀计划。"},
+            "self_harm_thoughts",
+        ),
+        (
+            {},
+            {
+                "document": {
+                    "ocr_status": "confirmed",
+                    "confirmed_text": "记录显示患者持续胸痛两个小时。",
+                }
+            },
+            "severe_chest_pain",
+        ),
+    ],
+)
+def test_explicit_safety_risk_blocks_before_invalid_questionnaire_scoring(
+    questionnaire,
+    extra_input,
+    expected_flag,
+):
+    questionnaire.pop("q11_daily_impact", None)
+    llm = RecordingJsonLLM(valid_model_response())
+
+    result = run_assessment_v2(
+        assessment_submission(
+            questionnaire=questionnaire,
+            **extra_input,
+        ),
+        llm=llm,
+    )
+
+    assert result["status"] == "blocked_safety"
+    assert result["dimensions"] == {}
+    assert result["sources_used"][0] == {
+        "source": "questionnaire",
+        "status": "invalid",
+    }
+    assert result["safety"]["flags"] == [expected_flag]
+    assert result["degradation"] == {
+        "active": True,
+        "reason_codes": ["QUESTIONNAIRE_INVALID"],
+    }
+    assert result["evidence"] == []
+    assert llm.calls == []
+
+
+def test_non_risk_invalid_questionnaire_raises_fixed_assessment_error():
+    questionnaire = questionnaire_answers()
+    del questionnaire["q11_daily_impact"]
+
+    with pytest.raises(assessment_v2.AssessmentValidationError) as error:
+        run_assessment_v2(
+            assessment_submission(questionnaire=questionnaire),
+            llm=RecordingJsonLLM(valid_model_response()),
+        )
+
+    assert str(error.value) == "invalid assessment questionnaire"
+    assert isinstance(error.value.__cause__, QuestionnaireValidationError)
 
 
 @pytest.mark.parametrize(
@@ -136,6 +344,8 @@ def test_four_source_combinations_have_exact_modes_and_machine_readable_sources(
     result = run_assessment_v2(submission, llm=llm)
 
     assert result["agent_id"] == "assessment_agent"
+    assert result["session_id"] == "session-task4"
+    assert result["user_id"] == "user-task4"
     assert result["status"] == "success"
     assert result["analysis_mode"] == expected_mode
     assert result["sources_used"] == expected_sources
@@ -174,7 +384,7 @@ def test_model_dimensions_cannot_override_deterministic_questionnaire_scores():
     llm = RecordingJsonLLM(response)
 
     result = run_assessment_v2(
-        {"questionnaire": questionnaire_answers()},
+        assessment_submission(),
         llm=llm,
     )
 
@@ -199,13 +409,12 @@ def test_unconfirmed_document_text_never_reaches_llm_or_output(ocr_status):
     llm = RecordingJsonLLM(valid_model_response())
 
     result = run_assessment_v2(
-        {
-            "questionnaire": questionnaire_answers(),
-            "document": {
+        assessment_submission(
+            document={
                 "ocr_status": ocr_status,
                 "confirmed_text": secret_text,
             },
-        },
+        ),
         llm=llm,
     )
 
@@ -232,13 +441,12 @@ def test_model_echo_of_unconfirmed_ocr_is_discarded_from_output():
     llm = RecordingJsonLLM(response)
 
     result = run_assessment_v2(
-        {
-            "questionnaire": questionnaire_answers(),
-            "document": {
+        assessment_submission(
+            document={
                 "ocr_status": "pending",
                 "confirmed_text": secret_text,
             },
-        },
+        ),
         llm=llm,
     )
 
@@ -253,18 +461,78 @@ def test_model_echo_of_unconfirmed_ocr_is_discarded_from_output():
     assert secret_text not in json.dumps(result, ensure_ascii=False)
 
 
+@pytest.mark.parametrize(
+    ("unconfirmed_text", "model_summary"),
+    [
+        (
+            "PRIVATE full record ID-123456",
+            "记录编号 ID-123456 需要核对。",
+        ),
+        (
+            "未确认内容：患者近期连续多日睡眠质量明显下降",
+            "连续多日睡眠质量明显下降。",
+        ),
+    ],
+)
+def test_model_echo_of_sensitive_unconfirmed_ocr_fragment_is_discarded(
+    unconfirmed_text,
+    model_summary,
+):
+    response = valid_model_response()
+    response["state_summary"] = {"summary": model_summary}
+
+    result = run_assessment_v2(
+        assessment_submission(
+            document={
+                "ocr_status": "pending",
+                "confirmed_text": unconfirmed_text,
+            },
+        ),
+        llm=RecordingJsonLLM(response),
+    )
+
+    assert result["degradation"] == {
+        "active": True,
+        "reason_codes": [
+            "DOCUMENT_UNCONFIRMED",
+            "LLM_UNCONFIRMED_OCR_ECHO",
+        ],
+    }
+    assert model_summary not in json.dumps(result, ensure_ascii=False)
+
+
+def test_short_common_phrase_does_not_trigger_unconfirmed_ocr_echo_filter():
+    response = valid_model_response()
+    response["state_summary"] = {"summary": "睡眠不好"}
+
+    result = run_assessment_v2(
+        assessment_submission(
+            document={
+                "ocr_status": "pending",
+                "confirmed_text": "睡眠不好",
+            },
+        ),
+        llm=RecordingJsonLLM(response),
+    )
+
+    assert result["state_summary"] == {"summary": "睡眠不好"}
+    assert result["degradation"] == {
+        "active": True,
+        "reason_codes": ["DOCUMENT_UNCONFIRMED"],
+    }
+
+
 def test_blank_document_and_narrative_are_missing_sources():
     llm = RecordingJsonLLM(valid_model_response())
 
     result = run_assessment_v2(
-        {
-            "questionnaire": questionnaire_answers(),
-            "document": {
+        assessment_submission(
+            document={
                 "ocr_status": "confirmed",
                 "confirmed_text": " \n\t ",
             },
-            "narrative_text": " \t\n ",
-        },
+            narrative_text=" \t\n ",
+        ),
         llm=llm,
     )
 
@@ -301,6 +569,11 @@ def test_blank_document_and_narrative_are_missing_sources():
 )
 def test_safety_block_happens_before_llm_for_all_reliable_sources(submission):
     llm = RecordingJsonLLM(valid_model_response())
+    submission = {
+        "session_id": "session-task4",
+        "user_id": "user-task4",
+        **submission,
+    }
 
     result = run_assessment_v2(submission, llm=llm)
 
@@ -333,14 +606,13 @@ def test_structured_conflicts_are_validated_and_passed_without_a_winner():
     llm = RecordingJsonLLM(response)
 
     result = run_assessment_v2(
-        {
-            "questionnaire": questionnaire_answers(),
-            "document": {
+        assessment_submission(
+            document={
                 "ocr_status": "confirmed",
                 "confirmed_text": "记录：睡眠平稳。",
             },
-            "narrative_text": "最近睡眠不稳。",
-        },
+            narrative_text="最近睡眠不稳。",
+        ),
         llm=llm,
     )
 
@@ -367,7 +639,7 @@ def test_repeated_questionnaire_fallback_is_byte_for_byte_deterministic(
         "backend.ai_engine.assessment_v2.qwen_provider_from_env",
         lambda: None,
     )
-    submission = {"questionnaire": questionnaire_answers()}
+    submission = assessment_submission()
 
     first = json.dumps(
         run_assessment_v2(submission),
