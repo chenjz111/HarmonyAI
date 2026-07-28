@@ -1,0 +1,158 @@
+{
+  "schema_version": "safety_rules_v1.0",
+  "collection_id": "safety-rules",
+  "version": "1.0.0",
+  "created": "2026-07-28",
+  "author": "肖宇翔（nob）· Medical Knowledge Engineer",
+  "status": "reviewed-by-nob",
+  "spec_ref": "要求/questionnaire-v2-spec.md 第 7 节",
+  "design_principles": [
+    "高风险提示不依赖大模型，可由确定性规则触发",
+    "Qwen 不可用时，确定性风险规则仍必须生效",
+    "紧急阻断优先级高于普通评分",
+    "安全提示不以\"听音乐即可缓解\"替代专业帮助",
+    "具体紧急联系方式必须依据上线地区和正式合规方案配置"
+  ],
+  "trigger_phrases": {
+    "self_harm": {
+      "keywords": [
+        "伤害自己", "自杀", "不想活", "结束生命", "死", "自伤",
+        "hurt myself", "kill myself", "end my life", "self harm",
+        "suicide", "self_injury"
+      ],
+      "source": ["questionnaire_q12", "narrative_text", "ocr_text"],
+      "action": "urgent_attention"
+    },
+    "severe_chest_pain": {
+      "keywords": [
+        "胸痛", "胸闷压榨感", "胸口剧痛", "心绞痛",
+        "持续胸痛", "severe chest pain", "chest tightness"
+      ],
+      "source": ["questionnaire_q12", "narrative_text", "ocr_text"],
+      "action": "urgent_attention"
+    },
+    "severe_breathing_difficulty": {
+      "keywords": [
+        "呼吸困难", "喘不上气", "窒息感", "憋气",
+        "severe breathing difficulty", "shortness of breath", "can't breathe"
+      ],
+      "source": ["questionnaire_q12", "narrative_text", "ocr_text"],
+      "action": "urgent_attention"
+    }
+  },
+  "urgent_attention": {
+    "code": "urgent_attention",
+    "label": "需要立即关注",
+    "triggers": [
+      {
+        "id": "Q12_SELF_HARM",
+        "source": "questionnaire_q12",
+        "condition": "value contains 'self_harm_thoughts'",
+        "description": "用户选择\"有伤害自己的想法\""
+      },
+      {
+        "id": "Q12_CHEST_PAIN",
+        "source": "questionnaire_q12",
+        "condition": "value contains 'severe_chest_pain'",
+        "description": "用户选择\"严重或持续胸痛\""
+      },
+      {
+        "id": "Q12_BREATHING",
+        "source": "questionnaire_q12",
+        "condition": "value contains 'severe_breathing_difficulty'",
+        "description": "用户选择\"明显呼吸困难\""
+      },
+      {
+        "id": "NARRATIVE_SELF_HARM",
+        "source": "narrative_text",
+        "condition": "text matches trigger_phrases.self_harm.keywords",
+        "description": "自由描述中出现自伤/自杀关键词"
+      },
+      {
+        "id": "OCR_SELF_HARM",
+        "source": "ocr_text",
+        "condition": "text matches trigger_phrases.self_harm.keywords",
+        "description": "OCR 文本中出现自伤/自杀关键词"
+      },
+      {
+        "id": "QWEN_POST_CHECK",
+        "source": "qwen_output_secondary_check",
+        "condition": "Qwen output flagged by rule engine",
+        "description": "Qwen 输出经二次规则校验后标记高风险"
+      }
+    ],
+    "actions": [
+      "当前页面立即显示醒目提示",
+      "提示文案：'如果您正在经历身体或心理上的严重不适，请立即拨打急救电话或联系专业人员。'",
+      "禁止用'听音乐即可缓解'替代专业帮助",
+      "后端再次检测并返回机器可读风险代码",
+      "常规处方工作流暂停",
+      "用户可以返回修改误选，但修改行为留在本次会话审计摘要中",
+      "具体紧急联系方式必须依据上线地区合规配置（不可由模型猜测）"
+    ],
+    "response_template": {
+      "user_message": "⚠️ 系统检测到您正在经历严重的身体或情绪困扰。请立即寻求专业帮助。\n\n本结果不构成医学诊断，也不能替代医生或专业心理人员的评估。",
+      "api_code": "urgent_attention",
+      "prescription_blocked": true,
+      "requires_acknowledgment": true
+    }
+  },
+  "watch_list": {
+    "code": "watch_list",
+    "label": "需要关注",
+    "triggers": [
+      {
+        "id": "DAILY_IMPACT_4",
+        "source": "questionnaire_scores",
+        "condition": "q11_daily_impact == 4",
+        "description": "日常影响维度得分最高（几乎每天）"
+      },
+      {
+        "id": "SLEEP_OVER_2_WEEKS",
+        "source": "questionnaire_scores + narrative_or_ocr",
+        "condition": "q08_sleep_disturbance == 4 AND duration_over_2_weeks from narrative/ocr",
+        "description": "睡眠困扰几乎每天且持续时间超过两周（需自由描述或OCR确认）"
+      },
+      {
+        "id": "MULTIPLE_HIGH_DIMENSIONS",
+        "source": "questionnaire_scores",
+        "condition": "count of dimensions with score == 4 >= 3",
+        "description": "3个及以上核心维度同时为最高分"
+      },
+      {
+        "id": "SIGNIFICANT_WORSENING",
+        "source": "narrative_text or ocr_text",
+        "condition": "text matches '症状明显加重' or '更严重了' or '恶化' or similar worsening patterns",
+        "description": "用户描述或病历提到症状明显加重"
+      }
+    ],
+    "actions": [
+      "提示进一步关注，但不自动阻断",
+      "展示缓解建议但强调专业咨询",
+      "建议文案：'您的情况建议持续关注，如感觉持续不适，请咨询专业人员。'"
+    ],
+    "response_template": {
+      "user_message": "您在过去 7 天的状态较为频繁，建议您多加关注，如有持续不适请及时咨询专业人员。",
+      "api_code": "watch_list",
+      "prescription_blocked": false,
+      "requires_acknowledgment": false
+    }
+  },
+  "coverage_rules": {
+    "sources": [
+      "questionnaire_q12",
+      "narrative_text_keyword_match",
+      "user_confirmed_ocr_text_keyword_match",
+      "qwen_output_secondary_rule_check"
+    ],
+    "fallback": "Qwen 不可用时，所有确定性风险规则仍必须生效。问卷 Q12 和关键词匹配始终可用。",
+    "secondary_check": "Qwen 输出后，规则引擎再次扫描 output 文本，防止 LLM 忽略或改写风险信号。"
+  },
+  "output_schema": {
+    "safety_flags": ["string"],
+    "safety_severity": "enum[none, watch_list, urgent_attention]",
+    "safety_message": "string",
+    "prescription_blocked": "boolean",
+    "requires_acknowledgment": "boolean"
+  }
+}
