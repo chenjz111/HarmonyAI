@@ -21,6 +21,8 @@ _RULES = (
             "想伤害自己",
             "伤害自己的念头",
             "想自残",
+            "强烈的自杀念头",
+            "真的想死",
             "kill myself",
             "end my life",
             "take my own life",
@@ -35,6 +37,8 @@ _RULES = (
             "thoughts of self-harm",
             "thoughts of self harm",
             "suicidal thoughts",
+            "feel suicidal and have a plan",
+            "thinking of killing myself",
         ),
     ),
     (
@@ -48,10 +52,12 @@ _RULES = (
             "胸痛持续不缓解",
             "胸痛一直不缓解",
             "胸口疼得厉害",
+            "胸痛已经持续",
             "severe chest pain",
             "intense chest pain",
             "crushing chest pain",
             "persistent chest pain",
+            "chest pain has lasted for",
             "chest pain that won't go away",
             "chest pain that will not go away",
         ),
@@ -66,16 +72,34 @@ _RULES = (
             "喘不上气",
             "无法呼吸",
             "快窒息",
+            "呼吸困难,说不出完整的话",
             "severe difficulty breathing",
             "cannot breathe",
             "can't breathe",
             "struggling to breathe",
             "gasping for air",
+            "extreme shortness of breath",
         ),
     ),
 )
 
 _ALLOWED_REASON_CODES = tuple(reason_code for _, reason_code, _ in _RULES)
+_ALLOWED_QUESTIONNAIRE_FLAGS = frozenset(flag for flag, _, _ in _RULES)
+
+_CONTEXT_EXCLUSIONS = {
+    "self_harm_thoughts": (
+        "不想自杀",
+        "以前想自杀,但现在已经没有这种想法",
+    ),
+    "severe_chest_pain": (
+        "无持续胸痛",
+        "denies severe chest pain",
+        "if severe chest pain develops",
+    ),
+    "severe_breathing_difficulty": (
+        "未见明显呼吸困难",
+    ),
+}
 
 
 def evaluate_safety(
@@ -88,16 +112,21 @@ def evaluate_safety(
         _normalize_text(narrative_text),
         _normalize_text(confirmed_ocr_text),
     )
-    selected_questionnaire_flags = set(questionnaire_safety_flags or ())
+    selected_questionnaire_flags = _validate_questionnaire_safety_flags(
+        questionnaire_safety_flags
+    )
 
     matched = [
         (flag, reason_code)
         for flag, reason_code, phrases in _RULES
         if flag in selected_questionnaire_flags
         or any(
-            phrase in text
+            _contains_unexcluded_phrase(
+                text,
+                phrases,
+                _CONTEXT_EXCLUSIONS[flag],
+            )
             for text in normalized_texts
-            for phrase in phrases
         )
     ]
     blocked = bool(matched)
@@ -137,3 +166,26 @@ def _normalize_text(text: str | None) -> str:
     normalized = unicodedata.normalize("NFKC", text).casefold()
     normalized = normalized.replace("’", "'").replace("‘", "'")
     return " ".join(normalized.split())
+
+
+def _validate_questionnaire_safety_flags(
+    flags: Sequence[str] | None,
+) -> set[str]:
+    if flags is None:
+        return set()
+    if not isinstance(flags, (list, tuple)) or any(
+        not isinstance(flag, str) or flag not in _ALLOWED_QUESTIONNAIRE_FLAGS
+        for flag in flags
+    ):
+        raise ValueError("invalid questionnaire safety flags")
+    return set(flags)
+
+
+def _contains_unexcluded_phrase(
+    text: str,
+    phrases: Sequence[str],
+    exclusions: Sequence[str],
+) -> bool:
+    for exclusion in exclusions:
+        text = text.replace(exclusion, " ")
+    return any(phrase in text for phrase in phrases)

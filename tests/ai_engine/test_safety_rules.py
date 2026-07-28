@@ -30,6 +30,26 @@ from backend.ai_engine.safety_rules import (
             "SAFETY_SELF_HARM_OR_SUICIDE",
         ),
         (
+            {"narrative_text": "我现在有强烈的自杀念头。"},
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            {"narrative_text": "我真的想死。"},
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            {"narrative_text": "I feel suicidal and have a plan."},
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            {"narrative_text": "I am thinking of killing myself."},
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
             {"narrative_text": "我现在持续胸痛，一直不缓解。"},
             "severe_chest_pain",
             "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
@@ -40,12 +60,32 @@ from backend.ai_engine.safety_rules import (
             "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
         ),
         (
+            {"narrative_text": "胸痛已经持续两个小时。"},
+            "severe_chest_pain",
+            "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
+        ),
+        (
+            {"narrative_text": "My chest pain has lasted for two hours."},
+            "severe_chest_pain",
+            "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
+        ),
+        (
             {"confirmed_ocr_text": "患者明显呼吸困难，喘不上气。"},
             "severe_breathing_difficulty",
             "SAFETY_SEVERE_BREATHING_DIFFICULTY",
         ),
         (
             {"narrative_text": "I am struggling to breathe."},
+            "severe_breathing_difficulty",
+            "SAFETY_SEVERE_BREATHING_DIFFICULTY",
+        ),
+        (
+            {"narrative_text": "我呼吸困难，说不出完整的话。"},
+            "severe_breathing_difficulty",
+            "SAFETY_SEVERE_BREATHING_DIFFICULTY",
+        ),
+        (
+            {"narrative_text": "I have extreme shortness of breath."},
             "severe_breathing_difficulty",
             "SAFETY_SEVERE_BREATHING_DIFFICULTY",
         ),
@@ -101,10 +141,62 @@ def test_exact_q12_safety_flags_map_to_fixed_reason_codes():
     ],
 )
 def test_ordinary_discomfort_and_broad_context_words_do_not_block(narrative_text):
+    result = evaluate_safety(narrative_text=narrative_text)
+
+    assert result == {
+        "status": "success",
+        "level": "none",
+        "flags": [],
+        "reason_codes": [],
+        "block_standard_prescription": False,
+    }
+
+
+def test_questionnaire_safety_flags_accept_a_tuple_of_exact_flags():
     result = evaluate_safety(
-        narrative_text=narrative_text,
-        questionnaire_safety_flags=["neck_tension", "fatigue", "other"],
+        questionnaire_safety_flags=("severe_breathing_difficulty",)
     )
+
+    assert result == {
+        "status": "blocked_safety",
+        "level": "high",
+        "flags": ["severe_breathing_difficulty"],
+        "reason_codes": ["SAFETY_SEVERE_BREATHING_DIFFICULTY"],
+        "block_standard_prescription": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "invalid_flags",
+    [
+        "self_harm_thoughts",
+        ["unknown_signal"],
+        ["self_harm_thoughts", 7],
+        ["self_harm_thoughts", ["nested_value"]],
+    ],
+)
+def test_questionnaire_safety_flags_reject_invalid_input_without_echoing_it(
+    invalid_flags,
+):
+    with pytest.raises(ValueError) as error:
+        evaluate_safety(questionnaire_safety_flags=invalid_flags)
+
+    assert str(error.value) == "invalid questionnaire safety flags"
+
+
+@pytest.mark.parametrize(
+    "narrative_text",
+    [
+        "我不想自杀。",
+        "我以前想自杀，但现在已经没有这种想法。",
+        "病历记录：无持续胸痛，仅偶发轻微不适。",
+        "The patient denies severe chest pain.",
+        "未见明显呼吸困难。",
+        "Seek urgent care if severe chest pain develops.",
+    ],
+)
+def test_negated_resolved_and_conditional_contexts_do_not_block(narrative_text):
+    result = evaluate_safety(narrative_text=narrative_text)
 
     assert result == {
         "status": "success",
