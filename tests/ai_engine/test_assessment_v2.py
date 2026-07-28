@@ -461,16 +461,39 @@ def test_model_echo_of_unconfirmed_ocr_is_discarded_from_output():
     assert secret_text not in json.dumps(result, ensure_ascii=False)
 
 
+def test_complete_normalized_english_unconfirmed_ocr_echo_is_discarded():
+    response = valid_model_response()
+    response["state_summary"] = {"summary": "patient john doe"}
+
+    result = run_assessment_v2(
+        assessment_submission(
+            document={
+                "ocr_status": "pending",
+                "confirmed_text": "  Patient   John Doe  ",
+            },
+        ),
+        llm=RecordingJsonLLM(response),
+    )
+
+    assert result["degradation"] == {
+        "active": True,
+        "reason_codes": [
+            "DOCUMENT_UNCONFIRMED",
+            "LLM_UNCONFIRMED_OCR_ECHO",
+        ],
+    }
+    assert "patient john doe" not in json.dumps(
+        result,
+        ensure_ascii=False,
+    ).casefold()
+
+
 @pytest.mark.parametrize(
     ("unconfirmed_text", "model_summary"),
     [
         (
             "PRIVATE full record ID-123456",
             "记录编号 ID-123456 需要核对。",
-        ),
-        (
-            "未确认内容：患者近期连续多日睡眠质量明显下降",
-            "连续多日睡眠质量明显下降。",
         ),
     ],
 )
@@ -499,6 +522,30 @@ def test_model_echo_of_sensitive_unconfirmed_ocr_fragment_is_discarded(
         ],
     }
     assert model_summary not in json.dumps(result, ensure_ascii=False)
+
+
+def test_common_chinese_summary_is_not_treated_as_unconfirmed_ocr_echo():
+    common_summary = "睡眠质量明显下降"
+    response = valid_model_response()
+    response["state_summary"] = {"summary": common_summary}
+    llm = RecordingJsonLLM(response)
+
+    result = run_assessment_v2(
+        assessment_submission(
+            document={
+                "ocr_status": "pending",
+                "confirmed_text": common_summary,
+            },
+        ),
+        llm=llm,
+    )
+
+    assert common_summary not in llm.calls[0][1]
+    assert result["state_summary"] == {"summary": common_summary}
+    assert result["degradation"] == {
+        "active": True,
+        "reason_codes": ["DOCUMENT_UNCONFIRMED"],
+    }
 
 
 def test_short_common_phrase_does_not_trigger_unconfirmed_ocr_echo_filter():

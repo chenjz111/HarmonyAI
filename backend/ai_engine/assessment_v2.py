@@ -5,6 +5,7 @@ from copy import deepcopy
 import json
 import re
 from typing import Any, TypedDict
+import unicodedata
 
 from .providers import (
     JsonLLMProvider,
@@ -587,7 +588,7 @@ def _unconfirmed_sensitive_tokens(
         return frozenset()
 
     tokens = {
-        token.casefold()
+        _normalize_echo_text(token)
         for token in re.findall(
             r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{6,}"
             r"(?![A-Za-z0-9_-])",
@@ -595,11 +596,12 @@ def _unconfirmed_sensitive_tokens(
         )
         if any(character.isdigit() for character in token)
     }
-    for run in re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff]{6,}", text):
-        tokens.update(
-            run[start : start + 6]
-            for start in range(len(run) - 5)
-        )
+    normalized_full_text = _normalize_echo_text(text)
+    if (
+        len(normalized_full_text) >= 8
+        and re.search(r"[a-z]", normalized_full_text)
+    ):
+        tokens.add(normalized_full_text)
     return frozenset(tokens)
 
 
@@ -608,7 +610,7 @@ def _contains_sensitive_token(
     tokens: frozenset[str],
 ) -> bool:
     if isinstance(value, str):
-        normalized = value.casefold()
+        normalized = _normalize_echo_text(value)
         return any(token in normalized for token in tokens)
     if isinstance(value, Mapping):
         return any(
@@ -621,6 +623,11 @@ def _contains_sensitive_token(
             for item in value
         )
     return False
+
+
+def _normalize_echo_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return re.sub(r"\s+", " ", normalized).strip()
 
 
 def _is_json_value(value: object) -> bool:
