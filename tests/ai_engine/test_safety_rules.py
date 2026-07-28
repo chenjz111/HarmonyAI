@@ -1,5 +1,8 @@
+from typing import get_type_hints
+
 import pytest
 
+import backend.ai_engine.safety_rules as safety_rules
 from backend.ai_engine.safety_rules import (
     build_safety_log_fields,
     evaluate_safety,
@@ -161,6 +164,82 @@ def test_composable_risk_concepts_block_without_full_sentence_enumeration(
     }
 
 
+@pytest.mark.parametrize(
+    ("narrative_text", "expected_flag", "expected_reason_code"),
+    [
+        (
+            "我正在自残。",
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            "我正在考虑自杀。",
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            "I am self-harming.",
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            "I have a suicide plan.",
+            "self_harm_thoughts",
+            "SAFETY_SELF_HARM_OR_SUICIDE",
+        ),
+        (
+            "胸口一直疼。",
+            "severe_chest_pain",
+            "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
+        ),
+        (
+            "胸痛超过半小时。",
+            "severe_chest_pain",
+            "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
+        ),
+        (
+            "chest pain for half an hour.",
+            "severe_chest_pain",
+            "SAFETY_SEVERE_OR_PERSISTENT_CHEST_PAIN",
+        ),
+        (
+            "我不能呼吸。",
+            "severe_breathing_difficulty",
+            "SAFETY_SEVERE_BREATHING_DIFFICULTY",
+        ),
+        (
+            "我呼吸很困难。",
+            "severe_breathing_difficulty",
+            "SAFETY_SEVERE_BREATHING_DIFFICULTY",
+        ),
+        (
+            "I can barely breathe.",
+            "severe_breathing_difficulty",
+            "SAFETY_SEVERE_BREATHING_DIFFICULTY",
+        ),
+        (
+            "I am unable to breathe.",
+            "severe_breathing_difficulty",
+            "SAFETY_SEVERE_BREATHING_DIFFICULTY",
+        ),
+    ],
+)
+def test_additional_composable_direct_risk_variants_block(
+    narrative_text,
+    expected_flag,
+    expected_reason_code,
+):
+    result = evaluate_safety(narrative_text=narrative_text)
+
+    assert result == {
+        "status": "blocked_safety",
+        "level": "high",
+        "flags": [expected_flag],
+        "reason_codes": [expected_reason_code],
+        "block_standard_prescription": True,
+    }
+
+
 def test_exact_q12_safety_flags_map_to_fixed_reason_codes():
     result = evaluate_safety(
         questionnaire_safety_flags=[
@@ -290,6 +369,87 @@ def test_candidate_context_excludes_negated_resolved_and_conditional_risk(
         "reason_codes": [],
         "block_standard_prescription": False,
     }
+
+
+@pytest.mark.parametrize(
+    "narrative_text",
+    [
+        "I don't want to die.",
+        "denies having severe chest pain.",
+        "If severe chest pain develops, call 911.",
+        "胸痛不严重。",
+        "否认有持续胸痛。",
+        "如胸痛持续十分钟请拨打120。",
+    ],
+)
+def test_additional_candidate_negation_and_conditional_guidance_do_not_block(
+    narrative_text,
+):
+    result = evaluate_safety(narrative_text=narrative_text)
+
+    assert result == {
+        "status": "success",
+        "level": "none",
+        "flags": [],
+        "reason_codes": [],
+        "block_standard_prescription": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "narrative_text",
+    [
+        "Previously I had thoughts of suicide, but I no longer smoke.",
+        "我以前有自杀念头但现在没有工作。",
+    ],
+)
+def test_unrelated_current_state_does_not_resolve_past_self_harm_risk(
+    narrative_text,
+):
+    result = evaluate_safety(narrative_text=narrative_text)
+
+    assert result == {
+        "status": "blocked_safety",
+        "level": "high",
+        "flags": ["self_harm_thoughts"],
+        "reason_codes": ["SAFETY_SELF_HARM_OR_SUICIDE"],
+        "block_standard_prescription": True,
+    }
+
+
+def test_questionnaire_flags_annotation_matches_runtime_contract():
+    annotation = get_type_hints(evaluate_safety)["questionnaire_safety_flags"]
+
+    assert annotation == list[str] | tuple[str, ...] | None
+
+
+def test_candidate_exclusion_does_not_quadratically_rescan_clause_prefix(
+    monkeypatch,
+):
+    original_split = safety_rules.re.split
+    scanned_characters = 0
+
+    def counting_split(pattern, string, *args, **kwargs):
+        nonlocal scanned_characters
+        if pattern == r"[,，]":
+            scanned_characters += len(string)
+        return original_split(pattern, string, *args, **kwargs)
+
+    monkeypatch.setattr(safety_rules.re, "split", counting_split)
+
+    def evaluate_repeated_negated_candidates(repetitions):
+        nonlocal scanned_characters
+        scanned_characters = 0
+        result = evaluate_safety(
+            narrative_text="denies having severe chest pain, " * repetitions
+        )
+        assert result["block_standard_prescription"] is False
+        return scanned_characters
+
+    smaller_scan = evaluate_repeated_negated_candidates(120)
+    doubled_scan = evaluate_repeated_negated_candidates(240)
+
+    assert doubled_scan <= max(64, smaller_scan * 3)
 
 
 @pytest.mark.parametrize(
