@@ -597,6 +597,14 @@ def _unconfirmed_sensitive_tokens(
         if any(character.isdigit() for character in token)
     }
     normalized_full_text = _normalize_echo_text(text)
+    for match in re.finditer(
+        r"\bid\s*[-:]\s*\d+\b|\brecord\s+id\s+\d+\b",
+        normalized_full_text,
+    ):
+        explicit_id = match.group()
+        tokens.add(explicit_id)
+        if explicit_id.startswith("record "):
+            tokens.add(explicit_id.removeprefix("record "))
     if (
         len(normalized_full_text) >= 8
         and re.search(r"[a-z]", normalized_full_text)

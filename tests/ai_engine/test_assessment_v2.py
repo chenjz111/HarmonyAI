@@ -488,6 +488,30 @@ def test_complete_normalized_english_unconfirmed_ocr_echo_is_discarded():
     ).casefold()
 
 
+def test_explicit_short_id_unconfirmed_ocr_echo_is_discarded():
+    response = valid_model_response()
+    response["state_summary"] = {"summary": "ID-42"}
+
+    result = run_assessment_v2(
+        assessment_submission(
+            document={
+                "ocr_status": "pending",
+                "confirmed_text": "Confidential record ID-42",
+            },
+        ),
+        llm=RecordingJsonLLM(response),
+    )
+
+    assert result["degradation"] == {
+        "active": True,
+        "reason_codes": [
+            "DOCUMENT_UNCONFIRMED",
+            "LLM_UNCONFIRMED_OCR_ECHO",
+        ],
+    }
+    assert "ID-42" not in json.dumps(result, ensure_ascii=False)
+
+
 @pytest.mark.parametrize(
     ("unconfirmed_text", "model_summary"),
     [
