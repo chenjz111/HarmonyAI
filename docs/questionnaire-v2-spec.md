@@ -183,7 +183,7 @@ normalized_score = raw_score × 25
 
 ## 6. 问卷 JSON 建议结构
 
-以下为拟议的 v2 结构，不是当前已存在接口：
+以下对象作为 Assessment 请求中的 `questionnaire_answers`，不是当前已存在接口：
 
 ```json
 {
