@@ -1,7 +1,7 @@
 # HarmonyAI Sprint 3 GitHub Issue 规划
 
-> 文档状态：发布前预览  
-> 依据：`sprint3-competition-plan.md`、`sprint3-team-tasks.md`、`questionnaire-v2-spec.md`、`feedback-v2-spec.md`、`user-flow-v2.md`、`api-contract-v2.md`、`sprint3-acceptance-checklist.md`  
+> 文档状态：发布前预览
+> 依据：`sprint3-competition-plan.md`、`sprint3-team-tasks.md`、`questionnaire-v2-spec.md`、`feedback-v2-spec.md`、`user-flow-v2.md`、`api-contract-v2.md`、`sprint3-acceptance-checklist.md`
 > 注意：本文中的 `S3-01`—`S3-12` 是本地计划编号，不是尚未创建的 GitHub Issue 编号。未经项目负责人确认，不创建任何远程 Issue、Label、Milestone 或 PR。
 
 ## 1. Milestone 预案
