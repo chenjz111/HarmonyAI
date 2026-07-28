@@ -97,7 +97,7 @@
 1. 显示文件名、类型、大小和页数；
 2. OCR 后显示提取文字；
 3. 用户可修改明显错误；
-4. 用户点击确认后，生成 `document_id` 与 `confirmed_text`；
+4. 用户点击确认后，生成 `document_id` 与 `document_text`；
 5. 进入自由描述页。
 
 ### 跳过状态
@@ -302,8 +302,8 @@
 
 Music Agent 卡：
 
-- 执行模式：`本地曲库匹配`；
-- 曲目名称和 `track_id`；
+- 来源类型：`source_type=matched`，即本地曲库匹配；
+- `music_id`、曲目名称和 `stream_url`；
 - 匹配参数；
 - 音频来源/版权说明；
 - 降级信息。
