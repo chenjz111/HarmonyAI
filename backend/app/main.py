@@ -1,11 +1,10 @@
-"""HarmonyAI FastAPI Application — Sprint 2.
+"""HarmonyAI FastAPI Application — Sprint 3.
 
-5 independent Agent API endpoints per agent-schemas.md + agent-architecture.md:
-  POST /api/v1/assessment   → Agent 1 评估Agent
-  POST /api/v1/diagnosis    → Agent 2 辨证Agent
-  POST /api/v1/prescription → Agent 3 处方Agent
-  POST /api/v1/generation   → Agent 4 生成Agent
-  POST /api/v1/feedback     → Agent 5 反馈Agent
+Sprint 3 adds:
+  POST /api/v2/documents  → 病例上传(JPG/PNG/PDF)
+  GET  /api/v2/documents/{session_id} → 查询文档
+  POST /api/v2/documents/confirm → 确认/跳过
+  Feedback 2.0 (backward compatible)
 
 Start:
   cd HarmonyAI_repo/
@@ -25,6 +24,7 @@ from backend.app.routers import (
     prescription_router,
     generation_router,
     feedback_router,
+    document_router,
 )
 
 app = FastAPI(
@@ -60,7 +60,8 @@ app.include_router(assessment_router.router, prefix="/api/v1", tags=["Agent 1 �
 app.include_router(diagnosis_router.router, prefix="/api/v1", tags=["Agent 2 — 辨证"])
 app.include_router(prescription_router.router, prefix="/api/v1", tags=["Agent 3 — 处方"])
 app.include_router(generation_router.router, prefix="/api/v1", tags=["Agent 4 — 生成"])
-app.include_router(feedback_router.router, prefix="/api/v1", tags=["Agent 5 — 反馈"])
+app.include_router(feedback_router.router, prefix="/api/v1", tags=["Agent 5 — 反馈 v1+v2"])
+app.include_router(document_router.router, prefix="/api/v2", tags=["Sprint 3 — 文档上传"])
 
 
 @app.get("/", include_in_schema=False)

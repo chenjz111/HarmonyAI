@@ -16,9 +16,11 @@ class Feedback(Base):
 
     # Agent metadata
     agent_id = Column(String(64), default="feedback_agent", nullable=False)
-    agent_version = Column(String(16), default="1.0.0", nullable=False)
+    agent_version = Column(String(16), default="2.0.0", nullable=False)
     session_id = Column(String(64), nullable=False, index=True)
     feedback_id = Column(String(64), unique=True, nullable=False, index=True, comment="反馈ID: fb_YYYYMMDD_NNN")
+    prescription_id = Column(String(64), nullable=True, comment="关联处方ID")
+    track_id = Column(String(64), nullable=True, comment="关联曲目ID")
 
     # Subjective ratings (Likert 1-5)
     subjective_satisfaction = Column(Integer, nullable=True, comment="整体满意度 1-5")
@@ -47,6 +49,28 @@ class Feedback(Base):
 
     # User profile update (learned from feedback)
     profile_update = Column(Text, nullable=True, comment="用户画像更新 JSON")
+
+    # ── Feedback 2.0 fields (Sprint 3 Issue #37) ──
+    schema_version = Column(String(8), default="2.0", comment="Schema版本: 1.0 / 2.0")
+
+    # Before-after listening
+    mood_before = Column(Integer, nullable=True, comment="听前心情 1-5")
+    mood_after = Column(Integer, nullable=True, comment="听后心情 1-5")
+    relaxation_before = Column(Integer, nullable=True, comment="听前放松度 1-5")
+    relaxation_after = Column(Integer, nullable=True, comment="听后放松度 1-5")
+
+    # Music match
+    music_match = Column(Integer, nullable=True, comment="音乐匹配度 1-5")
+
+    # User actions
+    will_continue = Column(Integer, nullable=True, comment="是否继续: 0=否 1=是")
+    is_favorite = Column(Integer, nullable=True, comment="是否收藏: 0=否 1=是")
+
+    # Disliked features (JSON array: e.g. ["bpm_too_fast", "instrument_not_liked"])
+    disliked_features = Column(Text, nullable=True, comment="不喜欢的音乐特征 JSON")
+
+    # Feedback MUST NOT modify global medical rules
+    global_rules_modified = Column(Integer, nullable=True, default=0, comment="是否修改了全局规则(固定为0)")
 
     # 通用字段
     confidence = Column(Float, nullable=False)
