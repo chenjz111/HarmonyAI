@@ -1,0 +1,29 @@
+# HarmonyAI Backend Dependencies
+# Python 3.10+
+
+# Web Framework
+fastapi==0.139.0
+uvicorn[standard]==0.51.0
+starlette>=0.46.0
+
+# Database
+sqlalchemy==2.0.51
+pymysql==1.2.0
+alembic==1.18.5
+
+# Auth
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+
+# Validation
+pydantic==2.13.4
+pydantic-settings>=2.0.0
+
+# Cache & Sessions
+redis==8.0.1
+
+# HTTP
+python-multipart==0.0.32
+
+# Dev
+python-dotenv>=1.0.0
