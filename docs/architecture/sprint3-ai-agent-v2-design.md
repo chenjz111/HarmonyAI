@@ -68,7 +68,7 @@ AssessmentV2Request(
 )
 ```
 
-调用方只应把已确认 OCR 内容写入 `document_text`；未确认内容不得进入该字段。`questionnaire_answers` 必须包含 Questionnaire V2 的 Q1—Q12，后端重新计分，不能信任前端传入的总分。
+调用方只应把已确认 OCR 内容写入 `document_text`；未确认内容不得进入该字段。`questionnaire_answers` 必须使用 `schema_version="questionnaire_v2.0"`、`time_window_days=7` 和完整 `answers` 列表；列表包含 Questionnaire V2 的 Q1—Q12，后端重新计分，不能信任前端传入的总分。
 
 ### 输出
 
@@ -175,6 +175,8 @@ V2 工作流不自动写入默认 4 星。只有用户主动提交 Feedback V2 �
 | Chroma 无法查询 | `degraded` | 使用已审核规则，记录检索降级 |
 | 高风险命中 | `blocked_safety` | 阻断普通处方和音乐播放 |
 | 反馈保存失败 | `failed` 或可重试 | 不伪造成功，不更新偏好 |
+
+所有 Qwen 不可用或输出无效场景均将 `analysis_mode` 回退为 `questionnaire_only`，并把未参与最终分析的 document/narrative 来源标记为 `unavailable`。
 
 ## 10. 日志和隐私
 

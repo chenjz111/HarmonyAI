@@ -233,6 +233,50 @@ def test_generated_mode_is_rejected_because_sprint3_only_matches_local_music():
     }
 
 
+def test_catalog_track_without_matched_or_local_source_is_rejected():
+    from backend.ai_engine.music_agent import match_music_v2
+
+    result = match_music_v2(
+        prescription(),
+        [
+            {
+                "music_id": "unknown-source",
+                "title": "Unknown",
+                "stream_url": "/static/music/unknown.wav",
+                "duration_seconds": 900,
+                "tone_id": "jiao",
+                "bpm": 68,
+            }
+        ],
+    )
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "NO_PLAYABLE_TRACK"
+
+
+def test_generated_source_cannot_hide_behind_legacy_local_source():
+    from backend.ai_engine.music_agent import match_music_v2
+
+    result = match_music_v2(
+        prescription(),
+        [
+            {
+                "music_id": "generated-track",
+                "title": "Generated",
+                "stream_url": "/static/music/generated.wav",
+                "duration_seconds": 900,
+                "source_type": "generated",
+                "source": "local_catalog",
+                "tone_id": "jiao",
+                "bpm": 68,
+            }
+        ],
+    )
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "NO_PLAYABLE_TRACK"
+
+
 def test_canonical_music_contract_is_flat_and_marks_local_match():
     from backend.ai_engine.music_agent import match_music_v2
 

@@ -49,6 +49,31 @@ class RuntimeFailingKnowledgeStore:
         raise RuntimeError("unexpected knowledge failure")
 
 
+def test_llm_receives_canonical_emotion_profile_dimensions():
+    from backend.ai_engine.diagnosis_v2 import run_diagnosis_v2
+
+    dimensions = {
+        "tension_worry": 100,
+        "irritability_anger": 75,
+    }
+    canonical = assessment()
+    canonical.pop("dimensions")
+    canonical["emotion_profile"] = {
+        "primary_states": ["紧张担忧", "易怒"],
+        "secondary_states": [],
+        "dimension_scores": dimensions,
+        "tcm_emotion_candidates": [],
+    }
+    llm = FixedJsonLLM(
+        {"tendency_id": "syd_001", "confidence": 0.8}
+    )
+
+    run_diagnosis_v2(canonical, llm=llm)
+
+    sent = json.loads(llm.calls[0][1])
+    assert sent["dimensions"] == dimensions
+
+
 def assessment(
     *,
     status="success",

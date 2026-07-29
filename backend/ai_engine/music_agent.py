@@ -167,7 +167,13 @@ def _is_playable(track: Mapping[str, object]) -> bool:
                 )
             )
             > 0,
-            track.get("source_type") in {None, "matched"},
+            (
+                track.get("source_type") == "matched"
+                or (
+                    track.get("source_type") is None
+                    and track.get("source") == "local_catalog"
+                )
+            ),
             _is_finite_number(track.get("bpm")),
         )
     )

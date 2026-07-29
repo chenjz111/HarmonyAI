@@ -92,6 +92,8 @@ def _normalize_answers(
     answers: Mapping[str, Any] | Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     if isinstance(answers, Mapping):
+        if "schema_version" in answers or "answers" in answers:
+            return _normalize_envelope(answers)
         return dict(answers)
     if isinstance(answers, (str, bytes)) or not isinstance(answers, Sequence):
         raise QuestionnaireValidationError("answers must be a mapping or answer records")
@@ -107,6 +109,26 @@ def _normalize_answers(
             raise QuestionnaireValidationError(f"duplicate question_id: {question_id}")
         normalized[question_id] = record["value"]
     return normalized
+
+
+def _normalize_envelope(envelope: Mapping[str, Any]) -> dict[str, Any]:
+    if envelope.get("schema_version") != "questionnaire_v2.0":
+        raise QuestionnaireValidationError(
+            "schema_version must be questionnaire_v2.0"
+        )
+    if envelope.get("time_window_days") != 7:
+        raise QuestionnaireValidationError(
+            "time_window_days must be 7"
+        )
+    records = envelope.get("answers")
+    if isinstance(records, (str, bytes)) or not isinstance(
+        records,
+        Sequence,
+    ):
+        raise QuestionnaireValidationError(
+            "answers must be answer records"
+        )
+    return _normalize_answers(records)
 
 
 def _validate_answers(answers: Mapping[str, Any]) -> None:

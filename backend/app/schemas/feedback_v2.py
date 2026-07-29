@@ -7,6 +7,9 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
     field_validator,
 )
 
@@ -14,18 +17,18 @@ from pydantic import (
 class PreState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    tension: int = Field(ge=0, le=10)
-    body_tension: int | None = Field(default=None, ge=0, le=10)
-    mental_fatigue: int | None = Field(default=None, ge=0, le=10)
+    tension: StrictInt = Field(ge=0, le=10)
+    body_tension: StrictInt | None = Field(default=None, ge=0, le=10)
+    mental_fatigue: StrictInt | None = Field(default=None, ge=0, le=10)
     goal: str = Field(min_length=1)
 
 
 class PostState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    tension: int = Field(ge=0, le=10)
-    body_tension: int | None = Field(default=None, ge=0, le=10)
-    mental_fatigue: int | None = Field(default=None, ge=0, le=10)
+    tension: StrictInt = Field(ge=0, le=10)
+    body_tension: StrictInt | None = Field(default=None, ge=0, le=10)
+    mental_fatigue: StrictInt | None = Field(default=None, ge=0, le=10)
     change_label: Literal[
         "much_better",
         "slightly_better",
@@ -37,11 +40,11 @@ class PostState(BaseModel):
 class FeedbackExperience(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    overall_rating: int = Field(ge=1, le=5)
-    relaxation_rating: int = Field(ge=1, le=5)
-    music_match_rating: int = Field(ge=1, le=5)
+    overall_rating: StrictInt = Field(ge=1, le=5)
+    relaxation_rating: StrictInt = Field(ge=1, le=5)
+    music_match_rating: StrictInt = Field(ge=1, le=5)
     continue_use: Literal["yes", "maybe", "no"]
-    favorite: bool
+    favorite: StrictBool
     disliked_features: list[str] = Field(default_factory=list)
     disliked_instruments: list[str] = Field(default_factory=list)
     comment: str = Field(default="", max_length=500)
@@ -66,11 +69,11 @@ class FeedbackExperience(BaseModel):
 class PlaybackSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    listened_seconds: int = Field(ge=0)
-    duration_seconds: int = Field(gt=0)
-    completion_rate: float = Field(ge=0, le=1)
-    pause_count: int = Field(default=0, ge=0)
-    skip_count: int = Field(default=0, ge=0)
+    listened_seconds: StrictInt = Field(ge=0)
+    duration_seconds: StrictInt = Field(gt=0)
+    completion_rate: StrictFloat = Field(ge=0, le=1)
+    pause_count: StrictInt = Field(default=0, ge=0)
+    skip_count: StrictInt = Field(default=0, ge=0)
 
 
 class FeedbackV2Request(BaseModel):

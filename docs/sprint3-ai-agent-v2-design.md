@@ -22,7 +22,11 @@ Sprint 3 采用增量 V2 模块，不替换 Sprint 2。旧 `run_real_workflow()`
 run_real_workflow_v2(
     user_id="user-001",
     session_id="session-001",
-    questionnaire_answers={...},       # Q1-Q12，必填
+    questionnaire_answers={            # 必填
+        "schema_version": "questionnaire_v2.0",
+        "time_window_days": 7,
+        "answers": [...],               # Q1-Q12
+    },
     assessment_confirmed=True,         # 必填
     document_id="document-001",        # 可选
     document_text="已确认的病例文本",    # 可选
@@ -56,18 +60,22 @@ run_real_workflow_v2(
   "document_text": "已确认的病例文本",
   "narrative_text": "最近压力较大",
   "questionnaire_answers": {
-    "q01_mood_weather": "cloudy",
-    "q02_tension_worry": 3,
-    "q03_overthinking": 2,
-    "q04_irritability_anger": 1,
-    "q05_low_mood": 4,
-    "q06_interest_loss": 0,
-    "q07_fear_unease": 2,
-    "q08_sleep_disturbance": 3,
-    "q09_low_energy": 1,
-    "q10_appetite_change": 2,
-    "q11_daily_impact": 4,
-    "q12_physical_safety": ["none"]
+    "schema_version": "questionnaire_v2.0",
+    "time_window_days": 7,
+    "answers": [
+      {"question_id": "q01_mood_weather", "value": "cloudy"},
+      {"question_id": "q02_tension_worry", "value": 3},
+      {"question_id": "q03_overthinking", "value": 2},
+      {"question_id": "q04_irritability_anger", "value": 1},
+      {"question_id": "q05_low_mood", "value": 4},
+      {"question_id": "q06_interest_loss", "value": 0},
+      {"question_id": "q07_fear_unease", "value": 2},
+      {"question_id": "q08_sleep_disturbance", "value": 3},
+      {"question_id": "q09_low_energy", "value": 1},
+      {"question_id": "q10_appetite_change", "value": 2},
+      {"question_id": "q11_daily_impact", "value": 4},
+      {"question_id": "q12_physical_safety", "value": ["none"]}
+    ]
   }
 }
 ```
@@ -103,7 +111,7 @@ run_real_workflow_v2(
 }
 ```
 
-LLM 不可用、超时或结构错误时，使用确定性问卷结果回退。用户可见警告使用可读中文；日志不得记录病例全文、自由描述全文、凭据或身份信息。
+LLM 不可用、超时或结构错误时，使用确定性问卷结果回退，并将 `analysis_mode` 设为 `questionnaire_only`，文本来源标记为 `unavailable`。用户可见警告使用可读中文；日志不得记录病例全文、自由描述全文、凭据或身份信息。
 
 ## 4. Music V2
 
@@ -200,8 +208,8 @@ save_once(record, preference_patch) -> bool
 
 ## 8. 验收依据
 
-- 全量测试：`309 passed`；
-- Music/Feedback/Workflow 聚焦测试：`74 passed`；
+- 全量测试：`324 passed`；
+- 最新统一合同与边界聚焦测试：`92 passed`；
 - 固定离线工作流连续 10 次运行通过；
 - Sprint 2 旧入口回归通过；
 - `git diff --check` 通过；

@@ -188,13 +188,21 @@ def _llm_selection(
     llm: JsonLLMProvider,
     assessment: Mapping[str, object],
 ) -> tuple[str | None, str | None, str]:
+    emotion_profile = _mapping_or_default(
+        assessment.get("emotion_profile"),
+        {},
+    )
+    dimensions = _mapping_or_default(
+        emotion_profile.get("dimension_scores"),
+        assessment.get("dimensions", {}),
+    )
     try:
         response = llm.complete_json(
             "你是辅助辨证倾向建议助手。只返回JSON对象，必须且只能包含tendency_id和confidence；"
             "tendency_id只能从给定白名单选择，不得输出医学诊断或治疗结论。",
             json.dumps(
                 {
-                    "dimensions": assessment.get("dimensions", {}),
+                    "dimensions": dimensions,
                     "allowed_tendency_ids": list(MVP_SYNDROMES),
                 },
                 ensure_ascii=False,

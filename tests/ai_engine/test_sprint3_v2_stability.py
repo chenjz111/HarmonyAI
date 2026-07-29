@@ -19,7 +19,7 @@ class FixedJsonLLM:
 
 
 def questionnaire_answers():
-    return {
+    answers = {
         "q01_mood_weather": "cloudy",
         "q02_tension_worry": 3,
         "q03_overthinking": 2,
@@ -32,6 +32,14 @@ def questionnaire_answers():
         "q10_appetite_change": 2,
         "q11_daily_impact": 4,
         "q12_physical_safety": ["none"],
+    }
+    return {
+        "schema_version": "questionnaire_v2.0",
+        "time_window_days": 7,
+        "answers": [
+            {"question_id": question_id, "value": value}
+            for question_id, value in answers.items()
+        ],
     }
 
 
