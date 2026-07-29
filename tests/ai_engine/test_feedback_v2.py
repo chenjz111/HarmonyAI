@@ -26,19 +26,39 @@ class FailingFeedbackRepository(AtomicFeedbackRepository):
 
 def feedback_payload(**overrides):
     payload = {
-        "feedback_id": "feedback-001",
+        "schema_version": "feedback_v2.0",
         "session_id": "session-001",
-        "user_id": "user-001",
-        "before": {"tension": 8, "body_tension": 7, "fatigue": 6},
-        "after": {"tension": 3, "body_tension": 4, "fatigue": 4},
-        "rating": 5,
-        "relaxation": 9,
-        "match": 8,
-        "comment": "  Calm and focused.  ",
-        "is_favorite": True,
-        "continue_listening": True,
-        "disliked_features": ["lyrics", "fast tempo"],
-        "track_id": "track-jiao-01",
+        "prescription_id": "prescription-001",
+        "music_id": "music-jiao-01",
+        "pre_state": {
+            "tension": 8,
+            "body_tension": 7,
+            "mental_fatigue": 6,
+            "goal": "relax",
+        },
+        "post_state": {
+            "tension": 3,
+            "body_tension": 4,
+            "mental_fatigue": 4,
+            "change_label": "much_better",
+        },
+        "experience": {
+            "overall_rating": 5,
+            "relaxation_rating": 5,
+            "music_match_rating": 4,
+            "continue_use": "yes",
+            "favorite": True,
+            "disliked_features": ["high_frequency"],
+            "disliked_instruments": ["flute"],
+            "comment": "  Calm and focused.  ",
+        },
+        "playback": {
+            "listened_seconds": 840,
+            "duration_seconds": 900,
+            "completion_rate": 0.93,
+            "pause_count": 0,
+            "skip_count": 0,
+        },
     }
     payload.update(overrides)
     return payload
@@ -51,25 +71,38 @@ def test_explicit_submission_uses_one_atomic_save_once_and_returns_only_a_person
 
     result = submit_feedback_v2(feedback_payload(), repository)
 
-    assert result == {
-        "status": "success",
-        "feedback_id": "feedback-001",
-        "idempotent": False,
-        "deltas": {"tension": 5, "body_tension": 3, "fatigue": 2},
-        "comment": "Calm and focused.",
-        "personal_preference_patch": {
-            "favorite_track_ids": ["track-jiao-01"],
-            "continue_listening": True,
-            "disliked_features": ["lyrics", "fast tempo"],
-        },
-        "global_rule_update": False,
+    assert result["status"] == "success"
+    assert result["agent_id"] == "feedback_agent"
+    assert result["idempotent"] is False
+    assert result["subjective_change"] == {
+        "tension_delta": -5,
+        "body_tension_delta": -3,
+        "mental_fatigue_delta": -2,
+        "summary": result["subjective_change"]["summary"],
     }
-    assert repository.records["feedback-001"]["rating"] == 5
+    assert result["experience_summary"] == {
+        "overall_rating": 5,
+        "relaxation_rating": 5,
+        "music_match_rating": 4,
+        "continue_use": "yes",
+        "favorite": True,
+    }
+    assert result["personal_preference_patch"] == {
+        "reduce_instruments": ["flute"],
+        "reduce_high_frequency": True,
+        "preserve_instruments": [],
+        "favorite_tracks_add": ["music-jiao-01"],
+    }
+    assert result["global_rule_update"] is False
+    feedback_id = result["feedback_id"]
+    assert repository.records[feedback_id]["music_id"] == "music-jiao-01"
+    assert repository.records[feedback_id]["experience"]["comment"] == "Calm and focused."
     assert repository.preference_updates == [
         {
-            "favorite_track_ids": ["track-jiao-01"],
-            "continue_listening": True,
-            "disliked_features": ["lyrics", "fast tempo"],
+            "reduce_instruments": ["flute"],
+            "reduce_high_frequency": True,
+            "preserve_instruments": [],
+            "favorite_tracks_add": ["music-jiao-01"],
         }
     ]
     assert repository.save_once_calls == 1
@@ -80,16 +113,21 @@ def test_empty_comment_is_normalized_and_valid_scores_are_preserved():
 
     repository = AtomicFeedbackRepository()
 
-    result = submit_feedback_v2(
-        feedback_payload(comment="   ", rating=1, relaxation=0, match=10),
-        repository,
+    payload = feedback_payload()
+    payload["experience"].update(
+        comment="   ",
+        overall_rating=1,
+        relaxation_rating=1,
+        music_match_rating=5,
     )
+    result = submit_feedback_v2(payload, repository)
 
     assert result["status"] == "success"
-    assert result["comment"] == ""
-    assert repository.records["feedback-001"]["rating"] == 1
-    assert repository.records["feedback-001"]["relaxation"] == 0
-    assert repository.records["feedback-001"]["match"] == 10
+    record = repository.records[result["feedback_id"]]
+    assert record["experience"]["comment"] == ""
+    assert record["experience"]["overall_rating"] == 1
+    assert record["experience"]["relaxation_rating"] == 1
+    assert record["experience"]["music_match_rating"] == 5
 
 
 def test_invalid_scores_are_rejected_before_persistence():
@@ -97,12 +135,14 @@ def test_invalid_scores_are_rejected_before_persistence():
 
     repository = AtomicFeedbackRepository()
 
-    result = submit_feedback_v2(feedback_payload(rating=6), repository)
+    payload = feedback_payload()
+    payload["experience"]["overall_rating"] = 6
+    result = submit_feedback_v2(payload, repository)
 
     assert result == {
         "status": "failed",
         "error_code": "INVALID_PAYLOAD",
-        "field": "rating",
+        "field": "experience",
         "global_rule_update": False,
     }
     assert repository.records == {}
@@ -116,12 +156,10 @@ def test_save_failure_is_reported_without_updating_preferences():
 
     result = submit_feedback_v2(feedback_payload(), repository)
 
-    assert result == {
-        "status": "failed",
-        "feedback_id": "feedback-001",
-        "error_code": "PERSISTENCE_FAILED",
-        "global_rule_update": False,
-    }
+    assert result["status"] == "failed"
+    assert result["feedback_id"].startswith("fb_")
+    assert result["error_code"] == "PERSISTENCE_FAILED"
+    assert result["global_rule_update"] is False
     assert repository.records == {}
     assert repository.preference_updates == []
 
@@ -131,16 +169,19 @@ def test_duplicate_feedback_id_is_idempotent_and_does_not_save_twice():
 
     repository = AtomicFeedbackRepository()
     first = submit_feedback_v2(feedback_payload(), repository)
-    second = submit_feedback_v2(feedback_payload(comment="different text"), repository)
+    duplicate = feedback_payload()
+    duplicate["experience"]["comment"] = "different text"
+    second = submit_feedback_v2(duplicate, repository)
 
     assert first["status"] == "success"
-    assert second == {
-        "status": "success",
-        "feedback_id": "feedback-001",
-        "idempotent": True,
-        "global_rule_update": False,
-    }
-    assert repository.records["feedback-001"]["comment"] == "Calm and focused."
+    assert second["status"] == "success"
+    assert second["feedback_id"] == first["feedback_id"]
+    assert second["idempotent"] is True
+    assert second["global_rule_update"] is False
+    assert (
+        repository.records[first["feedback_id"]]["experience"]["comment"]
+        == "Calm and focused."
+    )
     assert len(repository.preference_updates) == 1
     assert repository.save_once_calls == 2
 
@@ -148,15 +189,16 @@ def test_duplicate_feedback_id_is_idempotent_and_does_not_save_twice():
 @pytest.mark.parametrize(
     "scale",
     [
-        "before_tension",
-        "after_tension",
-        "before_body_tension",
-        "after_body_tension",
-        "before_fatigue",
-        "after_fatigue",
-        "rating",
-        "relaxation",
-        "match",
+        "pre_tension",
+        "post_tension",
+        "pre_body_tension",
+        "post_body_tension",
+        "pre_mental_fatigue",
+        "post_mental_fatigue",
+        "overall_rating",
+        "relaxation_rating",
+        "music_match_rating",
+        "completion_rate",
     ],
 )
 @pytest.mark.parametrize("invalid_value", [math.nan, math.inf, -math.inf])
@@ -165,20 +207,22 @@ def test_all_feedback_scales_reject_non_finite_values(scale, invalid_value):
 
     repository = AtomicFeedbackRepository()
     payload = feedback_payload()
-    if scale == "before_tension":
-        payload["before"]["tension"] = invalid_value
-    elif scale == "after_tension":
-        payload["after"]["tension"] = invalid_value
-    elif scale == "before_body_tension":
-        payload["before"]["body_tension"] = invalid_value
-    elif scale == "after_body_tension":
-        payload["after"]["body_tension"] = invalid_value
-    elif scale == "before_fatigue":
-        payload["before"]["fatigue"] = invalid_value
-    elif scale == "after_fatigue":
-        payload["after"]["fatigue"] = invalid_value
+    if scale == "pre_tension":
+        payload["pre_state"]["tension"] = invalid_value
+    elif scale == "post_tension":
+        payload["post_state"]["tension"] = invalid_value
+    elif scale == "pre_body_tension":
+        payload["pre_state"]["body_tension"] = invalid_value
+    elif scale == "post_body_tension":
+        payload["post_state"]["body_tension"] = invalid_value
+    elif scale == "pre_mental_fatigue":
+        payload["pre_state"]["mental_fatigue"] = invalid_value
+    elif scale == "post_mental_fatigue":
+        payload["post_state"]["mental_fatigue"] = invalid_value
+    elif scale == "completion_rate":
+        payload["playback"]["completion_rate"] = invalid_value
     else:
-        payload[scale] = invalid_value
+        payload["experience"][scale] = invalid_value
 
     result = submit_feedback_v2(payload, repository)
 
@@ -188,17 +232,29 @@ def test_all_feedback_scales_reject_non_finite_values(scale, invalid_value):
     assert repository.preference_updates == []
 
 
-def test_missing_after_reports_after_as_the_invalid_field():
+def test_missing_post_state_reports_post_state_as_the_invalid_field():
     from backend.ai_engine.feedback_v2 import submit_feedback_v2
 
     result = submit_feedback_v2(
-        feedback_payload(after=None),
+        feedback_payload(post_state=None),
         AtomicFeedbackRepository(),
     )
 
     assert result == {
         "status": "failed",
         "error_code": "INVALID_PAYLOAD",
-        "field": "after",
+        "field": "post_state",
         "global_rule_update": False,
     }
+
+
+def test_short_exposure_adds_warning_and_never_updates_global_rules():
+    from backend.ai_engine.feedback_v2 import submit_feedback_v2
+
+    payload = feedback_payload()
+    payload["playback"]["listened_seconds"] = 20
+    result = submit_feedback_v2(payload, AtomicFeedbackRepository())
+
+    assert result["warnings"] == ["SHORT_EXPOSURE"]
+    assert result["global_rule_update"] is False
+    assert "track_id" not in result
