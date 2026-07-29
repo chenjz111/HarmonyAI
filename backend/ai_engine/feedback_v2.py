@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-import math
+import hashlib
 from typing import Protocol
+
+from pydantic import ValidationError
+
+from backend.app.schemas.feedback_v2 import FeedbackV2Request
 
 
 class FeedbackRepository(Protocol):
@@ -21,13 +25,24 @@ def submit_feedback_v2(
     if not isinstance(payload, Mapping):
         return _invalid("payload")
 
-    validated = _validate_payload(payload)
-    if isinstance(validated, str):
-        return _invalid(validated)
-    record, preference_patch = validated
+    try:
+        request = FeedbackV2Request.model_validate(payload)
+    except ValidationError as exc:
+        location = exc.errors()[0].get("loc", ("payload",))
+        return _invalid(str(location[0]) if location else "payload")
 
-    feedback_id = record["feedback_id"]
-    assert isinstance(feedback_id, str)
+    feedback_id = _feedback_id(
+        request.session_id,
+        request.prescription_id,
+    )
+    record = request.model_dump(mode="json")
+    record["feedback_id"] = feedback_id
+    preference_patch = _preference_patch(request)
+    response = _success_response(
+        request,
+        feedback_id=feedback_id,
+        preference_patch=preference_patch,
+    )
     try:
         inserted = repository.save_once(record, preference_patch)
     except Exception:
@@ -37,127 +52,127 @@ def submit_feedback_v2(
             "error_code": "PERSISTENCE_FAILED",
             "global_rule_update": False,
         }
-    if not inserted:
-        return {
-            "status": "success",
-            "feedback_id": feedback_id,
-            "idempotent": True,
-            "global_rule_update": False,
-        }
+    response["idempotent"] = not inserted
+    return response
 
-    before = record["before"]
-    after = record["after"]
-    assert isinstance(before, Mapping) and isinstance(after, Mapping)
+
+def _feedback_id(session_id: str, prescription_id: str) -> str:
+    digest = hashlib.sha256(
+        f"{session_id}:{prescription_id}".encode("utf-8")
+    ).hexdigest()[:16]
+    return f"fb_{digest}"
+
+
+def _preference_patch(
+    request: FeedbackV2Request,
+) -> dict[str, object]:
+    experience = request.experience
     return {
-        "status": "success",
+        "reduce_instruments": list(experience.disliked_instruments),
+        "reduce_high_frequency": (
+            "high_frequency" in experience.disliked_features
+        ),
+        "preserve_instruments": [],
+        "favorite_tracks_add": (
+            [request.music_id] if experience.favorite else []
+        ),
+    }
+
+
+def _success_response(
+    request: FeedbackV2Request,
+    *,
+    feedback_id: str,
+    preference_patch: dict[str, object],
+) -> dict[str, object]:
+    subjective_change = _subjective_change(request)
+    experience = request.experience
+    reason_codes = []
+    if experience.disliked_instruments:
+        reason_codes.append("dislike_instrument")
+    if "high_frequency" in experience.disliked_features:
+        reason_codes.append("dislike_high_frequency")
+    if experience.favorite:
+        reason_codes.append("favorite_music")
+    if request.post_state.change_label == "worse":
+        reason_codes.append("subjective_state_worse")
+
+    if request.post_state.change_label == "worse":
+        action = "reduce_current_music"
+    elif reason_codes:
+        action = "adjust_personal_preference"
+    else:
+        action = "keep_personal_preference"
+
+    warnings = []
+    if (
+        request.playback is not None
+        and request.playback.listened_seconds < 30
+    ):
+        warnings.append("SHORT_EXPOSURE")
+    return {
         "feedback_id": feedback_id,
+        "agent_id": "feedback_agent",
+        "status": "success",
         "idempotent": False,
-        "deltas": {
-            field: before[field] - after[field]
-            for field in ("tension", "body_tension", "fatigue")
+        "subjective_change": subjective_change,
+        "experience_summary": {
+            "overall_rating": experience.overall_rating,
+            "relaxation_rating": experience.relaxation_rating,
+            "music_match_rating": experience.music_match_rating,
+            "continue_use": experience.continue_use,
+            "favorite": experience.favorite,
         },
-        "comment": record["comment"],
+        "decision": {
+            "action": action,
+            "reason_codes": reason_codes,
+        },
         "personal_preference_patch": preference_patch,
         "global_rule_update": False,
+        "warnings": warnings,
     }
 
 
-def _validate_payload(
-    payload: Mapping[str, object],
-) -> tuple[dict[str, object], dict[str, object]] | str:
-    identifiers: dict[str, str] = {}
-    for field in ("feedback_id", "session_id", "user_id"):
-        value = payload.get(field)
-        if not isinstance(value, str) or not value.strip():
-            return field
-        identifiers[field] = value.strip()
-
-    before = _measurements(payload.get("before"), "before")
-    if isinstance(before, str):
-        return before
-    after = _measurements(payload.get("after"), "after")
-    if isinstance(after, str):
-        return after
-
-    rating = _bounded_number(payload.get("rating"), 1, 5)
-    if rating is None:
-        return "rating"
-    relaxation = _bounded_number(payload.get("relaxation"), 0, 10)
-    if relaxation is None:
-        return "relaxation"
-    match = _bounded_number(payload.get("match"), 0, 10)
-    if match is None:
-        return "match"
-
-    raw_comment = payload.get("comment", "")
-    if raw_comment is None:
-        comment = ""
-    elif isinstance(raw_comment, str):
-        comment = raw_comment.strip()
-    else:
-        return "comment"
-
-    favorite = payload.get("is_favorite", False)
-    continue_listening = payload.get("continue_listening", False)
-    if not isinstance(favorite, bool):
-        return "is_favorite"
-    if not isinstance(continue_listening, bool):
-        return "continue_listening"
-    disliked = _disliked_features(payload.get("disliked_features", []))
-    if disliked is None:
-        return "disliked_features"
-
-    track_id = payload.get("track_id")
-    if favorite and (not isinstance(track_id, str) or not track_id.strip()):
-        return "track_id"
-    preference_patch = {
-        "favorite_track_ids": [track_id.strip()] if favorite else [],
-        "continue_listening": continue_listening,
-        "disliked_features": disliked,
-    }
-    return (
-        {
-            **identifiers,
-            "before": before,
-            "after": after,
-            "rating": rating,
-            "relaxation": relaxation,
-            "match": match,
-            "comment": comment,
-        },
-        preference_patch,
+def _subjective_change(
+    request: FeedbackV2Request,
+) -> dict[str, object]:
+    pre_state = request.pre_state
+    post_state = request.post_state
+    tension_delta = post_state.tension - pre_state.tension
+    body_delta = _optional_delta(
+        pre_state.body_tension,
+        post_state.body_tension,
     )
+    fatigue_delta = _optional_delta(
+        pre_state.mental_fatigue,
+        post_state.mental_fatigue,
+    )
+    available = [
+        value
+        for value in (tension_delta, body_delta, fatigue_delta)
+        if value is not None
+    ]
+    if available and all(value < 0 for value in available):
+        summary = "用户主观感到紧张、身体紧绷和精神疲劳有所下降。"
+    elif any(value > 0 for value in available):
+        summary = "用户主观反馈显示部分状态评分有所升高。"
+    else:
+        summary = "用户主观反馈显示状态评分基本不变。"
+    return {
+        "tension_delta": tension_delta,
+        "body_tension_delta": body_delta,
+        "mental_fatigue_delta": fatigue_delta,
+        "summary": summary,
+    }
 
 
-def _measurements(
-    value: object,
-    container: str,
-) -> dict[str, int | float] | str:
-    if not isinstance(value, Mapping):
-        return container
-    measurements: dict[str, int | float] = {}
-    for field in ("tension", "body_tension", "fatigue"):
-        score = _bounded_number(value.get(field), 0, 10)
-        if score is None:
-            return field
-        measurements[field] = score
-    return measurements
-
-
-def _bounded_number(value: object, minimum: int, maximum: int) -> int | float | None:
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
+def _optional_delta(
+    before: int | None,
+    after: int | None,
+) -> int | None:
+    if before is None or after is None:
         return None
-    if not math.isfinite(value):
-        return None
-    if value < minimum or value > maximum:
-        return None
-    return value
-
-
-def _disliked_features(value: object) -> list[str] | None:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        return None
-    return [item.strip() for item in value if item.strip()]
+    return after - before
 
 
 def _invalid(field: str) -> dict[str, object]:
