@@ -1,60 +1,100 @@
-"""Document Router — Sprint 3 Issue #36.
+"""Document Router V2 — Sprint 3 per api-contract-v2.md.
 
-POST   /api/v2/documents          — 上传病例材料
-GET    /api/v2/documents/{session_id} — 查询Session关联文档
-POST   /api/v2/documents/confirm  — 确认/跳过/删除
-DELETE /api/v2/documents/{document_id} — 删除单个文档
+POST   /api/v2/documents                          — multipart upload
+PATCH  /api/v2/documents/{document_id}/confirmation — confirm/skip
+GET    /api/v2/documents/{session_id}              — list by session
 """
 from datetime import datetime, timezone
 import traceback
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
 from backend.app.models.document import Document
-from backend.app.schemas.document import (
-    DocumentUploadRequest, DocumentResponse, DocumentConfirmRequest,
-    DocumentListResponse, DocumentStatus, ALLOWED_TYPES,
-)
-from backend.app.schemas.common import UniversalOutput, AgentStatus, AgentLayer, make_run_id
-from backend.app.core.exceptions import build_error_response
+from backend.app.models.session import Session as SessionModel
+from backend.app.schemas.v2 import v2_ok, v2_err
 from backend.app.core.ocr import OCRProvider
 
 router = APIRouter()
 ocr = OCRProvider()
 
+ALLOWED_MIME = {"image/jpeg", "image/png", "application/pdf"}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_PDF_PAGES = 3
 
-@router.post("/documents", summary="上传病例材料(JPG/PNG/PDF)")
-async def upload_document(body: DocumentUploadRequest, db: Session = Depends(get_db)):
-    """上传病例图片或PDF。返回 document_id。"""
-    session_id = body.session_id
-    user_id = body.user_id
-    run_id = make_run_id("doc")
+
+def _ensure_session(session_id: str, db: Session):
+    existing = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
+    if not existing:
+        db.add(SessionModel(user_id=1, session_id=session_id, status="active",
+                           current_agent="document_upload"))
+        db.commit()
+
+
+@router.post("/documents", summary="V2 — 上传病例材料 (multipart/form-data)")
+async def upload_document(
+    session_id: str = Form(...),
+    file: UploadFile = File(...),
+    document_type: str = Form(default="other"),
+    consent_confirmed: bool = Form(default=False),
+    db: Session = Depends(get_db),
+):
+    req_id = f"req_{datetime.now(timezone.utc).strftime('%H%M%S')}"
+
+    # Consent check
+    if not consent_confirmed:
+        return v2_err("CONSENT_REQUIRED", "请先确认隐私授权后再上传", req_id, retryable=False,
+                       next_actions=["confirm_consent"])
+
+    # MIME validation
+    if file.content_type not in ALLOWED_MIME:
+        return v2_err("INVALID_FILE_TYPE",
+                       f"不支持的文件类型: {file.content_type}。仅支持 JPG/PNG/PDF", req_id,
+                       retryable=False, next_actions=["retry_with_valid_file"])
+
+    # Read file
+    try:
+        content = await file.read()
+    except Exception:
+        return v2_err("FILE_READ_ERROR", "无法读取文件", req_id, retryable=False)
+
+    file_size = len(content)
+    if file_size > MAX_FILE_SIZE:
+        return v2_err("FILE_TOO_LARGE", f"文件太大({file_size}bytes)，最大10MB", req_id,
+                       retryable=False, next_actions=["compress_or_split"])
+
+    file_ext = file.filename.split(".")[-1].lower() if file.filename else "bin"
+    if file_ext not in {"jpg", "jpeg", "png", "pdf"}:
+        return v2_err("INVALID_EXTENSION", f"不允许的扩展名: .{file_ext}", req_id,
+                       retryable=False)
+
+    page_count = 1
+    if file_ext == "pdf":
+        # Stub: set page_count to 1 (no real PDF parsing)
+        page_count = 1
+        if page_count > MAX_PDF_PAGES:
+            return v2_err("PDF_TOO_LONG", f"PDF最多{MAX_PDF_PAGES}页", req_id,
+                           retryable=False, next_actions=["split_pdf"])
 
     try:
-        # Ensure session exists (FK constraint)
-        from backend.app.models.session import Session
-        existing = db.query(Session).filter(Session.session_id == session_id).first()
-        if not existing:
-            db.add(Session(user_id=1, session_id=session_id, status="active",
-                           current_agent="document_upload"))
-            db.commit()
+        _ensure_session(session_id, db)
 
         today_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-        doc_id = f"doc_{today_str}_{datetime.now(timezone.utc).strftime('%H%M%S')}"
+        ts = datetime.now(timezone.utc).strftime("%H%M%S")
+        doc_id = f"doc_{today_str}_{ts}"
 
-        # Run OCR (stub — never fails)
-        ocr_result = ocr.process(body.storage_path, body.file_type)
+        # OCR processing
+        ocr_result = ocr.process(f"uploads/{session_id}/{file.filename}", file_ext)
 
         doc = Document(
             user_id=1, session_id=session_id,
             document_id=doc_id,
-            original_filename=body.original_filename,
-            file_type=body.file_type,
-            file_size_bytes=body.file_size_bytes,
-            page_count=body.page_count,
-            storage_path=body.storage_path,
+            original_filename=file.filename or "unknown",
+            file_type=file_ext,
+            file_size_bytes=file_size,
+            page_count=page_count,
+            storage_path=f"uploads/{session_id}/{doc_id}.{file_ext}",
             status="uploaded",
             ocr_text=ocr_result.text,
             ocr_confidence=ocr_result.confidence,
@@ -64,108 +104,85 @@ async def upload_document(body: DocumentUploadRequest, db: Session = Depends(get
         db.commit()
         db.refresh(doc)
 
-        return DocumentResponse(
-            document_id=doc_id,
-            session_id=session_id,
-            original_filename=body.original_filename,
-            file_type=body.file_type,
-            file_size_bytes=body.file_size_bytes,
-            page_count=body.page_count,
-            status=DocumentStatus.UPLOADED,
-            ocr_text=ocr_result.text,
-            ocr_confidence=ocr_result.confidence,
-            ocr_confirmed=False,
-            created_at=doc.created_at,
-        )
+        return v2_ok({
+            "document_id": doc_id,
+            "session_id": session_id,
+            "file": {
+                "name": file.filename,
+                "media_type": file.content_type,
+                "size_bytes": file_size,
+                "page_count": page_count,
+            },
+            "ocr_status": "needs_confirmation",
+            "extracted_text": ocr_result.text,
+            "warnings": ["请确认识别文本，未确认的数据不作为可靠输入。"],
+            "retention": "temporary",
+        }, req_id)
 
     except Exception as e:
         db.rollback()
         traceback.print_exc()
-        return build_error_response(
-            agent_id="document_upload", agent_name="文档上传",
-            agent_layer=AgentLayer.MEDICAL_ANALYSIS,
-            session_id=session_id, user_id=user_id, error=e, run_id=run_id,
-        )
+        return v2_err("UPLOAD_FAILED", f"上传失败: {e}", req_id, retryable=True,
+                       next_actions=["retry"])
 
 
-@router.get("/documents/{session_id}", summary="查询Session关联文档")
-async def list_documents(session_id: str, db: Session = Depends(get_db)):
-    """返回指定 session 的所有文档。"""
+@router.patch("/documents/{document_id}/confirmation", summary="V2 — 确认/跳过文档")
+async def confirm_document_v2(
+    document_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    req_id = f"req_{datetime.now(timezone.utc).strftime('%H%M%S')}"
+    session_id = body.get("session_id", "")
+    confirmed = body.get("confirmed", False)
+    doc_text = body.get("document_text")
+
+    doc = db.query(Document).filter(
+        Document.document_id == document_id).first()
+
+    if not doc:
+        return v2_err("NOT_FOUND", f"文档 {document_id} 不存在", req_id, retryable=False)
+
+    try:
+        if confirmed:
+            doc.status = "confirmed"
+            doc.ocr_confirmed = True
+            if doc_text:
+                doc.ocr_text = doc_text
+            status = "confirmed"
+        else:
+            doc.status = "skipped"
+            doc.ocr_confirmed = False
+            status = "skipped"
+        db.commit()
+
+        return v2_ok({
+            "document_id": document_id,
+            "document_text": doc.ocr_text,
+            "ocr_status": status,
+        }, req_id)
+
+    except Exception as e:
+        db.rollback()
+        return v2_err("CONFIRM_FAILED", str(e), req_id, retryable=True)
+
+
+@router.get("/documents/{session_id}", summary="V2 — 查询Session文档")
+async def list_documents_v2(session_id: str, db: Session = Depends(get_db)):
+    req_id = f"req_{datetime.now(timezone.utc).strftime('%H%M%S')}"
+
     docs = db.query(Document).filter(
         Document.session_id == session_id,
         Document.status != "deleted",
     ).all()
 
-    items = [
-        DocumentResponse(
-            document_id=d.document_id,
-            session_id=d.session_id,
-            original_filename=d.original_filename,
-            file_type=d.file_type,
-            file_size_bytes=d.file_size_bytes,
-            page_count=d.page_count or 1,
-            status=DocumentStatus(d.status),
-            ocr_text=d.ocr_text,
-            ocr_confidence=d.ocr_confidence,
-            ocr_confirmed=d.ocr_confirmed,
-            created_at=d.created_at,
-        )
-        for d in docs
-    ]
-    return DocumentListResponse(session_id=session_id, documents=items, total=len(items))
+    items = [{
+        "document_id": d.document_id,
+        "filename": d.original_filename,
+        "file_type": d.file_type,
+        "status": d.status,
+        "ocr_confirmed": d.ocr_confirmed,
+        "created_at": d.created_at.isoformat() if d.created_at else None,
+    } for d in docs]
 
-
-@router.post("/documents/confirm", summary="确认/跳过/删除文档")
-async def confirm_document(body: DocumentConfirmRequest, db: Session = Depends(get_db)):
-    """用户确认OCR文本、跳过、或删除文档。"""
-    session_id = body.session_id
-
-    try:
-        doc = db.query(Document).filter(
-            Document.document_id == body.document_id,
-            Document.session_id == session_id,
-        ).first()
-
-        if not doc:
-            raise HTTPException(status_code=404, detail=f"Document {body.document_id} not found")
-
-        action = body.action.lower()
-        if action == "confirm":
-            doc.status = "confirmed"
-            doc.ocr_confirmed = True
-            if body.ocr_text:
-                doc.ocr_text = body.ocr_text
-        elif action == "skip":
-            doc.status = "skipped"
-            doc.ocr_confirmed = False
-        elif action == "delete":
-            doc.status = "deleted"
-        else:
-            raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
-
-        db.commit()
-        db.refresh(doc)
-
-        return DocumentResponse(
-            document_id=doc.document_id,
-            session_id=doc.session_id,
-            original_filename=doc.original_filename,
-            file_type=doc.file_type,
-            file_size_bytes=doc.file_size_bytes,
-            page_count=doc.page_count or 1,
-            status=DocumentStatus(doc.status),
-            ocr_text=doc.ocr_text,
-            ocr_confidence=doc.ocr_confidence,
-            ocr_confirmed=doc.ocr_confirmed,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        traceback.print_exc()
-        return build_error_response(
-            agent_id="document_confirm", agent_name="文档确认",
-            agent_layer=AgentLayer.MEDICAL_ANALYSIS,
-            session_id=session_id, user_id="u_001", error=e, run_id=make_run_id("dc"),
-        )
+    return v2_ok({"session_id": session_id, "documents": items, "total": len(items)}, req_id)

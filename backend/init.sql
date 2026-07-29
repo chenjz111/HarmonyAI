@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS feedbacks (
 
     wearable_data   TEXT    NULL,
 
-    decision_action     VARCHAR(16)  NOT NULL,
+    decision_action     VARCHAR(64)  NOT NULL,
     decision_detail     TEXT         NULL,
     decision_next_step  VARCHAR(64)  NULL,
     decision_adjustments TEXT        NULL,

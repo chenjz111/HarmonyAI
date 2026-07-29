@@ -42,7 +42,7 @@ class Feedback(Base):
     wearable_data = Column(Text, nullable=True, comment="可穿戴设备数据 JSON (heart_rate/hrv/sleep/respiration)")
 
     # Decision
-    decision_action = Column(String(16), nullable=False, comment="决策: continue/adjust/rediag")
+    decision_action = Column(String(64), nullable=False, comment="决策: continue/adjust/rediag/adjust_personal_preference")
     decision_detail = Column(Text, nullable=True)
     decision_next_step = Column(String(64), nullable=True)
     decision_adjustments = Column(Text, nullable=True, comment="调整参数 JSON")
