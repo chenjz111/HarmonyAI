@@ -24,6 +24,13 @@ class AtomicFeedbackRepository:
         return True
 
 
+class ExplodingRepository:
+    def __getattribute__(self, name):
+        raise AssertionError(
+            f"repository must not be accessed without feedback: {name}"
+        )
+
+
 def questionnaire_answers(*, safety_flags=None):
     return {
         "q01_mood_weather": "cloudy",
@@ -57,11 +64,11 @@ def diagnosis_model_response():
 def local_catalog():
     return [
         {
-            "track_id": "track-jiao-01",
+            "music_id": "music-jiao-01",
             "title": "Jiao Calm",
-            "audio_url": "local://music/jiao-calm.mp3",
-            "duration": 900,
-            "source": "local_catalog",
+            "stream_url": "local://music/jiao-calm.mp3",
+            "duration_seconds": 900,
+            "source_type": "matched",
             "tone_id": "jiao",
             "bpm": 68,
             "instruments": ["guzheng", "guqin"],
@@ -71,33 +78,46 @@ def local_catalog():
 
 def feedback_payload():
     return {
-        "feedback_id": "feedback-v2-001",
+        "schema_version": "feedback_v2.0",
         "session_id": "session-v2-001",
-        "user_id": "user-v2-001",
-        "before": {"tension": 8, "body_tension": 7, "fatigue": 6},
-        "after": {"tension": 3, "body_tension": 4, "fatigue": 4},
-        "rating": 5,
-        "relaxation": 9,
-        "match": 8,
-        "comment": "Calm and focused.",
-        "is_favorite": True,
-        "continue_listening": True,
-        "disliked_features": ["fast tempo"],
-        "track_id": "track-jiao-01",
+        "prescription_id": "prescription-v2-001",
+        "music_id": "music-jiao-01",
+        "pre_state": {
+            "tension": 8,
+            "body_tension": 7,
+            "mental_fatigue": 6,
+            "goal": "relax",
+        },
+        "post_state": {
+            "tension": 3,
+            "body_tension": 4,
+            "mental_fatigue": 4,
+            "change_label": "much_better",
+        },
+        "experience": {
+            "overall_rating": 5,
+            "relaxation_rating": 5,
+            "music_match_rating": 4,
+            "continue_use": "yes",
+            "favorite": True,
+            "disliked_features": [],
+            "disliked_instruments": [],
+            "comment": "Calm and focused.",
+        },
     }
 
 
 @pytest.mark.parametrize(
-    ("document", "narrative_text", "analysis_mode"),
+    ("document_text", "narrative_text", "analysis_mode"),
     [
         (None, None, "questionnaire_only"),
-        ({"ocr_status": "confirmed", "confirmed_text": "Sleep is light."}, None, "document_questionnaire"),
+        ("Sleep is light.", None, "document_questionnaire"),
         (None, "Work pressure is high.", "narrative_questionnaire"),
-        ({"ocr_status": "confirmed", "confirmed_text": "Sleep is light."}, "Work pressure is high.", "document_narrative_questionnaire"),
+        ("Sleep is light.", "Work pressure is high.", "document_narrative_questionnaire"),
     ],
 )
 def test_v2_workflow_runs_all_confirmed_source_combinations_offline(
-    document,
+    document_text,
     narrative_text,
     analysis_mode,
 ):
@@ -106,8 +126,9 @@ def test_v2_workflow_runs_all_confirmed_source_combinations_offline(
     result = run_real_workflow_v2(
         user_id="user-v2-001",
         session_id="session-v2-001",
-        questionnaire=questionnaire_answers(),
-        document=document,
+        questionnaire_answers=questionnaire_answers(),
+        document_id="document-v2-001" if document_text else None,
+        document_text=document_text,
         narrative_text=narrative_text,
         assessment_confirmed=True,
         llm=FixedJsonLLM(assessment_model_response(), diagnosis_model_response()),
@@ -125,7 +146,7 @@ def test_v2_workflow_runs_all_confirmed_source_combinations_offline(
         "music": "success",
         "feedback": "not_submitted",
     }
-    assert result["music"]["track_id"] == "track-jiao-01"
+    assert result["music"]["music_id"] == "music-jiao-01"
     assert result["degradations"]["assessment"] == {
         "active": False,
         "reason_codes": [],
@@ -138,7 +159,7 @@ def test_v2_workflow_stops_after_safety_gate():
     result = run_real_workflow_v2(
         user_id="user-v2-001",
         session_id="session-v2-001",
-        questionnaire=questionnaire_answers(safety_flags=["self_harm_thoughts"]),
+        questionnaire_answers=questionnaire_answers(safety_flags=["self_harm_thoughts"]),
         assessment_confirmed=True,
         llm=FixedJsonLLM(assessment_model_response(), diagnosis_model_response()),
         music_catalog=local_catalog(),
@@ -157,7 +178,7 @@ def test_v2_workflow_requires_explicit_assessment_confirmation():
     result = run_real_workflow_v2(
         user_id="user-v2-001",
         session_id="session-v2-001",
-        questionnaire=questionnaire_answers(),
+        questionnaire_answers=questionnaire_answers(),
         assessment_confirmed=False,
         llm=FixedJsonLLM(assessment_model_response(), diagnosis_model_response()),
         music_catalog=local_catalog(),
@@ -180,7 +201,7 @@ def test_v2_workflow_exposes_qwen_resolution_degradation(monkeypatch):
     result = run_real_workflow_v2(
         user_id="user-v2-001",
         session_id="session-v2-001",
-        questionnaire=questionnaire_answers(),
+        questionnaire_answers=questionnaire_answers(),
         assessment_confirmed=True,
         music_catalog=local_catalog(),
     )
@@ -196,20 +217,17 @@ def test_v2_workflow_exposes_qwen_resolution_degradation(monkeypatch):
 def test_v2_workflow_does_not_touch_repository_without_feedback_payload():
     from backend.ai_engine.real_workflow import run_real_workflow_v2
 
-    repository = AtomicFeedbackRepository()
-
     result = run_real_workflow_v2(
         user_id="user-v2-001",
         session_id="session-v2-001",
-        questionnaire=questionnaire_answers(),
+        questionnaire_answers=questionnaire_answers(),
         assessment_confirmed=True,
         llm=FixedJsonLLM(assessment_model_response(), diagnosis_model_response()),
         music_catalog=local_catalog(),
-        feedback_repository=repository,
+        feedback_repository=ExplodingRepository(),
     )
 
     assert result["feedback"] == {"status": "not_submitted"}
-    assert repository.save_once_calls == 0
 
 
 def test_v2_workflow_submits_explicit_feedback_to_atomic_repository():
@@ -220,7 +238,7 @@ def test_v2_workflow_submits_explicit_feedback_to_atomic_repository():
     result = run_real_workflow_v2(
         user_id="user-v2-001",
         session_id="session-v2-001",
-        questionnaire=questionnaire_answers(),
+        questionnaire_answers=questionnaire_answers(),
         assessment_confirmed=True,
         llm=FixedJsonLLM(assessment_model_response(), diagnosis_model_response()),
         music_catalog=local_catalog(),
@@ -229,9 +247,10 @@ def test_v2_workflow_submits_explicit_feedback_to_atomic_repository():
     )
 
     assert result["feedback"]["status"] == "success"
-    assert result["feedback"]["feedback_id"] == "feedback-v2-001"
+    feedback_id = result["feedback"]["feedback_id"]
+    assert feedback_id.startswith("fb_")
     assert repository.save_once_calls == 1
-    assert repository.records["feedback-v2-001"]["rating"] == 5
+    assert repository.records[feedback_id]["experience"]["overall_rating"] == 5
 
 
 def test_v2_graph_entry_returns_the_same_finalized_contract():
@@ -249,8 +268,9 @@ def test_v2_graph_entry_returns_the_same_finalized_contract():
             "result_id": "v2-result-direct",
             "session_id": "session-v2-001",
             "user_id": "user-v2-001",
-            "questionnaire": questionnaire_answers(),
-            "document": None,
+            "questionnaire_answers": questionnaire_answers(),
+            "document_id": None,
+            "document_text": None,
             "narrative_text": None,
             "assessment_confirmed": True,
             "feedback_payload": None,

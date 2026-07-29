@@ -87,8 +87,9 @@ class RealWorkflowV2State(TypedDict, total=False):
     result_id: str
     session_id: str
     user_id: str
-    questionnaire: object
-    document: Mapping[str, object] | None
+    questionnaire_answers: object
+    document_id: str | None
+    document_text: str | None
     narrative_text: str | None
     assessment_confirmed: bool
     feedback_payload: Mapping[str, object] | None
@@ -117,8 +118,11 @@ def build_real_graph_v2(
                 {
                     "session_id": state["session_id"],
                     "user_id": state["user_id"],
-                    "questionnaire": state["questionnaire"],
-                    "document": state.get("document"),
+                    "questionnaire_answers": state[
+                        "questionnaire_answers"
+                    ],
+                    "document_id": state.get("document_id"),
+                    "document_text": state.get("document_text"),
                     "narrative_text": state.get("narrative_text"),
                 },
                 llm=llm,
@@ -227,9 +231,10 @@ def run_real_workflow_v2(
     *,
     user_id: str,
     session_id: str,
-    questionnaire: object,
+    questionnaire_answers: object,
     assessment_confirmed: bool,
-    document: Mapping[str, object] | None = None,
+    document_id: str | None = None,
+    document_text: str | None = None,
     narrative_text: str | None = None,
     llm: JsonLLMProvider | None = None,
     knowledge_store: Any | None = None,
@@ -248,8 +253,9 @@ def run_real_workflow_v2(
         "result_id": f"v2-result-{uuid4().hex[:12]}",
         "session_id": session_id,
         "user_id": user_id,
-        "questionnaire": questionnaire,
-        "document": document,
+        "questionnaire_answers": questionnaire_answers,
+        "document_id": document_id,
+        "document_text": document_text,
         "narrative_text": narrative_text,
         "assessment_confirmed": assessment_confirmed,
         "feedback_payload": feedback_payload,
