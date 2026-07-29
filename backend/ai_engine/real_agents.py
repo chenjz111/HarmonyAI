@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 from .agent_stubs import make_agent_result
 from .feedback_store import SQLiteFeedbackStore
-from .prompt_engine import PromptEngine
+from .prompt_engine import PromptEngine, TemplateNotFoundError
 from .providers import JsonLLMProvider, LLMProviderError
 
 
@@ -99,7 +99,7 @@ class AssessmentAgent:
         }
         return {"assessment": _envelope(
             agent_id="assessment_agent", agent_name="Assessment Agent", layer="medical_analysis",
-            state=state, status="degraded", confidence=(0.3 if self.llm is not None else (0.3 if not questionnaire else 0.55)),
+            state=state, status="degraded", confidence=0.55 if questionnaire else 0.3,
             reason=["local rule fallback: questionnaire keyword mapping"],
             warnings=["Qwen unavailable or not configured; local fallback used"],
             input_data={"questionnaire": questionnaire}, output_data={"emotion_profile": profile},
@@ -138,6 +138,7 @@ class DiagnosisAgent:
                     reason = ["Qwen-compatible structured diagnosis validated against MVP rules"]
                 else:
                     warnings.append("Qwen proposed an unknown syndrome; rule mapping retained")
+                    confidence = min(confidence, 0.3)
             except (LLMProviderError, ValueError, TypeError, KeyError, AttributeError):
                 warnings.append("Qwen unavailable or not configured; local rule fallback used")
                 confidence = min(confidence, 0.3)
@@ -173,20 +174,35 @@ class PrescriptionAgent:
         syndrome_id = str(primary.get("syndrome_id", "syd_001"))
         syndrome = MVP_SYNDROMES.get(syndrome_id, MVP_SYNDROMES["syd_001"])
         tone_id = str(syndrome["tone_id"])
-        tone_config = {
+        _default_tone = {"tone_name": "角调", "bpm": 68, "instruments": ["古筝", "古琴"]}
+        tone_config_map = {
             "jiao": {"tone_name": "角调", "bpm": 68, "instruments": ["古筝", "古琴"]},
             "zhi": {"tone_name": "徵调", "bpm": 70, "instruments": ["琵琶", "古琴"]},
             "gong": {"tone_name": "宫调", "bpm": 62, "instruments": ["编钟", "古琴"]},
             "shang": {"tone_name": "商调", "bpm": 66, "instruments": ["二胡", "洞箫"]},
             "yu": {"tone_name": "羽调", "bpm": 58, "instruments": ["箫", "古琴"]},
-        }[tone_id]
-        root = Path(__file__).resolve().parents[2]
-        prompt = PromptEngine(root / "prompt" / "v1").render(
-            "CN_V1",
-            {"duration": 15, "bpm": tone_config["bpm"], "tone": tone_config["tone_name"], "style": "传统五声音阶疗愈音乐"},
-        )
+        }
+        tone_config = tone_config_map.get(tone_id, _default_tone)
         evidence: list[dict[str, object]] = []
         warnings: list[str] = []
+        root = Path(__file__).resolve().parents[2]
+        try:
+            prompt = PromptEngine(root / "prompt" / "v1").render(
+                "CN_V1",
+                {"duration": 15, "bpm": tone_config["bpm"], "tone": tone_config["tone_name"], "style": "传统五声音阶疗愈音乐"},
+            )
+            prompt_template = {
+                "template_id": prompt.template_id,
+                "template_version": prompt.template_version,
+                "text": prompt.text,
+            }
+        except (TemplateNotFoundError, ValueError, OSError) as exc:
+            warnings.append(f"prompt rendering failed: {exc}")
+            prompt_template = {
+                "template_id": "CN_V1",
+                "template_version": "1.0.0",
+                "text": f"请生成一段15分钟的传统五声音阶疗愈音乐，以{tone_config['tone_name']}为主要调式，速度为{tone_config['bpm']} BPM。",
+            }
         if self.knowledge_store is not None:
             try:
                 hits = self.knowledge_store.query(str(primary.get("name", "")), limit=3)
@@ -206,7 +222,7 @@ class PrescriptionAgent:
                 "duration_minutes": 15,
                 "instruments": tone_config["instruments"],
             },
-            "prompt_template": {"template_id": prompt.template_id, "template_version": prompt.template_version},
+            "prompt_template": prompt_template,
             "prompt_tags": {"tone_id": tone_id, "style": "healing", "duration": "15_minutes"},
             "evidence": evidence,
         }
@@ -224,7 +240,10 @@ class FeedbackAgent:
 
     def run(self, state: Mapping[str, object]) -> dict[str, object]:
         feedback = dict(state.get("feedback", {}))
-        rating = int(feedback.get("rating", 4))
+        try:
+            rating = int(feedback.get("rating", 4))
+        except (ValueError, TypeError):
+            rating = 4
         comment = feedback.get("comment")
         warnings: list[str] = []
         status = "success"
