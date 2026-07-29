@@ -5,7 +5,7 @@
 Command:
 
 ```powershell
-$python='C:\Users\51178\AppData\Local\Programs\Python\Python312\python.exe'
+$python='<python-runtime>'
 $env:PYTHONPATH='<temporary pytest/langgraph dependency directory>'
 & $python -m pytest tests/ai_engine/test_real_workflow_v2.py tests/ai_engine/test_real_workflow.py -p no:cacheprovider --basetemp=<fresh-temp-dir> -q
 ```
@@ -19,7 +19,7 @@ The same focused command after the minimal implementation returned `12 passed in
 Full-suite command:
 
 ```powershell
-$python='C:\Users\51178\AppData\Local\Programs\Python\Python312\python.exe'
+$python='<python-runtime>'
 $env:PYTHONPATH='<temporary pytest/langgraph/chromadb dependency directory>'
 & $python -m pytest -p no:cacheprovider --basetemp=<fresh-temp-dir> -q
 ```

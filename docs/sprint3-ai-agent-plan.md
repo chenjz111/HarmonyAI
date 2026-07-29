@@ -1,7 +1,7 @@
 # Sprint 3 AI Agent 实施计划
 
-> 适用范围：GitHub Issue #34、#35；前置约束：Issue #30、#32、#33。  
-> 开发策略：保留 Sprint 2，增量新增 V2 模块。  
+> 适用范围：GitHub Issue #34、#35；前置约束：Issue #30、#32、#33。
+> 开发策略：保留 Sprint 2，增量新增 V2 模块。
 > 本文是编码前计划，不代表下列 V2 模块已经实现。
 
 ## Goal
