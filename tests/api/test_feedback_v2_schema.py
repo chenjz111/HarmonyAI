@@ -78,6 +78,27 @@ def test_feedback_request_rejects_track_id_alias():
         FeedbackV2Request.model_validate(payload)
 
 
+@pytest.mark.parametrize(
+    ("container", "field", "value"),
+    [
+        ("pre_state", "tension", "7"),
+        ("experience", "overall_rating", "4"),
+        ("experience", "favorite", "true"),
+        ("playback", "completion_rate", "0.8"),
+    ],
+)
+def test_feedback_request_rejects_coerced_scalar_types(
+    container,
+    field,
+    value,
+):
+    payload = canonical_feedback()
+    payload[container][field] = value
+
+    with pytest.raises(ValidationError):
+        FeedbackV2Request.model_validate(payload)
+
+
 def test_feedback_runtime_returns_canonical_subjective_change_and_patch():
     from backend.ai_engine.feedback_v2 import submit_feedback_v2
 

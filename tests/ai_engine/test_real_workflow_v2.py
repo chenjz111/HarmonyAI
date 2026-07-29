@@ -32,7 +32,7 @@ class ExplodingRepository:
 
 
 def questionnaire_answers(*, safety_flags=None):
-    return {
+    answers = {
         "q01_mood_weather": "cloudy",
         "q02_tension_worry": 3,
         "q03_overthinking": 2,
@@ -45,6 +45,14 @@ def questionnaire_answers(*, safety_flags=None):
         "q10_appetite_change": 2,
         "q11_daily_impact": 4,
         "q12_physical_safety": ["none"] if safety_flags is None else safety_flags,
+    }
+    return {
+        "schema_version": "questionnaire_v2.0",
+        "time_window_days": 7,
+        "answers": [
+            {"question_id": question_id, "value": value}
+            for question_id, value in answers.items()
+        ],
     }
 
 
@@ -190,6 +198,18 @@ def test_v2_workflow_requires_explicit_assessment_confirmation():
     assert result["agent_statuses"]["music"] == "not_run"
 
 
+def test_v2_workflow_rejects_non_boolean_confirmation():
+    from backend.ai_engine.real_workflow import run_real_workflow_v2
+
+    with pytest.raises(TypeError, match="assessment_confirmed"):
+        run_real_workflow_v2(
+            user_id="user-v2-001",
+            session_id="session-v2-001",
+            questionnaire_answers=questionnaire_answers(),
+            assessment_confirmed="false",
+        )
+
+
 def test_v2_workflow_exposes_qwen_resolution_degradation(monkeypatch):
     from backend.ai_engine.real_workflow import run_real_workflow_v2
 
@@ -251,6 +271,65 @@ def test_v2_workflow_submits_explicit_feedback_to_atomic_repository():
     assert feedback_id.startswith("fb_")
     assert repository.save_once_calls == 1
     assert repository.records[feedback_id]["experience"]["overall_rating"] == 5
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("session_id", "another-session"),
+        ("music_id", "another-music"),
+    ],
+)
+def test_v2_workflow_rejects_feedback_for_another_result(field, value):
+    from backend.ai_engine.real_workflow import run_real_workflow_v2
+
+    payload = feedback_payload()
+    payload[field] = value
+    result = run_real_workflow_v2(
+        user_id="user-v2-001",
+        session_id="session-v2-001",
+        questionnaire_answers=questionnaire_answers(),
+        assessment_confirmed=True,
+        llm=FixedJsonLLM(
+            assessment_model_response(),
+            diagnosis_model_response(),
+        ),
+        music_catalog=local_catalog(),
+        feedback_payload=payload,
+        feedback_repository=AtomicFeedbackRepository(),
+    )
+
+    assert result["feedback"] == {
+        "status": "failed",
+        "error_code": "INVALID_PAYLOAD",
+        "field": field,
+        "global_rule_update": False,
+    }
+
+
+def test_v2_workflow_rejects_non_mapping_feedback_payload():
+    from backend.ai_engine.real_workflow import run_real_workflow_v2
+
+    result = run_real_workflow_v2(
+        user_id="user-v2-001",
+        session_id="session-v2-001",
+        questionnaire_answers=questionnaire_answers(),
+        assessment_confirmed=True,
+        llm=FixedJsonLLM(
+            assessment_model_response(),
+            diagnosis_model_response(),
+        ),
+        music_catalog=local_catalog(),
+        feedback_payload="invalid",
+        feedback_repository=AtomicFeedbackRepository(),
+    )
+
+    assert result["feedback"] == {
+        "status": "failed",
+        "error_code": "INVALID_PAYLOAD",
+        "field": "payload",
+        "global_rule_update": False,
+    }
 
 
 def test_v2_graph_entry_returns_the_same_finalized_contract():

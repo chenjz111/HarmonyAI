@@ -209,6 +209,7 @@ def run_assessment_v2(
         if provider is None:
             reason_codes.append("LLM_NOT_CONFIGURED")
             result["status"] = "degraded"
+            _apply_llm_fallback(result)
             result["degradation"] = _degradation(reason_codes)
             result["warnings"] = _warning_messages(reason_codes)
             return result
@@ -224,24 +225,28 @@ def run_assessment_v2(
     except TimeoutError:
         reason_codes.append("LLM_TIMEOUT")
         result["status"] = "degraded"
+        _apply_llm_fallback(result)
         result["degradation"] = _degradation(reason_codes)
         result["warnings"] = _warning_messages(reason_codes)
         return result
     except json.JSONDecodeError:
         reason_codes.append("LLM_INVALID_JSON")
         result["status"] = "degraded"
+        _apply_llm_fallback(result)
         result["degradation"] = _degradation(reason_codes)
         result["warnings"] = _warning_messages(reason_codes)
         return result
     except LLMProviderError:
         reason_codes.append("LLM_PROVIDER_ERROR")
         result["status"] = "degraded"
+        _apply_llm_fallback(result)
         result["degradation"] = _degradation(reason_codes)
         result["warnings"] = _warning_messages(reason_codes)
         return result
     except Exception:
         reason_codes.append("LLM_UNEXPECTED_ERROR")
         result["status"] = "degraded"
+        _apply_llm_fallback(result)
         result["degradation"] = _degradation(reason_codes)
         result["warnings"] = _warning_messages(reason_codes)
         return result
@@ -259,6 +264,7 @@ def run_assessment_v2(
     if validation_reason is not None:
         reason_codes.append(validation_reason)
         result["status"] = "degraded"
+        _apply_llm_fallback(result)
         result["degradation"] = _degradation(reason_codes)
         result["warnings"] = _warning_messages(reason_codes)
         return result
@@ -374,7 +380,22 @@ def _extract_raw_questionnaire_risk_flags(
 ) -> list[str]:
     q12_values: list[object] = []
     if isinstance(questionnaire, Mapping):
-        q12_values.append(questionnaire.get("q12_physical_safety"))
+        records = questionnaire.get("answers")
+        if isinstance(records, Sequence) and not isinstance(
+            records,
+            (str, bytes),
+        ):
+            q12_values.extend(
+                record.get("value")
+                for record in records
+                if isinstance(record, Mapping)
+                and record.get("question_id")
+                == "q12_physical_safety"
+            )
+        else:
+            q12_values.append(
+                questionnaire.get("q12_physical_safety")
+            )
     elif (
         isinstance(questionnaire, Sequence)
         and not isinstance(questionnaire, (str, bytes))
@@ -403,6 +424,20 @@ def _extract_raw_questionnaire_risk_flags(
         )
         if flag in selected
     ]
+
+
+def _apply_llm_fallback(result: dict[str, object]) -> None:
+    result["analysis_mode"] = "questionnaire_only"
+    sources = result.get("sources_used")
+    if not isinstance(sources, list):
+        return
+    for source in sources:
+        if (
+            isinstance(source, dict)
+            and source.get("source") in {"document", "narrative"}
+            and source.get("status") in {"confirmed", "used"}
+        ):
+            source["status"] = "unavailable"
 
 
 def _document_source(

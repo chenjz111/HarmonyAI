@@ -25,6 +25,39 @@ def complete_answers():
     }
 
 
+def canonical_envelope():
+    return {
+        "schema_version": "questionnaire_v2.0",
+        "time_window_days": 7,
+        "answers": [
+            {"question_id": question_id, "value": value}
+            for question_id, value in complete_answers().items()
+        ],
+    }
+
+
+def test_scores_canonical_questionnaire_envelope():
+    result = score_questionnaire(canonical_envelope())
+
+    assert result["mood_metaphor"] == "rainy"
+    assert result["dimension_scores"]["overthinking"]["normalized_score"] == 25
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("schema_version", "questionnaire_v1.0"),
+        ("time_window_days", 14),
+    ],
+)
+def test_rejects_invalid_canonical_envelope_metadata(field, value):
+    envelope = canonical_envelope()
+    envelope[field] = value
+
+    with pytest.raises(QuestionnaireValidationError, match=field):
+        score_questionnaire(envelope)
+
+
 def test_scores_q2_to_q11_and_returns_each_dimension_source():
     result = score_questionnaire(complete_answers())
 

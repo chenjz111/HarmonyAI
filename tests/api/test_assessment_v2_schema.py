@@ -25,6 +25,17 @@ def complete_questionnaire():
     }
 
 
+def questionnaire_envelope():
+    return {
+        "schema_version": "questionnaire_v2.0",
+        "time_window_days": 7,
+        "answers": [
+            {"question_id": question_id, "value": value}
+            for question_id, value in complete_questionnaire().items()
+        ],
+    }
+
+
 def canonical_request(**overrides):
     payload = {
         "session_id": "sess-contract",
@@ -32,7 +43,7 @@ def canonical_request(**overrides):
         "document_id": "doc-contract",
         "document_text": "已由用户确认的病例文本。",
         "narrative_text": "最近考试压力较大，睡眠不稳。",
-        "questionnaire_answers": complete_questionnaire(),
+        "questionnaire_answers": questionnaire_envelope(),
     }
     payload.update(overrides)
     return payload
@@ -43,7 +54,16 @@ def test_request_accepts_only_canonical_assessment_names():
 
     assert request.document_id == "doc-contract"
     assert request.document_text == "已由用户确认的病例文本。"
-    assert request.questionnaire_answers["q02_tension_worry"] == 4
+    assert request.questionnaire_answers.time_window_days == 7
+    assert request.questionnaire_answers.answers[1].value == 4
+
+
+def test_request_rejects_flat_questionnaire_answers():
+    payload = canonical_request()
+    payload["questionnaire_answers"] = complete_questionnaire()
+
+    with pytest.raises(ValidationError):
+        AssessmentV2Request.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -57,7 +77,7 @@ def test_request_accepts_only_canonical_assessment_names():
                 "confirmed_text": "旧 V2 病例字段。",
             },
         ),
-        ("questionnaire_answers", "questionnaire", complete_questionnaire()),
+        ("questionnaire_answers", "questionnaire", questionnaire_envelope()),
     ],
 )
 def test_request_rejects_legacy_v2_names(
@@ -83,7 +103,7 @@ def test_assessment_runtime_emits_canonical_response(monkeypatch):
     result = assessment_v2.run_assessment_v2(canonical_request())
     validated = AssessmentV2Response.model_validate(result)
 
-    assert validated.analysis_mode == "document_narrative_questionnaire"
+    assert validated.analysis_mode == "questionnaire_only"
     assert validated.emotion_profile.dimension_scores == {
         "tension_worry": 100,
         "overthinking": 75,
@@ -132,7 +152,7 @@ def test_runtime_uses_all_canonical_analysis_modes(
     document_id,
     document_text,
     narrative_text,
-    expected_mode,
+        expected_mode,
 ):
     monkeypatch.setattr(
         assessment_v2,
@@ -147,7 +167,7 @@ def test_runtime_uses_all_canonical_analysis_modes(
         )
     )
 
-    assert result["analysis_mode"] == expected_mode
+    assert result["analysis_mode"] == "questionnaire_only"
     AssessmentV2Response.model_validate(result)
 
 
@@ -170,6 +190,7 @@ def test_timeout_logs_do_not_include_sensitive_source_text(caplog):
     )
 
     assert result["degradation"]["reason_code"] == "LLM_TIMEOUT"
+    assert result["analysis_mode"] == "questionnaire_only"
     assert result["warnings"] == [
         "LLM_TIMEOUT: AI 分析暂时不可用，已切换到确定性问卷评估。"
     ]

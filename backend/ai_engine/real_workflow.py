@@ -133,7 +133,7 @@ def build_real_graph_v2(
         assessment = _mapping_value(state.get("assessment"))
         if assessment.get("status") == "blocked_safety":
             return {"confirmation": {"status": "blocked_safety"}}
-        if not state.get("assessment_confirmed", False):
+        if state.get("assessment_confirmed") is not True:
             return {"confirmation": {"status": "needs_confirmation"}}
         return {"confirmation": {"status": "confirmed"}}
 
@@ -169,6 +169,13 @@ def build_real_graph_v2(
         payload = state.get("feedback_payload")
         if payload is None:
             return {"feedback": {"status": "not_submitted"}}
+        if not isinstance(payload, Mapping):
+            return {"feedback": _invalid_feedback("payload")}
+        if payload.get("session_id") != state.get("session_id"):
+            return {"feedback": _invalid_feedback("session_id")}
+        music = _mapping_value(state.get("music"))
+        if payload.get("music_id") != music.get("music_id"):
+            return {"feedback": _invalid_feedback("music_id")}
         save_once = getattr(feedback_repository, "save_once", None)
         if not callable(save_once):
             return {
@@ -243,6 +250,8 @@ def run_real_workflow_v2(
     feedback_repository: FeedbackRepository | None = None,
 ) -> dict[str, object]:
     """Run the V2 workflow without changing the Sprint2 entry point."""
+    if type(assessment_confirmed) is not bool:
+        raise TypeError("assessment_confirmed must be a bool")
     graph = build_real_graph_v2(
         llm=llm,
         knowledge_store=knowledge_store,
@@ -301,3 +310,12 @@ def _degradation(value: Mapping[str, object]) -> dict[str, object]:
         return {"active": False, "reason_codes": []}
     error_code = value.get("error_code") or value.get("reason_code") or status.upper()
     return {"active": True, "reason_codes": [str(error_code)]}
+
+
+def _invalid_feedback(field: str) -> dict[str, object]:
+    return {
+        "status": "failed",
+        "error_code": "INVALID_PAYLOAD",
+        "field": field,
+        "global_rule_update": False,
+    }
