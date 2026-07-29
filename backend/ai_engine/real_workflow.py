@@ -268,6 +268,18 @@ def _status(value: Mapping[str, object], *, default: str = "not_run") -> str:
 def _degradation(value: Mapping[str, object]) -> dict[str, object]:
     raw_degradation = value.get("degradation")
     if isinstance(raw_degradation, Mapping):
+        if "triggered" in raw_degradation:
+            reason_code = raw_degradation.get("reason_code")
+            return {
+                "active": bool(
+                    raw_degradation.get("triggered", False)
+                ),
+                "reason_codes": (
+                    [str(reason_code)]
+                    if reason_code is not None
+                    else []
+                ),
+            }
         return {
             "active": bool(raw_degradation.get("active", False)),
             "reason_codes": list(raw_degradation.get("reason_codes", [])),

@@ -93,7 +93,7 @@ def feedback_payload():
         (None, None, "questionnaire_only"),
         ({"ocr_status": "confirmed", "confirmed_text": "Sleep is light."}, None, "document_questionnaire"),
         (None, "Work pressure is high.", "narrative_questionnaire"),
-        ({"ocr_status": "confirmed", "confirmed_text": "Sleep is light."}, "Work pressure is high.", "document_text_questionnaire"),
+        ({"ocr_status": "confirmed", "confirmed_text": "Sleep is light."}, "Work pressure is high.", "document_narrative_questionnaire"),
     ],
 )
 def test_v2_workflow_runs_all_confirmed_source_combinations_offline(

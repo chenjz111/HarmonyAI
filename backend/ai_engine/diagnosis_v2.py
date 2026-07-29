@@ -52,7 +52,15 @@ def run_diagnosis_v2(
             degradation={"active": True, "reason_codes": ["SAFETY_BLOCKED"]},
         )
 
-    candidates = _local_candidates(assessment_data.get("dimensions"))
+    emotion_profile = _mapping_or_default(
+        assessment_data.get("emotion_profile"),
+        {},
+    )
+    dimensions = emotion_profile.get(
+        "dimension_scores",
+        assessment_data.get("dimensions"),
+    )
+    candidates = _local_candidates(dimensions)
     primary = candidates[0] if candidates else None
     secondary = candidates[1:]
     if primary is None:
