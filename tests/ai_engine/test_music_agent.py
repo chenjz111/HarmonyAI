@@ -1,3 +1,8 @@
+import math
+
+import pytest
+
+
 def prescription(**overrides):
     data = {
         "status": "success",
@@ -129,6 +134,77 @@ def test_blocked_or_low_confidence_prescription_never_returns_a_playable_track()
         "action": "withhold_music_playback",
         "error_code": "SAFETY_BLOCKED",
         "fallback_tracks": [],
+    }
+
+
+def test_low_confidence_prescription_never_returns_a_playable_track():
+    from backend.ai_engine.music_agent import match_music_v2
+
+    result = match_music_v2(
+        prescription(confidence={"level": "low", "score": 0.2}),
+        [
+            {
+                "track_id": "track-jiao-01",
+                "title": "Jiao Calm",
+                "audio_url": "local://music/jiao-calm.mp3",
+                "duration": 900,
+                "source": "local_catalog",
+                "tone_id": "jiao",
+                "bpm": 68,
+            }
+        ],
+    )
+
+    assert result == {
+        "status": "degraded",
+        "generation_mode": "withheld",
+        "action": "withhold_music_playback",
+        "error_code": "LOW_CONFIDENCE",
+        "fallback_tracks": [],
+    }
+
+
+@pytest.mark.parametrize("invalid_bpm", [None, "68", math.nan, math.inf, -math.inf])
+def test_invalid_catalog_bpm_returns_a_failed_result_with_a_playable_fallback(invalid_bpm):
+    from backend.ai_engine.music_agent import match_music_v2
+
+    result = match_music_v2(
+        prescription(),
+        [
+            {
+                "track_id": "track-jiao-invalid-bpm",
+                "title": "Jiao Invalid BPM",
+                "audio_url": "local://music/jiao-invalid-bpm.mp3",
+                "duration": 900,
+                "source": "local_catalog",
+                "tone_id": "jiao",
+                "bpm": invalid_bpm,
+            },
+            {
+                "track_id": "track-zhi-01",
+                "title": "Zhi Calm",
+                "audio_url": "local://music/zhi-calm.mp3",
+                "duration": 900,
+                "source": "local_catalog",
+                "tone_id": "zhi",
+                "bpm": 70,
+            },
+        ],
+    )
+
+    assert result == {
+        "status": "failed",
+        "generation_mode": "matched",
+        "error_code": "NO_PLAYABLE_TRACK",
+        "fallback_tracks": [
+            {
+                "track_id": "track-zhi-01",
+                "title": "Zhi Calm",
+                "audio_url": "local://music/zhi-calm.mp3",
+                "duration": 900,
+                "source": "local_catalog",
+            }
+        ],
     }
 
 

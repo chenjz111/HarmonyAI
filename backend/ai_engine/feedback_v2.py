@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import math
 from typing import Protocol
 
 
 class FeedbackRepository(Protocol):
-    def get(self, feedback_id: str) -> object | None: ...
-
-    def save(
+    def save_once(
         self,
         record: dict[str, object],
         preference_patch: dict[str, object],
-    ) -> None: ...
+    ) -> bool: ...
 
 
 def submit_feedback_v2(
@@ -30,19 +29,19 @@ def submit_feedback_v2(
     feedback_id = record["feedback_id"]
     assert isinstance(feedback_id, str)
     try:
-        if repository.get(feedback_id) is not None:
-            return {
-                "status": "success",
-                "feedback_id": feedback_id,
-                "idempotent": True,
-                "global_rule_update": False,
-            }
-        repository.save(record, preference_patch)
+        inserted = repository.save_once(record, preference_patch)
     except Exception:
         return {
             "status": "failed",
             "feedback_id": feedback_id,
             "error_code": "PERSISTENCE_FAILED",
+            "global_rule_update": False,
+        }
+    if not inserted:
+        return {
+            "status": "success",
+            "feedback_id": feedback_id,
+            "idempotent": True,
             "global_rule_update": False,
         }
 
@@ -73,10 +72,10 @@ def _validate_payload(
             return field
         identifiers[field] = value.strip()
 
-    before = _measurements(payload.get("before"))
+    before = _measurements(payload.get("before"), "before")
     if isinstance(before, str):
         return before
-    after = _measurements(payload.get("after"))
+    after = _measurements(payload.get("after"), "after")
     if isinstance(after, str):
         return after
 
@@ -130,9 +129,12 @@ def _validate_payload(
     )
 
 
-def _measurements(value: object) -> dict[str, int | float] | str:
+def _measurements(
+    value: object,
+    container: str,
+) -> dict[str, int | float] | str:
     if not isinstance(value, Mapping):
-        return "before" if value is None else "measurements"
+        return container
     measurements: dict[str, int | float] = {}
     for field in ("tension", "body_tension", "fatigue"):
         score = _bounded_number(value.get(field), 0, 10)
@@ -144,6 +146,8 @@ def _measurements(value: object) -> dict[str, int | float] | str:
 
 def _bounded_number(value: object, minimum: int, maximum: int) -> int | float | None:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    if not math.isfinite(value):
         return None
     if value < minimum or value > maximum:
         return None

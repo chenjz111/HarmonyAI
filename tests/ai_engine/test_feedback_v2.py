@@ -1,18 +1,25 @@
-class MemoryFeedbackRepository:
+import math
+
+import pytest
+
+
+class AtomicFeedbackRepository:
     def __init__(self):
         self.records = {}
         self.preference_updates = []
+        self.save_once_calls = 0
 
-    def get(self, feedback_id):
-        return self.records.get(feedback_id)
-
-    def save(self, record, preference_patch):
+    def save_once(self, record, preference_patch):
+        self.save_once_calls += 1
+        if record["feedback_id"] in self.records:
+            return False
         self.records[record["feedback_id"]] = record
         self.preference_updates.append(preference_patch)
+        return True
 
 
-class FailingFeedbackRepository(MemoryFeedbackRepository):
-    def save(self, record, preference_patch):
+class FailingFeedbackRepository(AtomicFeedbackRepository):
+    def save_once(self, record, preference_patch):
         del record, preference_patch
         raise OSError("database unavailable")
 
@@ -37,10 +44,10 @@ def feedback_payload(**overrides):
     return payload
 
 
-def test_explicit_submission_saves_feedback_and_returns_only_a_personal_preference_patch():
+def test_explicit_submission_uses_one_atomic_save_once_and_returns_only_a_personal_preference_patch():
     from backend.ai_engine.feedback_v2 import submit_feedback_v2
 
-    repository = MemoryFeedbackRepository()
+    repository = AtomicFeedbackRepository()
 
     result = submit_feedback_v2(feedback_payload(), repository)
 
@@ -65,12 +72,13 @@ def test_explicit_submission_saves_feedback_and_returns_only_a_personal_preferen
             "disliked_features": ["lyrics", "fast tempo"],
         }
     ]
+    assert repository.save_once_calls == 1
 
 
 def test_empty_comment_is_normalized_and_valid_scores_are_preserved():
     from backend.ai_engine.feedback_v2 import submit_feedback_v2
 
-    repository = MemoryFeedbackRepository()
+    repository = AtomicFeedbackRepository()
 
     result = submit_feedback_v2(
         feedback_payload(comment="   ", rating=1, relaxation=0, match=10),
@@ -87,7 +95,7 @@ def test_empty_comment_is_normalized_and_valid_scores_are_preserved():
 def test_invalid_scores_are_rejected_before_persistence():
     from backend.ai_engine.feedback_v2 import submit_feedback_v2
 
-    repository = MemoryFeedbackRepository()
+    repository = AtomicFeedbackRepository()
 
     result = submit_feedback_v2(feedback_payload(rating=6), repository)
 
@@ -121,7 +129,7 @@ def test_save_failure_is_reported_without_updating_preferences():
 def test_duplicate_feedback_id_is_idempotent_and_does_not_save_twice():
     from backend.ai_engine.feedback_v2 import submit_feedback_v2
 
-    repository = MemoryFeedbackRepository()
+    repository = AtomicFeedbackRepository()
     first = submit_feedback_v2(feedback_payload(), repository)
     second = submit_feedback_v2(feedback_payload(comment="different text"), repository)
 
@@ -134,3 +142,63 @@ def test_duplicate_feedback_id_is_idempotent_and_does_not_save_twice():
     }
     assert repository.records["feedback-001"]["comment"] == "Calm and focused."
     assert len(repository.preference_updates) == 1
+    assert repository.save_once_calls == 2
+
+
+@pytest.mark.parametrize(
+    "scale",
+    [
+        "before_tension",
+        "after_tension",
+        "before_body_tension",
+        "after_body_tension",
+        "before_fatigue",
+        "after_fatigue",
+        "rating",
+        "relaxation",
+        "match",
+    ],
+)
+@pytest.mark.parametrize("invalid_value", [math.nan, math.inf, -math.inf])
+def test_all_feedback_scales_reject_non_finite_values(scale, invalid_value):
+    from backend.ai_engine.feedback_v2 import submit_feedback_v2
+
+    repository = AtomicFeedbackRepository()
+    payload = feedback_payload()
+    if scale == "before_tension":
+        payload["before"]["tension"] = invalid_value
+    elif scale == "after_tension":
+        payload["after"]["tension"] = invalid_value
+    elif scale == "before_body_tension":
+        payload["before"]["body_tension"] = invalid_value
+    elif scale == "after_body_tension":
+        payload["after"]["body_tension"] = invalid_value
+    elif scale == "before_fatigue":
+        payload["before"]["fatigue"] = invalid_value
+    elif scale == "after_fatigue":
+        payload["after"]["fatigue"] = invalid_value
+    else:
+        payload[scale] = invalid_value
+
+    result = submit_feedback_v2(payload, repository)
+
+    assert result["status"] == "failed"
+    assert result["error_code"] == "INVALID_PAYLOAD"
+    assert repository.records == {}
+    assert repository.preference_updates == []
+
+
+def test_missing_after_reports_after_as_the_invalid_field():
+    from backend.ai_engine.feedback_v2 import submit_feedback_v2
+
+    result = submit_feedback_v2(
+        feedback_payload(after=None),
+        AtomicFeedbackRepository(),
+    )
+
+    assert result == {
+        "status": "failed",
+        "error_code": "INVALID_PAYLOAD",
+        "field": "after",
+        "global_rule_update": False,
+    }

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+import math
 
 
 def match_music_v2(
@@ -21,7 +21,7 @@ def match_music_v2(
         return _failed("INVALID_INPUT")
     tone_id = music_feature.get("tone_id")
     bpm = music_feature.get("bpm")
-    if not isinstance(tone_id, str) or not tone_id or not _is_number(bpm):
+    if not isinstance(tone_id, str) or not tone_id or not _is_finite_number(bpm):
         return _failed("INVALID_INPUT")
 
     matching_tracks = [
@@ -29,9 +29,13 @@ def match_music_v2(
     ]
     playable_matches = [track for track in matching_tracks if _is_playable(track)]
     if not playable_matches:
-        error_code = (
-            "TRACK_AUDIO_UNAVAILABLE" if matching_tracks else "NO_MATCHING_TRACK"
-        )
+        error_code = "NO_MATCHING_TRACK"
+        if matching_tracks:
+            error_code = (
+                "TRACK_AUDIO_UNAVAILABLE"
+                if any(not _has_audio(track) for track in matching_tracks)
+                else "NO_PLAYABLE_TRACK"
+            )
         return _failed(error_code, _fallback_tracks(catalog, excluded=matching_tracks))
 
     track = min(
@@ -81,7 +85,7 @@ def _withheld_result(prescription: Mapping[str, object]) -> dict[str, object] | 
         and (
             confidence.get("level") == "low"
             or (
-                _is_number(confidence.get("score"))
+                _is_finite_number(confidence.get("score"))
                 and float(confidence["score"]) < 0.4
             )
         )
@@ -103,10 +107,15 @@ def _is_playable(track: Mapping[str, object]) -> bool:
             isinstance(track.get("track_id"), str) and bool(track["track_id"]),
             isinstance(track.get("title"), str) and bool(track["title"]),
             isinstance(track.get("audio_url"), str) and bool(track["audio_url"]),
-            _is_number(track.get("duration")) and float(track["duration"]) > 0,
+            _is_finite_number(track.get("duration")) and float(track["duration"]) > 0,
             isinstance(track.get("source"), str) and bool(track["source"]),
+            _is_finite_number(track.get("bpm")),
         )
     )
+
+
+def _has_audio(track: Mapping[str, object]) -> bool:
+    return isinstance(track.get("audio_url"), str) and bool(track["audio_url"])
 
 
 def _fallback_tracks(
@@ -135,8 +144,12 @@ def _failed(error_code: str, fallback_tracks: list[dict[str, object]] | None = N
     }
 
 
-def _is_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+def _is_finite_number(value: object) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 def _is_string_list(value: object) -> bool:
