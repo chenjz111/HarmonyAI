@@ -30,7 +30,7 @@ Sprint 2 的入口和结果保持可运行：
 ## 3. V2 数据流
 
 ```text
-document.confirmed_text ─┐
+document_text ───────────┐
 narrative_text ──────────┼─> safety_rules ─> questionnaire_v2 scoring
 questionnaire_answers ──┘                         │
                                                    v
@@ -58,38 +58,41 @@ questionnaire_answers ──┘                         │
 ### 输入
 
 ```python
-AssessmentV2Input(
+AssessmentV2Request(
     session_id: str,
     user_id: str,
-    document: DocumentInput | None,
+    document_id: str | None,
+    document_text: str | None,
     narrative_text: str | None,
-    questionnaire: QuestionnaireSubmission,
+    questionnaire_answers: QuestionnaireSubmission,
 )
 ```
 
-`DocumentInput` 只接受 `ocr_status=confirmed` 的 `confirmed_text`。`questionnaire` 必须包含 Questionnaire V2 的 Q1—Q12，后端重新计分，不能信任前端传入的总分。
+调用方只应把已确认 OCR 内容写入 `document_text`；未确认内容不得进入该字段。`questionnaire_answers` 必须使用 `schema_version="questionnaire_v2.0"`、`time_window_days=7` 和完整 `answers` 列表；列表包含 Questionnaire V2 的 Q1—Q12，后端重新计分，不能信任前端传入的总分。
 
 ### 输出
 
 ```python
-AssessmentV2Output(
+AssessmentV2Response(
     agent_id="assessment_agent",
     status: Literal["success", "degraded", "blocked_safety"],
     analysis_mode: Literal[
         "questionnaire_only",
         "narrative_questionnaire",
         "document_questionnaire",
-        "document_text_questionnaire",
+        "document_narrative_questionnaire",
     ],
     sources_used: list[SourceStatus],
-    state_summary: StateSummary,
-    dimensions: dict[str, int],
-    context: ContextSummary,
-    evidence: list[EvidenceItem],
+    emotion_profile: EmotionProfile,
+    physical_profile: PhysicalProfile,
+    life_events: LifeEvents,
+    assessment_summary: str,
+    extracted_evidence: list[EvidenceItem],
     conflicts: list[ConflictItem],
     missing_information: list[str],
-    safety: SafetyResult,
+    safety_flags: list[str],
     degradation: DegradationInfo,
+    warnings: list[str],
     disclaimer: str,
 )
 ```
@@ -138,27 +141,28 @@ Prescription V2 保留 Sprint 2 的调式、BPM、时长、乐器、Prompt 和 C
 - `generation_mode="matched"`；
 - `knowledge_degradation`。
 
-Music Agent 输出 `track_id`、标题、`audio_url`、时长、来源、音乐参数和匹配解释。本 Sprint 只允许本地曲库匹配，不返回 `generated` 成功状态。
+Music Agent 输出扁平合同：`music_id`、`title`、`source_type="matched"`、`stream_url`、`mode`、`bpm`、`duration_seconds`、`instruments`、`ambient_sounds`、`rights_note`、`match_explanation` 和 `fallback_music_id`。本 Sprint 只允许本地曲库匹配，不返回 `generated` 成功状态。
 
 ## 8. Feedback V2
 
-Feedback V2 接收：
+Feedback V2 使用 `schema_version="feedback_v2.0"`，并接收：
 
-- 听前、听后紧张程度；
+- `session_id`、`prescription_id`、`music_id`；
+- 嵌套的 `pre_state` 与 `post_state`；
 - 听前、听后身体紧绷和精神疲劳；
-- 主观变化；
-- 整体评分、放松程度、音乐匹配度；
-- 是否继续、是否收藏、不喜欢的音乐特征；
-- 可选文字反馈。
+- `experience` 中的整体评分、放松程度、音乐匹配度；
+- 是否继续、是否收藏、不喜欢的特征/乐器和可选文字反馈；
+- 可选 `playback` 播放摘要。
 
 输出：
 
 - 逐项 delta；
 - 用户主观体验摘要；
+- 决策及原因码；
 - `personal_preference_patch`；
 - `global_rule_update=false`。
 
-真实工作流不再自动写入默认 4 星。只有用户主动提交 Feedback V2 后才保存反馈和个人偏好。
+V2 工作流不自动写入默认 4 星。只有用户主动提交 Feedback V2 后才通过原子 `save_once(record, preference_patch)` 保存反馈和个人偏好；Sprint 2 旧入口的历史默认行为保持不变。
 
 ## 9. 降级与错误处理
 
@@ -171,6 +175,8 @@ Feedback V2 接收：
 | Chroma 无法查询 | `degraded` | 使用已审核规则，记录检索降级 |
 | 高风险命中 | `blocked_safety` | 阻断普通处方和音乐播放 |
 | 反馈保存失败 | `failed` 或可重试 | 不伪造成功，不更新偏好 |
+
+所有 Qwen 不可用或输出无效场景均将 `analysis_mode` 回退为 `questionnaire_only`，并把未参与最终分析的 document/narrative 来源标记为 `unavailable`。
 
 ## 10. 日志和隐私
 
@@ -193,5 +199,5 @@ Feedback V2 接收：
 - 低可信或安全阻断不进入普通处方；
 - Music Agent 输出 `matched` 而非伪造 `generated`；
 - Feedback 不自动写默认评分，只更新个人偏好；
-- Sprint 2 原有 36 项测试全部回归通过。
-
+- Sprint 2 原有行为全部回归通过；
+- V2 工作流固定输入连续运行 10 次，状态、确定性评估和音乐匹配结果保持一致。
