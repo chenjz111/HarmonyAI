@@ -35,6 +35,18 @@ _QUESTION_SOURCE_BY_DIMENSION = {
     "daily_impact": "questionnaire:q11",
 }
 _QUESTION_SOURCES = frozenset(_QUESTION_SOURCE_BY_DIMENSION.values())
+_DIMENSION_LABELS = {
+    "tension_worry": "紧张担忧",
+    "overthinking": "反复思虑",
+    "irritability_anger": "烦躁易怒",
+    "low_mood": "情绪低落",
+    "interest_loss": "兴趣减退",
+    "fear_unease": "不安恐惧",
+    "sleep_disturbance": "睡眠困扰",
+    "low_energy": "精力不足",
+    "appetite_change": "食欲变化",
+    "daily_impact": "日常受影响",
+}
 _REQUIRED_MODEL_FIELDS = frozenset(
     {"state_summary", "context", "evidence"}
 )
@@ -58,20 +70,18 @@ class AssessmentValidationError(ValueError):
     """Raised when an Assessment V2 envelope violates its runtime contract."""
 
 
-class AssessmentDocumentInput(TypedDict):
-    ocr_status: str
-    confirmed_text: str | None
-
-
 class _AssessmentV2OptionalInput(TypedDict, total=False):
-    document: AssessmentDocumentInput | None
+    document_id: str | None
+    document_text: str | None
     narrative_text: str | None
 
 
 class AssessmentV2Submission(_AssessmentV2OptionalInput):
     session_id: str
     user_id: str
-    questionnaire: Mapping[str, Any] | Sequence[Mapping[str, Any]]
+    questionnaire_answers: (
+        Mapping[str, Any] | Sequence[Mapping[str, Any]]
+    )
 
 
 def run_assessment_v2(
@@ -82,13 +92,12 @@ def run_assessment_v2(
     (
         session_id,
         user_id,
-        document,
+        document_text,
+        document_status,
+        unconfirmed_text,
         narrative,
         questionnaire,
     ) = _validate_submission(submission)
-    document_text, document_status, unconfirmed_text = _document_source(
-        document
-    )
     narrative_text = _non_blank_text(narrative)
 
     safety = evaluate_safety(
@@ -128,13 +137,16 @@ def run_assessment_v2(
     )
     sources_used = [
         {
-            "source": "questionnaire",
-            "status": "invalid" if questionnaire_invalid else "used",
+            "source": "document",
+            "status": document_status,
         },
-        {"source": "document", "status": document_status},
         {
             "source": "narrative",
             "status": "used" if narrative_text is not None else "missing",
+        },
+        {
+            "source": "questionnaire",
+            "status": "invalid" if questionnaire_invalid else "used",
         },
     ]
     missing_information = []
@@ -149,6 +161,16 @@ def run_assessment_v2(
     if questionnaire_invalid:
         reason_codes.append("QUESTIONNAIRE_INVALID")
 
+    physical_signals = (
+        []
+        if questionnaire_result is None
+        else list(questionnaire_result["physical_signals"])
+    )
+    evidence = (
+        []
+        if questionnaire_result is None
+        else _questionnaire_evidence(dimensions)
+    )
     result = {
         "agent_id": "assessment_agent",
         "session_id": session_id,
@@ -156,36 +178,30 @@ def run_assessment_v2(
         "status": "success",
         "analysis_mode": analysis_mode,
         "sources_used": sources_used,
-        "state_summary": {
-            "summary": "已根据问卷完成确定性状态评估。"
-        },
-        "dimensions": dimensions,
-        "context": {
-            "triggers": [],
-            "physical_signals": (
-                []
-                if questionnaire_result is None
-                else list(questionnaire_result["physical_signals"])
-            ),
-        },
-        "evidence": (
-            []
-            if questionnaire_result is None
-            else _questionnaire_evidence(dimensions)
+        "emotion_profile": _build_emotion_profile(dimensions),
+        "physical_profile": _build_physical_profile(
+            dimensions,
+            physical_signals,
         ),
+        "life_events": {"triggers": []},
+        "assessment_summary": "已根据问卷完成确定性状态评估。",
+        "extracted_evidence": evidence,
         "conflicts": [],
         "missing_information": missing_information,
-        "safety": safety,
         "degradation": _degradation(reason_codes),
+        "warnings": _warning_messages(reason_codes),
+        "safety_flags": list(safety["flags"]),
         "disclaimer": _DISCLAIMER,
     }
 
     if safety["status"] == "blocked_safety":
         result["status"] = "blocked_safety"
-        result["state_summary"] = {
-            "summary": "检测到需要优先处理的安全风险，普通状态分析已终止。"
-        }
-        result["evidence"] = []
+        result["assessment_summary"] = (
+            "检测到需要优先处理的安全风险，普通状态分析已终止。"
+        )
+        result["extracted_evidence"] = []
+        result["degradation"] = _degradation(reason_codes)
+        result["warnings"] = _warning_messages(reason_codes)
         return result
 
     try:
@@ -194,6 +210,7 @@ def run_assessment_v2(
             reason_codes.append("LLM_NOT_CONFIGURED")
             result["status"] = "degraded"
             result["degradation"] = _degradation(reason_codes)
+            result["warnings"] = _warning_messages(reason_codes)
             return result
 
         system_prompt, user_prompt = _build_prompts(
@@ -208,21 +225,25 @@ def run_assessment_v2(
         reason_codes.append("LLM_TIMEOUT")
         result["status"] = "degraded"
         result["degradation"] = _degradation(reason_codes)
+        result["warnings"] = _warning_messages(reason_codes)
         return result
     except json.JSONDecodeError:
         reason_codes.append("LLM_INVALID_JSON")
         result["status"] = "degraded"
         result["degradation"] = _degradation(reason_codes)
+        result["warnings"] = _warning_messages(reason_codes)
         return result
     except LLMProviderError:
         reason_codes.append("LLM_PROVIDER_ERROR")
         result["status"] = "degraded"
         result["degradation"] = _degradation(reason_codes)
+        result["warnings"] = _warning_messages(reason_codes)
         return result
     except Exception:
         reason_codes.append("LLM_UNEXPECTED_ERROR")
         result["status"] = "degraded"
         result["degradation"] = _degradation(reason_codes)
+        result["warnings"] = _warning_messages(reason_codes)
         return result
 
     available_sources = set(_QUESTION_SOURCES)
@@ -239,23 +260,37 @@ def run_assessment_v2(
         reason_codes.append(validation_reason)
         result["status"] = "degraded"
         result["degradation"] = _degradation(reason_codes)
+        result["warnings"] = _warning_messages(reason_codes)
         return result
 
-    result["state_summary"] = validated_model["state_summary"]
-    result["context"] = validated_model["context"]
-    result["evidence"] = validated_model["evidence"]
+    model_context = validated_model["context"]
+    result["assessment_summary"] = validated_model["state_summary"][
+        "summary"
+    ]
+    result["life_events"] = {
+        "triggers": list(model_context["triggers"]),
+    }
+    result["physical_profile"] = _build_physical_profile(
+        dimensions,
+        _unique_strings(
+            physical_signals,
+            list(model_context["physical_signals"]),
+        ),
+    )
+    result["extracted_evidence"] = validated_model["evidence"]
     result["conflicts"] = validated_model["conflicts"]
     if validated_model["conflicts"]:
         reason_codes.append("SOURCE_CONFLICT")
     if reason_codes:
         result["status"] = "degraded"
     result["degradation"] = _degradation(reason_codes)
+    result["warnings"] = _warning_messages(reason_codes)
     return result
 
 
 def _validate_submission(
     submission: object,
-) -> tuple[str, str, Mapping[str, object] | None, str | None, object]:
+) -> tuple[str, str, str | None, str, str | None, str | None, object]:
     if not isinstance(submission, Mapping):
         raise AssessmentValidationError("submission must be a mapping")
 
@@ -270,26 +305,50 @@ def _validate_submission(
             "user_id must be a non-empty string"
         )
 
-    document = submission.get("document")
-    if document is not None:
-        if not isinstance(document, Mapping):
-            raise AssessmentValidationError(
-                "document must be a mapping or None"
-            )
-        if document.get("ocr_status") not in _OCR_STATUSES:
-            raise AssessmentValidationError(
-                "document.ocr_status is invalid"
-            )
-        if (
-            "confirmed_text" not in document
-            or (
-                document["confirmed_text"] is not None
-                and not isinstance(document["confirmed_text"], str)
-            )
+    document_id = submission.get("document_id")
+    if document_id is not None and not isinstance(document_id, str):
+        raise AssessmentValidationError(
+            "document_id must be a string or None"
+        )
+
+    if "document_text" in submission or "document_id" in submission:
+        raw_document_text = submission.get("document_text")
+        if raw_document_text is not None and not isinstance(
+            raw_document_text,
+            str,
         ):
             raise AssessmentValidationError(
-                "document.confirmed_text must be a string or None"
+                "document_text must be a string or None"
             )
+        document_text = _non_blank_text(raw_document_text)
+        document_status = (
+            "confirmed" if document_text is not None else "missing"
+        )
+        unconfirmed_text = None
+    else:
+        document = submission.get("document")
+        if document is not None:
+            if not isinstance(document, Mapping):
+                raise AssessmentValidationError(
+                    "document must be a mapping or None"
+                )
+            if document.get("ocr_status") not in _OCR_STATUSES:
+                raise AssessmentValidationError(
+                    "document.ocr_status is invalid"
+                )
+            if (
+                "confirmed_text" not in document
+                or (
+                    document["confirmed_text"] is not None
+                    and not isinstance(document["confirmed_text"], str)
+                )
+            ):
+                raise AssessmentValidationError(
+                    "document.confirmed_text must be a string or None"
+                )
+        document_text, document_status, unconfirmed_text = (
+            _document_source(document)
+        )
 
     narrative_text = submission.get("narrative_text")
     if narrative_text is not None and not isinstance(narrative_text, str):
@@ -299,9 +358,14 @@ def _validate_submission(
     return (
         session_id.strip(),
         user_id.strip(),
-        document,
+        document_text,
+        document_status,
+        unconfirmed_text,
         narrative_text,
-        submission.get("questionnaire"),
+        submission.get(
+            "questionnaire_answers",
+            submission.get("questionnaire"),
+        ),
     )
 
 
@@ -368,7 +432,7 @@ def _non_blank_text(value: object) -> str | None:
 
 def _analysis_mode(*, has_document: bool, has_narrative: bool) -> str:
     if has_document and has_narrative:
-        return "document_text_questionnaire"
+        return "document_narrative_questionnaire"
     if has_document:
         return "document_questionnaire"
     if has_narrative:
@@ -390,10 +454,99 @@ def _questionnaire_evidence(
 
 
 def _degradation(reason_codes: list[str]) -> dict[str, object]:
+    reason_code = reason_codes[0] if reason_codes else None
+    if reason_code in {
+        "LLM_NOT_CONFIGURED",
+        "LLM_TIMEOUT",
+        "LLM_INVALID_JSON",
+        "LLM_MISSING_FIELDS",
+        "LLM_SCHEMA_INVALID",
+        "LLM_PROVIDER_ERROR",
+        "LLM_UNEXPECTED_ERROR",
+        "LLM_UNKNOWN_SOURCE",
+        "LLM_PROHIBITED_MEDICAL_FIELD",
+        "LLM_UNCONFIRMED_OCR_ECHO",
+    }:
+        fallback = "deterministic_questionnaire"
+    elif reason_code == "SOURCE_CONFLICT":
+        fallback = "review_required"
+    elif reason_code == "QUESTIONNAIRE_INVALID":
+        fallback = "safety_only"
+    elif reason_code == "DOCUMENT_UNCONFIRMED":
+        fallback = "questionnaire_and_narrative"
+    else:
+        fallback = None
     return {
-        "active": bool(reason_codes),
-        "reason_codes": list(reason_codes),
+        "triggered": bool(reason_codes),
+        "reason_code": reason_code,
+        "fallback": fallback,
     }
+
+
+def _warning_messages(reason_codes: list[str]) -> list[str]:
+    messages = {
+        "DOCUMENT_UNCONFIRMED": (
+            "未经确认的 OCR 文本未作为可靠评估来源。"
+        ),
+        "QUESTIONNAIRE_INVALID": "问卷无效，仅保留安全阻断结果。",
+        "SOURCE_CONFLICT": "不同来源存在冲突，请用户确认评估结果。",
+    }
+    return [
+        (
+            f"{reason_code}: "
+            f"{messages.get(reason_code, 'AI 分析暂时不可用，已切换到确定性问卷评估。')}"
+        )
+        for reason_code in reason_codes
+    ]
+
+
+def _build_emotion_profile(
+    dimensions: Mapping[str, object],
+) -> dict[str, object]:
+    scores = {
+        dimension: int(score)
+        for dimension, score in dimensions.items()
+        if dimension in _DIMENSION_LABELS
+        and isinstance(score, (int, float))
+    }
+    ranked = sorted(
+        (
+            (dimension, score)
+            for dimension, score in scores.items()
+            if score > 0
+        ),
+        key=lambda item: (
+            -item[1],
+            list(_DIMENSION_LABELS).index(item[0]),
+        ),
+    )
+    labels = [_DIMENSION_LABELS[dimension] for dimension, _ in ranked]
+    return {
+        "primary_states": labels[:2],
+        "secondary_states": labels[2:],
+        "dimension_scores": scores,
+        "tcm_emotion_candidates": [],
+    }
+
+
+def _build_physical_profile(
+    dimensions: Mapping[str, object],
+    physical_signals: list[str],
+) -> dict[str, object]:
+    return {
+        "sleep_disturbance": int(
+            dimensions.get("sleep_disturbance", 0)
+        ),
+        "low_energy": int(dimensions.get("low_energy", 0)),
+        "appetite_change": int(
+            dimensions.get("appetite_change", 0)
+        ),
+        "physical_signals": list(physical_signals),
+    }
+
+
+def _unique_strings(*groups: list[str]) -> list[str]:
+    return list(dict.fromkeys(item for group in groups for item in group))
 
 
 def _build_prompts(

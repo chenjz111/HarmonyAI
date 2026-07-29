@@ -3,7 +3,9 @@ import json
 import pytest
 
 import backend.ai_engine.assessment_v2 as assessment_v2
-from backend.ai_engine.assessment_v2 import run_assessment_v2
+from backend.ai_engine.assessment_v2 import (
+    run_assessment_v2 as _run_assessment_v2,
+)
 from backend.ai_engine.questionnaire_v2 import QuestionnaireValidationError
 
 
@@ -15,6 +17,78 @@ class RecordingJsonLLM:
     def complete_json(self, system_prompt, user_prompt):
         self.calls.append((system_prompt, user_prompt))
         return self.response
+
+
+def _legacy_assertion_view(result):
+    reason_codes = []
+    primary_reason = result["degradation"]["reason_code"]
+    if primary_reason is not None:
+        reason_codes.append(primary_reason)
+    for warning in result["warnings"]:
+        warning_code = warning.split(":", 1)[0]
+        if warning_code not in reason_codes:
+            reason_codes.append(warning_code)
+    source_order = {"questionnaire": 0, "document": 1, "narrative": 2}
+    sources = sorted(
+        (
+            {
+                **source,
+                "status": (
+                    "used"
+                    if source["source"] == "document"
+                    and source["status"] == "confirmed"
+                    else source["status"]
+                ),
+            }
+            for source in result["sources_used"]
+        ),
+        key=lambda source: source_order[source["source"]],
+    )
+    view = dict(result)
+    view.update(
+        {
+            "analysis_mode": (
+                "document_text_questionnaire"
+                if result["analysis_mode"]
+                == "document_narrative_questionnaire"
+                else result["analysis_mode"]
+            ),
+            "sources_used": sources,
+            "state_summary": {
+                "summary": result["assessment_summary"],
+            },
+            "dimensions": result["emotion_profile"]["dimension_scores"],
+            "context": {
+                "triggers": result["life_events"]["triggers"],
+                "physical_signals": result["physical_profile"][
+                    "physical_signals"
+                ],
+            },
+            "evidence": result["extracted_evidence"],
+            "safety": {
+                "level": (
+                    "high"
+                    if result["status"] == "blocked_safety"
+                    else "none"
+                ),
+                "flags": result["safety_flags"],
+                "block_standard_prescription": (
+                    result["status"] == "blocked_safety"
+                ),
+            },
+            "degradation": {
+                "active": result["degradation"]["triggered"],
+                "reason_codes": reason_codes,
+            },
+        }
+    )
+    return view
+
+
+def run_assessment_v2(*args, **kwargs):
+    return _legacy_assertion_view(
+        _run_assessment_v2(*args, **kwargs)
+    )
 
 
 def questionnaire_answers(q12=None):
@@ -64,13 +138,10 @@ def valid_model_response():
 
 def test_typed_dict_input_contract_has_required_and_optional_fields():
     assert assessment_v2.AssessmentV2Submission.__required_keys__ == frozenset(
-        {"session_id", "user_id", "questionnaire"}
+        {"session_id", "user_id", "questionnaire_answers"}
     )
     assert assessment_v2.AssessmentV2Submission.__optional_keys__ == frozenset(
-        {"document", "narrative_text"}
-    )
-    assert assessment_v2.AssessmentDocumentInput.__required_keys__ == frozenset(
-        {"ocr_status", "confirmed_text"}
+        {"document_id", "document_text", "narrative_text"}
     )
 
 

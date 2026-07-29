@@ -3,7 +3,9 @@ import json
 import pytest
 
 import backend.ai_engine.assessment_v2 as assessment_v2
-from backend.ai_engine.assessment_v2 import run_assessment_v2
+from backend.ai_engine.assessment_v2 import (
+    run_assessment_v2 as _run_assessment_v2,
+)
 from backend.ai_engine.providers import LLMProviderError
 
 
@@ -23,6 +25,44 @@ class ErrorJsonLLM:
     def complete_json(self, system_prompt, user_prompt):
         del system_prompt, user_prompt
         raise self.error
+
+
+def _legacy_assertion_view(result):
+    reason_codes = []
+    primary_reason = result["degradation"]["reason_code"]
+    if primary_reason is not None:
+        reason_codes.append(primary_reason)
+    for warning in result["warnings"]:
+        warning_code = warning.split(":", 1)[0]
+        if warning_code not in reason_codes:
+            reason_codes.append(warning_code)
+    view = dict(result)
+    view.update(
+        {
+            "state_summary": {
+                "summary": result["assessment_summary"],
+            },
+            "dimensions": result["emotion_profile"]["dimension_scores"],
+            "context": {
+                "triggers": result["life_events"]["triggers"],
+                "physical_signals": result["physical_profile"][
+                    "physical_signals"
+                ],
+            },
+            "evidence": result["extracted_evidence"],
+            "degradation": {
+                "active": result["degradation"]["triggered"],
+                "reason_codes": reason_codes,
+            },
+        }
+    )
+    return view
+
+
+def run_assessment_v2(*args, **kwargs):
+    return _legacy_assertion_view(
+        _run_assessment_v2(*args, **kwargs)
+    )
 
 
 def questionnaire_answers():

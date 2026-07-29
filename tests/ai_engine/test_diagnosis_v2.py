@@ -551,3 +551,58 @@ def test_all_withheld_paths_never_return_a_normal_music_prescription(
         "withheld_reason": expected_reason,
         "disclaimer": "本结果仅用于音乐调养参考，不构成医学诊断。",
     }
+
+
+def test_diagnosis_reads_canonical_emotion_profile_scores():
+    from backend.ai_engine.diagnosis_v2 import run_diagnosis_v2
+
+    canonical_assessment = {
+        "agent_id": "assessment_agent",
+        "session_id": "session-canonical",
+        "user_id": "user-canonical",
+        "status": "success",
+        "analysis_mode": "questionnaire_only",
+        "sources_used": [
+            {"source": "document", "status": "missing"},
+            {"source": "narrative", "status": "missing"},
+            {"source": "questionnaire", "status": "used"},
+        ],
+        "emotion_profile": {
+            "primary_states": ["紧张担忧", "烦躁易怒"],
+            "secondary_states": [],
+            "dimension_scores": {
+                "tension_worry": 100,
+                "irritability_anger": 75,
+            },
+            "tcm_emotion_candidates": [],
+        },
+        "physical_profile": {
+            "sleep_disturbance": 25,
+            "low_energy": 0,
+            "appetite_change": 0,
+            "physical_signals": [],
+        },
+        "life_events": {"triggers": []},
+        "assessment_summary": "问卷显示紧张和烦躁较明显。",
+        "extracted_evidence": [],
+        "conflicts": [],
+        "missing_information": ["document", "narrative"],
+        "safety_flags": [],
+        "degradation": {
+            "triggered": False,
+            "reason_code": None,
+            "fallback": None,
+        },
+        "warnings": [],
+        "disclaimer": "本结果仅用于状态评估与音乐调养参考，不构成医学诊断或治疗建议。",
+    }
+
+    result = run_diagnosis_v2(canonical_assessment)
+
+    assert result["status"] == "success"
+    assert result["primary_tendency"]["id"] == "syd_001"
+    assert result["assessment_degradation"] == {
+        "triggered": False,
+        "reason_code": None,
+        "fallback": None,
+    }
