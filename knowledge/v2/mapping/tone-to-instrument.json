@@ -1,0 +1,73 @@
+{
+  "mapping_id": "tone-to-instrument",
+  "version": "0.2.1",
+  "created": "2026-07-17",
+  "last_modified": "2026-07-18",
+  "author": "陈家智（初始版，依据 knowledge-architecture.md 第2.5节乐器库 + 第3.4节乐器选择规则）；肖宇翔（核验签收+文献交叉参照+修正cite证据等级标记）",
+  "status": "reviewed-by-nob",
+  "spec_ref": "要求/knowledge-architecture.md 第2.5节 + 第3.4节（陈家智 V0.1，2026-07-15）",
+  "note": "选配规则：主乐器与调式五行相同；辅乐器取生我/我生之五行；权重之和 = 1.0。角调组合取自架构文档第5.1节示例，其余四调为按规则推导的初始值。肖宇翔已与文献交叉参照（k_016确认商调《阳春白雪》、k_017确认宫调/角调/羽调选曲），正式专家经验核验仍待≥3位专家确认（专家经验库 EXP_v1.0 待建）。\n\n⚠️ 重要：本文件整体 credibility_level 仅为 C 级（参考级），因乐器选配主要为规则推导+个案佐证，缺乏 RCT/Meta 直接证据。",
+  "instrument_library": ["guzheng", "guqin", "zhudi", "xiao", "pipa", "erhu", "bianzhong", "sheng", "xun"],
+  "mappings": [
+    {
+      "tone_id": "jiao",
+      "tone_name": "角调",
+      "element": "木",
+      "instruments": [
+        { "id": "guzheng", "name": "古筝", "role": "primary", "weight": 0.70, "reason": "木属乐器，角调首选" },
+        { "id": "zhudi", "name": "竹笛", "role": "secondary", "weight": 0.20, "reason": "木属乐器，音色清扬助疏达" },
+        { "id": "guqin", "name": "古琴", "role": "harmony", "weight": 0.10, "reason": "木/水属，水生木，低音铺底" }
+      ],
+      "credibility_level": "C",
+      "experience_source": "knowledge-architecture.md 第5.1节示例（3/3位专家一致）; 文献交叉参照: k_017 [旁证-五行归属: 个案证型为湿毒蕴结]（角调选曲确认）; 专家经验库 EXP_v1.0 待建"
+    },
+    {
+      "tone_id": "zhi",
+      "tone_name": "徵调",
+      "element": "火",
+      "instruments": [
+        { "id": "pipa", "name": "琵琶", "role": "primary", "weight": 0.60, "reason": "火属乐器，徵调首选，音色明亮" },
+        { "id": "guzheng", "name": "古筝", "role": "secondary", "weight": 0.25, "reason": "木属乐器，木生火（生我）" },
+        { "id": "sheng", "name": "笙", "role": "harmony", "weight": 0.15, "reason": "土属乐器，火生土（我生），和声铺垫" }
+      ],
+      "credibility_level": "C",
+      "experience_source": "按第3.4节规则推导的初始值; 文献交叉参照: k_014 [旁证-同类证型: 胸痹痰瘀互结]（徵调-心系失眠临床研究）; 正式专家经验核验待≥3位专家确认（专家经验库 EXP_v1.0 待建）"
+    },
+    {
+      "tone_id": "gong",
+      "tone_name": "宫调",
+      "element": "土",
+      "instruments": [
+        { "id": "sheng", "name": "笙", "role": "primary", "weight": 0.50, "reason": "土属乐器，宫调首选，音色圆润中和" },
+        { "id": "xun", "name": "埙", "role": "secondary", "weight": 0.30, "reason": "土/金属乐器，音色浑厚沉稳" },
+        { "id": "bianzhong", "name": "编钟", "role": "harmony", "weight": 0.20, "reason": "土属打击乐器，点缀节拍" }
+      ],
+      "credibility_level": "C",
+      "experience_source": "按第3.4节规则推导的初始值; 文献交叉参照: k_015 [病机相关: 脾瘅]（宫调-脾瘅临床研究）; k_018 [旁证-证型不一致: 原文为肝胃不和, 待核]（脾胃不和个案）; 正式专家经验核验待≥3位专家确认（专家经验库 EXP_v1.0 待建）"
+    },
+    {
+      "tone_id": "shang",
+      "tone_name": "商调",
+      "element": "金",
+      "instruments": [
+        { "id": "erhu", "name": "二胡", "role": "primary", "weight": 0.60, "reason": "金属乐器，商调首选" },
+        { "id": "xun", "name": "埙", "role": "secondary", "weight": 0.25, "reason": "土/金属乐器，土生金（生我）" },
+        { "id": "xiao", "name": "箫", "role": "harmony", "weight": 0.15, "reason": "水属乐器，金生水（我生），低音铺底" }
+      ],
+      "credibility_level": "C",
+      "experience_source": "按第3.4节规则推导的初始值; 文献交叉参照: k_016 [旁证-证型未严格分层: 肺癌未做肺气虚分层]（商调《阳春白雪》选曲实践）; 正式专家经验核验待≥3位专家确认（专家经验库 EXP_v1.0 待建）"
+    },
+    {
+      "tone_id": "yu",
+      "tone_name": "羽调",
+      "element": "水",
+      "instruments": [
+        { "id": "xiao", "name": "箫", "role": "primary", "weight": 0.55, "reason": "水属乐器，羽调首选，音色幽远沉静" },
+        { "id": "guqin", "name": "古琴", "role": "secondary", "weight": 0.30, "reason": "木/水属乐器，低频舒缓" },
+        { "id": "erhu", "name": "二胡", "role": "harmony", "weight": 0.15, "reason": "金属乐器，金生水（生我）" }
+      ],
+      "credibility_level": "C",
+      "experience_source": "按第3.4节规则推导的初始值; 文献交叉参照: k_017 [旁证-五行归属: 个案证型为湿毒蕴结]（羽调入肾定志）; 正式专家经验核验待≥3位专家确认（专家经验库 EXP_v1.0 待建）"
+    }
+  ]
+}
