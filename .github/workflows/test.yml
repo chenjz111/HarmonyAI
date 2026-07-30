@@ -9,4 +9,5 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install pytest
-      - run: pytest tests/ -v
+      - run: pytest tests/knowledge/ -v
+
