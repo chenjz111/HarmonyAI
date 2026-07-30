@@ -8,7 +8,7 @@
 const BASE_URL = 'http://localhost:8000'
 
 // 是否使用 mock 数据（true=前端模拟，false=请求真实后端）
-const USE_MOCK = false
+const USE_MOCK = true
 
 /**
  * Agent 1 — 评估

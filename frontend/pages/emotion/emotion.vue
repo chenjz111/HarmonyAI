@@ -3,11 +3,11 @@ export default {
   data() {
     return {
       emotions: [
-        { id: 'nu', name: '怒', element: '木', tone: '角', color: '#4A9D6E', desc: '烦躁易怒、胸闷胁痛', bg: '#E1F5EE' },
-        { id: 'xi', name: '喜', element: '火', tone: '徵', color: '#E25C4E', desc: '亢奋失眠、心悸不安', bg: '#FAECE7' },
-        { id: 'si', name: '思', element: '土', tone: '宫', color: '#E8B547', desc: '思虑过度、食欲不振', bg: '#FAEEDA' },
-        { id: 'bei', name: '悲', element: '金', tone: '商', color: '#9CA8B8', desc: '情绪低落、气短乏力', bg: '#F1EFE8' },
-        { id: 'kong', name: '恐', element: '水', tone: '羽', color: '#3B5067', desc: '焦虑恐惧、腰膝酸软', bg: '#E6F1FB' }
+        { id: 'nu', name: '怒', element: '木', tone: '角', color: '#52B788', desc: '烦躁易怒、胸闷胁痛', bg: '#E8F8F0' },
+        { id: 'xi', name: '喜', element: '火', tone: '徵', color: '#F26C5C', desc: '亢奋失眠、心悸不安', bg: '#FFF0F0' },
+        { id: 'si', name: '思', element: '土', tone: '宫', color: '#F0C75E', desc: '思虑过度、食欲不振', bg: '#FFF8E8' },
+        { id: 'bei', name: '悲', element: '金', tone: '商', color: '#A8B8CC', desc: '情绪低落、气短乏力', bg: '#F0F2F5' },
+        { id: 'kong', name: '恐', element: '水', tone: '羽', color: '#4A6FA5', desc: '焦虑恐惧、腰膝酸软', bg: '#E8F0FC' }
       ],
       selectedId: ''
     }
@@ -64,7 +64,7 @@ export default {
 
     <!-- 底部提示 -->
     <view class="tip">
-      <text class="tip-icon">ℹ️</text>
+      <view class="tip-icon-circle"><text class="tip-icon-text">i</text></view>
       <text class="tip-text">选择后将进入 30 题健康评估问卷（约 3 分钟）</text>
     </view>
   </view>
@@ -75,7 +75,7 @@ export default {
   padding: 30rpx;
   padding-bottom: 120rpx;
   min-height: 100vh;
-  background: #F8F8F8;
+  background: #F5F6FA;
 }
 
 .header {
@@ -83,13 +83,13 @@ export default {
 }
 .title {
   font-size: 40rpx;
-  font-weight: 600;
-  color: #2C2C2A;
+  font-weight: 700;
+  color: #1A1A2E;
   display: block;
 }
 .subtitle {
   font-size: 24rpx;
-  color: #888780;
+  color: #9E9EB8;
   margin-top: 12rpx;
   display: block;
   line-height: 1.5;
@@ -108,10 +108,11 @@ export default {
   overflow: hidden;
   transition: all 0.2s;
   position: relative;
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.06);
 }
 .emotion-card.active {
   transform: scale(0.98);
-  box-shadow: 0 8rpx 30rpx rgba(0,0,0,0.08);
+  box-shadow: 0 8rpx 30rpx rgba(0,0,0,0.1);
 }
 
 .emotion-left {
@@ -124,12 +125,13 @@ export default {
 }
 .emotion-name {
   font-size: 48rpx;
-  font-weight: 600;
+  font-weight: 700;
   color: #fff;
+  text-shadow: 0 2rpx 8rpx rgba(0,0,0,0.15);
 }
 .emotion-tone {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.8);
+  color: rgba(255,255,255,0.85);
   margin-top: 8rpx;
 }
 
@@ -145,20 +147,20 @@ export default {
 }
 .emotion-element {
   font-size: 28rpx;
-  font-weight: 600;
-  color: #2C2C2A;
+  font-weight: 700;
+  color: #1A1A2E;
 }
 .emotion-divider {
   font-size: 24rpx;
-  color: #B4B2A9;
+  color: #BFBFCF;
 }
 .emotion-tone-name {
   font-size: 26rpx;
-  color: #5F5E5A;
+  color: #9E9EB8;
 }
 .emotion-desc {
   font-size: 24rpx;
-  color: #888780;
+  color: #9E9EB8;
   display: block;
   line-height: 1.4;
 }
@@ -171,10 +173,11 @@ export default {
   width: 40rpx;
   height: 40rpx;
   border-radius: 50%;
-  background: #534AB7;
+  background: #6C63FF;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 4rpx 12rpx rgba(108,99,255,0.3);
 }
 .check-icon {
   color: #fff;
@@ -186,17 +189,30 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8rpx;
+  gap: 12rpx;
   margin-top: 30rpx;
   padding: 20rpx;
   background: #fff;
   border-radius: 16rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.06);
 }
-.tip-icon {
+.tip-icon-circle {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: #F0F0FF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tip-icon-text {
   font-size: 24rpx;
+  font-weight: 700;
+  color: #6C63FF;
+  font-style: italic;
 }
 .tip-text {
   font-size: 24rpx;
-  color: #B4B2A9;
+  color: #9E9EB8;
 }
 </style>

@@ -17,6 +17,7 @@ export default {
           title: '最近发生了什么？',
           isNarrative: true
         },
+        {
           title: '情绪状态',
           questions: [
             '我经常感到焦虑不安',
@@ -249,7 +250,7 @@ export default {
 
     <!-- Error 状态：出错 -->
     <view class="status-card error-card" v-if="status === 'error'">
-      <text class="status-icon">⚠️</text>
+      <text class="status-icon-circle error"><text class="status-icon-text">!</text></text>
       <text class="status-title">分析失败</text>
       <text class="status-desc">{{ errorMsg }}</text>
       <view class="retry-btn" @click="retry">
@@ -278,7 +279,7 @@ export default {
   padding: 30rpx;
   padding-bottom: 160rpx;
   min-height: 100vh;
-  background: #F8F8F8;
+  background: #F5F6FA;
 }
 
 /* 页面顶部标题 */
@@ -287,13 +288,13 @@ export default {
 }
 .page-title {
   font-size: 40rpx;
-  font-weight: 600;
-  color: #2C2C2A;
+  font-weight: 700;
+  color: #1A1A2E;
   display: block;
 }
 .page-subtitle {
   font-size: 24rpx;
-  color: #888780;
+  color: #9E9EB8;
   margin-top: 8rpx;
   display: block;
 }
@@ -304,19 +305,19 @@ export default {
 }
 .progress-track {
   height: 8rpx;
-  background: #E8E8E8;
+  background: #E8E8F0;
   border-radius: 4rpx;
   overflow: hidden;
 }
 .progress-fill {
   height: 100%;
-  background: #534AB7;
+  background: linear-gradient(90deg, #6C63FF, #8B80FF);
   border-radius: 4rpx;
   transition: width 0.3s;
 }
 .progress-text {
   font-size: 24rpx;
-  color: #888780;
+  color: #9E9EB8;
   margin-top: 12rpx;
   display: block;
 }
@@ -327,43 +328,43 @@ export default {
   border-radius: 24rpx;
   padding: 36rpx;
   margin-bottom: 24rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
-  border-left: 8rpx solid #534AB7;
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.06);
+  border-left: 8rpx solid #6C63FF;
 }
 .narrative-title {
   font-size: 32rpx;
-  color: #2C2C2A;
-  font-weight: 600;
+  color: #1A1A2E;
+  font-weight: 700;
   display: block;
   margin-bottom: 12rpx;
 }
 .narrative-hint {
   font-size: 24rpx;
-  color: #888780;
+  color: #9E9EB8;
   display: block;
   margin-bottom: 10rpx;
   line-height: 1.6;
 }
 .narrative-privacy {
   font-size: 22rpx;
-  color: #E74C3C;
+  color: #F26C5C;
   display: block;
   margin-bottom: 20rpx;
 }
 .narrative-area {
   width: 100%;
   min-height: 240rpx;
-  background: #F8F8F8;
+  background: #F5F6FA;
   border-radius: 16rpx;
   padding: 24rpx;
   font-size: 28rpx;
-  color: #2C2C2A;
+  color: #1A1A2E;
   box-sizing: border-box;
 }
 .narrative-count {
   text-align: right;
   font-size: 22rpx;
-  color: #C8C8C8;
+  color: #BFBFCF;
   margin-top: 12rpx;
   display: block;
 }
@@ -374,12 +375,12 @@ export default {
   border-radius: 24rpx;
   padding: 36rpx;
   margin-bottom: 24rpx;
-  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.06);
 }
 .question-text {
   font-size: 30rpx;
-  color: #2C2C2A;
-  font-weight: 500;
+  color: #1A1A2E;
+  font-weight: 600;
   display: block;
   margin-bottom: 30rpx;
   line-height: 1.5;
@@ -402,7 +403,7 @@ export default {
   width: 72rpx;
   height: 72rpx;
   border-radius: 50%;
-  border: 4rpx solid #E8E8E8;
+  border: 4rpx solid #E8E8F0;
   background: #fff;
   display: flex;
   align-items: center;
@@ -410,8 +411,9 @@ export default {
   transition: all 0.2s;
 }
 .option-item.selected .option-circle {
-  border-color: #534AB7;
-  background: #534AB7;
+  border-color: #6C63FF;
+  background: #6C63FF;
+  box-shadow: 0 4rpx 16rpx rgba(108,99,255,0.3);
 }
 .option-item.selected .option-num {
   color: #fff;
@@ -419,15 +421,15 @@ export default {
 .option-num {
   font-size: 28rpx;
   font-weight: 600;
-  color: #888780;
+  color: #9E9EB8;
 }
 .option-item.selected .option-label {
-  color: #534AB7;
+  color: #6C63FF;
   font-weight: 500;
 }
 .option-label {
   font-size: 20rpx;
-  color: #888780;
+  color: #9E9EB8;
   text-align: center;
 }
 
@@ -438,13 +440,13 @@ export default {
   padding: 60rpx 40rpx;
   margin-top: 60rpx;
   text-align: center;
-  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+  box-shadow: 0 4rpx 20rpx rgba(0,0,0,0.06);
 }
 .loading-spinner {
   width: 80rpx;
   height: 80rpx;
-  border: 6rpx solid #E8E8E8;
-  border-top-color: #534AB7;
+  border: 6rpx solid #E8E8F0;
+  border-top-color: #6C63FF;
   border-radius: 50%;
   margin: 0 auto 30rpx;
   animation: spin 1s linear infinite;
@@ -453,29 +455,47 @@ export default {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
-.status-icon {
-  font-size: 64rpx;
-  display: block;
-  margin-bottom: 16rpx;
+
+/* CSS 图标替代 emoji */
+.status-icon-circle {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16rpx;
 }
+.status-icon-circle.error {
+  background: #FFF0F0;
+}
+.status-icon-text {
+  font-size: 56rpx;
+  font-weight: 700;
+}
+.status-icon-circle.error .status-icon-text {
+  color: #F26C5C;
+}
+
 .status-title {
   font-size: 32rpx;
-  font-weight: 600;
-  color: #2C2C2A;
+  font-weight: 700;
+  color: #1A1A2E;
   display: block;
   margin-bottom: 12rpx;
 }
 .status-desc {
   font-size: 26rpx;
-  color: #888780;
+  color: #9E9EB8;
   display: block;
   margin-bottom: 30rpx;
 }
 .retry-btn {
   display: inline-block;
-  background: #534AB7;
+  background: #6C63FF;
   padding: 20rpx 60rpx;
   border-radius: 44rpx;
+  box-shadow: 0 4rpx 16rpx rgba(108,99,255,0.3);
 }
 .retry-btn-text {
   color: #fff;
@@ -494,7 +514,7 @@ export default {
   padding: 20rpx 30rpx;
   padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
   background: #fff;
-  box-shadow: 0 -2rpx 12rpx rgba(0,0,0,0.04);
+  box-shadow: 0 -4rpx 20rpx rgba(0,0,0,0.06);
 }
 .btn {
   flex: 1;
@@ -505,7 +525,8 @@ export default {
   justify-content: center;
 }
 .btn-primary {
-  background: #534AB7;
+  background: #6C63FF;
+  box-shadow: 0 4rpx 16rpx rgba(108,99,255,0.3);
 }
 .btn-primary .btn-text {
   color: #fff;
@@ -513,11 +534,12 @@ export default {
   font-weight: 600;
 }
 .btn-secondary {
-  background: #F1EFE8;
+  background: #F0F0FF;
 }
 .btn-secondary .btn-text {
-  color: #5F5E5A;
+  color: #6C63FF;
   font-size: 30rpx;
+  font-weight: 500;
 }
 .btn-secondary.disabled {
   opacity: 0.4;

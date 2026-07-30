@@ -7,6 +7,54 @@
       }
     },
     {
+      "path": "pages/welcome/welcome",
+      "style": {
+        "navigationBarTitleText": "开始评估"
+      }
+    },
+    {
+      "path": "pages/material/material",
+      "style": {
+        "navigationBarTitleText": "上传材料"
+      }
+    },
+    {
+      "path": "pages/narrative/narrative",
+      "style": {
+        "navigationBarTitleText": "自由描述"
+      }
+    },
+    {
+      "path": "pages/survey-v2/survey-v2",
+      "style": {
+        "navigationBarTitleText": "图文问卷"
+      }
+    },
+    {
+      "path": "pages/result/result",
+      "style": {
+        "navigationBarTitleText": "分析结果"
+      }
+    },
+    {
+      "path": "pages/player-v2/player-v2",
+      "style": {
+        "navigationBarTitleText": "疗愈播放"
+      }
+    },
+    {
+      "path": "pages/feedback-v2/feedback-v2",
+      "style": {
+        "navigationBarTitleText": "反馈"
+      }
+    },
+    {
+      "path": "pages/complete/complete",
+      "style": {
+        "navigationBarTitleText": "完成"
+      }
+    },
+    {
       "path": "pages/emotion/emotion",
       "style": {
         "navigationBarTitleText": "情绪选择"
@@ -28,22 +76,26 @@
   "globalStyle": {
     "navigationBarTextStyle": "white",
     "navigationBarTitleText": "HarmonyAI",
-    "navigationBarBackgroundColor": "#534AB7",
-    "backgroundColor": "#F8F8F8"
+    "navigationBarBackgroundColor": "#4A6B5C",
+    "backgroundColor": "#F7F3EB"
   },
   "tabBar": {
-    "color": "#888780",
-    "selectedColor": "#534AB7",
-    "backgroundColor": "#ffffff",
-    "borderStyle": "black",
+    "color": "#9C9585",
+    "selectedColor": "#4A6B5C",
+    "backgroundColor": "#FCFAF6",
+    "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "首页"
+        "text": "首页",
+        "iconPath": "static/tabbar/home.png",
+        "selectedIconPath": "static/tabbar/home-active.png"
       },
       {
         "pagePath": "pages/player/player",
-        "text": "播放"
+        "text": "播放",
+        "iconPath": "static/tabbar/play.png",
+        "selectedIconPath": "static/tabbar/play-active.png"
       }
     ]
   }
