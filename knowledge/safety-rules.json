@@ -5,7 +5,7 @@
   "created": "2026-07-28",
   "author": "肖宇翔（nob）· Medical Knowledge Engineer",
   "status": "reviewed-by-nob",
-  "spec_ref": "要求/questionnaire-v2-spec.md 第 7 节",
+  "spec_ref": "docs/questionnaire-v2-design.md 第 7 节",
   "design_principles": [
     "高风险提示不依赖大模型，可由确定性规则触发",
     "Qwen 不可用时，确定性风险规则仍必须生效",
