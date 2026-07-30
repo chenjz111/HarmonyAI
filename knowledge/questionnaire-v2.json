@@ -5,7 +5,7 @@
   "created": "2026-07-28",
   "author": "肖宇翔（nob）· Medical Knowledge Engineer",
   "status": "reviewed-by-nob",
-  "spec_ref": "要求/questionnaire-v2-spec.md",
+  "spec_ref": "docs/questionnaire-v2-design.md",
   "time_window_days": 7,
   "target_duration_seconds": 180,
   "total_questions": 12,
