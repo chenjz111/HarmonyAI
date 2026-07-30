@@ -1,0 +1,141 @@
+{
+  "mapping_id": "emotion-to-syndrome",
+  "version": "0.1.0",
+  "created": "2026-07-17",
+  "author": "陈家智（初始版）",
+  "status": "draft",
+  "spec_ref": "docs/knowledge-architecture.md 第2.1-2.2节 + 第3.1节",
+  "note": "一对多映射：同一情绪可对应多个证型，实际辨证由②辨证Agent结合五维分数综合判断。现代文献出处待 肖宇翔 补充核验。",
+  "emotions": ["anxiety", "depression", "anger", "fear", "overthinking"],
+  "mappings": [
+    {
+      "emotion": "anxiety",
+      "emotion_label": "焦虑",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_001",
+          "syndrome_name": "肝郁化火",
+          "priority": 1,
+          "typical_signs": ["烦躁", "易怒", "口苦"],
+          "credibility_level": "B",
+          "source": "《黄帝内经》七情学说：怒伤肝，郁而化火；专家共识",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        },
+        {
+          "syndrome_id": "syd_003",
+          "syndrome_name": "心火上炎",
+          "priority": 2,
+          "typical_signs": ["烦躁", "失眠", "口舌生疮"],
+          "credibility_level": "C",
+          "source": "专家共识（焦虑伴失眠烦躁者多见）",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        },
+        {
+          "syndrome_id": "syd_008",
+          "syndrome_name": "心肾不交",
+          "priority": 3,
+          "typical_signs": ["失眠", "心悸", "多梦"],
+          "credibility_level": "C",
+          "source": "专家共识（焦虑伴失眠心悸者多见）",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        }
+      ]
+    },
+    {
+      "emotion": "depression",
+      "emotion_label": "抑郁",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_002",
+          "syndrome_name": "肝气郁结",
+          "priority": 1,
+          "typical_signs": ["闷闷不乐", "善太息", "胸胁胀满"],
+          "credibility_level": "B",
+          "source": "《黄帝内经》七情学说：肝主疏泄，郁则气结",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        },
+        {
+          "syndrome_id": "syd_006",
+          "syndrome_name": "肺气虚",
+          "priority": 2,
+          "typical_signs": ["悲伤欲哭", "气短", "神疲"],
+          "credibility_level": "C",
+          "source": "《黄帝内经》：悲则气消，悲忧伤肺；专家共识",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        }
+      ]
+    },
+    {
+      "emotion": "anger",
+      "emotion_label": "愤怒",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_001",
+          "syndrome_name": "肝郁化火",
+          "priority": 1,
+          "typical_signs": ["易怒", "面红目赤", "头胀痛"],
+          "credibility_level": "B",
+          "source": "《黄帝内经·素问·阴阳应象大论》：怒伤肝，在志为怒",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        },
+        {
+          "syndrome_id": "syd_003",
+          "syndrome_name": "心火上炎",
+          "priority": 2,
+          "typical_signs": ["烦躁易怒", "失眠"],
+          "credibility_level": "C",
+          "source": "专家共识（肝火扰心，心肝火旺并见）",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        }
+      ]
+    },
+    {
+      "emotion": "fear",
+      "emotion_label": "恐惧",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_007",
+          "syndrome_name": "肾阴不足",
+          "priority": 1,
+          "typical_signs": ["恐惧不安", "腰酸", "五心烦热"],
+          "credibility_level": "B",
+          "source": "《黄帝内经》：恐伤肾，在志为恐",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        },
+        {
+          "syndrome_id": "syd_008",
+          "syndrome_name": "心肾不交",
+          "priority": 2,
+          "typical_signs": ["惊悸", "失眠", "多梦易醒"],
+          "credibility_level": "C",
+          "source": "专家共识（恐伤肾，肾水不能上济心火）",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        }
+      ]
+    },
+    {
+      "emotion": "overthinking",
+      "emotion_label": "过度思考",
+      "candidate_syndromes": [
+        {
+          "syndrome_id": "syd_004",
+          "syndrome_name": "心脾两虚",
+          "priority": 1,
+          "typical_signs": ["健忘", "心悸", "食少"],
+          "credibility_level": "B",
+          "source": "《黄帝内经》：思伤脾，思则气结；思虑过度暗耗心血",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        },
+        {
+          "syndrome_id": "syd_005",
+          "syndrome_name": "脾虚湿困",
+          "priority": 2,
+          "typical_signs": ["疲倦", "头身困重", "食欲不振"],
+          "credibility_level": "C",
+          "source": "专家共识（久思伤脾，脾虚生湿）",
+          "modern_source": "待肖宇翔补充（知网核验）"
+        }
+      ]
+    }
+  ]
+}

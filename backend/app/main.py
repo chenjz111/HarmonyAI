@@ -13,8 +13,12 @@ Start:
 
 Swagger: http://localhost:8000/docs
 """
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.app.core.config import settings
 from backend.app.routers import (
@@ -56,13 +60,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve static files (demo audio for Sprint 2)
+_static_dir = Path(__file__).resolve().parents[2] / "frontend" / "static"
+if _static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
 app.include_router(health_router.router, tags=["Health"])
 app.include_router(assessment_router.router, prefix="/api/v1", tags=["Agent 1 — 评估"])
 app.include_router(diagnosis_router.router, prefix="/api/v1", tags=["Agent 2 — 辨证"])
 app.include_router(prescription_router.router, prefix="/api/v1", tags=["Agent 3 — 处方"])
 app.include_router(generation_router.router, prefix="/api/v1", tags=["Agent 4 — 生成"])
-app.include_router(feedback_router.router, prefix="/api/v1", tags=["Agent 5 — 反馈 v1"])
-app.include_router(feedback_router.router, prefix="/api", tags=["Agent 5 — 反馈 v1+v2"])
+app.include_router(feedback_router.router, prefix="/api", tags=["Agent 5 — 反馈"])
 app.include_router(document_router.router, prefix="/api/v2", tags=["Sprint 3 — 文档上传"])
 app.include_router(session_router.router, prefix="/api/v2", tags=["Sprint 3 — 会话"])
 
@@ -70,3 +78,17 @@ app.include_router(session_router.router, prefix="/api/v2", tags=["Sprint 3 — 
 @app.get("/", include_in_schema=False)
 async def root():
     return {"app": settings.APP_NAME, "version": settings.APP_VERSION, "docs": "/docs"}
+
+
+@app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
+async def demo():
+    """Serve the standalone demo page."""
+    demo_path = Path(__file__).resolve().parents[2] / "frontend" / "demo.html"
+    return demo_path.read_text(encoding="utf-8")
+
+
+@app.get("/full-demo", response_class=HTMLResponse, include_in_schema=False)
+async def full_demo():
+    """Serve the full demo page (narrative + 30 questions + complete flow)."""
+    demo_path = Path(__file__).resolve().parents[2] / "frontend" / "full-demo.html"
+    return demo_path.read_text(encoding="utf-8")
