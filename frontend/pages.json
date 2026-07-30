@@ -1,0 +1,50 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "HarmonyAI"
+      }
+    },
+    {
+      "path": "pages/emotion/emotion",
+      "style": {
+        "navigationBarTitleText": "情绪选择"
+      }
+    },
+    {
+      "path": "pages/survey/survey",
+      "style": {
+        "navigationBarTitleText": "健康评估"
+      }
+    },
+    {
+      "path": "pages/player/player",
+      "style": {
+        "navigationBarTitleText": "疗愈播放"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "HarmonyAI",
+    "navigationBarBackgroundColor": "#534AB7",
+    "backgroundColor": "#F8F8F8"
+  },
+  "tabBar": {
+    "color": "#888780",
+    "selectedColor": "#534AB7",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/player/player",
+        "text": "播放"
+      }
+    ]
+  }
+}

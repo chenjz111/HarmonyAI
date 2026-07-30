@@ -1,6 +1,7 @@
 """Agent 2 — diagnosis_agent: POST /api/v1/diagnosis
 
-Integrated with AI Engine + exception/degradation handling (Chapter 3).
+Integrated with AI Engine: real agents when HARMONYAI_REAL_AGENTS=true, stubs otherwise.
+Exception/degradation handling per agent-architecture.md Chapter 3.
 """
 from datetime import datetime, timezone
 import json
@@ -10,9 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
+from backend.app.core.agent_config import use_real_agents, get_llm_provider
 from backend.app.models.syndrome_diagnosis import SyndromeDiagnosis
 from backend.app.models.session import Session
-from backend.ai_engine.agent_stubs import diagnosis_stub
 from backend.app.schemas.common import make_run_id, AgentLayer
 from backend.app.core.exceptions import build_error_response
 
@@ -31,15 +32,28 @@ async def diagnosis(body: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="session_id is required")
 
     try:
-        # Call AI Engine
-        result = diagnosis_stub({
-            "run_id": run_id, "session_id": session_id,
-            "user_id": user_id,
-            "assessment": assessment_envelope or {
-                "confidence": 0.85,
-                "output": {"emotion_profile": body.get("emotion_scores", {})},
-            },
-        })
+        if use_real_agents():
+            from backend.ai_engine.real_agents import DiagnosisAgent
+            agent = DiagnosisAgent(llm=get_llm_provider())
+            result = agent.run({
+                "run_id": run_id, "session_id": session_id,
+                "user_id": user_id,
+                "assessment": assessment_envelope or {
+                    "confidence": 0.85,
+                    "output": {"emotion_profile": {"dominant_emotion": "anxiety"}},
+                },
+            })
+        else:
+            from backend.ai_engine.agent_stubs import diagnosis_stub
+            result = diagnosis_stub({
+                "run_id": run_id, "session_id": session_id,
+                "user_id": user_id,
+                "assessment": assessment_envelope or {
+                    "confidence": 0.85,
+                    "output": {"emotion_profile": body.get("emotion_scores", {})},
+                },
+            })
+
         envelope = result["diagnosis"]
 
         # Persist to DB
@@ -48,7 +62,7 @@ async def diagnosis(body: dict, db: Session = Depends(get_db)):
             sd = out.get("syndrome_diagnosis", {})
             primary = sd.get("primary", {})
             db.add(SyndromeDiagnosis(
-                user_id=1, session_id=session_id,
+                user_id=1, session_id=session_id,  # MVP: hardcoded until auth is in place (Sprint 3)
                 primary_name=primary.get("name", ""),
                 primary_element=primary.get("element"),
                 primary_organ=primary.get("organ"),
@@ -69,7 +83,7 @@ async def diagnosis(body: dict, db: Session = Depends(get_db)):
         except Exception as db_err:
             db.rollback()
             envelope["warnings"] = envelope.get("warnings", []) + [
-                {"code": "DB_WRITE_FAILED", "message": f"数据库写入失败(已回滚): {db_err}"}
+                f"DB_WRITE_FAILED: {db_err}"
             ]
 
         return envelope

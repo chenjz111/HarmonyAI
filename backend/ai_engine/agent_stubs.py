@@ -151,7 +151,7 @@ def generation_stub(state: dict[str, Any]) -> dict[str, object]:
         reason=["stub：使用本地曲库示例音频，未调用外部生成服务"],
         warnings=["当前为 Sprint 2 本地曲库 stub"],
         input_data={"prescription": prescription["output"]},
-        output_data={"audio": {"url": "local://music/jiao-demo.mp3", "format": "mp3"}},
+        output_data={"audio": {"url": "/static/music/jiao-demo.wav", "format": "wav"}},
     )
     return {"generation": envelope}
 
