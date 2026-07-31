@@ -184,7 +184,7 @@
       "scoring": {
         "scored": true,
         "dimension": "sleep_disturbance",
-        "emotion_mapping": "depression",
+        "emotion_mapping": null,
         "weight": 1.0
       },
       "ui": {"layout": "button-row", "icon_moon_bed": true, "progress_required": true}
@@ -231,7 +231,7 @@
       "scoring": {
         "scored": true,
         "dimension": "appetite_change",
-        "emotion_mapping": "overthinking",
+        "emotion_mapping": null,
         "weight": 1.0
       },
       "ui": {"layout": "button-row", "icon_plate": true, "progress_required": true}
@@ -252,7 +252,7 @@
       "scoring": {
         "scored": true,
         "dimension": "daily_impact",
-        "emotion_mapping": "depression",
+        "emotion_mapping": null,
         "weight": 1.0
       },
       "ui": {"layout": "button-row", "progress_required": true}
