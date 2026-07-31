@@ -3,6 +3,7 @@
   "collection_id": "questionnaire-scoring-v2",
   "version": "1.0.0",
   "created": "2026-07-28",
+  "updated": "2026-07-31",
   "author": "肖宇翔（nob）· Medical Knowledge Engineer",
   "status": "reviewed-by-nob",
   "spec_ref": "docs/questionnaire-v2-design.md 第 5-7 节",
@@ -10,88 +11,72 @@
     "deterministic": "所有问卷分数可复现，不由 Qwen 自由生成",
     "score_range": "raw 0-4, normalized 0-100",
     "exclude_from_scoring": ["q01_mood_weather", "q12_physical_safety"],
-    "backend_authoritative": "dimension_scores 由后端重新计算，不能信任前端提交值"
+    "backend_authoritative": "dimension_scores 由后端重新计算，不能信任前端提交值",
+    "single_question_no_diagnosis": "单题不能直接决定证型或情绪；组合维度才有 candidate_syndromes",
+    "Qwen_independent_safety": "Qwen 不可用时安全规则仍生效"
   },
   "dimensions": {
     "tension_worry": {
       "source_question": "q02_tension_worry",
       "raw_score_range": [0, 4],
       "weight": 1.0,
-      "normalization_formula": "raw × 25",
-      "emotion_mapping": "anxiety",
-      "candidate_syndromes": ["syd_001", "syd_003", "syd_008"]
+      "normalization_formula": "raw × 25"
     },
     "overthinking": {
       "source_question": "q03_overthinking",
       "raw_score_range": [0, 4],
       "weight": 1.0,
       "normalization_formula": "raw × 25",
-      "emotion_mapping": "overthinking",
-      "candidate_syndromes": ["syd_004", "syd_005"]
+      "score_map": {"calm": 0, "ripple": 1, "waves": 2, "swell": 3, "storm": 4}
     },
     "irritability_anger": {
       "source_question": "q04_irritability_anger",
       "raw_score_range": [0, 4],
       "weight": 1.0,
-      "normalization_formula": "raw × 25",
-      "emotion_mapping": "anger",
-      "candidate_syndromes": ["syd_001", "syd_003"]
+      "normalization_formula": "raw × 25"
     },
     "low_mood": {
       "source_question": "q05_low_mood",
       "raw_score_range": [0, 4],
       "weight": 1.0,
-      "normalization_formula": "raw × 25",
-      "emotion_mapping": "depression",
-      "candidate_syndromes": ["syd_002", "syd_006"]
+      "normalization_formula": "raw × 25"
     },
     "interest_loss": {
       "source_question": "q06_interest_loss",
       "raw_score_range": [0, 4],
       "weight": 1.0,
-      "normalization_formula": "raw × 25",
-      "emotion_mapping": "depression",
-      "candidate_syndromes": ["syd_002", "syd_006"]
+      "normalization_formula": "raw × 25"
     },
     "fear_unease": {
       "source_question": "q07_fear_unease",
       "raw_score_range": [0, 4],
       "weight": 1.0,
-      "normalization_formula": "raw × 25",
-      "emotion_mapping": "fear",
-      "candidate_syndromes": ["syd_007", "syd_008"]
+      "normalization_formula": "raw × 25"
     },
     "sleep_disturbance": {
       "source_question": "q08_sleep_disturbance",
       "raw_score_range": [0, 4],
       "weight": 1.0,
-      "normalization_formula": "raw × 25",
-      "emotion_mapping": "depression",
-      "candidate_syndromes": ["syd_002", "syd_006", "syd_003"]
+      "normalization_formula": "raw × 25"
     },
     "low_energy": {
       "source_question": "q09_low_energy",
       "raw_score_range": [0, 4],
       "weight": 1.0,
       "normalization_formula": "raw × 25",
-      "emotion_mapping": "depression",
-      "candidate_syndromes": ["syd_002", "syd_004", "syd_005", "syd_006"]
+      "score_map": {"full": 0, "three_quarters": 1, "half": 2, "quarter": 3, "empty": 4}
     },
     "appetite_change": {
       "source_question": "q10_appetite_change",
       "raw_score_range": [0, 4],
       "weight": 1.0,
-      "normalization_formula": "raw × 25",
-      "emotion_mapping": "overthinking",
-      "candidate_syndromes": ["syd_004", "syd_005"]
+      "normalization_formula": "raw × 25"
     },
     "daily_impact": {
       "source_question": "q11_daily_impact",
       "raw_score_range": [0, 4],
       "weight": 1.0,
-      "normalization_formula": "raw × 25",
-      "emotion_mapping": "depression",
-      "candidate_syndromes": ["syd_002", "syd_004", "syd_006"]
+      "normalization_formula": "raw × 25"
     }
   },
   "combinations": {
@@ -99,31 +84,36 @@
       "dimensions": ["tension_worry", "fear_unease"],
       "method": "average",
       "label": "紧张与恐惧",
-      "purpose": "反映情绪紧张与不安的整体状态"
+      "purpose": "反映情绪紧张与不安的整体状态",
+      "candidate_syndromes": ["syd_001", "syd_003", "syd_007", "syd_008"]
     },
     "反复思虑": {
       "dimensions": ["overthinking"],
       "method": "value",
       "label": "反复思虑",
-      "purpose": "单维度直接呈现"
+      "purpose": "单维度直接呈现",
+      "candidate_syndromes": ["syd_004", "syd_005"]
     },
     "烦躁状态": {
       "dimensions": ["irritability_anger"],
       "method": "value",
       "label": "烦躁易怒",
-      "purpose": "单维度直接呈现"
+      "purpose": "单维度直接呈现",
+      "candidate_syndromes": ["syd_001", "syd_003"]
     },
     "低落与兴趣": {
       "dimensions": ["low_mood", "interest_loss"],
       "method": "average",
       "label": "低落与兴趣下降",
-      "purpose": "反映抑郁倾向"
+      "purpose": "反映抑郁倾向",
+      "candidate_syndromes": ["syd_002", "syd_006"]
     },
     "身体与生活负担": {
       "dimensions": ["sleep_disturbance", "low_energy", "appetite_change", "daily_impact"],
       "method": "average",
       "label": "身体与生活负担",
-      "purpose": "反映睡眠/精力/食欲/功能综合负担"
+      "purpose": "反映睡眠/精力/食欲/功能综合负担",
+      "candidate_syndromes": ["syd_002", "syd_004", "syd_005", "syd_006"]
     }
   },
   "severity_labels": [
@@ -145,44 +135,6 @@
       "每条辨证倾向至少显示一条可理解依据",
       "页面固定显示'不构成医学诊断'声明"
     ]
-  },
-  "safety_rules": {
-    "urgent_attention": {
-      "triggers": [
-        {"source": "q12_physical_safety", "value": "self_harm_thoughts", "label": "有伤害自己的想法"},
-        {"source": "q12_physical_safety", "value": "severe_chest_pain", "label": "严重或持续胸痛"},
-        {"source": "q12_physical_safety", "value": "severe_breathing_difficulty", "label": "明显呼吸困难"}
-      ],
-      "actions": [
-        "当前页面立即显示醒目提示",
-        "禁止用'听音乐即可缓解'替代专业帮助",
-        "后端再次检测并返回机器可读风险代码",
-        "常规处方工作流暂停",
-        "用户可以返回修改误选，但修改行为留在本次会话审计摘要中",
-        "具体紧急联系方式必须依据上线地区和正式合规方案配置，不能由模型猜测"
-      ],
-      "code": "urgent_attention"
-    },
-    "watch_list": {
-      "triggers": [
-        {"condition": "q11_daily_impact == 4", "label": "日常影响几乎每天"},
-        {"condition": "q08_sleep_disturbance == 4 AND narrative_or_ocr_mentions_over_2_weeks", "label": "睡眠困扰超过两周"},
-        {"condition": "multiple_dimensions == 4", "label": "多个核心维度同时为 4"},
-        {"condition": "ocr_or_text_mentions_significant_worsening", "label": "OCR/文本出现'症状明显加重'等描述"}
-      ],
-      "actions": [
-        "提示进一步关注，但不自动阻断",
-        "展示缓解建议但强调专业咨询"
-      ],
-      "code": "watch_list"
-    },
-    "coverage_sources": [
-      "问卷 Q12",
-      "自由描述关键词与结构化提取",
-      "用户确认后的 OCR 文本",
-      "Qwen 输出后的二次规则校验"
-    ],
-    "fallback": "Qwen 不可用时，确定性风险规则仍必须生效"
   },
   "non_scoring_outputs": {
     "q01_mood_weather": {
