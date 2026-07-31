@@ -103,11 +103,23 @@ class PostState(BaseModel):
 
 
 class PlaybackData(BaseModel):
-    listened_seconds: int = 0
-    duration_seconds: int = 0
+    listened_seconds: int = Field(ge=0)
+    duration_seconds: int = Field(ge=0)
     completion_rate: float = Field(ge=0, le=1)
-    pause_count: int = 0
-    skip_count: int = 0
+    pause_count: int = Field(ge=0, default=0)
+    skip_count: int = Field(ge=0, default=0)
+
+
+class ExperienceData(BaseModel):
+    """Feedback 2.0 experience — explicit Pydantic model (NOT arbitrary dict)."""
+    overall_rating: Optional[int] = Field(None, ge=1, le=5)
+    relaxation_rating: Optional[int] = Field(None, ge=1, le=5)
+    music_match_rating: Optional[int] = Field(None, ge=1, le=5)
+    continue_use: Optional[str] = Field(None, pattern="^(yes|maybe|no)$")
+    favorite: bool = False
+    disliked_features: list[str] = Field(default_factory=list)
+    disliked_instruments: list[str] = Field(default_factory=list)
+    comment: str = Field(default="", max_length=500)
 
 
 class FeedbackV2Request(BaseModel):
@@ -120,6 +132,6 @@ class FeedbackV2Request(BaseModel):
     pre_state: PreState
     post_state: PostState
 
-    experience: dict = Field(default_factory=dict)  # {overall_rating, relaxation_rating, music_match_rating, continue_use, favorite, disliked_features, comment}
+    experience: ExperienceData = Field(default_factory=ExperienceData)
     playback: Optional[PlaybackData] = None
     submitted_at: Optional[str] = None

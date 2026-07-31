@@ -156,7 +156,7 @@ async def feedback_v2(body: dict, db: Session = Depends(get_db)):
         pre = validated.pre_state
         post = validated.post_state
         exp = validated.experience
-        pb = validated.playback or {}
+        pb = validated.playback or PlaybackData()
 
         # Compute deltas
         tension_delta = (post.tension or 0) - (pre.tension or 0)
@@ -174,11 +174,11 @@ async def feedback_v2(body: dict, db: Session = Depends(get_db)):
             track_id=validated.music_id,
             schema_version="2.0",
 
-            # Satisfaction & ratings
-            subjective_satisfaction=exp.get("overall_rating"),
-            subjective_relaxation=exp.get("relaxation_rating"),
-            subjective_emotion_match=exp.get("music_match_rating"),
-            subjective_text=exp.get("comment", ""),
+            # Satisfaction & ratings (from ExperienceData model)
+            subjective_satisfaction=exp.overall_rating,
+            subjective_relaxation=exp.relaxation_rating,
+            subjective_emotion_match=exp.music_match_rating,
+            subjective_text=exp.comment[:500] if exp.comment else "",
 
             # Pre/post state (0-10)
             mood_before=pre.tension,
@@ -195,15 +195,15 @@ async def feedback_v2(body: dict, db: Session = Depends(get_db)):
             }),
 
             # Music & preferences
-            music_match=exp.get("music_match_rating"),
-            will_continue=1 if exp.get("continue_use") == "yes" else (0 if exp.get("continue_use") == "no" else None),
-            is_favorite=1 if exp.get("favorite", False) else 0,
-            disliked_features=str(exp.get("disliked_features", []) + exp.get("disliked_instruments", [])),
+            music_match=exp.music_match_rating,
+            will_continue=1 if exp.continue_use == "yes" else (0 if exp.continue_use == "no" else None),
+            is_favorite=1 if exp.favorite else 0,
+            disliked_features=str(exp.disliked_features + exp.disliked_instruments),
 
             # Playback
-            behavioral_completion_rate=pb.get("completion_rate") if isinstance(pb, dict) else None,
+            behavioral_completion_rate=pb.completion_rate if pb else None,
             behavioral_replay_count=0,
-            behavioral_listen_session=str(pb.get("listened_seconds", 0)) if isinstance(pb, dict) else None,
+            behavioral_listen_session=str(pb.listened_seconds) if pb else None,
 
             # Decision
             decision_action="adjust_personal_preference",
@@ -235,8 +235,8 @@ async def feedback_v2(body: dict, db: Session = Depends(get_db)):
             },
             "decision": {"action": "adjust_personal_preference", "next_step": "complete"},
             "personal_preference_patch": {
-                "reduce_instruments": exp.get("disliked_instruments", []),
-                "favorite_tracks_add": [validated.music_id] if exp.get("favorite") and validated.music_id else [],
+                "reduce_instruments": exp.disliked_instruments,
+                "favorite_tracks_add": [validated.music_id] if exp.favorite and validated.music_id else [],
             },
             "global_rule_update": False,
         }, req_id)
