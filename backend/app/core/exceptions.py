@@ -135,7 +135,11 @@ def build_error_response(
         error_code = "INTERNAL_ERROR"
         message = str(error)
 
-    warnings = [WarningInfo(code=error_code, message=message)]
+    # Sanitize: never leak full traceback or internal details in response
+    safe_message = message[:200] if message else "internal error"
+    safe_message = safe_message.replace("\n", " ").replace('"', "'")
+
+    warnings = [WarningInfo(code=error_code, message=safe_message)]
 
     return UniversalOutput(
         agent_id=agent_id,

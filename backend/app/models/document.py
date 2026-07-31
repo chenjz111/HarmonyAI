@@ -28,7 +28,7 @@ class Document(Base):
     # Processing status
     status = Column(String(16), default="uploaded", comment="uploaded/confirmed/skipped/deleted/ocr_failed")
     ocr_text = Column(Text, nullable=True, comment="OCR识别文本(未确认前不可靠)")
-    ocr_confidence = Column(String(16), nullable=True, comment="OCR置信度: high/medium/low")
+    ocr_confidence = Column(String(16), nullable=True, comment="OCR置信度: high/medium/low (always string, never float)")
     ocr_confirmed = Column(Boolean, default=False, comment="用户是否确认OCR文本")
 
     created_at = Column(DateTime, server_default=func.now())
