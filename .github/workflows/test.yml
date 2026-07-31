@@ -8,6 +8,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install pytest
-      - run: pytest tests/knowledge/ -v
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest chromadb langgraph
+      - name: Run full test suite
+        run: pytest tests/ -v
+
 
