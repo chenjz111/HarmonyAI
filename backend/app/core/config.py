@@ -1,6 +1,4 @@
 """Application configuration."""
-from urllib.parse import quote_plus
-
 from pydantic_settings import BaseSettings
 
 
@@ -11,21 +9,15 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
 
-    # MySQL
+    # Portable competition/demo default. Deployments can override DATABASE_URL.
+    DATABASE_URL: str = "sqlite:///./harmonyai.db"
+
+    # Retained for backward-compatible environment documentation only.
     MYSQL_HOST: str = "localhost"
     MYSQL_PORT: int = 3306
     MYSQL_USER: str = "root"
     MYSQL_PASSWORD: str = ""
     MYSQL_DATABASE: str = "harmonyai"
-
-    @property
-    def DATABASE_URL(self) -> str:
-        encoded_password = quote_plus(self.MYSQL_PASSWORD)
-        return (
-            f"mysql+pymysql://{self.MYSQL_USER}:{encoded_password}"
-            f"@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
-            f"?charset=utf8mb4"
-        )
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
