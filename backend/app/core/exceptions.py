@@ -102,7 +102,7 @@ class APIFailureException(AgentException):
 # ---------------------------------------------------------------------------
 
 from backend.app.schemas.common import (
-    UniversalOutput, AgentStatus, AgentLayer, WarningInfo, make_run_id,
+    UniversalOutput, AgentStatus, AgentLayer, make_run_id,
 )
 
 
@@ -133,9 +133,13 @@ def build_error_response(
     else:
         status = AgentStatus.FAILED
         error_code = "INTERNAL_ERROR"
-        message = str(error)
+        message = "服务暂时不可用，请稍后重试"
 
-    warnings = [WarningInfo(code=error_code, message=message)]
+    # Sanitize: never leak full traceback or internal details in response
+    safe_message = message[:200] if message else "internal error"
+    safe_message = safe_message.replace("\n", " ").replace('"', "'")
+
+    warnings = [f"{error_code}: {safe_message}"]
 
     return UniversalOutput(
         agent_id=agent_id,
@@ -146,7 +150,7 @@ def build_error_response(
         user_id=user_id,
         status=status,
         confidence=0.0,
-        reason=[f"异常:{message}"],
+        reason=[f"异常:{safe_message}"],
         warnings=warnings,
         input=None,
         output=None,
