@@ -31,6 +31,13 @@ def match_music_v2(
     ]
     playable_matches = [track for track in matching_tracks if _is_playable(track)]
     if not playable_matches:
+        if not matching_tracks:
+            fallback_track = next(
+                (track for track in catalog if _is_playable(track)),
+                None,
+            )
+            if fallback_track is not None:
+                return _playable_fallback(fallback_track, tone_id)
         error_code = "NO_MATCHING_TRACK"
         if matching_tracks:
             error_code = (
@@ -183,6 +190,47 @@ def _has_audio(track: Mapping[str, object]) -> bool:
     value = _track_value(track, "stream_url", "audio_url")
     return isinstance(value, str) and bool(value)
 
+
+def _playable_fallback(
+    track: Mapping[str, object],
+    requested_tone_id: str,
+) -> dict[str, object]:
+    music_id = _track_value(track, "music_id", "track_id")
+    return {
+        "agent_id": "music_agent",
+        "legacy_alias": "generation_agent",
+        "status": "degraded",
+        "music_id": music_id,
+        "title": track["title"],
+        "source_type": "matched",
+        "stream_url": _track_value(
+            track,
+            "stream_url",
+            "audio_url",
+        ),
+        "mode": track.get("mode") or track.get("tone_id"),
+        "bpm": track["bpm"],
+        "duration_seconds": _track_value(
+            track,
+            "duration_seconds",
+            "duration",
+        ),
+        "instruments": _string_list(track.get("instruments")),
+        "ambient_sounds": _string_list(track.get("ambient_sounds")),
+        "rights_note": (
+            track.get("rights_note")
+            if isinstance(track.get("rights_note"), str)
+            else "本地曲库备用匹配结果"
+        ),
+        "match_explanation": [
+            "未找到处方调式对应曲目，已使用可播放的本地备用曲目。",
+            "页面展示的是备用曲目的实际调式与参数。",
+        ],
+        "error_code": "NO_MATCHING_TRACK",
+        "fallback_applied": True,
+        "requested_tone_id": requested_tone_id,
+        "fallback_music_id": music_id,
+    }
 
 def _fallback_music_id(
     catalog: Sequence[Mapping[str, object]], *, excluded: Sequence[Mapping[str, object]]
