@@ -3,6 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import pytest
 from fastapi.testclient import TestClient
+from backend.app.core.database import get_db
 from backend.app.main import app
 
 client = TestClient(app)
@@ -52,4 +53,48 @@ def test_v2_no_default_rating():
     }
     resp = client.post("/api/v2/feedback", json=payload)
     assert resp.status_code == 200
-    # The old behavior would auto-fill 4, now it should not
+    data = resp.json()
+    assert data["success"] is True
+    assert data["data"]["global_rule_update"] is False
+
+
+def test_v2_feedback_error_does_not_leak_internal_details():
+    class FailingDb:
+        def query(self, *_args, **_kwargs):
+            raise RuntimeError("mysql://root:secret@localhost/harmony")
+
+        def rollback(self):
+            pass
+
+    def failing_db():
+        yield FailingDb()
+
+    app.dependency_overrides[get_db] = failing_db
+    try:
+        payload = {
+            "session_id": "sess_private_error",
+            "pre_state": {
+                "tension": 5,
+                "body_tension": 5,
+                "mental_fatigue": 5,
+                "goal": "relax",
+            },
+            "post_state": {
+                "tension": 4,
+                "body_tension": 4,
+                "mental_fatigue": 4,
+                "change_label": "no_change",
+            },
+            "experience": {
+                "continue_use": "yes",
+                "favorite": False,
+            },
+        }
+        data = client.post("/api/v2/feedback", json=payload).json()
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert data["success"] is False
+    assert data["error"]["code"] == "FEEDBACK_FAILED"
+    assert data["error"]["message"] == "反馈保存失败，请稍后重试"
+    assert "secret" not in str(data)
