@@ -150,8 +150,14 @@ async def feedback_v2(body: dict, db: Session = Depends(get_db)):
     # Validate with Pydantic (fixes Review issue #6)
     try:
         validated = FeedbackV2Request(**body)
-    except ValidationError as ve:
-        return v2_err("VALIDATION_ERROR", str(ve), req_id, retryable=False)
+    except ValidationError:
+        return v2_err(
+            "VALIDATION_ERROR",
+            "反馈数据格式不正确，请检查后重试",
+            req_id,
+            retryable=False,
+            next_actions=["review_feedback_fields"],
+        )
 
     try:
         _ensure_session(session_id, db)
@@ -160,6 +166,11 @@ async def feedback_v2(body: dict, db: Session = Depends(get_db)):
         post = validated.post_state
         exp = validated.experience
         pb = validated.playback
+        completion_rate = (
+            min(pb.listened_seconds / pb.duration_seconds, 1.0)
+            if pb and pb.duration_seconds > 0
+            else (0.0 if pb else None)
+        )
 
         # Compute deltas
         tension_delta = (post.tension or 0) - (pre.tension or 0)
@@ -204,9 +215,10 @@ async def feedback_v2(body: dict, db: Session = Depends(get_db)):
             disliked_features=str(exp.disliked_features + exp.disliked_instruments),
 
             # Playback
-            behavioral_completion_rate=pb.completion_rate if pb else None,
+            behavioral_completion_rate=completion_rate,
             behavioral_replay_count=0,
-            behavioral_listen_session=str(pb.listened_seconds) if pb else None,
+            behavioral_pause_count=pb.pause_count if pb else None,
+            behavioral_skip_count=pb.skip_count if pb else None,
 
             # Decision
             decision_action="adjust_personal_preference",

@@ -54,10 +54,10 @@ class Feedback(Base):
     schema_version = Column(String(8), default="2.0", comment="Schema版本: 1.0 / 2.0")
 
     # Before-after listening
-    mood_before = Column(Integer, nullable=True, comment="听前心情 1-5")
-    mood_after = Column(Integer, nullable=True, comment="听后心情 1-5")
-    relaxation_before = Column(Integer, nullable=True, comment="听前放松度 1-5")
-    relaxation_after = Column(Integer, nullable=True, comment="听后放松度 1-5")
+    mood_before = Column(Integer, nullable=True, comment="听前紧张度 0-10")
+    mood_after = Column(Integer, nullable=True, comment="听后紧张度 0-10")
+    relaxation_before = Column(Integer, nullable=True, comment="听前身体紧绷度 0-10")
+    relaxation_after = Column(Integer, nullable=True, comment="听后身体紧绷度 0-10")
 
     # Music match
     music_match = Column(Integer, nullable=True, comment="音乐匹配度 1-5")
