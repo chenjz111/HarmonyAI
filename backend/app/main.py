@@ -70,7 +70,8 @@ app.include_router(assessment_router.router, prefix="/api/v1", tags=["Agent 1 �
 app.include_router(diagnosis_router.router, prefix="/api/v1", tags=["Agent 2 — 辨证"])
 app.include_router(prescription_router.router, prefix="/api/v1", tags=["Agent 3 — 处方"])
 app.include_router(generation_router.router, prefix="/api/v1", tags=["Agent 4 — 生成"])
-app.include_router(feedback_router.router, prefix="/api", tags=["Agent 5 — 反馈"])
+app.include_router(feedback_router.router, prefix="/api/v1", tags=["Agent 5 — 反馈"])
+app.include_router(feedback_router.v2_router, prefix="/api/v2", tags=["Agent 5 — 反馈 V2"])
 app.include_router(document_router.router, prefix="/api/v2", tags=["Sprint 3 — 文档上传"])
 app.include_router(session_router.router, prefix="/api/v2", tags=["Sprint 3 — 会话"])
 
