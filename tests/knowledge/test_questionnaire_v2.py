@@ -151,4 +151,3 @@ def test_fallback_works():
     # Must explicitly state that deterministic rules work without Qwen
     assert "Qwen" in fallback or "确定性" in fallback or "deterministic" in fallback, \
         "fallback must mention Qwen-unavailable scenario"
-
