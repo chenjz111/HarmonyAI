@@ -22,6 +22,7 @@ from backend.app.core.exceptions import build_error_response
 from backend.app.schemas.v2 import v2_ok, v2_err, FeedbackV2Request
 
 router = APIRouter()
+v2_router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
@@ -137,7 +138,7 @@ async def feedback_v1(body: dict, db: Session = Depends(get_db)):
 
 # ===== V2 Feedback endpoint (uses Pydantic — fixes Review issue #6) =====
 
-@router.post("/v2/feedback", summary="V2 — Feedback 2.0 完整提交")
+@v2_router.post("/feedback", summary="V2 — Feedback 2.0 完整提交")
 async def feedback_v2(body: dict, db: Session = Depends(get_db)):
     """Feedback 2.0 per feedback-v2-spec.md: pre/post state + experience + playback."""
     session_id = body.get("session_id")
