@@ -13,6 +13,7 @@ Start:
 
 Swagger: http://localhost:8000/docs
 """
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -21,6 +22,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.core.config import settings
+from backend.app.core.database import init_database
 from backend.app.routers import (
     health_router,
     assessment_router,
@@ -33,9 +35,18 @@ from backend.app.routers import (
     workflow_v2_router,
 )
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Ensure the portable local schema is ready before serving requests."""
+    init_database()
+    yield
+
+
 app = FastAPI(
     title=f"{settings.APP_NAME} API",
     version=settings.APP_VERSION,
+    lifespan=lifespan,
     description=(
         "五音疗愈平台 —— 基于中医五音理论的 AI 音乐辅助调理系统\n\n"
         "## Sprint 2 — 五 Agent 独立端点\n"
@@ -52,6 +63,7 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
 
 app.add_middleware(
     CORSMiddleware,
