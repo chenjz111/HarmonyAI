@@ -123,36 +123,22 @@
 
 <script>
 import ErrorState from '@/components/sprint3/error-state.vue'
-import { fetchPrescriptionAudio } from '@/common/api-v2.js'
+import { requestMusic, resolveMediaUrl } from '@/common/api-v2.js'
+import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
 
 export default {
   components: { ErrorState },
   data() {
     return {
-      status: 'loading',
-      errorMsg: '',
-      prescription: {
-        toneName: '',
-        bpm: 68,
-        instruments: [],
-        reason: '',
-        trackId: '',
-        audioUrl: '',
-        matched: false
-      },
-      audioContext: null,
-      isPlaying: false,
-      currentTime: 0,
-      duration: 0
+      status: 'loading', errorMsg: '', audioContext: null, isPlaying: false,
+      currentTime: 0, duration: 0, pauseCount: 0,
+      prescription: { toneName: '', bpm: 68, instruments: [], reason: '', trackId: '', audioUrl: '', matched: true }
     }
   },
   computed: {
-    progress() {
-      if (!this.duration) return 0
-      return (this.currentTime / this.duration) * 100
-    },
+    progress() { return this.duration ? (this.currentTime / this.duration) * 100 : 0 },
     currentTimeText() { return this.formatTime(this.currentTime) },
-    totalTimeText() { return this.formatTime(this.duration) }
+    totalTimeText() { return this.formatTime(this.duration || 30) }
   },
   onLoad() { this.loadAudio() },
   onHide() { this.pauseAudio() },
@@ -162,36 +148,37 @@ export default {
       this.status = 'loading'
       this.errorMsg = ''
       try {
-        const resultData = uni.getStorageSync('harmony_result_v2')
-        let sessionId = uni.getStorageSync('harmony_session_id_v2')
-        let prescription = null
-        if (resultData) {
-          const result = JSON.parse(resultData)
-          prescription = result.output.prescription
-          sessionId = result.session_id || sessionId
+        const session = getSprint3Session()
+        const workflow = session.workflow || {}
+        const prescription = workflow.prescription
+        if (!prescription || prescription.status === 'blocked_safety') {
+          throw new Error('当前状态不适合提供普通音乐调养建议')
         }
-
-        const res = await fetchPrescriptionAudio(sessionId, prescription)
-        if (res.status === 'degraded') {
-          this.status = 'degraded'
-          this.errorMsg = res.reason ? res.reason.join('；') : '当前使用示例音频'
-          return
-        }
-
+        let music = workflow.music
+        if (!music?.stream_url) music = await requestMusic(prescription, session.session_id)
+        if (!music?.stream_url) throw new Error('没有可播放的本地曲目')
+        const feature = prescription.music_feature || {}
         this.prescription = {
-          toneName: prescription ? prescription.music_feature.tone_name : '角调式',
-          bpm: prescription ? prescription.music_feature.bpm : 68,
-          instruments: prescription ? prescription.music_feature.instruments : ['古筝'],
-          reason: prescription ? prescription.music_reason : '根据辨证结果推荐',
-          trackId: res.output.track_id,
-          audioUrl: res.output.audio_url || res.output.stream_url,
-          matched: prescription ? prescription.matched : false
+          toneName: music.mode || feature.tone_name || '角调',
+          bpm: music.bpm || feature.bpm || 68,
+          instruments: music.instruments || feature.instruments || [],
+          reason: prescription.explanation || prescription.music_reason || '根据辅助辨证倾向和音乐参数规则匹配',
+          trackId: music.music_id,
+          audioUrl: resolveMediaUrl(music.stream_url),
+          matched: music.source_type === 'matched'
         }
+        updateSprint3Session({
+          music,
+          prescription_id: workflow.prescription_id || workflow.result_id || `rx_${Date.now()}`
+        })
         this.initAudio()
         this.status = 'success'
-      } catch (e) {
+        if (music.status === 'degraded') {
+          uni.showToast({ title: '生成服务不可用，已切换本地曲库', icon: 'none' })
+        }
+      } catch (error) {
         this.status = 'error'
-        this.errorMsg = e.message || '音频加载失败，请检查网络'
+        this.errorMsg = error.message || '音频加载失败，请检查网络'
       }
     },
     initAudio() {
@@ -201,50 +188,41 @@ export default {
       ctx.onPlay(() => { this.isPlaying = true })
       ctx.onPause(() => { this.isPlaying = false })
       ctx.onStop(() => { this.isPlaying = false; this.currentTime = 0 })
-      ctx.onEnded(() => { this.isPlaying = false; this.currentTime = 0 })
-      ctx.onTimeUpdate(() => {
-        this.currentTime = ctx.currentTime || 0
-        this.duration = ctx.duration || 0
-      })
-      ctx.onError((e) => {
-        this.status = 'error'
-        this.errorMsg = '音频播放错误：' + (e.errMsg || '未知错误')
-      })
+      ctx.onEnded(() => { this.isPlaying = false })
+      ctx.onTimeUpdate(() => { this.currentTime = ctx.currentTime || 0; this.duration = ctx.duration || this.duration })
+      ctx.onError((error) => { this.status = 'error'; this.errorMsg = '音频播放错误：' + (error.errMsg || '未知错误') })
       this.audioContext = ctx
     },
     togglePlay() {
       if (!this.audioContext) return
-      if (this.isPlaying) {
-        this.audioContext.pause()
-      } else {
-        this.audioContext.play()
-      }
+      if (this.isPlaying) { this.pauseCount++; this.audioContext.pause() }
+      else this.audioContext.play()
     },
-    pauseAudio() {
-      if (this.audioContext && this.isPlaying) this.audioContext.pause()
-    },
-    destroyAudio() {
-      if (this.audioContext) {
-        this.audioContext.destroy()
-        this.audioContext = null
-      }
-    },
+    pauseAudio() { if (this.audioContext && this.isPlaying) this.audioContext.pause() },
+    destroyAudio() { if (this.audioContext) { this.audioContext.destroy(); this.audioContext = null } },
     seek() {},
     playFallback() {
-      this.prescription.audioUrl = 'http://localhost:8000/static/music/jiao-demo.wav'
-      this.prescription.trackId = 'track_fallback'
+      this.prescription.audioUrl = resolveMediaUrl('/static/music/jiao-demo.wav')
+      this.prescription.trackId = 'music_jiao_001'
       this.initAudio()
       this.status = 'success'
     },
     goFeedback() {
       this.pauseAudio()
+      updateSprint3Session({
+        playback: {
+          listened_seconds: Math.max(0, Math.round(this.currentTime)),
+          duration_seconds: Math.max(1, Math.round(this.duration || 30)),
+          completion_rate: Math.min((this.currentTime || 0) / (this.duration || 30), 1),
+          pause_count: this.pauseCount,
+          skip_count: 0
+        }
+      })
       uni.navigateTo({ url: '/pages/feedback-v2/feedback-v2' })
     },
     formatTime(seconds) {
-      const s = Math.floor(seconds || 0)
-      const m = Math.floor(s / 60)
-      const rem = s % 60
-      return `${m}:${rem.toString().padStart(2, '0')}`
+      const value = Math.floor(seconds || 0)
+      return `${Math.floor(value / 60)}:${(value % 60).toString().padStart(2, '0')}`
     }
   }
 }

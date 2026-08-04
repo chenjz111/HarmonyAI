@@ -78,6 +78,9 @@
 </template>
 
 <script>
+import { createSession } from '@/common/api-v2.js'
+import { clearSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
+
 export default {
   data() {
     return {
@@ -90,8 +93,18 @@ export default {
     }
   },
   methods: {
-    goNext() {
-      uni.navigateTo({ url: '/pages/material/material' })
+    async goNext() {
+      try {
+        clearSprint3Session()
+        const session = await createSession()
+        updateSprint3Session({
+          session_id: session.session_id,
+          user_id: 'demo_user_001'
+        })
+        uni.navigateTo({ url: '/pages/material/material' })
+      } catch (error) {
+        uni.showToast({ title: error.message || '无法开始评估', icon: 'none' })
+      }
     }
   }
 }

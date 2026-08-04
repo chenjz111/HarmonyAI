@@ -53,6 +53,16 @@
       </view>
     </view>
 
+    <view v-if="extractedText" class="file-card ocr-confirm-card">
+      <text class="upload-title">请确认识别文字</text>
+      <text class="upload-hint">OCR 仅作辅助，识别有误时请直接修改</text>
+      <textarea
+        v-model="extractedText"
+        maxlength="2000"
+        placeholder="请确认或补充材料文字"
+        style="width: 100%; min-height: 220rpx; margin-top: 20rpx;"
+      />
+    </view>
     <error-state
       v-if="status === 'error'"
       :title="'上传失败'"
@@ -69,7 +79,7 @@
         <text class="btn-text">跳过</text>
       </view>
       <view class="btn btn-primary" :class="{ disabled: !filePath && status !== 'error' }" @click="next">
-        <text class="btn-text">{{ filePath ? '继续' : '请上传或跳过' }}</text>
+        <text class="btn-text">{{ filePath ? nextLabel : '请上传或跳过' }}</text>
         <text class="btn-arrow" v-if="filePath">→</text>
       </view>
     </view>
@@ -79,7 +89,8 @@
 <script>
 import ProgressBar from '@/components/sprint3/progress-bar.vue'
 import ErrorState from '@/components/sprint3/error-state.vue'
-import { uploadRecord } from '@/common/api-v2.js'
+import { confirmDocument, uploadDocument } from '@/common/api-v2.js'
+import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
 
 export default {
   components: { ProgressBar, ErrorState },
@@ -88,24 +99,46 @@ export default {
       filePath: '',
       fileName: '',
       isImage: false,
+      documentId: '',
+      extractedText: '',
       status: 'idle',
       errorMsg: ''
+    }
+  },
+  computed: {
+    nextLabel() {
+      return this.documentId ? '确认文字并继续' : '上传并识别'
     }
   },
   methods: {
     chooseFile() {
       this.status = 'idle'
       this.errorMsg = ''
+      const done = (path, name = '') => {
+        this.filePath = path
+        this.fileName = name || path.split('/').pop() || '已选择文件'
+        this.isImage = /\.(jpe?g|png)$/i.test(this.fileName)
+        this.documentId = ''
+        this.extractedText = ''
+      }
+      if (typeof uni.chooseMessageFile === 'function') {
+        uni.chooseMessageFile({
+          count: 1,
+          type: 'file',
+          extension: ['jpg', 'jpeg', 'png', 'pdf'],
+          success: (res) => done(res.tempFiles[0].path, res.tempFiles[0].name),
+          fail: () => this.chooseImage(done)
+        })
+      } else {
+        this.chooseImage(done)
+      }
+    },
+    chooseImage(done) {
       uni.chooseImage({
         count: 1,
         sizeType: ['compressed'],
         sourceType: ['album', 'camera'],
-        success: (res) => {
-          const path = res.tempFilePaths[0]
-          this.filePath = path
-          this.fileName = path.split('/').pop() || '已上传文件'
-          this.isImage = true
-        },
+        success: (res) => done(res.tempFilePaths[0]),
         fail: () => {
           this.status = 'error'
           this.errorMsg = '选择文件失败，请重试或跳过此步'
@@ -116,21 +149,47 @@ export default {
       this.filePath = ''
       this.fileName = ''
       this.isImage = false
+      this.documentId = ''
+      this.extractedText = ''
     },
     skip() {
-      uni.setStorageSync('harmony_material', JSON.stringify({ skipped: true }))
+      updateSprint3Session({
+        document_id: null,
+        document_text: null,
+        document_skipped: true
+      })
       uni.navigateTo({ url: '/pages/narrative/narrative' })
     },
     async next() {
       if (!this.filePath) return
       this.status = 'idle'
       try {
-        const res = await uploadRecord(this.filePath)
-        uni.setStorageSync('harmony_material', JSON.stringify(res))
+        const session = getSprint3Session()
+        if (!this.documentId) {
+          const uploaded = await uploadDocument({
+            filePath: this.filePath,
+            sessionId: session.session_id,
+            consentConfirmed: true
+          })
+          this.documentId = uploaded.document_id
+          this.extractedText = uploaded.extracted_text || ''
+          updateSprint3Session({ document_id: uploaded.document_id })
+          uni.showToast({ title: '请确认识别文字', icon: 'none' })
+          return
+        }
+        const confirmed = await confirmDocument(this.documentId, {
+          confirmed: true,
+          documentText: this.extractedText
+        })
+        updateSprint3Session({
+          document_id: confirmed.document_id,
+          document_text: confirmed.document_text || this.extractedText,
+          document_skipped: false
+        })
         uni.navigateTo({ url: '/pages/narrative/narrative' })
-      } catch (e) {
+      } catch (error) {
         this.status = 'error'
-        this.errorMsg = e.message || '上传失败，请检查网络'
+        this.errorMsg = error.message || '上传失败，请检查网络'
       }
     }
   }

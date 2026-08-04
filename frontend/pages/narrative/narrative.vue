@@ -75,7 +75,7 @@
 <script>
 import ProgressBar from '@/components/sprint3/progress-bar.vue'
 import ErrorState from '@/components/sprint3/error-state.vue'
-import { submitNarrative } from '@/common/api-v2.js'
+import { updateSprint3Session } from '@/common/sprint3-session.js'
 
 export default {
   components: { ProgressBar, ErrorState },
@@ -84,11 +84,11 @@ export default {
       narrativeText: '',
       prompts: [
         '最近失眠多梦',
-        '工作压力大、易焦虑',
+        '工作压力大、容易紧张',
         '情绪低落、提不起劲',
-        '胸闷气短、心悸',
-        '食欲不振、消化差',
-        '腰膝酸软、疲惫'
+        '最近容易烦躁',
+        '食欲不振、消化不适',
+        '白天疲惫、没有精神'
       ],
       status: 'idle',
       errorMsg: ''
@@ -100,20 +100,14 @@ export default {
       uni.showToast({ title: '已填充，可继续编辑', icon: 'none', duration: 1200 })
     },
     skip() {
-      uni.setStorageSync('harmony_narrative', JSON.stringify({ skipped: true }))
+      updateSprint3Session({ narrative_text: null, narrative_skipped: true })
       uni.navigateTo({ url: '/pages/survey-v2/survey-v2' })
     },
-    async next() {
-      this.status = 'idle'
-      try {
-        const payload = { narrative_text: this.narrativeText }
-        const res = await submitNarrative(payload)
-        uni.setStorageSync('harmony_narrative', JSON.stringify(res))
-        uni.navigateTo({ url: '/pages/survey-v2/survey-v2' })
-      } catch (e) {
-        this.status = 'error'
-        this.errorMsg = e.message || '提交失败，请重试'
-      }
+    next() {
+      const text = this.narrativeText.trim()
+      if (!text) return this.skip()
+      updateSprint3Session({ narrative_text: text, narrative_skipped: false })
+      uni.navigateTo({ url: '/pages/survey-v2/survey-v2' })
     }
   }
 }

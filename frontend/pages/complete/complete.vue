@@ -1,99 +1,37 @@
 <template>
   <view class="container">
-    <!-- 顶部水墨装饰 -->
-    <view class="ornament-top">
-      <view class="ornament-line"></view>
-      <view class="ornament-dot"></view>
-      <view class="ornament-line"></view>
-    </view>
-
+    <view class="ornament-top"><view class="ornament-line"></view><view class="ornament-dot"></view><view class="ornament-line"></view></view>
     <view class="success-card">
-      <!-- 中央印章式成功标识 -->
-      <view class="success-mark">
-        <view class="success-circle">
-          <text class="success-check">✓</text>
-        </view>
-        <view class="success-aura"></view>
-      </view>
+      <view class="success-mark"><view class="success-circle"><text class="success-check">✓</text></view><view class="success-aura"></view></view>
+      <text class="success-title">本次体验已完成</text>
+      <text class="success-quote">“五音疗疾，以乐入心”</text>
+      <text class="success-desc">反馈已经保存，并用于更新你的个人音乐偏好；不会自动修改全局医学知识和辨证规则。</text>
 
-      <text class="success-title">反馈已记录</text>
-      <text class="success-quote">"五音疗疾，以乐入心"</text>
-      <text class="success-desc">感谢你的反馈。{{ savedFeedback ? '本次疗愈之旅已完成，下次评估将参考这些数据为你优化处方。' : '期待下次与你相遇。' }}</text>
-
-      <!-- 本次记录 -->
-      <view class="summary-box" v-if="savedFeedback">
-        <view class="summary-header">
-          <view class="summary-line"></view>
-          <text class="summary-title">本次记录</text>
-          <view class="summary-line"></view>
-        </view>
-
-        <view class="overall-row">
-          <text class="overall-label">整体满意度</text>
-          <view class="overall-stars">
-            <text
-              class="overall-star"
-              v-for="s in 5"
-              :key="s"
-              :class="{ active: s <= getOverall() }"
-            >★</text>
-          </view>
-        </view>
-
+      <view class="summary-box" v-if="payload">
+        <view class="summary-header"><view class="summary-line"></view><text class="summary-title">本次主观反馈</text><view class="summary-line"></view></view>
+        <view class="overall-row"><text class="overall-label">整体满意度</text><view class="overall-stars"><text class="overall-star" v-for="s in 5" :key="s" :class="{ active: s <= payload.experience.overall_rating }">★</text></view></view>
         <view class="summary-list">
-          <view class="summary-row" v-for="(r, idx) in getRatings()" :key="idx">
-            <text class="summary-label">{{ r.label }}</text>
-            <text class="summary-stars-text">{{ '★'.repeat(r.value) }}<text class="empty-stars">{{ '☆'.repeat(5 - r.value) }}</text></text>
-          </view>
+          <view class="summary-row"><text class="summary-label">放松程度</text><text>{{ payload.experience.relaxation_rating }} / 5</text></view>
+          <view class="summary-row"><text class="summary-label">音乐匹配度</text><text>{{ payload.experience.music_match_rating }} / 5</text></view>
+          <view class="summary-row"><text class="summary-label">紧张变化</text><text>{{ payload.pre_state.tension }} → {{ payload.post_state.tension }}</text></view>
         </view>
-
-        <view class="summary-comment" v-if="savedFeedback.comment">
-          <text class="comment-quote-label">你的建议</text>
-          <text class="comment-quote-text">"{{ savedFeedback.comment }}"</text>
-        </view>
+        <view class="summary-comment" v-if="payload.experience.comment"><text class="comment-quote-label">你的补充</text><text class="comment-quote-text">“{{ payload.experience.comment }}”</text></view>
       </view>
 
-      <view class="action-btn" @click="goHome">
-        <text class="action-btn-text">返回首页</text>
-        <text class="action-btn-arrow">→</text>
-      </view>
+      <view class="action-btn" @click="goHome"><text class="action-btn-text">返回首页</text><text class="action-btn-arrow">→</text></view>
     </view>
-
-    <!-- 底部水墨装饰 -->
-    <view class="ornament-bottom">
-      <view class="ornament-line"></view>
-      <view class="ornament-dot"></view>
-      <view class="ornament-line"></view>
-    </view>
+    <view class="ornament-bottom"><view class="ornament-line"></view><view class="ornament-dot"></view><view class="ornament-line"></view></view>
   </view>
 </template>
 
 <script>
+import { getSprint3Session } from '@/common/sprint3-session.js'
+
 export default {
-  data() {
-    return {
-      savedFeedback: null
-    }
-  },
-  onLoad() {
-    const fb = uni.getStorageSync('harmony_feedback_v2')
-    if (fb) {
-      this.savedFeedback = JSON.parse(fb)
-    }
-  },
+  data() { return { payload: null } },
+  onLoad() { this.payload = getSprint3Session().feedback_payload || null },
   methods: {
-    getOverall() {
-      if (!this.savedFeedback) return 0
-      const overall = this.savedFeedback.ratings.find(r => r.label === '整体满意度')
-      return overall ? overall.value : 0
-    },
-    getRatings() {
-      if (!this.savedFeedback) return []
-      return this.savedFeedback.ratings.filter(r => r.label !== '整体满意度')
-    },
-    goHome() {
-      uni.reLaunch({ url: '/pages/index/index' })
-    }
+    goHome() { uni.reLaunch({ url: '/pages/welcome/welcome' }) }
   }
 }
 </script>

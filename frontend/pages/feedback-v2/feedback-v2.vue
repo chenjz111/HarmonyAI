@@ -1,156 +1,138 @@
 <template>
   <view class="container">
-    <!-- 顶部标题 -->
-    <view class="header">
-      <text class="step-tag">第 4 步 · 选填</text>
-      <text class="page-title">聆听感受</text>
-      <text class="page-subtitle">你的反馈将帮助我们优化下一次的疗愈处方</text>
+    <view class="header"><text class="step-tag">第 4 步 · Feedback 2.0</text><text class="page-title">聆听前后有什么变化？</text><text class="page-subtitle">这些是你的主观感受，只会更新个人偏好，不会改写医学规则。</text></view>
+
+    <view class="rating-section">
+      <text class="section-title">听前与听后状态（0—10）</text>
+      <view class="rating-item" v-for="item in stateItems" :key="item.key">
+        <view class="rating-info"><text class="rating-label">{{ item.label }}</text><text class="rating-value">听前 {{ preState[item.key] }} → 听后 {{ postState[item.key] }}</text></view>
+        <text class="comment-optional">听前</text><slider :value="preState[item.key]" min="0" max="10" show-value activeColor="#6B8979" @change="setState('pre', item.key, $event.detail.value)" />
+        <text class="comment-optional">听后</text><slider :value="postState[item.key]" min="0" max="10" show-value activeColor="#C8896D" @change="setState('post', item.key, $event.detail.value)" />
+      </view>
+      <view class="comment-presets">
+        <text class="preset-tag" v-for="item in changeOptions" :key="item.value" :class="{ active: changeLabel === item.value }" @click="changeLabel = item.value">{{ item.label }}</text>
+      </view>
     </view>
 
-    <!-- 主评分卡 -->
     <view class="rating-main-card">
       <text class="rating-main-label">整体满意度</text>
-      <view class="big-stars">
-        <text
-          class="big-star"
-          v-for="s in 5"
-          :key="s"
-          :class="{ active: s <= overallRating }"
-          @click="setOverall(s)"
-        >★</text>
-      </view>
-      <text class="rating-main-text">{{ overallText }}</text>
+      <view class="big-stars"><text class="big-star" v-for="s in 5" :key="s" :class="{ active: s <= overallRating }" @click="overallRating = s">★</text></view>
     </view>
 
-    <!-- 多维评分 -->
     <view class="rating-section">
-      <text class="section-title">多维评分</text>
+      <text class="section-title">音乐体验</text>
       <view class="rating-list">
-        <view class="rating-item" v-for="(item, index) in ratings" :key="index">
-          <view class="rating-info">
-            <text class="rating-label">{{ item.label }}</text>
-            <text class="rating-value">{{ item.value || '—' }} / 5</text>
-          </view>
-          <view class="stars-row">
-            <text
-              class="star"
-              v-for="s in 5"
-              :key="s"
-              :class="{ active: s <= item.value }"
-              @click="setRating(index, s)"
-            >★</text>
-          </view>
+        <view class="rating-item" v-for="item in ratings" :key="item.key">
+          <view class="rating-info"><text class="rating-label">{{ item.label }}</text><text class="rating-value">{{ item.value || '—' }} / 5</text></view>
+          <view class="stars-row"><text class="star" v-for="s in 5" :key="s" :class="{ active: s <= item.value }" @click="item.value = s">★</text></view>
         </view>
       </view>
+      <text class="rating-label">以后是否愿意继续使用？</text>
+      <view class="comment-presets"><text class="preset-tag" v-for="item in continueOptions" :key="item.value" :class="{ active: continueUse === item.value }" @click="continueUse = item.value">{{ item.label }}</text></view>
+      <view class="comment-presets"><text class="preset-tag" :class="{ active: favorite }" @click="favorite = !favorite">{{ favorite ? '★ 已收藏' : '☆ 收藏本曲' }}</text></view>
     </view>
 
-    <!-- 评论卡 -->
     <view class="comment-card">
-      <view class="comment-header">
-        <text class="comment-title">其他建议</text>
-        <text class="comment-optional">选填</text>
-      </view>
-      <textarea
-        class="comment-area"
-        v-model="comment"
-        placeholder="例如：节奏太急 / 某段音色不舒服 / 希望多些乐器..."
-        maxlength="200"
-        :disable-default-padding="true"
-      />
-      <view class="comment-meta">
-        <view class="comment-presets">
-          <text class="preset-tag" @click="usePreset(t)" v-for="t in presets" :key="t">{{ t }}</text>
-        </view>
-        <text class="comment-count">{{ comment.length }} / 200</text>
-      </view>
+      <view class="comment-header"><text class="comment-title">不喜欢的音乐特征</text><text class="comment-optional">可多选</text></view>
+      <view class="comment-presets"><text class="preset-tag" v-for="feature in featureOptions" :key="feature" :class="{ active: dislikedFeatures.includes(feature) }" @click="toggleFeature(feature)">{{ feature }}</text></view>
+      <textarea class="comment-area" v-model="comment" placeholder="还可以说说哪里舒服、哪里不适合..." maxlength="500" :disable-default-padding="true" />
+      <text class="comment-count">{{ comment.length }} / 500</text>
     </view>
 
-    <error-state
-      v-if="status === 'error'"
-      title="提交失败"
-      :message="errorMsg"
-      @retry="submit"
-    />
-
-    <!-- 底部按钮 -->
-    <view class="btn-group">
-      <view class="btn btn-primary" :class="{ disabled: !canSubmit }" @click="submit">
-        <text class="btn-text">提交反馈</text>
-        <text class="btn-arrow">→</text>
-      </view>
-    </view>
+    <error-state v-if="status === 'error'" title="提交失败" :message="errorMsg" @retry="submit" />
+    <view class="btn-group"><view class="btn btn-primary" :class="{ disabled: !canSubmit }" @click="submit"><text class="btn-text">提交反馈</text><text class="btn-arrow">→</text></view></view>
   </view>
 </template>
 
 <script>
 import ErrorState from '@/components/sprint3/error-state.vue'
-import { submitFeedbackV2 } from '@/common/api-v2.js'
+import { submitFeedback } from '@/common/api-v2.js'
+import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
 
 export default {
   components: { ErrorState },
   data() {
     return {
+      preState: { tension: 5, body_tension: 5, mental_fatigue: 5 },
+      postState: { tension: 5, body_tension: 5, mental_fatigue: 5 },
+      stateItems: [
+        { key: 'tension', label: '情绪紧张程度' },
+        { key: 'body_tension', label: '身体紧绷程度' },
+        { key: 'mental_fatigue', label: '精神疲劳程度' }
+      ],
+      changeLabel: '',
+      changeOptions: [
+        { value: 'much_better', label: '明显好转' },
+        { value: 'slightly_better', label: '有一点好转' },
+        { value: 'no_change', label: '没变化' },
+        { value: 'worse', label: '更不舒服' }
+      ],
       overallRating: 0,
       ratings: [
-        { label: '情绪改善', value: 0 },
-        { label: '身体放松', value: 0 },
-        { label: '睡眠友好', value: 0 },
-        { label: '推荐意愿', value: 0 }
+        { key: 'relaxation', label: '放松程度', value: 0 },
+        { key: 'music_match', label: '音乐匹配度', value: 0 }
       ],
-      comment: '',
-      presets: ['很好', '节奏刚好', '再舒缓些', '希望重复'],
-      status: 'idle',
-      errorMsg: ''
+      continueUse: 'maybe',
+      continueOptions: [
+        { value: 'yes', label: '愿意' }, { value: 'maybe', label: '可以考虑' }, { value: 'no', label: '不愿意' }
+      ],
+      favorite: false,
+      featureOptions: ['节奏太快', '节奏太慢', '高频刺耳', '环境音不适', '时长不合适'],
+      dislikedFeatures: [],
+      comment: '', status: 'idle', errorMsg: ''
     }
   },
   computed: {
     canSubmit() {
-      return this.overallRating > 0 && this.ratings.every(r => r.value > 0)
-    },
-    overallText() {
-      const map = ['请选择评分', '需要调整', '一般', '较好', '很好', '非常疗愈']
-      return map[this.overallRating] || '请选择评分'
+      return this.overallRating > 0 && this.ratings.every(item => item.value > 0) && Boolean(this.changeLabel)
     }
   },
   methods: {
-    setOverall(value) {
-      this.overallRating = value
-      // 整体满意度变动时，自动填充其他维度（取均值±1的近似）
-      this.ratings.forEach((r, i) => {
-        if (r.value === 0) {
-          r.value = Math.max(1, Math.min(5, value - (i % 2 === 0 ? 0 : 1)))
-        }
-      })
-    },
-    setRating(index, value) {
-      this.ratings[index].value = value
-    },
-    usePreset(text) {
-      this.comment = this.comment ? this.comment + '，' + text : text
+    setState(stage, key, value) { (stage === 'pre' ? this.preState : this.postState)[key] = value },
+    toggleFeature(feature) {
+      this.dislikedFeatures = this.dislikedFeatures.includes(feature)
+        ? this.dislikedFeatures.filter(item => item !== feature)
+        : [...this.dislikedFeatures, feature]
     },
     async submit() {
       if (!this.canSubmit) {
-        uni.showToast({ title: '请完成所有评分', icon: 'none' })
+        uni.showToast({ title: '请完成评分和变化选择', icon: 'none' })
         return
       }
       this.status = 'idle'
       try {
-        const sessionId = uni.getStorageSync('harmony_session_id_v2')
-        const payload = {
-          session_id: sessionId,
-          track_id: 'track_jiao_demo_001',
-          ratings: [
-            { label: '整体满意度', value: this.overallRating },
-            ...this.ratings
-          ],
-          comment: this.comment
+        const session = getSprint3Session()
+        const music = session.music || session.workflow?.music || {}
+        const playback = session.playback || {
+          listened_seconds: 0, duration_seconds: Math.max(1, music.duration_seconds || 30),
+          completion_rate: 0, pause_count: 0, skip_count: 0
         }
-        const res = await submitFeedbackV2(payload)
-        uni.setStorageSync('harmony_feedback_v2', JSON.stringify({ ...res, ...payload }))
+        const payload = {
+          schema_version: 'feedback_v2.0',
+          session_id: session.session_id,
+          prescription_id: session.prescription_id || session.workflow?.result_id || `rx_${Date.now()}`,
+          music_id: music.music_id || 'music_jiao_001',
+          pre_state: { ...this.preState, goal: 'relax' },
+          post_state: { ...this.postState, change_label: this.changeLabel },
+          experience: {
+            overall_rating: this.overallRating,
+            relaxation_rating: this.ratings[0].value,
+            music_match_rating: this.ratings[1].value,
+            continue_use: this.continueUse,
+            favorite: this.favorite,
+            disliked_features: this.dislikedFeatures,
+            disliked_instruments: [],
+            comment: this.comment
+          },
+          playback,
+          submitted_at: new Date().toISOString()
+        }
+        const response = await submitFeedback(payload)
+        updateSprint3Session({ feedback: response, feedback_payload: payload })
         uni.navigateTo({ url: '/pages/complete/complete' })
-      } catch (e) {
+      } catch (error) {
         this.status = 'error'
-        this.errorMsg = e.message || '提交失败，请检查网络'
+        this.errorMsg = error.message || '提交失败，请检查网络'
       }
     }
   }
