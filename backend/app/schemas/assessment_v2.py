@@ -135,6 +135,11 @@ class AssessmentV2Response(BaseModel):
     session_id: str = Field(min_length=1)
     user_id: str = Field(min_length=1)
     status: Literal["success", "degraded", "blocked_safety"]
+    confidence: float = Field(
+        ge=0,
+        le=1,
+        description="系统证据充分度，不是医学诊断准确率",
+    )
     analysis_mode: AnalysisMode
     sources_used: list[SourceStatus]
     emotion_profile: EmotionProfile
