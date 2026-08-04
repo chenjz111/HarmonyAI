@@ -15,7 +15,9 @@ client = TestClient(app)
 
 def _feedback_payload() -> dict:
     return {
+        "schema_version": "feedback_v2.0",
         "session_id": "sess_contract_details",
+        "prescription_id": "rx_contract_details",
         "music_id": "gong_001",
         "pre_state": {
             "tension": 7,
@@ -63,6 +65,24 @@ def test_feedback_persists_playback_and_recomputes_completion_rate():
     finally:
         db_generator.close()
 
+
+def test_feedback_submission_is_idempotent():
+    first = client.post("/api/v2/feedback", json=_feedback_payload()).json()
+    second = client.post("/api/v2/feedback", json=_feedback_payload()).json()
+
+    assert first["success"] is True
+    assert first["data"]["idempotent"] is False
+    assert second["success"] is True
+    assert second["data"]["idempotent"] is True
+
+    db_generator = app.dependency_overrides[get_db]()
+    db = next(db_generator)
+    try:
+        assert db.query(Feedback).filter_by(
+            session_id="sess_contract_details"
+        ).count() == 1
+    finally:
+        db_generator.close()
 
 def test_feedback_validation_error_does_not_echo_private_input():
     payload = _feedback_payload()
