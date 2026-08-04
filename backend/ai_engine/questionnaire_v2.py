@@ -31,6 +31,23 @@ _MOOD_WEATHER_OPTIONS = {
     "stormy",
 }
 
+_VISUAL_SCORE_MAPS = {
+    "q03_overthinking": {
+        "calm": 0,
+        "ripple": 1,
+        "waves": 2,
+        "swell": 3,
+        "storm": 4,
+    },
+    "q09_low_energy": {
+        "full": 0,
+        "three_quarters": 1,
+        "half": 2,
+        "quarter": 3,
+        "empty": 4,
+    },
+}
+
 _DIMENSION_BY_QUESTION = {
     "q02_tension_worry": "tension_worry",
     "q03_overthinking": "overthinking",
@@ -67,14 +84,14 @@ def score_questionnaire(
     normalized_answers = _normalize_answers(answers)
     _validate_answers(normalized_answers)
 
-    dimension_scores = {
-        dimension: {
-            "raw_score": normalized_answers[question_id],
-            "normalized_score": normalized_answers[question_id] * 25,
+    dimension_scores = {}
+    for question_id, dimension in _DIMENSION_BY_QUESTION.items():
+        raw_score = _raw_dimension_value(question_id, normalized_answers[question_id])
+        dimension_scores[dimension] = {
+            "raw_score": raw_score,
+            "normalized_score": raw_score * 25,
             "source_question": question_id,
         }
-        for question_id, dimension in _DIMENSION_BY_QUESTION.items()
-    }
     selected_q12 = normalized_answers["q12_physical_safety"]
     return {
         "mood_metaphor": normalized_answers["q01_mood_weather"],
@@ -146,7 +163,14 @@ def _validate_answers(answers: Mapping[str, Any]) -> None:
 
     for question_id in _DIMENSION_BY_QUESTION:
         value = answers[question_id]
-        if type(value) is not int or not 0 <= value <= 4:
+        if question_id in _VISUAL_SCORE_MAPS:
+            valid_visual = isinstance(value, str) and value in _VISUAL_SCORE_MAPS[question_id]
+            valid_legacy_number = type(value) is int and 0 <= value <= 4
+            if not valid_visual and not valid_legacy_number:
+                raise QuestionnaireValidationError(
+                    f"{question_id} must be a valid visual option"
+                )
+        elif type(value) is not int or not 0 <= value <= 4:
             raise QuestionnaireValidationError(
                 f"{question_id} must be an integer from 0 to 4"
             )
@@ -171,3 +195,10 @@ def _validate_answers(answers: Mapping[str, Any]) -> None:
         raise QuestionnaireValidationError(
             "q12_physical_safety none cannot be combined with other signals"
         )
+
+
+def _raw_dimension_value(question_id: str, value: Any) -> int:
+    """Map visual choices to their reviewed 0-4 score; retain numeric v2 compatibility."""
+    if question_id in _VISUAL_SCORE_MAPS and isinstance(value, str):
+        return _VISUAL_SCORE_MAPS[question_id][value]
+    return value
