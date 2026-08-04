@@ -6,9 +6,9 @@ DELETE /api/v2/documents/{document_id}             — delete
 GET    /api/v2/documents/{session_id}              — list by session
 """
 from datetime import datetime, timezone
+import logging
 import os
 import uuid
-import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -19,6 +19,7 @@ from backend.app.models.session import Session as SessionModel
 from backend.app.schemas.v2 import v2_ok, v2_err
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 ALLOWED_MIME = {"image/jpeg", "image/png", "application/pdf"}
 ALLOWED_SIGNATURES = {
@@ -138,12 +139,22 @@ async def upload_document(
             "document_type": document_type,
         }, req_id)
 
-    except Exception as e:
+    except Exception:
         db.rollback()
         # Clean up file on DB failure
         if os.path.exists(file_path):
             os.remove(file_path)
-        return v2_err("UPLOAD_FAILED", str(e), req_id, retryable=True)
+        logger.exception(
+            "document upload failed",
+            extra={"session_id": session_id, "document_id": doc_id},
+        )
+        return v2_err(
+            "UPLOAD_FAILED",
+            "材料上传失败，请稍后重试",
+            req_id,
+            retryable=True,
+            next_actions=["retry_upload", "skip_document"],
+        )
 
 
 @router.patch("/documents/{document_id}/confirmation", summary="V2 — 确认/跳过文档")
@@ -168,9 +179,19 @@ async def confirm_document(
         db.commit()
         return v2_ok({"document_id": document_id, "ocr_status": doc.status,
                        "document_text": doc.ocr_text}, req_id)
-    except Exception as e:
+    except Exception:
         db.rollback()
-        return v2_err("CONFIRM_FAILED", str(e), req_id, retryable=True)
+        logger.exception(
+            "document confirmation failed",
+            extra={"document_id": document_id},
+        )
+        return v2_err(
+            "CONFIRM_FAILED",
+            "材料确认失败，请稍后重试",
+            req_id,
+            retryable=True,
+            next_actions=["retry_confirmation", "skip_document"],
+        )
 
 
 @router.delete("/documents/{document_id}", summary="V2 — 删除文档")
@@ -186,9 +207,19 @@ async def delete_document(document_id: str, db: Session = Depends(get_db)):
             os.remove(doc.storage_path)
         db.commit()
         return v2_ok({"document_id": document_id, "status": "deleted"}, req_id)
-    except Exception as e:
+    except Exception:
         db.rollback()
-        return v2_err("DELETE_FAILED", str(e), req_id, retryable=True)
+        logger.exception(
+            "document deletion failed",
+            extra={"document_id": document_id},
+        )
+        return v2_err(
+            "DELETE_FAILED",
+            "材料删除失败，请稍后重试",
+            req_id,
+            retryable=True,
+            next_actions=["retry_delete"],
+        )
 
 
 @router.get("/documents/{session_id}", summary="V2 — 查询Session文档")
