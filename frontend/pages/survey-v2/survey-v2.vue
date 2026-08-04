@@ -60,6 +60,22 @@
       />
     </view>
 
+    <view class="question-card" v-else-if="currentQuestion.type === 'multi'">
+      <view class="question-num">Q{{ currentIndex + 1 }}</view>
+      <text class="question-text">{{ currentQuestion.text }}</text>
+      <view class="options-row" style="flex-wrap: wrap;">
+        <view
+          class="option-item"
+          v-for="opt in currentQuestion.options"
+          :key="opt.value"
+          :class="{ selected: (answers[currentQuestion.id] || []).includes(opt.value) }"
+          @click="select(opt.value)"
+        >
+          <view class="option-circle"><text class="option-num">{{ opt.icon }}</text></view>
+          <text class="option-label">{{ opt.label }}</text>
+        </view>
+      </view>
+    </view>
     <error-state
       v-if="status === 'error'"
       title="提交失败"
@@ -84,130 +100,156 @@
 import ProgressBar from '@/components/sprint3/progress-bar.vue'
 import ImageChoice from '@/components/sprint3/image-choice.vue'
 import ErrorState from '@/components/sprint3/error-state.vue'
-import { submitSurveyV2 } from '@/common/api-v2.js'
+import { runWorkflow } from '@/common/api-v2.js'
+import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
+
+const likert = [
+  { value: 0, label: '完全没有' },
+  { value: 1, label: '有几天' },
+  { value: 2, label: '近一半天数' },
+  { value: 3, label: '大多数天' },
+  { value: 4, label: '几乎每天' }
+]
 
 export default {
   components: { ProgressBar, ImageChoice, ErrorState },
   data() {
     return {
+      startedAt: new Date().toISOString(),
       currentIndex: 0,
       answers: {},
-      options: [
-        { value: 1, label: '完全没有' },
-        { value: 2, label: '偶尔' },
-        { value: 3, label: '有时' },
-        { value: 4, label: '经常' },
-        { value: 5, label: '总是' }
-      ],
+      options: likert,
       questions: [
         {
-          id: 'q1',
-          type: 'image',
-          text: '最近一周，你的整体情绪状态更接近哪一种？',
-          columns: 3,
+          id: 'q01_mood_weather', type: 'image', apiType: 'visual_single', columns: 3,
+          text: '如果用天气形容最近一周的心情，最接近哪一种？',
           options: [
-            { value: 5, label: '愉悦平和', icon: '☺', color: '#6B8979', bgColor: '#EEF1ED' },
-            { value: 3, label: '一般波动', icon: '◐', color: '#C8896D', bgColor: '#F5EBE3' },
-            { value: 1, label: '焦虑低落', icon: '☹', color: '#4A6B5C', bgColor: '#E5EAE7' }
+            { value: 'sunny', label: '晴空万里', icon: '晴', color: '#D4A574', bgColor: '#F7EFE3' },
+            { value: 'lightly_cloudy', label: '阴晴不定', icon: '云', color: '#8FA89C', bgColor: '#EEF1ED' },
+            { value: 'cloudy', label: '多云', icon: '阴', color: '#7C8C86', bgColor: '#E8ECEA' },
+            { value: 'rainy', label: '连绵阴雨', icon: '雨', color: '#4A6FA5', bgColor: '#E8EDF3' },
+            { value: 'stormy', label: '雷电交加', icon: '雷', color: '#8C5A55', bgColor: '#F2E8E5' }
           ]
         },
+        { id: 'q02_tension_worry', type: 'likert', apiType: 'frequency_0_4', text: '我感到紧张、担忧，难以放松' },
         {
-          id: 'q2',
-          type: 'image',
-          text: '过去一周，你的睡眠质量如何？',
-          columns: 5,
+          id: 'q03_overthinking', type: 'image', apiType: 'visual_single', columns: 3,
+          text: '最近一周，你的思绪更像哪一种海面？',
           options: [
-            { value: 5, label: '很好', icon: '★', color: '#6B8979', bgColor: '#EEF1ED' },
-            { value: 4, label: '较好', icon: '☆', color: '#8FA89C', bgColor: '#F0F4F1' },
-            { value: 3, label: '一般', icon: '◐', color: '#C8896D', bgColor: '#F5EBE3' },
-            { value: 2, label: '较差', icon: '☾', color: '#B8826A', bgColor: '#F0E5DC' },
-            { value: 1, label: '很差', icon: '☁', color: '#9C9585', bgColor: '#F0EBE0' }
+            { value: 'calm', label: '平静', icon: '静', color: '#6B8979', bgColor: '#EEF1ED' },
+            { value: 'ripple', label: '微澜', icon: '漪', color: '#8FA89C', bgColor: '#F0F4F1' },
+            { value: 'waves', label: '起浪', icon: '浪', color: '#4A6FA5', bgColor: '#E8EDF3' },
+            { value: 'swell', label: '涌动', icon: '涌', color: '#C8896D', bgColor: '#F5EBE3' },
+            { value: 'storm', label: '风暴', icon: '暴', color: '#8C5A55', bgColor: '#F2E8E5' }
           ]
         },
-        { id: 'q3', type: 'likert', text: '我感到焦虑不安，难以放松' },
-        { id: 'q4', type: 'likert', text: '我感到疲惫无力，精力不足' },
-        { id: 'q5', type: 'likert', text: '我对事物失去兴趣，提不起精神' },
+        { id: 'q04_irritability_anger', type: 'likert', apiType: 'frequency_0_4', text: '我比平时更容易烦躁或发脾气' },
+        { id: 'q05_low_mood', type: 'likert', apiType: 'frequency_0_4', text: '我感到情绪低落或难过' },
+        { id: 'q06_interest_loss', type: 'likert', apiType: 'frequency_0_4', text: '我对原本感兴趣的事情提不起兴趣' },
+        { id: 'q07_fear_unease', type: 'likert', apiType: 'frequency_0_4', text: '我感到害怕、不安，或总担心会发生不好的事' },
+        { id: 'q08_sleep_disturbance', type: 'likert', apiType: 'frequency_0_4', text: '我入睡困难、容易醒，或睡后仍不解乏' },
         {
-          id: 'q6',
-          type: 'image',
-          text: '你目前最明显的身体不适部位是哪里？',
-          columns: 5,
+          id: 'q09_low_energy', type: 'image', apiType: 'visual_single', columns: 3,
+          text: '如果身体像一块电池，最近一周的电量更接近？',
           options: [
-            { value: 1, label: '头部', icon: '头', color: '#C85A45', bgColor: '#F9EDE7' },
-            { value: 2, label: '胸口', icon: '胸', color: '#C8896D', bgColor: '#F5EBE3' },
-            { value: 3, label: '腹部', icon: '腹', color: '#D4A574', bgColor: '#F5EBD9' },
-            { value: 4, label: '腰部', icon: '腰', color: '#6B8979', bgColor: '#EEF1ED' },
-            { value: 5, label: '四肢', icon: '肢', color: '#4A6FA5', bgColor: '#E8EDF3' }
+            { value: 'full', label: '满格', icon: '满', color: '#6B8979', bgColor: '#EEF1ED' },
+            { value: 'three_quarters', label: '四分之三', icon: '¾', color: '#8FA89C', bgColor: '#F0F4F1' },
+            { value: 'half', label: '一半', icon: '½', color: '#D4A574', bgColor: '#F5EBD9' },
+            { value: 'quarter', label: '较低', icon: '¼', color: '#C8896D', bgColor: '#F5EBE3' },
+            { value: 'empty', label: '快耗尽', icon: '空', color: '#8C5A55', bgColor: '#F2E8E5' }
           ]
         },
-        { id: 'q7', type: 'likert', text: '我难以入睡，或半夜容易醒来' },
-        { id: 'q8', type: 'likert', text: '我容易因为小事发脾气' },
-        { id: 'q9', type: 'likert', text: '我感到胸闷气短' },
-        { id: 'q10', type: 'likert', text: '我食欲不振或消化不良' },
-        { id: 'q11', type: 'likert', text: '我对未来感到悲观' },
-        { id: 'q12', type: 'likert', text: '我感到口干口苦' }
+        { id: 'q10_appetite_change', type: 'likert', apiType: 'frequency_0_4', text: '我的食欲或进食量与平时相比有明显变化' },
+        { id: 'q11_daily_impact', type: 'likert', apiType: 'frequency_0_4', text: '这些状态影响了我的学习、工作或日常生活' },
+        {
+          id: 'q12_physical_safety', type: 'multi', apiType: 'visual_multi',
+          text: '最近一周出现过哪些身体感受或需要关注的情况？（可多选）',
+          options: [
+            { value: 'neck_tension', label: '肩颈紧张', icon: '颈' },
+            { value: 'head_heaviness', label: '头部沉重', icon: '头' },
+            { value: 'palpitation', label: '心慌心悸', icon: '心' },
+            { value: 'stomach_discomfort', label: '胃部不适', icon: '胃' },
+            { value: 'fatigue', label: '明显疲惫', icon: '疲' },
+            { value: 'other', label: '其他不适', icon: '其' },
+            { value: 'severe_chest_pain', label: '严重或持续胸痛', icon: '警' },
+            { value: 'severe_breathing_difficulty', label: '明显呼吸困难', icon: '警' },
+            { value: 'self_harm_thoughts', label: '有伤害自己的想法', icon: '援' },
+            { value: 'none', label: '以上均无', icon: '无' }
+          ]
+        }
       ],
       status: 'idle',
       errorMsg: ''
     }
   },
   computed: {
-    currentQuestion() {
-      return this.questions[this.currentIndex]
-    },
-    isLast() {
-      return this.currentIndex === this.questions.length - 1
-    },
+    currentQuestion() { return this.questions[this.currentIndex] },
+    isLast() { return this.currentIndex === this.questions.length - 1 },
     canNext() {
-      return !!this.answers[this.currentQuestion.id]
-    },
-    answeredCount() {
-      return Object.keys(this.answers).length
+      const value = this.answers[this.currentQuestion.id]
+      return this.currentQuestion.type === 'multi'
+        ? Array.isArray(value) && value.length > 0
+        : Object.prototype.hasOwnProperty.call(this.answers, this.currentQuestion.id)
     }
   },
   methods: {
     select(value) {
-      this.answers[this.currentQuestion.id] = value
-      this.$forceUpdate()
-      // 选中后短暂延迟进入下一题
-      if (!this.isLast) {
-        setTimeout(() => {
-          this.currentIndex++
-        }, 280)
+      const question = this.currentQuestion
+      if (question.type === 'multi') {
+        const current = this.answers[question.id] || []
+        if (value === 'none') {
+          this.answers[question.id] = current.includes('none') ? [] : ['none']
+        } else {
+          const withoutNone = current.filter(item => item !== 'none')
+          this.answers[question.id] = withoutNone.includes(value)
+            ? withoutNone.filter(item => item !== value)
+            : [...withoutNone, value]
+        }
+      } else {
+        this.answers[question.id] = value
+        if (!this.isLast) setTimeout(() => { this.currentIndex++ }, 220)
       }
+      this.$forceUpdate()
     },
-    prev() {
-      if (this.currentIndex > 0) this.currentIndex--
-    },
+    prev() { if (this.currentIndex > 0) this.currentIndex-- },
     next() {
       if (!this.canNext) {
         uni.showToast({ title: '请选择一项', icon: 'none' })
         return
       }
-      if (this.isLast) {
-        this.submit()
-      } else {
-        this.currentIndex++
-      }
+      if (this.isLast) this.submit()
+      else this.currentIndex++
     },
     async submit() {
       this.status = 'idle'
       try {
-        const material = uni.getStorageSync('harmony_material') || '{}'
-        const narrative = uni.getStorageSync('harmony_narrative') || '{}'
-        const payload = {
-          session_id: 'sess_' + Date.now(),
-          answers: this.answers,
-          material: JSON.parse(material),
-          narrative: JSON.parse(narrative)
+        const session = getSprint3Session()
+        const questionnaire = {
+          schema_version: 'questionnaire_v2.0',
+          time_window_days: 7,
+          started_at: this.startedAt,
+          completed_at: new Date().toISOString(),
+          answers: this.questions.map(question => ({
+            question_id: question.id,
+            type: question.apiType,
+            value: this.answers[question.id]
+          }))
         }
-        const res = await submitSurveyV2(payload)
-        uni.setStorageSync('harmony_assessment_v2', JSON.stringify(res))
-        uni.setStorageSync('harmony_session_id_v2', res.session_id)
+        const payload = {
+          session_id: session.session_id,
+          user_id: session.user_id || 'demo_user_001',
+          document_id: session.document_id || null,
+          document_text: session.document_text || null,
+          narrative_text: session.narrative_text || null,
+          questionnaire_answers: questionnaire,
+          assessment_confirmed: false
+        }
+        const workflow = await runWorkflow(payload)
+        updateSprint3Session({ questionnaire_answers: questionnaire, workflow })
         uni.navigateTo({ url: '/pages/result/result' })
-      } catch (e) {
+      } catch (error) {
         this.status = 'error'
-        this.errorMsg = e.message || '提交失败，请检查网络'
+        this.errorMsg = error.message || '提交失败，请检查网络'
       }
     }
   }

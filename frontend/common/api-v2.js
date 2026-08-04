@@ -10,6 +10,12 @@ export function isMockMode() {
 }
 
 
+export function resolveMediaUrl(url) {
+  if (!url || /^https?:\/\//i.test(url)) return url
+  return `${BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
+
 export function unwrapV2(payload) {
   if (payload?.success === true) return payload.data
   const error = new Error(payload?.error?.message || "请求失败，请稍后重试")
@@ -107,10 +113,10 @@ export function runWorkflow(payload) {
 }
 
 
-export function requestMusic(prescription) {
+export function requestMusic(prescription, sessionId) {
   return request("/api/v2/music", {
     method: "POST",
-    data: { prescription },
+    data: { session_id: sessionId, prescription },
   })
 }
 

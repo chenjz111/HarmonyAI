@@ -1,231 +1,145 @@
 <template>
   <view class="container">
-    <!-- 分析中 -->
     <view class="status-card" v-if="status === 'analyzing'">
-      <view class="analyzing-orb">
-        <view class="orb-ring orb-ring-1"></view>
-        <view class="orb-ring orb-ring-2"></view>
-        <view class="orb-ring orb-ring-3"></view>
-        <view class="orb-core"></view>
-      </view>
+      <view class="analyzing-orb"><view class="orb-ring orb-ring-1"></view><view class="orb-core"></view></view>
       <text class="status-title">AI 正在分析</text>
       <text class="status-desc">{{ statusMessage }}</text>
       <progress-bar :progress="analysisProgress" label="分析进度" />
     </view>
 
-    <!-- 分析成功 -->
     <view v-else-if="status === 'success' && result">
-      <!-- 顶部标题 -->
       <view class="result-header">
-        <view>
-          <text class="header-tag">分析结果</text>
-          <text class="result-title">你的情绪画像</text>
-        </view>
-        <view class="match-tag" v-if="result.output.prescription.matched">
-          <text class="match-tag-dot"></text>
-          <text class="match-tag-text">已匹配</text>
+        <view><text class="header-tag">状态评估</text><text class="result-title">AI 对你当前状态的理解</text></view>
+        <view class="match-tag"><text class="match-tag-text">证据充分度 {{ confidencePercent }}%</text></view>
+      </view>
+
+      <view class="section-card" v-if="result.degradation && result.degradation.triggered">
+        <text class="section-title">已启用问卷降级模式</text>
+        <text class="section-desc">Qwen 或材料识别暂不可用，当前结果主要依据结构化问卷，仍可继续体验。</text>
+      </view>
+
+      <view class="section-card">
+        <view class="section-title-row"><view class="section-dot"></view><text class="section-title">状态摘要</text></view>
+        <text class="section-desc">{{ result.assessment_summary }}</text>
+        <view class="music-tags">
+          <view class="music-tag" v-for="state in result.emotion_profile.primary_states" :key="state">
+            <text class="music-tag-text">{{ state }}</text>
+          </view>
         </view>
       </view>
 
-      <!-- 多维画像 -->
       <view class="section-card">
-        <view class="section-title-row">
-          <view class="section-dot"></view>
-          <text class="section-title">多维情绪画像</text>
-        </view>
-        <text class="section-desc">{{ result.output.profile.summary }}</text>
+        <view class="section-title-row"><view class="section-dot"></view><text class="section-title">量化维度</text></view>
         <view class="dimension-list">
-          <view class="dimension-item" v-for="(dim, idx) in result.output.profile.dimensions" :key="idx">
-            <view class="dimension-info">
-              <text class="dimension-name">{{ dim.name }}</text>
-              <view class="dimension-pill" :style="{ background: dim.color + '18', color: dim.color }">
-                <text class="dimension-level">{{ dim.level }}</text>
-              </view>
-            </view>
-            <view class="dimension-bar">
-              <view class="dimension-fill" :style="{ width: dim.score + '%', background: dim.color }"></view>
-            </view>
+          <view class="dimension-item" v-for="dim in dimensions" :key="dim.name">
+            <view class="dimension-info"><text class="dimension-name">{{ dim.name }}</text><text>{{ dim.score }}</text></view>
+            <view class="dimension-bar"><view class="dimension-fill" :style="{ width: dim.score + '%', background: '#6B8979' }"></view></view>
           </view>
         </view>
       </view>
 
-      <!-- 辨证 -->
       <view class="section-card">
-        <view class="section-title-row">
-          <view class="section-dot" style="background: #C8896D"></view>
-          <text class="section-title">辅助辨证倾向</text>
-        </view>
-
-        <!-- 主证 印章式 -->
-        <view class="diagnosis-main">
-          <view class="diagnosis-stamp" :style="{ background: elementColor(result.output.diagnosis.primary.element) }">
-            <text class="stamp-element">{{ result.output.diagnosis.primary.element }}</text>
-          </view>
-          <view class="diagnosis-info">
-            <text class="diagnosis-name">{{ result.output.diagnosis.primary.name }}</text>
-            <view class="diagnosis-meta-row">
-              <text class="meta-pill">{{ result.output.diagnosis.primary.organ }} · 主脏</text>
-              <text class="meta-pill">{{ result.output.diagnosis.primary.severity_name }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="diagnosis-aux" v-if="result.output.diagnosis.auxiliary.length">
-          <text class="aux-title">其他倾向</text>
-          <view class="aux-list">
-            <view class="aux-item" v-for="(aux, idx) in result.output.diagnosis.auxiliary" :key="idx">
-              <text class="aux-name">{{ aux.name }}</text>
-              <text class="aux-tendency">{{ aux.tendency }}</text>
-            </view>
-          </view>
-        </view>
-
+        <view class="section-title-row"><view class="section-dot" style="background: #C8896D"></view><text class="section-title">可解释依据</text></view>
         <view class="evidence-box">
-          <text class="evidence-title">分析依据</text>
-          <view class="evidence-list">
-            <view class="evidence-item" v-for="(ev, idx) in result.output.diagnosis.evidence" :key="idx">
-              <text class="evidence-bullet">·</text>
-              <text class="evidence-text">{{ ev }}</text>
-            </view>
+          <view class="evidence-item" v-for="(ev, idx) in result.extracted_evidence" :key="idx">
+            <text class="evidence-bullet">·</text><text class="evidence-text">{{ ev.summary || ev.claim }}</text>
           </view>
         </view>
+        <text class="section-desc">分析模式：{{ analysisModeText }}</text>
+        <text class="section-desc">本结果只用于状态评估和音乐调养参考，不构成医学诊断。</text>
       </view>
 
-      <!-- 音乐推荐 -->
-      <view class="section-card music-card">
-        <view class="section-title-row">
-          <view class="section-dot" style="background: #D4A574"></view>
-          <text class="section-title">音乐处方</text>
-        </view>
-        <view class="music-main">
-          <view class="music-tone-wrap">
-            <text class="music-tone">{{ result.output.prescription.music_feature.tone_name }}</text>
-            <text class="music-bpm">{{ result.output.prescription.music_feature.bpm }} BPM</text>
-          </view>
-          <view class="music-tags">
-            <view class="music-tag" v-for="(inst, idx) in result.output.prescription.music_feature.instruments" :key="idx">
-              <text class="music-tag-text">{{ inst }}</text>
-            </view>
-          </view>
-        </view>
-        <view class="reason-box">
-          <text class="reason-title">推荐原因</text>
-          <text class="reason-text">{{ result.output.prescription.music_reason }}</text>
-        </view>
-      </view>
-
-      <!-- 行动按钮 -->
       <view class="action-wrap">
-        <view class="action-btn" @click="goPlayer">
-          <text class="action-btn-text">开始聆听</text>
-          <text class="action-btn-arrow">→</text>
-        </view>
-        <text class="action-hint">戴上耳机 · 找个安静的角落</text>
+        <view class="action-btn" @click="confirmAndContinue"><text class="action-btn-text">{{ confirming ? '正在生成方案...' : '基本准确，生成音乐方案' }}</text><text class="action-btn-arrow">→</text></view>
+        <text class="action-hint">如果理解不准确，可返回修改描述或问卷</text>
       </view>
     </view>
 
-    <!-- 降级 -->
-    <error-state
-      v-else-if="status === 'degraded'"
-      title="AI 分析已降级"
-      message="当前使用轻量模型生成结果，推荐原因可能不够精细，但仍可继续使用。"
-      :showFallback="true"
-      fallbackText="继续查看结果"
-      @retry="loadResult"
-      @fallback="forceShowResult"
-    />
-
-    <!-- 安全阻断 -->
-    <error-state
-      v-else-if="status === 'blocked'"
-      title="安全提醒"
-      message="检测到描述中可能包含高风险内容。建议你及时寻求专业心理医生或精神科医生的帮助。"
-      :showRetry="false"
-      :showFallback="false"
-    />
-
-    <!-- 错误 -->
-    <error-state
-      v-else-if="status === 'error'"
-      title="分析失败"
-      :message="errorMsg"
-      @retry="loadResult"
-    />
+    <error-state v-else-if="status === 'blocked'" title="请优先关注安全" :message="safetyMessage" :showRetry="false" :showFallback="false" />
+    <error-state v-else-if="status === 'error'" title="分析失败" :message="errorMsg" @retry="loadResult" />
   </view>
 </template>
 
 <script>
 import ProgressBar from '@/components/sprint3/progress-bar.vue'
 import ErrorState from '@/components/sprint3/error-state.vue'
-import { fetchAnalysisStatus, fetchAnalysisResult } from '@/common/api-v2.js'
+import { runWorkflow } from '@/common/api-v2.js'
+import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
+
+const dimensionLabels = {
+  tension_worry: '紧张担忧', overthinking: '反复思虑', irritability_anger: '烦躁易怒',
+  low_mood: '情绪低落', interest_loss: '兴趣下降', fear_unease: '恐惧不安',
+  sleep_disturbance: '睡眠困扰', low_energy: '精力不足', appetite_change: '食欲变化',
+  daily_impact: '日常影响'
+}
 
 export default {
   components: { ProgressBar, ErrorState },
   data() {
     return {
-      status: 'analyzing',
-      analysisProgress: 0,
-      statusMessage: '正在整合问卷与描述信息...',
-      result: null,
-      errorMsg: ''
+      status: 'analyzing', analysisProgress: 40, statusMessage: '正在整合材料、自由描述与问卷...',
+      result: null, errorMsg: '', confirming: false
     }
   },
-  onLoad() {
-    this.loadResult()
+  computed: {
+    confidencePercent() { return Math.round((this.result?.confidence || 0) * 100) },
+    dimensions() {
+      const scores = this.result?.emotion_profile?.dimension_scores || {}
+      return Object.entries(scores).map(([name, score]) => ({ name: dimensionLabels[name] || name, score }))
+    },
+    analysisModeText() {
+      const labels = {
+        document_narrative_questionnaire: '材料 + 自由描述 + 问卷',
+        document_questionnaire: '材料 + 问卷', narrative_questionnaire: '自由描述 + 问卷',
+        questionnaire_only: '仅问卷'
+      }
+      return labels[this.result?.analysis_mode] || '综合评估'
+    },
+    safetyMessage() {
+      return '当前输入出现需要进一步关注的风险信号。本系统不能代替医生或心理咨询师；如有严重胸痛、呼吸困难或自伤想法，请立即联系当地急救或专业人员。'
+    }
   },
+  onLoad() { this.loadResult() },
   methods: {
-    async loadResult() {
-      this.status = 'analyzing'
-      this.analysisProgress = 0
-      this.statusMessage = '正在整合问卷与描述信息...'
-
-      const sessionId = uni.getStorageSync('harmony_session_id_v2')
-      if (!sessionId) {
-        this.status = 'error'
-        this.errorMsg = '未找到会话信息，请重新评估'
-        return
-      }
-
+    loadResult() {
       try {
-        while (true) {
-          const statusRes = await fetchAnalysisStatus(sessionId)
-          this.status = statusRes.status
-          this.analysisProgress = statusRes.progress
-          this.statusMessage = statusRes.message
-
-          if (statusRes.status === 'success') {
-            const resultRes = await fetchAnalysisResult(sessionId)
-            this.result = resultRes
-            uni.setStorageSync('harmony_result_v2', JSON.stringify(resultRes))
-            break
-          }
-          if (statusRes.status === 'degraded' || statusRes.status === 'blocked') break
-          await new Promise(r => setTimeout(r, 800))
-        }
-      } catch (e) {
+        const workflow = getSprint3Session().workflow
+        const assessment = workflow?.assessment
+        if (!assessment) throw new Error('未找到评估结果，请重新完成问卷')
+        this.result = assessment
+        this.analysisProgress = 100
+        this.status = assessment.status === 'blocked_safety' ? 'blocked' : 'success'
+      } catch (error) {
         this.status = 'error'
-        this.errorMsg = e.message || '分析失败，请检查网络'
+        this.errorMsg = error.message || '无法读取评估结果'
       }
     },
-    forceShowResult() {
-      const cached = uni.getStorageSync('harmony_assessment_v2')
-      if (cached) {
-        this.result = JSON.parse(cached)
-        this.status = 'success'
+    async confirmAndContinue() {
+      if (this.confirming) return
+      this.confirming = true
+      try {
+        const session = getSprint3Session()
+        const workflow = await runWorkflow({
+          session_id: session.session_id,
+          user_id: session.user_id || 'demo_user_001',
+          document_id: session.document_id || null,
+          document_text: session.document_text || null,
+          narrative_text: session.narrative_text || null,
+          questionnaire_answers: session.questionnaire_answers,
+          assessment_confirmed: true
+        })
+        updateSprint3Session({ workflow })
+        if (workflow.assessment?.status === 'blocked_safety') {
+          this.status = 'blocked'
+          return
+        }
+        uni.navigateTo({ url: '/pages/player-v2/player-v2' })
+      } catch (error) {
+        this.status = 'error'
+        this.errorMsg = error.message || '音乐方案生成失败，请重试'
+      } finally {
+        this.confirming = false
       }
-    },
-    goPlayer() {
-      uni.navigateTo({ url: '/pages/player-v2/player-v2' })
-    },
-    elementColor(element) {
-      const map = {
-        '木': '#6B8979',
-        '火': '#C8896D',
-        '土': '#D4A574',
-        '金': '#A8B5A0',
-        '水': '#4A6FA5'
-      }
-      return map[element] || '#4A6B5C'
     }
   }
 }
