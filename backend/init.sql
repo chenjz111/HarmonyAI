@@ -1,8 +1,8 @@
 -- ============================================================================
--- HarmonyAI Database Schema — Sprint 2
+-- HarmonyAI Database Schema — Sprint 3
 -- MySQL 8.0
 --
--- 6 tables with FOREIGN KEY constraints:
+-- 7 tables with FOREIGN KEY constraints:
 --   users / sessions / emotion_assessments / syndrome_diagnoses / prescriptions / feedbacks
 -- ============================================================================
 
@@ -13,6 +13,7 @@ CREATE DATABASE IF NOT EXISTS harmonyai
 USE harmonyai;
 
 -- Drop old tables (order matters due to FK)
+DROP TABLE IF EXISTS documents;
 DROP TABLE IF EXISTS feedbacks;
 DROP TABLE IF EXISTS generations;
 DROP TABLE IF EXISTS prescriptions;
@@ -219,12 +220,26 @@ CREATE TABLE IF NOT EXISTS feedbacks (
 
     wearable_data   TEXT    NULL,
 
-    decision_action     VARCHAR(16)  NOT NULL,
+    decision_action     VARCHAR(64)  NOT NULL,
     decision_detail     TEXT         NULL,
     decision_next_step  VARCHAR(64)  NULL,
     decision_adjustments TEXT        NULL,
 
     profile_update  TEXT    NULL,
+
+    -- Feedback 2.0 fields (Sprint 3)
+    schema_version      VARCHAR(8)  DEFAULT '2.0',
+    prescription_id     VARCHAR(64) NULL,
+    track_id            VARCHAR(64) NULL,
+    mood_before         INT         NULL COMMENT '听前心情 1-5',
+    mood_after          INT         NULL COMMENT '听后心情 1-5',
+    relaxation_before   INT         NULL COMMENT '听前放松度 1-5',
+    relaxation_after    INT         NULL COMMENT '听后放松度 1-5',
+    music_match         INT         NULL COMMENT '音乐匹配度 1-5',
+    will_continue       INT         NULL COMMENT '是否继续 0/1',
+    is_favorite         INT         NULL COMMENT '是否收藏 0/1',
+    disliked_features   TEXT        NULL COMMENT '不喜欢的音乐特征 JSON',
+    global_rules_modified INT       DEFAULT 0 COMMENT '固定为0，反馈不修改全局规则',
 
     confidence      FLOAT           NOT NULL,
     reason          TEXT            NULL,
@@ -237,6 +252,37 @@ CREATE TABLE IF NOT EXISTS feedbacks (
     UNIQUE INDEX idx_fb_id (feedback_id),
     CONSTRAINT fk_fb_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_fb_session FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
+-- 7. documents (Sprint 3 Issue #36 — 病例材料)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS documents (
+    id              INT             AUTO_INCREMENT PRIMARY KEY,
+    user_id         INT             NOT NULL,
+    session_id      VARCHAR(64)     NOT NULL,
+
+    document_id         VARCHAR(64) NOT NULL UNIQUE COMMENT 'doc_YYYYMMDD_HHMMSS',
+    original_filename   VARCHAR(256) NOT NULL,
+    file_type           VARCHAR(16) NOT NULL COMMENT 'jpg/png/pdf',
+    file_size_bytes     INT         NOT NULL,
+    page_count          INT         DEFAULT 1,
+
+    storage_path        VARCHAR(512) NOT NULL COMMENT '相对/云端路径',
+
+    status          VARCHAR(16) DEFAULT 'uploaded' COMMENT 'uploaded/confirmed/skipped/deleted/ocr_failed',
+    ocr_text        TEXT        NULL COMMENT 'OCR识别文本',
+    ocr_confidence  VARCHAR(16) NULL COMMENT 'high/medium/low',
+    ocr_confirmed   BOOLEAN     DEFAULT FALSE,
+
+    created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    INDEX idx_doc_user (user_id),
+    INDEX idx_doc_session (session_id),
+    UNIQUE INDEX idx_doc_id (document_id),
+    CONSTRAINT fk_doc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_doc_session FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
