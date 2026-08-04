@@ -5,6 +5,7 @@ Integrated with AI Engine: real agents when HARMONYAI_REAL_AGENTS=true, stubs ot
 Exception/degradation handling per agent-architecture.md Chapter 3.
 """
 from datetime import datetime, timezone
+import logging
 import traceback
 import uuid
 
@@ -21,6 +22,7 @@ from backend.app.core.exceptions import build_error_response
 from backend.app.schemas.v2 import v2_ok, v2_err, FeedbackV2Request
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _ensure_session(session_id: str, db: Session):
@@ -156,7 +158,7 @@ async def feedback_v2(body: dict, db: Session = Depends(get_db)):
         pre = validated.pre_state
         post = validated.post_state
         exp = validated.experience
-        pb = validated.playback or PlaybackData()
+        pb = validated.playback
 
         # Compute deltas
         tension_delta = (post.tension or 0) - (pre.tension or 0)
@@ -241,6 +243,16 @@ async def feedback_v2(body: dict, db: Session = Depends(get_db)):
             "global_rule_update": False,
         }, req_id)
 
-    except Exception as e:
+    except Exception:
         db.rollback()
-        return v2_err("FEEDBACK_FAILED", str(e), req_id, retryable=True)
+        logger.exception(
+            "feedback_v2 failed",
+            extra={"session_id": session_id},
+        )
+        return v2_err(
+            "FEEDBACK_FAILED",
+            "反馈保存失败，请稍后重试",
+            req_id,
+            retryable=True,
+            next_actions=["retry_feedback"],
+        )
