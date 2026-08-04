@@ -132,6 +132,7 @@ class AssessmentV2Response(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent_id: Literal["assessment_agent"]
+    assessment_id: str | None = None
     session_id: str = Field(min_length=1)
     user_id: str = Field(min_length=1)
     status: Literal["success", "degraded", "blocked_safety"]

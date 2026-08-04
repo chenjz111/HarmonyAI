@@ -30,6 +30,7 @@ from backend.app.routers import (
     feedback_router,
     document_router,
     session_router,
+    workflow_v2_router,
 )
 
 app = FastAPI(
@@ -74,6 +75,7 @@ app.include_router(feedback_router.router, prefix="/api/v1", tags=["Agent 5 — 
 app.include_router(feedback_router.v2_router, prefix="/api/v2", tags=["Agent 5 — 反馈 V2"])
 app.include_router(document_router.router, prefix="/api/v2", tags=["Sprint 3 — 文档上传"])
 app.include_router(session_router.router, prefix="/api/v2", tags=["Sprint 3 — 会话"])
+app.include_router(workflow_v2_router.router, prefix="/api/v2", tags=["Sprint 3 — 工作流"])
 
 
 @app.get("/", include_in_schema=False)
