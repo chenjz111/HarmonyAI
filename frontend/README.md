@@ -1,48 +1,31 @@
-# HarmonyAI 前端项目
+# HarmonyAI 前端
 
-uni-app + Vue3 实现的 HarmonyAI 客户端，已具备 Sprint 1 完整页面流程。
+HarmonyAI 比赛版前端基于 Vue 3 与 uni-app。Sprint 3 默认从欢迎页进入八页流程：材料上传（可跳过）→ 自由描述（可跳过）→ 12 题图文问卷 → 可解释状态评估 → 本地曲库音乐播放器 → Feedback 2.0 → 完成页。
 
-## 快速开始
+## 本地运行
 
-1. 打开 HBuilderX：`C:\HBuilderX\HBuilderX.exe`
-2. 文件 → 打开目录 → 选择 `C:\Users\Lenovo\Documents\HarmonyAI\frontend`
-3. 运行 → 运行到浏览器 → Edge / Chrome
-
-## 项目结构
-
-```
-frontend/
-├── pages.json              # 页面路由 + TabBar 配置
-├── manifest.json           # 应用配置
-├── App.vue                 # 根组件
-├── main.js                 # Vue3 入口
-├── index.html              # 浏览器入口
-├── vite.config.js          # Vite 配置
-├── common/
-│   └── api.js              # API 接口层（mock / 真实接口切换）
-└── pages/
-    ├── index/index.vue     # 首页
-    ├── emotion/emotion.vue # 情绪选择页
-    ├── survey/survey.vue   # 问卷页（30 题分 3 步）
-    └── player/player.vue   # 播放页（处方 + 播放器 + 评分）
+```powershell
+cd frontend
+npm install
+npm run dev:h5
 ```
 
-## 页面流程
+后端默认地址为 `http://localhost:8000`。需要更换时设置 `VITE_API_BASE_URL`；真实后端始终是默认模式。
 
+只有明确设置 `HARMONYAI_USE_MOCK=true` 时才启用演示 Mock。不要用 Mock 结果冒充真实 Agent 或实时音乐生成。
+
+## 验证
+
+```powershell
+node --test tests/*.test.mjs
+npm run build:h5
 ```
-首页 → 开始健康评估 → 情绪选择页 → 问卷页（30 题）→ 播放页 → 评分反馈
-```
 
-## 墨刀原型
+`node_modules/` 与 `unpackage/` 已忽略，不应提交到 Git。
 
-https://modao.cc/proto/FlcAW0kyti9vu1eMTgUYW/sharing?view_mode=read_only&screen=rbpVPY1RCheNZgeEz
+## 边界
 
-## 当前状态
-
-- ✅ 4 个页面完整流程
-- ✅ 问卷页 30 题可交互
-- ✅ 提交后进入播放页
-- ✅ 播放器 + 五星评分
-- ✅ 每个页面具备 loading / success / error 状态
-- ⏳ 等待后端 API 接入（修改 `common/api.js` 中 `USE_MOCK = false`）
-- ⏳ 等待真实音频 URL
+- 病历 OCR 当前为需要用户确认的辅助识别，不构成诊断。
+- Qwen 不可用时降级到确定性问卷评估。
+- 音乐来自本地曲库匹配，`source_type` 为 `matched`，不是实时生成。
+- 用户反馈仅更新个人偏好，不能自动修改全局医学知识规则。
