@@ -3,6 +3,8 @@
 POST /api/v2/sessions — create new session
 """
 from datetime import datetime, timezone
+import logging
+import uuid
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -12,6 +14,7 @@ from backend.app.models.session import Session as SessionModel
 from backend.app.schemas.v2 import v2_ok, v2_err
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/sessions", summary="V2 — 创建会话")
@@ -20,7 +23,9 @@ async def create_session(body: dict, db: Session = Depends(get_db)):
     user_id = body.get("user_id", "demo_user_001")
     entry_mode = body.get("entry_mode", "full")
     ts = datetime.now(timezone.utc)
-    session_id = f"sess_{ts.strftime('%Y%m%d')}_{ts.strftime('%H%M%S')[-4:]}"
+    session_id = (
+        f"sess_{ts.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    )
 
     try:
         db.add(SessionModel(
@@ -38,6 +43,16 @@ async def create_session(body: dict, db: Session = Depends(get_db)):
             "created_at": ts.isoformat(),
         }, req_id)
 
-    except Exception as e:
+    except Exception:
         db.rollback()
-        return v2_err("SESSION_CREATE_FAILED", str(e), req_id, retryable=True)
+        logger.exception(
+            "session creation failed",
+            extra={"request_id": req_id},
+        )
+        return v2_err(
+            "SESSION_CREATE_FAILED",
+            "会话创建失败，请稍后重试",
+            req_id,
+            retryable=True,
+            next_actions=["retry_session"],
+        )
