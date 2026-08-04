@@ -49,6 +49,7 @@ def run_prescription_v2(
         str(syndrome["name"]),
     )
     return {
+        "agent_id": "prescription_agent",
         "status": "success",
         "generation_mode": "matched",
         "music_feature": {
@@ -103,6 +104,7 @@ def _withheld_reason(diagnosis: Mapping[str, object]) -> str | None:
 
 def _withheld(reason: str) -> dict:
     return {
+        "agent_id": "prescription_agent",
         "status": "blocked_safety" if reason == "SAFETY_BLOCKED" else "degraded",
         "action": "withhold_music_recommendation",
         "generation_mode": "withheld",

@@ -205,7 +205,12 @@ def test_multiple_independent_dimensions_create_explainable_whitelisted_tendency
         "missing": ["document", "narrative"],
     }
     assert result["degradation"] == {"active": False, "reason_codes": []}
-    assert "diagnosis" not in json.dumps(result, ensure_ascii=False).casefold()
+    public_result = {
+        key: value for key, value in result.items() if key != "agent_id"
+    }
+    assert "diagnosis" not in json.dumps(
+        public_result, ensure_ascii=False
+    ).casefold()
 
 
 def test_one_question_cannot_directly_determine_a_tendency():
@@ -569,6 +574,7 @@ def test_all_withheld_paths_never_return_a_normal_music_prescription(
     result = run_prescription_v2(diagnosis, knowledge_store=WorkingKnowledgeStore())
 
     assert result == {
+        "agent_id": "prescription_agent",
         "status": "degraded" if expected_reason != "SAFETY_BLOCKED" else "blocked_safety",
         "action": "withhold_music_recommendation",
         "generation_mode": "withheld",

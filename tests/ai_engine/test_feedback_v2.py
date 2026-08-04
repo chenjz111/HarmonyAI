@@ -140,6 +140,7 @@ def test_invalid_scores_are_rejected_before_persistence():
     result = submit_feedback_v2(payload, repository)
 
     assert result == {
+        "agent_id": "feedback_agent",
         "status": "failed",
         "error_code": "INVALID_PAYLOAD",
         "field": "experience",
@@ -241,6 +242,7 @@ def test_missing_post_state_reports_post_state_as_the_invalid_field():
     )
 
     assert result == {
+        "agent_id": "feedback_agent",
         "status": "failed",
         "error_code": "INVALID_PAYLOAD",
         "field": "post_state",

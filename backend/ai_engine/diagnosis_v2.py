@@ -243,6 +243,7 @@ def _result(
     degradation: dict[str, object],
 ) -> dict:
     return {
+        "agent_id": "diagnosis_agent",
         "status": status,
         "presentation": {"title": "辅助辨证倾向"},
         "primary_tendency": deepcopy(primary_tendency),
