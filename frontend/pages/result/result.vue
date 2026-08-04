@@ -50,7 +50,7 @@
       </view>
 
       <view class="action-wrap">
-        <view class="action-btn" @click="confirmAndContinue"><text class="action-btn-text">{{ confirming ? '正在生成方案...' : '基本准确，生成音乐方案' }}</text><text class="action-btn-arrow">→</text></view>
+        <view class="action-btn" @click="confirmAndContinue"><text class="action-btn-text">{{ confirming ? '正在匹配方案...' : '基本准确，匹配音乐方案' }}</text><text class="action-btn-arrow">→</text></view>
         <text class="action-hint">如果理解不准确，可返回修改描述或问卷</text>
       </view>
     </view>

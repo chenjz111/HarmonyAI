@@ -7,7 +7,7 @@
         <view class="orb-wave orb-wave-2"></view>
         <view class="orb-wave orb-wave-3"></view>
       </view>
-      <text class="status-title">正在匹配疗愈音频</text>
+      <text class="status-title">正在匹配调养音乐</text>
       <text class="status-desc">请稍候，AI Agent 正在为你寻找最合适的音...</text>
     </view>
 
@@ -57,7 +57,7 @@
 
           <!-- 曲目信息 -->
           <view class="track-info">
-            <text class="track-title">{{ prescription.toneName }} · 疗愈音乐</text>
+            <text class="track-title">{{ prescription.toneName }} · 调养音乐</text>
             <text class="track-id">track · {{ prescription.trackId }}</text>
           </view>
         </view>

@@ -15,7 +15,7 @@
       </view>
 
       <view class="brand-name">HarmonyAI</view>
-      <view class="brand-tagline">中医五音 · 情绪疗愈</view>
+      <view class="brand-tagline">中医五音 · 音乐调养</view>
       <view class="brand-divider">
         <view class="divider-line"></view>
         <view class="divider-dot"></view>
@@ -68,7 +68,7 @@
       </view>
 
       <view class="start-btn" @click="goNext">
-        <text class="start-btn-text">开启疗愈之旅</text>
+        <text class="start-btn-text">开始今日状态评估</text>
         <view class="start-btn-arrow">
           <text class="arrow-text">→</text>
         </view>
@@ -88,7 +88,7 @@ export default {
         { icon: '册', name: '上传材料', desc: '可选 · 病历或检查报告' },
         { icon: '写', name: '自由描述', desc: '可选 · 写几句最近状态' },
         { icon: '问', name: '12 题问卷', desc: '约 1 分钟 · 五维度评估' },
-        { icon: '音', name: 'AI 生成处方', desc: '即时 · 五音疗愈音乐' }
+        { icon: '音', name: '智能音乐方案', desc: '本地曲库 · 参数化匹配' }
       ]
     }
   },
