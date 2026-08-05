@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     """App settings loaded from environment variables / .env file."""
 
     APP_NAME: str = "HarmonyAI"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "0.3.0"
     DEBUG: bool = True
 
     # Portable competition/demo default. Deployments can override DATABASE_URL.

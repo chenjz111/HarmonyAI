@@ -128,6 +128,126 @@ audio{width:100%;margin-top:8px;border-radius:8px}
 <script>
 const API = 'http://localhost:8000';
 
+// ---- Demo Mode: V2 primary, V1 fallback ----
+var DEMO_MODE = (function(){
+  var p = new URLSearchParams(location.search);
+  if(p.get('mode')==='v1') return 'v1';
+  if(p.get('mode')==='v2') return 'v2';
+  return 'auto';  // V2 first, auto-fallback to V1
+})();
+var V2_SESSION_ID = null;
+var V2_FALLBACK_TRIGGERED = false;
+
+// ---- V2 Questionnaire Adapter ----
+// Maps V1 30 questions (q_0_0..q_2_9) to V2 12 question_ids.
+// V2 uses 10 scored dimensions + 2 non-scored safety/weather questions.
+// Multiple V1 answers aggregate into a single V2 dimension via average.
+// See knowledge/questionnaire-v2.json for the authoritative V2 question list.
+var QUESTION_ID_MAP = {
+  // -- Group 0: 情绪状态 → V2 emotion dimensions --
+  'q_0_0':  {id:'q02_tension_worry',     type:'frequency_0_4', dim:'tension_worry'},
+  'q_0_1':  {id:'q04_irritability_anger', type:'frequency_0_4', dim:'irritability_anger'},
+  'q_0_2':  {id:'q05_low_mood',           type:'frequency_0_4', dim:'low_mood'},
+  'q_0_3':  {id:'q06_interest_loss',      type:'frequency_0_4', dim:'interest_loss'},
+  'q_0_4':  {id:'q04_irritability_anger', type:'frequency_0_4', dim:'irritability_anger'},
+  'q_0_5':  {id:'q02_tension_worry',     type:'frequency_0_4', dim:'tension_worry'},
+  'q_0_6':  {id:'q05_low_mood',           type:'frequency_0_4', dim:'low_mood'},
+  'q_0_7':  {id:'q04_irritability_anger', type:'frequency_0_4', dim:'irritability_anger'},
+  'q_0_8':  {id:'q07_fear_unease',        type:'frequency_0_4', dim:'fear_unease'},
+  'q_0_9':  {id:'q05_low_mood',           type:'frequency_0_4', dim:'low_mood'},
+  'q_0_10': {id:'q04_irritability_anger', type:'frequency_0_4', dim:'irritability_anger'},
+  'q_0_11': {id:'q09_low_energy',         type:'visual_single', dim:'low_energy'},
+  // -- Group 1: 睡眠质量 → V2 q08_sleep_disturbance (aggregated) --
+  'q_1_0':  {id:'q08_sleep_disturbance',  type:'frequency_0_4', dim:'sleep_disturbance'},
+  'q_1_1':  {id:'q08_sleep_disturbance',  type:'frequency_0_4', dim:'sleep_disturbance'},
+  'q_1_2':  {id:'q08_sleep_disturbance',  type:'frequency_0_4', dim:'sleep_disturbance'},
+  'q_1_3':  {id:'q08_sleep_disturbance',  type:'frequency_0_4', dim:'sleep_disturbance'},
+  'q_1_4':  {id:'q08_sleep_disturbance',  type:'frequency_0_4', dim:'sleep_disturbance'},
+  'q_1_5':  {id:'q08_sleep_disturbance',  type:'frequency_0_4', dim:'sleep_disturbance'},
+  'q_1_6':  {id:'q08_sleep_disturbance',  type:'frequency_0_4', dim:'sleep_disturbance'},
+  'q_1_7':  {id:'q08_sleep_disturbance',  type:'frequency_0_4', dim:'sleep_disturbance'},
+  // -- Group 2: 身体状况 → V2 appetite + daily_impact + physical_safety --
+  'q_2_0':  {id:'q11_daily_impact',      type:'frequency_0_4', dim:'daily_impact'},
+  'q_2_1':  {id:'q10_appetite_change',    type:'frequency_0_4', dim:'appetite_change'},
+  'q_2_2':  {id:'q10_appetite_change',    type:'frequency_0_4', dim:'appetite_change'},
+  'q_2_3':  {id:'q10_appetite_change',    type:'frequency_0_4', dim:'appetite_change'},
+  'q_2_4':  {id:'q12_physical_safety',    type:'visual_multi',  dim:'physical_signals'},
+  'q_2_5':  {id:'q11_daily_impact',      type:'frequency_0_4', dim:'daily_impact'},
+  'q_2_6':  {id:'q11_daily_impact',      type:'frequency_0_4', dim:'daily_impact'},
+  'q_2_7':  {id:'q11_daily_impact',      type:'frequency_0_4', dim:'daily_impact'},
+  'q_2_8':  {id:'q11_daily_impact',      type:'frequency_0_4', dim:'daily_impact'},
+  'q_2_9':  {id:'q11_daily_impact',      type:'frequency_0_4', dim:'daily_impact'}
+};
+
+// Build V2 questionnaire_answers by aggregating V1 answers to V2 dimensions.
+// For dimensions with multiple V1 questions → average then round to 0-4 scale.
+function buildQuestionnaireV2(answers){
+  var dimScores = {};    // dim → [score1, score2, ...]
+  var dimTypes = {};     // dim → type
+  var dimIds = {};       // dim → question_id
+  var keys = Object.keys(answers);
+  for(var i=0; i<keys.length; i++){
+    var m = QUESTION_ID_MAP[keys[i]];
+    if(!m) continue;
+    var val = answers[keys[i]];
+    if(typeof val !== 'number' || val < 1 || val > 5) continue;
+    // V2 uses 0-4 scale, V1 uses 1-5. Convert: subtract 1, clamp to 0-4.
+    var v2score = Math.max(0, Math.min(4, val - 1));
+    if(!dimScores[m.dim]){ dimScores[m.dim] = []; dimTypes[m.dim] = m.type; dimIds[m.dim] = m.id; }
+    dimScores[m.dim].push(v2score);
+  }
+  var v2answers = [];
+  // Non-scored weather question (always neutral for demo)
+  v2answers.push({question_id:'q01_mood_weather', value:'lightly_cloudy', type:'visual_single'});
+  var dims = Object.keys(dimScores);
+  for(var d=0; d<dims.length; d++){
+    var dim = dims[d];
+    var scores = dimScores[dim];
+    var avg = Math.round(scores.reduce(function(a,b){return a+b;},0) / scores.length);
+    v2answers.push({question_id:dimIds[dim], value:avg, type:dimTypes[dim], score:avg});
+  }
+  // Map numeric score (0-4) to V2 visual_single string values
+  var OVER_THINKING_MAP = ['calm','ripple','waves','swell','storm'];
+  var LOW_ENERGY_MAP = ['full','three_quarters','half','quarter','empty'];
+
+  // Synthesize q03_overthinking from tension_worry + irritability_anger average
+  // (V1 has no direct overthinking question; overthinking is a core V2 dimension)
+  var owScores = (dimScores['tension_worry']||[]).concat(dimScores['irritability_anger']||[]);
+  var owAvg = owScores.length > 0 ? Math.round(owScores.reduce(function(a,b){return a+b;},0) / owScores.length) : 2;
+  v2answers.push({question_id:'q03_overthinking', value:OVER_THINKING_MAP[owAvg]||'waves', type:'visual_single', score:owAvg});
+
+  // Fix q09_low_energy: convert integer to visual string
+  var leScores = dimScores['low_energy']||[];
+  if(leScores.length > 0){
+    // Already handled above; patch the value to be a string
+    for(var a=0; a<v2answers.length; a++){
+      if(v2answers[a].question_id === 'q09_low_energy'){
+        var leScore = v2answers[a].score;
+        v2answers[a].value = LOW_ENERGY_MAP[leScore] || 'half';
+      }
+    }
+  }
+
+  // Fix q12_physical_safety: must be non-empty list of valid signals
+  // Valid signals: neck_tension, head_heaviness, palpitation, stomach_discomfort, fatigue, other, none
+  var psScores = dimScores['physical_signals']||[];
+  if(psScores.length > 0){
+    for(var b=0; b<v2answers.length; b++){
+      if(v2answers[b].question_id === 'q12_physical_safety'){
+        var psScore = v2answers[b].score;
+        if(psScore >= 4) v2answers[b].value = ['neck_tension','head_heaviness','palpitation'];
+        else if(psScore >= 3) v2answers[b].value = ['neck_tension','fatigue'];
+        else if(psScore >= 2) v2answers[b].value = ['fatigue'];
+        else v2answers[b].value = ['none'];
+      }
+    }
+  } else {
+    // physical_signals dimension not found → add default q12
+    v2answers.push({question_id:'q12_physical_safety', value:['none'], type:'visual_multi', score:0});
+  }
+  return {schema_version:'questionnaire_v2.0', time_window_days:7, answers:v2answers};
+}
+
 // ---- Data ----
 const QUESTIONS = [
   {title:'情绪状态', items:['我经常感到焦虑不安','我容易因为小事发脾气','我感到情绪低落','我对事物失去兴趣','我感到烦躁无法平静','我容易紧张出汗','我感到孤独无助','我难以控制自己的情绪','我经常感到恐惧','我对未来感到悲观','我容易冲动做事','我感到精神疲惫']},
@@ -157,6 +277,12 @@ function next(){
   var total = QUESTIONS.length + 1; // narrative + 3 question steps
   if(step < total - 1){ step++; render(); }
   else { submit(); }
+}
+
+// ---- Mode-aware submit (V2 primary, V1 fallback) ----
+function submit(){
+  if(DEMO_MODE === 'v1'){ submitV1(); return; }
+  submitV2();
 }
 
 function render(){
@@ -206,7 +332,113 @@ function pick(key, val){
 }
 
 // ---- Submit ----
-async function submit(){
+// V2: single workflow call replacing 5 sequential V1 calls
+async function submitV2(){
+  var narr = document.getElementById('narrText').value.trim();
+  try {
+    // Step 1: Create session
+    showV2Loading('create_session');
+    var sResp = await fetch(API+'/api/v2/sessions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({user_id:'demo_user_001', entry_mode:'full'})
+    });
+    if(!sResp.ok) throw new Error('SESSION_CREATE_FAILED');
+    var sData = await sResp.json();
+    V2_SESSION_ID = (sData.data && sData.data.session_id) || sData.session_id;
+    if(!V2_SESSION_ID) throw new Error('SESSION_CREATE_FAILED');
+
+    // Step 2: Run workflow
+    showV2Loading('assessment');
+    var qV2 = buildQuestionnaireV2(answers);
+    var wBody = {
+      session_id: V2_SESSION_ID,
+      user_id: 'demo_user_001',
+      questionnaire_answers: qV2,
+      assessment_confirmed: true
+    };
+    if(narr){ wBody.narrative_text = narr; }
+
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function(){ controller.abort(); }, 30000);
+    var wResp = await fetch(API+'/api/v2/workflows',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(wBody),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if(!wResp.ok) throw new Error('WORKFLOW_HTTP_' + wResp.status);
+    var wData = await wResp.json();
+
+    if(wData.success === false){
+      var errCode = (wData.error||{}).code || 'WORKFLOW_FAILED';
+      throw new Error(errCode);
+    }
+    var result = wData.data || wData;
+
+    var agentStatuses = result.agent_statuses || {};
+    if(agentStatuses.assessment) showV2Loading('diagnosis');
+    if(agentStatuses.diagnosis) showV2Loading('prescription');
+    if(agentStatuses.prescription) showV2Loading('music');
+    showV2Loading('done');
+
+    // Brief delay so user sees "done" before results
+    setTimeout(function(){ showResultsV2(result); }, 600);
+  } catch(e){
+    console.warn('V2 workflow failed:', e.message);
+    if(DEMO_MODE === 'v2'){
+      showV2Error(e.message);
+    } else {
+      V2_FALLBACK_TRIGGERED = true;
+      submitV1();
+    }
+  }
+}
+
+function showV2Loading(stage){
+  document.getElementById('step0').style.display = 'none';
+  document.getElementById('step1').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+  var loadDiv = document.getElementById('loading');
+  loadDiv.style.display = 'block';
+  var agentSteps = {
+    'create_session':  {dot:0, text:'连接评估服务...'},
+    'assessment':      {dot:1, text:'Assessment Agent — 分析情绪状态...'},
+    'diagnosis':       {dot:2, text:'Diagnosis Agent — 辅助辨证分析中...'},
+    'prescription':    {dot:3, text:'Prescription Agent — 生成音乐调节建议...'},
+    'music':           {dot:4, text:'Music Agent — 匹配疗愈音乐中...'},
+    'done':            {dot:4, text:'分析完成，正在展示结果...'}
+  };
+  var info = agentSteps[stage] || {dot:0, text:'处理中...'};
+  var dotsHtml = '';
+  for(var i=0;i<4;i++){ dotsHtml += '<div class="dot'+(i<info.dot?' a':'')+'"></div>'; }
+  document.getElementById('loading').innerHTML =
+    '<div class="card loading">'+
+    '<div class="spinner"></div>'+
+    '<p>'+info.text+'</p>'+
+    '<div style="font-size:11px;color:#A09888;margin-top:4px">V2 统一工作流 · 五 Agent 协作</div>'+
+    '<div class="steps">'+dotsHtml+'</div></div>';
+}
+
+function showV2Error(msg){
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').innerHTML =
+    '<div class="card" style="text-align:center;color:#E57373;padding:30px">'+
+    '<p style="font-size:16px;font-weight:600">V2 工作流暂不可用</p>'+
+    '<p style="font-size:12px;margin-top:8px">'+msg+'</p>'+
+    '<p style="font-size:12px;color:#888;margin-top:8px">请确认后端已启动: '+API+'</p>'+
+    '<button class="btn btn-s" style="margin-top:14px;width:auto;padding:8px 24px" onclick="submitV1()">切换到 V1 备用链路</button>'+
+    '<p style="font-size:11px;color:#AAA;margin-top:6px">或访问 <a href="?mode=v1" style="color:#534AB7">?mode=v1</a> 强制 V1 模式</p>'+
+    '</div>';
+  document.getElementById('prevBtn').disabled = true;
+  document.getElementById('nextBtn').disabled = true;
+}
+
+// ---- Submit V1 (original, unchanged) ----
+async function submitV1(){
   loading = true;
   document.getElementById('step0').style.display = 'none';
   document.getElementById('step1').style.display = 'none';
@@ -254,6 +486,208 @@ async function submit(){
 
 function dot(n){ for(var i=0;i<4;i++){ document.getElementById('d'+(i+1)).className = 'dot'+(i<=n?' a':''); } }
 
+// ---- V2 Results Adapter ----
+// Converts V2 workflow response to showResultsV1-compatible format.
+// IMPORTANT: Uses "辅助评估"/"音乐调节建议" — never medical diagnosis/treatment language.
+function showResultsV2(result){
+  loading = false;
+  var a = result.assessment || {};
+  var d = result.diagnosis || {};
+  var p = result.prescription || {};
+  var m = result.music || {};
+  var f = result.feedback || {};
+  var degradations = result.degradations || {};
+
+  // --- Build V1-compatible intermediate format ---
+  var ep = a.emotion_profile || {};
+  var v2dims = ep.dimension_scores || {};
+  // Map V2 dimension_scores {tension_worry:75, ...} → V1 dimensions {焦虑:{score:75, severity:'medium'}}
+  var DIM_SEVERITY = {
+    'tension_worry':      {label:'紧张担忧',   thresh:[40,70]},
+    'overthinking':       {label:'思虑过度',   thresh:[40,70]},
+    'irritability_anger': {label:'烦躁易怒',   thresh:[40,70]},
+    'low_mood':           {label:'情绪低落',   thresh:[40,70]},
+    'interest_loss':      {label:'兴趣减退',   thresh:[40,70]},
+    'fear_unease':        {label:'恐惧不安',   thresh:[40,70]},
+    'sleep_disturbance':  {label:'睡眠困扰',   thresh:[40,70]},
+    'low_energy':         {label:'精力不足',   thresh:[40,70]},
+    'appetite_change':    {label:'食欲变化',   thresh:[40,70]},
+    'daily_impact':       {label:'日常影响',   thresh:[40,70]}
+  };
+  var v1dims = {};
+  var dimKeys = Object.keys(v2dims);
+  var maxScore = 0, dominantDim = '';
+  for(var i=0; i<dimKeys.length; i++){
+    var key = dimKeys[i];
+    var rawScore = v2dims[key]; // 0-100
+    var score = typeof rawScore === 'number' ? rawScore : (parseInt(rawScore) || 50);
+    var meta = DIM_SEVERITY[key] || {label:key, thresh:[40,70]};
+    var severity = score >= meta.thresh[1] ? 'severe' : score >= meta.thresh[0] ? 'medium' : 'mild';
+    v1dims[meta.label] = {score:score, severity:severity};
+    if(score > maxScore){ maxScore = score; dominantDim = meta.label; }
+  }
+
+  // Compatibility objects
+  var v1a = {
+    session_id: a.session_id || V2_SESSION_ID,
+    output: {
+      emotion_profile: {dimensions: v1dims, dominant_emotion: dominantDim, dominant_score: maxScore},
+      analysis_mode: mapV2AnalysisMode(a.analysis_mode),
+      sources_used: a.sources_used || []
+    },
+    confidence: a.confidence || 0.5,
+    status: a.status || 'success',
+    degradation_triggered: (a.degradation && a.degradation.triggered) || (a.degradation && a.degradation.active) || false
+  };
+  var v1d = {
+    output: {
+      syndrome_diagnosis: {
+        primary: {
+          name: (d.syndrome_diagnosis||{}).primary ? d.syndrome_diagnosis.primary.name : '待评估',
+          element: (d.syndrome_diagnosis||{}).primary ? d.syndrome_diagnosis.primary.element : '',
+          organ: (d.syndrome_diagnosis||{}).primary ? d.syndrome_diagnosis.primary.organ : '',
+          severity_name: (d.syndrome_diagnosis||{}).primary ? d.syndrome_diagnosis.primary.severity_name : '待评估'
+        }
+      },
+      search_keywords: d.search_keywords || []
+    },
+    confidence: d.confidence || 0.5
+  };
+  var v1p = {
+    output: {
+      music_feature: p.music_feature || {},
+      prompt_template: p.prompt_template || {},
+      evidence: p.evidence || [],
+      recommendation_reasons: p.recommendation_reasons || []
+    }
+  };
+  var v1g = {
+    output: {
+      audio: {
+        url: m.stream_url || (m.track||{}).stream_url || null,
+        title: m.title || (m.track||{}).title || ''
+      },
+      music_result: m
+    }
+  };
+  var v1f = {
+    output: {
+      decision: f.decision || {action: '评估完成'},
+      subjective_change: f.subjective_change || null
+    }
+  };
+
+  // --- Render using extended showResultsV1 ---
+  showResultsV2Render(v1a, v1d, v1p, v1g, v1f, result);
+}
+
+function mapV2AnalysisMode(mode){
+  var map = {
+    'document_narrative_questionnaire': '病例+文本+问卷',
+    'document_questionnaire': '病例+问卷',
+    'narrative_questionnaire': '文本+问卷',
+    'questionnaire_only': '仅问卷'
+  };
+  return map[mode] || mode || '文本+问卷';
+}
+
+function showResultsV2Render(a,d,p,g,f,rawV2){
+  loading = false;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('prevBtn').disabled = true;
+  document.getElementById('nextBtn').disabled = true;
+
+  var ep = (a.output||{}).emotion_profile || {};
+  var dims = ep.dimensions || {};
+  var sorted = Object.entries(dims).sort(function(a,b){return b[1].score-a[1].score});
+  var bars = '';
+  var colors = {severe:'#E57373', medium:'#FFB74D', mild:'#81C784'};
+  for(var i=0; i<sorted.length; i++){
+    var c = colors[sorted[i][1].severity] || '#534AB7';
+    var sev = sorted[i][1].severity==='severe'?'偏高':sorted[i][1].severity==='medium'?'中等':'正常';
+    bars += '<div class="bar-row"><span class="bar-label">'+sorted[i][0]+'</span><div class="bar-track"><div class="bar-fill" style="width:'+sorted[i][1].score+'%;background:'+c+'"></div></div><span class="bar-score">'+sorted[i][1].score+' '+sev+'</span></div>';
+  }
+
+  // Sources used
+  var sourcesUsed = a.output.sources_used || [];
+  var sourceTags = '';
+  var sourceLabels = {document:'病例', narrative:'自由描述', questionnaire:'问卷'};
+  for(var s=0; s<sourcesUsed.length; s++){
+    var src = sourcesUsed[s];
+    var label = sourceLabels[src.source] || src.source;
+    var statusClass = src.status==='confirmed'||src.status==='used'?'tag-ok':'tag-dg';
+    sourceTags += '<span class="tag '+statusClass+'">'+label+': '+(src.status==='confirmed'?'已确认':src.status==='used'?'已使用':'缺失')+'</span> ';
+  }
+
+  var mode = a.output.analysis_mode || '';
+  var modeTag = mode.indexOf('文本')>=0 ? '<span class="tag tag-ok">'+mode+'</span>' : '<span class="tag tag-dg">'+mode+'</span>';
+
+  // Degradation warning
+  var degradationNote = '';
+  if(a.degradation_triggered || a.status === 'degraded'){
+    degradationNote = '<div style="background:#FFF3E0;border:1px solid #FFB74D;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:11px;color:#E65100">当前使用本地规则引擎（AI 服务未配置或不可用），评估结果基于审核规则计算。</div>';
+  }
+
+  document.getElementById('emoCard').innerHTML =
+    '<div class="card-title">情绪状态评估 '+modeTag+'</div>'+
+    (sourceTags ? '<div style="margin-bottom:8px;font-size:11px">输入来源: '+sourceTags+'</div>' : '')+
+    bars+
+    '<div class="result-row" style="margin-top:10px"><span class="k">主导情绪维度</span><span class="v">'+ep.dominant_emotion+' '+ep.dominant_score+'</span></div>'+
+    '<div class="result-row"><span class="k">系统证据充分度</span><span class="v">'+Math.round((a.confidence||0.5)*100)+'%</span></div>'+
+    '<div class="result-row"><span class="k">评估模式</span><span class="v">'+mode+'</span></div>'+
+    degradationNote;
+
+  // Diagnosis (辅助辨证倾向 — NOT medical diagnosis)
+  var prim = ((d.output||{}).syndrome_diagnosis||{}).primary || {};
+  var keywords = (d.output||{}).search_keywords || [];
+  var severityName = prim.severity_name || '待评估';
+  document.getElementById('diagCard').innerHTML =
+    '<div class="card-title">辅助辨证倾向</div>'+
+    '<div style="font-size:10px;color:#E57373;margin-bottom:8px">以下为中医理论框架下的辅助分析倾向，不构成医学诊断。</div>'+
+    '<div class="result-row"><span class="k">证型倾向</span><span class="v">'+(prim.name||'待评估')+'</span></div>'+
+    '<div class="result-row"><span class="k">五行归属</span><span class="v">'+(prim.element||'—')+' · '+(prim.organ||'—')+'</span></div>'+
+    '<div class="result-row"><span class="k">表现程度</span><span class="v">'+severityName+'</span></div>'+
+    '<div class="result-row"><span class="k">辅助分析可信度</span><span class="v">'+Math.round((d.confidence||0.5)*100)+'%</span></div>'+
+    (keywords.length ? '<div class="result-row"><span class="k">参考关键词</span><span class="v" style="font-size:11px">'+keywords.join('、')+'</span></div>' : '');
+
+  // Prescription (音乐调节建议 — NOT treatment)
+  var mf = (p.output||{}).music_feature || {};
+  var evidence = (p.output||{}).evidence || [];
+  var reasons = (p.output||{}).recommendation_reasons || [];
+  document.getElementById('rxCard').innerHTML =
+    '<div class="card-title">音乐调节建议</div>'+
+    '<div style="font-size:10px;color:#888;margin-bottom:8px">基于五音理论的音乐匹配建议，不构成治疗方案。</div>'+
+    '<div class="result-row"><span class="k">五音调式</span><span class="v">'+(mf.tone_name||'—')+'（'+mf.tone_id+'）</span></div>'+
+    '<div class="result-row"><span class="k">节奏 (BPM)</span><span class="v">'+mf.bpm+'</span></div>'+
+    '<div class="result-row"><span class="k">推荐乐器</span><span class="v">'+(mf.instruments||[]).join('、')+'</span></div>'+
+    '<div class="result-row"><span class="k">建议时长</span><span class="v">'+(mf.duration_minutes||15)+' 分钟</span></div>'+
+    (evidence.length ? '<div class="result-row"><span class="k">理论依据</span><span class="v">'+evidence.length+' 条</span></div>' : '')+
+    (reasons.length ? '<div style="font-size:11px;color:#888;margin-top:8px;line-height:1.6">'+reasons.join('；')+'</div>' : '');
+
+  // Music
+  var audioUrl = (g.output||{}).audio ? g.output.audio.url : null;
+  var musicResult = (g.output||{}).music_result || {};
+  var musicTitle = (g.output||{}).audio ? g.output.audio.title : (musicResult.title || '疗愈音乐');
+  document.getElementById('musicCard').innerHTML =
+    '<div class="card-title">匹配音乐</div>'+
+    (audioUrl
+      ? '<audio controls autoplay><source src="'+API+audioUrl+'" type="audio/wav"></audio><div style="font-size:11px;color:#888;margin-top:4px">'+musicTitle+'</div>'
+      : '<p style="color:#888;font-size:13px">音乐资源暂时不可用<br><span style="font-size:11px">音乐匹配逻辑已完成，请检查曲库配置</span></p>')+
+    (musicResult.match_explanation ? '<div style="font-size:11px;color:#888;margin-top:6px;line-height:1.5">'+(Array.isArray(musicResult.match_explanation)?musicResult.match_explanation.join('；'):musicResult.match_explanation)+'</div>' : '')+
+    '<div class="result-row" style="margin-top:4px"><span class="k">反馈状态</span><span class="v">'+(((f.output||{}).decision||{}).action || '评估完成')+'</span></div>';
+
+  // Show V2 badge
+  if(V2_FALLBACK_TRIGGERED){
+    document.getElementById('emoCard').insertAdjacentHTML('afterbegin','<div style="font-size:10px;background:#FFF3E0;color:#E65100;padding:2px 8px;border-radius:8px;margin-bottom:6px;display:inline-block">V2→V1 自动降级</div>');
+  } else if(DEMO_MODE !== 'v1'){
+    document.getElementById('emoCard').insertAdjacentHTML('afterbegin','<div style="font-size:10px;background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:8px;margin-bottom:6px;display:inline-block">V2 统一工作流</div>');
+  }
+
+  document.getElementById('btnBar').innerHTML = '<button class="btn btn-s" onclick="resetAll()" style="flex:1">重新评估</button>';
+}
+
+// ---- V1 Results (original, unchanged) ----
 function showResults(a,d,p,g,f){
   loading = false;
   document.getElementById('loading').style.display = 'none';
@@ -312,6 +746,7 @@ function showResults(a,d,p,g,f){
 
 function resetAll(){
   step = 0; answers = {}; loading = false;
+  V2_SESSION_ID = null; V2_FALLBACK_TRIGGERED = false;  // Reset V2 state
   document.getElementById('narrText').value = ''; document.getElementById('narrCount').textContent = '0';
   document.getElementById('results').style.display = 'none';
   document.getElementById('btnBar').innerHTML = '<button class="btn btn-s" id="prevBtn" onclick="prev()" disabled>上一步</button><button class="btn btn-p" id="nextBtn" onclick="next()">开始问卷</button>';
