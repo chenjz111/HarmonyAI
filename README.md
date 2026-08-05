@@ -96,6 +96,68 @@ MIT
 
 ---
 
+## Sprint 3 — Competition Version (v0.3.0)
+
+### 核心能力
+
+| 能力 | 说明 |
+|---|---|
+| 🌐 **Multi-source Assessment** | 病例上传(PDF/JPG) + 自由文本 + 30题问卷，AI 自动分析来源组合 |
+| ⚡ **V2 Unified Workflow** | `POST /api/v2/workflows` 一次调用完成全部 5 Agent 协作 |
+| 🎵 **Explainable Music Prescription** | 基于中医五音理论的音乐匹配，附带理论依据和文献出处 |
+| 🔄 **Feedback Loop** | Feedback 2.0 pre/post 前后状态对比，量化情绪变化，个人偏好优化 |
+| 🛡️ **Degradation Strategy** | Qwen 不可用时→本地规则引擎，任何 Agent 失败系统仍可运行 |
+
+### 五 Agent Workflow
+
+```
+输入（自由文本 + 问卷 + 可选病例）
+  → Assessment Agent（多源情绪评估）
+  → Diagnosis Agent（辅助辨证分析）
+  → Prescription Agent（音乐处方匹配）
+  → Music Agent（本地曲库匹配）
+  → Feedback Agent（效果闭环反馈）
+```
+
+### V2 API
+
+| 端点 | 说明 |
+|---|---|
+| `POST /api/v2/assessments` | 多源状态评估（document + narrative + questionnaire） |
+| `POST /api/v2/workflows` | 五 Agent 统一工作流（单次调用） |
+| `POST /api/v2/music` | 本地曲库匹配 |
+| `POST /api/v2/sessions` | 会话管理 |
+| `POST /api/v2/documents` | 病例上传 |
+| `POST /api/v2/feedback` | Feedback 2.0 (pre/post state) |
+
+### 降级策略
+
+| 条件 | 行为 |
+|---|---|
+| Qwen 未配置 | 问卷自动使用确定性规则评分 |
+| Qwen 超时/失败 | 降级为本地规则引擎，仍产出完整结果 |
+| Knowledge Store 不可用 | 使用审核过的本地五音映射规则 |
+| OCR 不可用 | 使用用户预确认的文本输入 |
+
+### Demo
+
+```bash
+# 启动后端
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+
+# 打开 Demo 页面
+浏览器打开 frontend/full-demo.html          # V2 优先，失败自动降级 V1
+浏览器打开 frontend/full-demo.html?mode=v1  # 强制 V1 备用链路
+```
+
+### 测试
+
+```bash
+python -m pytest tests/ -q    # 392 passed
+```
+
+---
+
 ### Chroma 知识库演示
 
 ```powershell

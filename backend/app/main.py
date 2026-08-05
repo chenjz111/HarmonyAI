@@ -49,15 +49,21 @@ app = FastAPI(
     lifespan=lifespan,
     description=(
         "五音疗愈平台 —— 基于中医五音理论的 AI 音乐辅助调理系统\n\n"
-        "## Sprint 2 — 五 Agent 独立端点\n"
-        "| 端点 | Agent | 说明 |\n"
-        "|------|-------|------|\n"
+        "## Sprint 3 — Competition Version\n"
+        "| 端点 | 说明 |\n"
+        "|------|------|\n"
+        "| `/api/v2/assessments` | 多源状态评估 |\n"
+        "| `/api/v2/workflows` | 五 Agent 统一工作流 |\n"
+        "| `/api/v2/music` | 本地曲库匹配 |\n"
+        "| `/api/v2/sessions` | 会话管理 |\n"
+        "| `/api/v2/documents` | 病例上传 |\n"
+        "| `/api/v2/feedback` | Feedback 2.0 (pre/post) |\n\n"
+        "### V1 兼容端点\n"
         "| `/api/v1/assessment` | 1 评估 | 问卷 → 健康画像 |\n"
         "| `/api/v1/diagnosis` | 2 辨证 | 画像 → 证型诊断 |\n"
         "| `/api/v1/prescription` | 3 处方 | 证型 → 音乐处方 |\n"
         "| `/api/v1/generation` | 4 生成 | 处方 → 音频 |\n"
-        "| `/api/v1/feedback` | 5 反馈 | 评分 → 决策 |\n\n"
-        "每个端点返回 Universal Shell（agent-architecture.md 第 1 章）"
+        "| `/api/v1/feedback` | 5 反馈 | 评分 → 决策 |"
     ),
     docs_url="/docs",
     redoc_url="/redoc",
