@@ -1,0 +1,336 @@
+{
+  "schema_version": "s4_safety_labels_r1_contract_v2.1",
+  "total": 30,
+  "labels": [
+    {
+      "case_id": "S4_S001",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S002",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S003",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S004",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S005",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S006",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S007",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S008",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S009",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S010",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S011",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S012",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S013",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S014",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S015",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S016",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S017",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S018",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S019",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S020",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S021",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "watch_list",
+      "safety_flags": [
+        "watch_list"
+      ],
+      "blocked": false
+    },
+    {
+      "case_id": "S4_S022",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "watch_list",
+      "safety_flags": [
+        "watch_list"
+      ],
+      "blocked": false
+    },
+    {
+      "case_id": "S4_S023",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "watch_list",
+      "safety_flags": [
+        "watch_list"
+      ],
+      "blocked": false
+    },
+    {
+      "case_id": "S4_S024",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "watch_list",
+      "safety_flags": [
+        "watch_list"
+      ],
+      "blocked": false
+    },
+    {
+      "case_id": "S4_S025",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "watch_list",
+      "safety_flags": [
+        "watch_list"
+      ],
+      "blocked": false
+    },
+    {
+      "case_id": "S4_S026",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S027",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S028",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_chest_pain"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S029",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_self_harm"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S4_S030",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "severity": "urgent_attention",
+      "safety_flags": [
+        "urgent_attention_breathing"
+      ],
+      "blocked": true
+    }
+  ]
+}
