@@ -1,0 +1,212 @@
+{
+  "schema_version": "quick_state_v1",
+  "collection_id": "quick-state-questionnaire-v1",
+  "version": "1.0.0",
+  "created": "2026-08-06",
+  "author": "肖宇翔（nob）· Medical Knowledge Engineer",
+  "status": "reviewed-by-nob",
+  "spec_ref": "docs/sprint4/product-flow.md（陈家智契约：6 题快速状态问卷）",
+  "purpose": "每次听音乐前填写的快速状态问卷（30-60 秒），听前听后各填 1-5 题用于 Feedback 计算 delta",
+  "target_duration_seconds": 60,
+  "total_questions": 6,
+  "scoring_questions": 5,
+  "non_scoring_questions": [
+    "qs06_goal"
+  ],
+  "scale": {
+    "type": "scale_0_10",
+    "min": 0,
+    "max": 10,
+    "note": "0-10 当下状态自评（契约：0-10 而非 0-4 频率）"
+  },
+  "questions": [
+    {
+      "question_id": "qs01_tension_now",
+      "order": 1,
+      "type": "scale_0_10",
+      "label": "此刻紧张或担忧程度",
+      "question_text": "此刻你的紧张或担忧程度是？（0=完全不紧张，10=极度紧张）",
+      "scale": {
+        "min": 0,
+        "max": 10
+      },
+      "scoring": {
+        "scored": true,
+        "dimension": "tension_worry_now",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "pre_post": true,
+      "ui": {
+        "layout": "slider",
+        "min_label": "放松",
+        "max_label": "极度紧张"
+      },
+      "module": "QUICK",
+      "text": "此刻你的紧张或担忧程度是？（0=完全不紧张，10=极度紧张）",
+      "time_window": "当前"
+    },
+    {
+      "question_id": "qs02_rumination_now",
+      "order": 2,
+      "type": "scale_0_10",
+      "label": "此刻思绪反复程度",
+      "question_text": "此刻你的思绪反复、停不下来的程度是？（0=完全平静，10=停不下来）",
+      "scale": {
+        "min": 0,
+        "max": 10
+      },
+      "scoring": {
+        "scored": true,
+        "dimension": "overthinking_now",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "pre_post": true,
+      "ui": {
+        "layout": "slider",
+        "min_label": "平静",
+        "max_label": "停不下来"
+      },
+      "module": "QUICK",
+      "text": "此刻你的思绪反复、停不下来的程度是？（0=完全平静，10=停不下来）",
+      "time_window": "当前"
+    },
+    {
+      "question_id": "qs03_mood_now",
+      "order": 3,
+      "type": "scale_0_10",
+      "label": "此刻情绪低落程度",
+      "question_text": "此刻你的情绪低落程度是？（0=心情很好，10=非常低落）",
+      "scale": {
+        "min": 0,
+        "max": 10
+      },
+      "scoring": {
+        "scored": true,
+        "dimension": "low_mood_now",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "pre_post": true,
+      "ui": {
+        "layout": "slider",
+        "min_label": "心情好",
+        "max_label": "非常低落"
+      },
+      "module": "QUICK",
+      "text": "此刻你的情绪低落程度是？（0=心情很好，10=非常低落）",
+      "time_window": "当前"
+    },
+    {
+      "question_id": "qs04_tension_body_now",
+      "order": 4,
+      "type": "scale_0_10",
+      "label": "此刻身体紧绷程度",
+      "question_text": "此刻你的身体紧绷（肩颈/肌肉/呼吸）程度是？（0=完全放松，10=非常紧绷）",
+      "scale": {
+        "min": 0,
+        "max": 10
+      },
+      "scoring": {
+        "scored": true,
+        "dimension": "body_tension_now",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "pre_post": true,
+      "ui": {
+        "layout": "slider",
+        "min_label": "放松",
+        "max_label": "非常紧绷"
+      },
+      "module": "QUICK",
+      "text": "此刻你的身体紧绷（肩颈/肌肉/呼吸）程度是？（0=完全放松，10=非常紧绷）",
+      "time_window": "当前"
+    },
+    {
+      "question_id": "qs05_mental_fatigue_now",
+      "order": 5,
+      "type": "scale_0_10",
+      "label": "此刻精神疲惫程度",
+      "question_text": "此刻你的精神疲惫程度是？（0=精力充沛，10=极度疲惫）",
+      "scale": {
+        "min": 0,
+        "max": 10
+      },
+      "scoring": {
+        "scored": true,
+        "dimension": "mental_fatigue_now",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "pre_post": true,
+      "ui": {
+        "layout": "slider",
+        "min_label": "精力充沛",
+        "max_label": "极度疲惫"
+      },
+      "module": "QUICK",
+      "text": "此刻你的精神疲惫程度是？（0=精力充沛，10=极度疲惫）",
+      "time_window": "当前"
+    },
+    {
+      "question_id": "qs06_goal",
+      "order": 6,
+      "type": "single_choice",
+      "label": "本次目标",
+      "question_text": "这次听音乐，你希望达到什么效果？",
+      "options": [
+        {
+          "value": "relaxation",
+          "label": "放松"
+        },
+        {
+          "value": "sleep_improve",
+          "label": "助眠"
+        },
+        {
+          "value": "emotion_calm",
+          "label": "平复情绪"
+        },
+        {
+          "value": "focus",
+          "label": "集中注意力"
+        },
+        {
+          "value": "energy_boost",
+          "label": "提神"
+        }
+      ],
+      "scoring": {
+        "scored": false,
+        "dimension": null,
+        "notes": "目标题，输出到 user_goal，不计分",
+        "reverse_scored": false
+      },
+      "pre_post": false,
+      "ui": {
+        "layout": "button-row"
+      },
+      "module": "QUICK",
+      "text": "这次听音乐，你希望达到什么效果？",
+      "time_window": "当前"
+    }
+  ],
+  "pre_post_usage": {
+    "pre": "听前填写全部 6 题",
+    "post": "听后重复前 5 题（qs01-qs05），Feedback Agent 计算 delta = post - pre",
+    "delta_schema": {
+      "tension_worry_delta": "int (-10 to 10)",
+      "overthinking_delta": "int (-10 to 10)",
+      "low_mood_delta": "int (-10 to 10)",
+      "body_tension_delta": "int (-10 to 10)",
+      "mental_fatigue_delta": "int (-10 to 10)"
+    },
+    "note": "delta 只更新个人偏好与即时状态，不修改全局医学规则（契约：Feedback 只影响个人偏好）"
+  },
+  "relationship": {
+    "full_to_quick": "快速问卷 6 题对应完整问卷的当下状态版（0-10），与 20 题（0-4 频率）互补：20 题评估长期状态，快速问卷评估当下状态",
+    "usage": "完整问卷 V2.1 用于首次/定期评估；快速问卷用于每次听音乐前后"
+  }
+}
