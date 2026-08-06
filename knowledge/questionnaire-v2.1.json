@@ -1,0 +1,1139 @@
+{
+  "schema_version": "questionnaire_v2.1",
+  "collection_id": "questionnaire-v2.1",
+  "version": "1.0.0",
+  "created": "2026-08-06",
+  "author": "肖宇翔（nob）· Medical Knowledge Engineer",
+  "status": "reviewed-by-nob",
+  "spec_ref": "docs/sprint4/questionnaire-contract-v2.1.md + product-flow.md + assessment-contract-v2.1.md（陈家智契约）",
+  "sections": {
+    "A": {
+      "name": "目标与感受",
+      "count": 2,
+      "questions": [
+        "q01_goal",
+        "q02_mood_weather"
+      ]
+    },
+    "B": {
+      "name": "紧张思虑激活",
+      "count": 5,
+      "questions": [
+        "q03_tension_freq",
+        "q04_worry_control",
+        "q05_overthinking",
+        "q06_irritability",
+        "q07_concentration"
+      ]
+    },
+    "C": {
+      "name": "低落与积极体验",
+      "count": 4,
+      "questions": [
+        "q08_low_mood",
+        "q09_interest_loss",
+        "q10_social_function",
+        "q11_positive_experience"
+      ]
+    },
+    "D": {
+      "name": "睡眠精力身体",
+      "count": 5,
+      "questions": [
+        "q12_sleep",
+        "q13_energy",
+        "q14_appetite",
+        "q15_body_signals",
+        "q16_physical_safety"
+      ]
+    },
+    "E": {
+      "name": "持续时间与影响",
+      "count": 2,
+      "questions": [
+        "q17_duration",
+        "q18_daily_impact"
+      ]
+    },
+    "F": {
+      "name": "安全筛查",
+      "count": 2,
+      "questions": [
+        "q19_self_harm",
+        "q20_chest_breathing"
+      ]
+    }
+  },
+  "compat": {
+    "v2_backward_compatible": true,
+    "v2_question_ids_preserved": [
+      "q01",
+      "q02",
+      "q03",
+      "q04",
+      "q05",
+      "q06",
+      "q07",
+      "q08",
+      "q09",
+      "q10",
+      "q11",
+      "q12"
+    ],
+    "notes": "V2.1 保留 V2 的 12 题测量内容但重排为 6 组结构；V2.0 客户端仍可接受（schema_version 区分）"
+  },
+  "time_window_days": 7,
+  "target_duration_seconds": 300,
+  "total_questions": 20,
+  "scoring_questions": 15,
+  "qualitative_questions": [
+    "q04_worry_control"
+  ],
+  "non_scoring_questions": [
+    "q01_goal",
+    "q02_mood_weather",
+    "q04_worry_control",
+    "q16_physical_safety",
+    "q19_self_harm",
+    "q20_chest_breathing"
+  ],
+  "questions": [
+    {
+      "question_id": "q01_goal",
+      "order": 1,
+      "type": "single_choice",
+      "label": "本次目标",
+      "question_text": "你希望这次评估后得到什么样的帮助？",
+      "options": [
+        {
+          "value": "relaxation",
+          "label": "放松心情"
+        },
+        {
+          "value": "understand_state",
+          "label": "了解自己的状态"
+        },
+        {
+          "value": "sleep_improve",
+          "label": "改善睡眠"
+        },
+        {
+          "value": "emotion_improve",
+          "label": "情绪调节"
+        },
+        {
+          "value": "energy_improve",
+          "label": "提升精力"
+        },
+        {
+          "value": "just_try",
+          "label": "随便看看"
+        }
+      ],
+      "scoring": {
+        "scored": false,
+        "dimension": null,
+        "notes": "目标题，输出到 user_goal 字段，不计分",
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "icon_required": false
+      },
+      "module": "A",
+      "text": "你希望这次评估后得到什么样的帮助？",
+      "time_window": "当前"
+    },
+    {
+      "question_id": "q02_mood_weather",
+      "order": 2,
+      "type": "visual_single",
+      "label": "今日内在天气",
+      "question_text": "如果把你此刻的内在感受比作一种天气，哪一张最接近？",
+      "options": [
+        {
+          "value": "sunny",
+          "label": "晴朗",
+          "icon": "weather-sunny"
+        },
+        {
+          "value": "lightly_cloudy",
+          "label": "微云",
+          "icon": "weather-cloudy-light"
+        },
+        {
+          "value": "cloudy",
+          "label": "阴天",
+          "icon": "weather-cloudy"
+        },
+        {
+          "value": "rainy",
+          "label": "下雨",
+          "icon": "weather-rainy"
+        },
+        {
+          "value": "stormy",
+          "label": "雷雨",
+          "icon": "weather-stormy"
+        }
+      ],
+      "scoring": {
+        "scored": false,
+        "dimension": null,
+        "notes": "仅作表达辅助，不进入核心评分",
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "card-horizontal",
+        "icon_required": true,
+        "animation_allowed": true
+      },
+      "evidence_legend": {
+        "status": "天气隐喻，不直接映射脏腑/证型/调式",
+        "constraint": "不得使用'雷雨=愤怒=肝=角调'等直接映射"
+      },
+      "module": "A",
+      "text": "如果把你此刻的内在感受比作一种天气，哪一张最接近？",
+      "time_window": "当前"
+    },
+    {
+      "question_id": "q03_tension_freq",
+      "order": 3,
+      "type": "frequency_0_4",
+      "label": "紧张频率",
+      "question_text": "过去 7 天，你有多常感到紧张、担心或很难放松？",
+      "options": [
+        {
+          "value": 0,
+          "label": "从不",
+          "hint": "过去 7 天没有出现"
+        },
+        {
+          "value": 1,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 4,
+          "label": "几乎每天",
+          "hint": "基本每天出现"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "tension_worry",
+        "emotion_mapping": "anxiety",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "icon_required": false,
+        "progress_required": true
+      },
+      "module": "B",
+      "text": "过去 7 天，你有多常感到紧张、担心或很难放松？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q04_worry_control",
+      "order": 4,
+      "type": "qualitative_3",
+      "label": "担忧控制感",
+      "question_text": "当你感到担心或紧张时，你通常能让自己停下来吗？",
+      "options": [
+        {
+          "value": "able",
+          "label": "基本可以",
+          "hint": "能较快转移注意力"
+        },
+        {
+          "value": "partial",
+          "label": "有时可以",
+          "hint": "需要较长时间才能平复"
+        },
+        {
+          "value": "hard",
+          "label": "很难",
+          "hint": "一旦开始就停不下来"
+        }
+      ],
+      "scoring": {
+        "scored": false,
+        "dimension": "worry_control",
+        "notes": "定性记录字段，不进入定量维度；避免与 q03 tension_freq 双重计分（契约 A5 方案 A）",
+        "output_field": "context.worry_control",
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "icon_required": false
+      },
+      "evidence_legend": {
+        "contract_ref": "assessment-contract-v2.1.md A5 风险：方案 A（推荐）Q04 只做定性记录"
+      },
+      "module": "B",
+      "text": "当你感到担心或紧张时，你通常能让自己停下来吗？",
+      "time_window": "当前"
+    },
+    {
+      "question_id": "q05_overthinking",
+      "order": 5,
+      "type": "visual_single",
+      "label": "思绪反复",
+      "question_text": "过去 7 天，你有多常反复想同一件事，脑子很难停下来？",
+      "options": [
+        {
+          "value": "calm",
+          "label": "平静",
+          "icon": "sea-calm",
+          "frequency_text": "从不"
+        },
+        {
+          "value": "ripple",
+          "label": "微波",
+          "icon": "sea-ripple",
+          "frequency_text": "偶尔"
+        },
+        {
+          "value": "waves",
+          "label": "波涛",
+          "icon": "sea-waves",
+          "frequency_text": "有时"
+        },
+        {
+          "value": "swell",
+          "label": "涌浪",
+          "icon": "sea-swell",
+          "frequency_text": "经常"
+        },
+        {
+          "value": "storm",
+          "label": "风暴",
+          "icon": "sea-storm",
+          "frequency_text": "几乎每天"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "overthinking",
+        "emotion_mapping": "overthinking",
+        "weight": 1.0,
+        "score_map": {
+          "calm": 0,
+          "ripple": 1,
+          "waves": 2,
+          "swell": 3,
+          "storm": 4
+        },
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "card-horizontal",
+        "icon_required": true,
+        "frequency_text_below_card": true,
+        "animation_allowed": true
+      },
+      "evidence_legend": {
+        "status": "海面强度仅作频率视觉表达，不直接映射证型"
+      },
+      "module": "B",
+      "text": "过去 7 天，你有多常反复想同一件事，脑子很难停下来？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q06_irritability",
+      "order": 6,
+      "type": "frequency_0_4",
+      "label": "烦躁易怒",
+      "question_text": "过去 7 天，你有多常感到烦躁、容易生气或对小事失去耐心？",
+      "options": [
+        {
+          "value": 0,
+          "label": "从不",
+          "hint": "过去 7 天没有出现"
+        },
+        {
+          "value": 1,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 4,
+          "label": "几乎每天",
+          "hint": "基本每天出现"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "irritability_anger",
+        "emotion_mapping": "anger",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "neutral_icon_allowed": true,
+        "progress_required": true
+      },
+      "module": "B",
+      "text": "过去 7 天，你有多常感到烦躁、容易生气或对小事失去耐心？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q07_concentration",
+      "order": 7,
+      "type": "frequency_0_4",
+      "label": "注意力集中",
+      "question_text": "过去 7 天，你有多常觉得注意力难以集中，做事容易走神？",
+      "options": [
+        {
+          "value": 0,
+          "label": "从不",
+          "hint": "过去 7 天没有出现"
+        },
+        {
+          "value": 1,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 4,
+          "label": "几乎每天",
+          "hint": "基本每天出现"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "concentration",
+        "emotion_mapping": "overthinking",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "progress_required": true
+      },
+      "module": "B",
+      "text": "过去 7 天，你有多常觉得注意力难以集中，做事容易走神？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q08_low_mood",
+      "order": 8,
+      "type": "frequency_0_4",
+      "label": "情绪低落",
+      "question_text": "过去 7 天，你有多常感到情绪低落、难过或提不起精神？",
+      "options": [
+        {
+          "value": 0,
+          "label": "从不",
+          "hint": "过去 7 天没有出现"
+        },
+        {
+          "value": 1,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 4,
+          "label": "几乎每天",
+          "hint": "基本每天出现"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "low_mood",
+        "emotion_mapping": "depression",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "progress_required": true
+      },
+      "content_constraint": "不在问题或结果中直接使用疾病诊断词",
+      "module": "C",
+      "text": "过去 7 天，你有多常感到情绪低落、难过或提不起精神？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q09_interest_loss",
+      "order": 9,
+      "type": "frequency_0_4",
+      "label": "兴趣下降",
+      "question_text": "过去 7 天，你有多常对原本喜欢的事情缺少兴趣？",
+      "options": [
+        {
+          "value": 0,
+          "label": "从不",
+          "hint": "过去 7 天没有出现"
+        },
+        {
+          "value": 1,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 4,
+          "label": "几乎每天",
+          "hint": "基本每天出现"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "interest_loss",
+        "emotion_mapping": "depression",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "progress_required": true
+      },
+      "module": "C",
+      "text": "过去 7 天，你有多常对原本喜欢的事情缺少兴趣？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q10_social_function",
+      "order": 10,
+      "type": "frequency_0_4",
+      "label": "社交回避",
+      "question_text": "过去 7 天，你有多常想避开社交、不愿见人或不想说话？",
+      "options": [
+        {
+          "value": 0,
+          "label": "从不",
+          "hint": "过去 7 天没有出现"
+        },
+        {
+          "value": 1,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 4,
+          "label": "几乎每天",
+          "hint": "基本每天出现"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "social_function",
+        "emotion_mapping": "depression",
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "progress_required": true
+      },
+      "module": "C",
+      "text": "过去 7 天，你有多常想避开社交、不愿见人或不想说话？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q11_positive_experience",
+      "order": 11,
+      "type": "frequency_0_4",
+      "label": "积极体验",
+      "question_text": "过去 7 天，你有多常能感到快乐、满足或对事情有期待？",
+      "options": [
+        {
+          "value": 0,
+          "label": "几乎每天",
+          "hint": "基本每天都能"
+        },
+        {
+          "value": 1,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 4,
+          "label": "从不",
+          "hint": "过去 7 天几乎没有"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "positive_experience",
+        "emotion_mapping": "depression",
+        "weight": 1.0,
+        "reverse_scored": true,
+        "notes": "反向计分题：分值越高表示积极体验越少"
+      },
+      "ui": {
+        "layout": "button-row",
+        "progress_required": true
+      },
+      "module": "C",
+      "text": "过去 7 天，你有多常能感到快乐、满足或对事情有期待？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q12_sleep",
+      "order": 12,
+      "type": "frequency_0_4",
+      "label": "睡眠困扰",
+      "question_text": "过去 7 天，你有多常出现入睡困难、容易醒、睡不踏实或醒后仍疲惫？",
+      "options": [
+        {
+          "value": 0,
+          "label": "从不",
+          "hint": "过去 7 天没有出现"
+        },
+        {
+          "value": 1,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 4,
+          "label": "几乎每天",
+          "hint": "基本每天出现"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "sleep_disturbance",
+        "emotion_mapping": null,
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "icon_moon_bed": true,
+        "progress_required": true
+      },
+      "module": "D",
+      "text": "过去 7 天，你有多常出现入睡困难、容易醒、睡不踏实或醒后仍疲惫？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q13_energy",
+      "order": 13,
+      "type": "visual_single",
+      "label": "精力水平",
+      "question_text": "过去 7 天，你有多常觉得精力不足，像\"电量不够\"？",
+      "options": [
+        {
+          "value": "full",
+          "label": "从不精力不足",
+          "icon": "battery-full",
+          "frequency_text": "从不"
+        },
+        {
+          "value": "three_quarters",
+          "label": "偶尔精力不足",
+          "icon": "battery-75",
+          "frequency_text": "偶尔"
+        },
+        {
+          "value": "half",
+          "label": "有时精力不足",
+          "icon": "battery-50",
+          "frequency_text": "有时"
+        },
+        {
+          "value": "quarter",
+          "label": "经常精力不足",
+          "icon": "battery-25",
+          "frequency_text": "经常"
+        },
+        {
+          "value": "empty",
+          "label": "几乎每天精力不足",
+          "icon": "battery-empty",
+          "frequency_text": "几乎每天"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "low_energy",
+        "emotion_mapping": "depression",
+        "weight": 1.0,
+        "score_map": {
+          "full": 0,
+          "three_quarters": 1,
+          "half": 2,
+          "quarter": 3,
+          "empty": 4
+        },
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "card-horizontal",
+        "frequency_text_below_card": true,
+        "accessibility": "选项文字为'从不精力不足'至'几乎每天精力不足'，避免满电方向造成误选"
+      },
+      "module": "D",
+      "text": "过去 7 天，你有多常觉得精力不足，像\"电量不够\"？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q14_appetite",
+      "order": 14,
+      "type": "frequency_0_4",
+      "label": "食欲变化",
+      "question_text": "过去 7 天，你有多常出现明显没胃口、吃得过多，或食欲和平时差别较大？",
+      "options": [
+        {
+          "value": 0,
+          "label": "从不",
+          "hint": "过去 7 天没有出现"
+        },
+        {
+          "value": 1,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 4,
+          "label": "几乎每天",
+          "hint": "基本每天出现"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "appetite_change",
+        "emotion_mapping": null,
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "icon_plate": true,
+        "progress_required": true
+      },
+      "module": "D",
+      "text": "过去 7 天，你有多常出现明显没胃口、吃得过多，或食欲和平时差别较大？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q15_body_signals",
+      "order": 15,
+      "type": "visual_multi",
+      "label": "身体信号",
+      "question_text": "过去 7 天，你有哪些身体感觉？可多选。",
+      "options": [
+        {
+          "value": "neck_tension",
+          "label": "肩颈紧张",
+          "icon": "body-neck",
+          "category": "physical_signal"
+        },
+        {
+          "value": "head_heaviness",
+          "label": "头痛或头沉",
+          "icon": "body-head",
+          "category": "physical_signal"
+        },
+        {
+          "value": "palpitation",
+          "label": "心慌",
+          "icon": "body-heart",
+          "category": "physical_signal"
+        },
+        {
+          "value": "stomach_discomfort",
+          "label": "胃部不适",
+          "icon": "body-stomach",
+          "category": "physical_signal"
+        },
+        {
+          "value": "fatigue",
+          "label": "身体疲惫",
+          "icon": "body-fatigue",
+          "category": "physical_signal"
+        },
+        {
+          "value": "dizziness",
+          "label": "头晕",
+          "icon": "body-dizzy",
+          "category": "physical_signal"
+        },
+        {
+          "value": "cold_or_heat",
+          "label": "怕冷或怕热",
+          "icon": "body-temp",
+          "category": "physical_signal"
+        },
+        {
+          "value": "limb_weakness",
+          "label": "四肢酸软",
+          "icon": "body-limb",
+          "category": "physical_signal"
+        },
+        {
+          "value": "digestive",
+          "label": "胃胀腹胀",
+          "icon": "body-digest",
+          "category": "physical_signal"
+        },
+        {
+          "value": "none",
+          "label": "以上都没有",
+          "icon": "check-none",
+          "category": "exclusion"
+        }
+      ],
+      "scoring": {
+        "scored": false,
+        "dimension": "physical_signals",
+        "notes": "仅作 physical_signals 记录，不直接计入证型或音乐调式",
+        "hard_rule": "禁止根据单一身体选项直接得出某脏腑、证型或调式",
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "card-multi",
+        "icon_required": true,
+        "allow_skip": true
+      },
+      "rules": [
+        "选择'以上都没有'时清除其他选项"
+      ],
+      "module": "D",
+      "text": "过去 7 天，你有哪些身体感觉？可多选。",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q16_physical_safety",
+      "order": 16,
+      "type": "single_choice",
+      "label": "身体不适程度",
+      "question_text": "过去 7 天，你的身体不适（胸闷/心慌/胃胀等）整体有多影响你？",
+      "options": [
+        {
+          "value": 0,
+          "label": "无不适",
+          "hint": "没有明显身体不适"
+        },
+        {
+          "value": 1,
+          "label": "轻微",
+          "hint": "偶尔感觉但不影响生活"
+        },
+        {
+          "value": 2,
+          "label": "有些",
+          "hint": "有时影响做事"
+        },
+        {
+          "value": 3,
+          "label": "明显",
+          "hint": "经常影响生活"
+        },
+        {
+          "value": 4,
+          "label": "严重",
+          "hint": "几乎无法正常活动"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "physical_discomfort",
+        "emotion_mapping": null,
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "progress_required": true
+      },
+      "module": "D",
+      "text": "过去 7 天，你的身体不适（胸闷/心慌/胃胀等）整体有多影响你？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q17_duration",
+      "order": 17,
+      "type": "single_choice",
+      "label": "持续时间",
+      "question_text": "上面提到的这些状态，大概持续了多久？",
+      "options": [
+        {
+          "value": "lt_3d",
+          "label": "少于3天"
+        },
+        {
+          "value": "3_6d",
+          "label": "3-6天"
+        },
+        {
+          "value": "1_2w",
+          "label": "1-2周"
+        },
+        {
+          "value": "2w_1m",
+          "label": "2周-1个月"
+        },
+        {
+          "value": "1_3m",
+          "label": "1-3个月"
+        },
+        {
+          "value": "gt_3m",
+          "label": "超过3个月"
+        }
+      ],
+      "scoring": {
+        "scored": false,
+        "dimension": "duration",
+        "notes": "持续时间，输出到 context.duration，用于缺失信息判断与追问",
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "progress_required": true
+      },
+      "evidence_legend": {
+        "contract_ref": "assessment-contract-v2.1.md：duration 是缺失信息/追问的关键字段"
+      },
+      "module": "E",
+      "text": "上面提到的这些状态，大概持续了多久？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q18_daily_impact",
+      "order": 18,
+      "type": "frequency_0_4",
+      "label": "日常影响",
+      "question_text": "过去 7 天，上述状态有多常影响你的学习、工作、休息或与人相处？",
+      "options": [
+        {
+          "value": 0,
+          "label": "从不",
+          "hint": "过去 7 天没有出现"
+        },
+        {
+          "value": 1,
+          "label": "偶尔",
+          "hint": "出现 1-2 天"
+        },
+        {
+          "value": 2,
+          "label": "有时",
+          "hint": "出现 3-4 天"
+        },
+        {
+          "value": 3,
+          "label": "经常",
+          "hint": "出现 5-6 天"
+        },
+        {
+          "value": 4,
+          "label": "几乎每天",
+          "hint": "基本每天出现"
+        }
+      ],
+      "scoring": {
+        "scored": true,
+        "dimension": "daily_impact",
+        "emotion_mapping": null,
+        "weight": 1.0,
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "progress_required": true
+      },
+      "module": "E",
+      "text": "过去 7 天，上述状态有多常影响你的学习、工作、休息或与人相处？",
+      "time_window": "过去7天"
+    },
+    {
+      "question_id": "q19_self_harm",
+      "order": 19,
+      "type": "single_choice",
+      "label": "自伤筛查",
+      "question_text": "过去 7 天，你有没有想过伤害自己？",
+      "options": [
+        {
+          "value": "never",
+          "label": "完全没有"
+        },
+        {
+          "value": "thoughts",
+          "label": "偶尔有想法"
+        },
+        {
+          "value": "plans",
+          "label": "有具体计划"
+        }
+      ],
+      "scoring": {
+        "scored": false,
+        "dimension": null,
+        "notes": "安全筛查题；选择 thoughts 或 plans 时触发 urgent_attention_self_harm，阻断处方",
+        "safety_trigger": {
+          "values": [
+            "thoughts",
+            "plans"
+          ],
+          "flag": "urgent_attention_self_harm"
+        },
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "icon_required": false
+      },
+      "rules": [
+        "选择 thoughts/plans 时立即显示安全提示"
+      ],
+      "module": "F",
+      "text": "过去 7 天，你有没有想过伤害自己？",
+      "time_window": "当前"
+    },
+    {
+      "question_id": "q20_chest_breathing",
+      "order": 20,
+      "type": "single_choice",
+      "label": "急症筛查",
+      "question_text": "你现在有没有以下情况？",
+      "options": [
+        {
+          "value": "none",
+          "label": "都没有"
+        },
+        {
+          "value": "severe_chest_pain",
+          "label": "严重或持续胸痛"
+        },
+        {
+          "value": "severe_breathing_difficulty",
+          "label": "明显呼吸困难"
+        }
+      ],
+      "scoring": {
+        "scored": false,
+        "dimension": null,
+        "notes": "安全筛查题；选择高风险项时触发 urgent_attention，阻断处方",
+        "safety_trigger": {
+          "values": [
+            "severe_chest_pain",
+            "severe_breathing_difficulty"
+          ],
+          "flag": "urgent_attention"
+        },
+        "reverse_scored": false
+      },
+      "ui": {
+        "layout": "button-row",
+        "icon_required": false
+      },
+      "rules": [
+        "选择高风险项时立即显示安全提示"
+      ],
+      "module": "F",
+      "text": "你现在有没有以下情况？",
+      "time_window": "当前"
+    }
+  ],
+  "disclaimers": {
+    "fixed_disclaimer": "本结果用于状态评估与音乐调养参考，不构成医学诊断或治疗建议。如有明显或持续不适，请及时寻求专业帮助。"
+  },
+  "evidence_legend": {
+    "design_principle": "题目从用户日常感受出发，不预设五志类别；中医情志映射在评估阶段完成",
+    "no_direct_mapping": "禁止单题直接决定证型、脏腑或调式",
+    "worry_control_rule": "Q04 worry_control 仅定性记录（契约 A5 方案 A），不进入定量维度，避免与 Q03 双重计分",
+    "reverse_scored": "Q11 积极体验为反向计分题（值越高表示积极体验越少），维度聚合时按反向处理",
+    "safety_first": "F 组安全筛查（Q19/Q20）先于 LLM 执行，命中即阻断",
+    "image_constraints": [
+      "图形只帮助表达，不能成为隐蔽的医学硬编码",
+      "天气类比只作体验和上下文，不单独决定辨证"
+    ]
+  }
+}
