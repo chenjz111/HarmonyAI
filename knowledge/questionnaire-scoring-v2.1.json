@@ -1,0 +1,177 @@
+{
+  "schema_version": "questionnaire_scoring_v2.1",
+  "collection_id": "questionnaire-scoring-v2.1",
+  "version": "1.0.0",
+  "created": "2026-08-06",
+  "author": "肖宇翔（nob）· Medical Knowledge Engineer",
+  "status": "reviewed-by-nob",
+  "spec_ref": "docs/sprint4/questionnaire-contract-v2.1.md + assessment-contract-v2.1.md + product-flow.md（陈家智契约）",
+  "scoring_principles": {
+    "deterministic": "所有问卷分数可复现，不由 Qwen 自由生成",
+    "raw_scale": "维度分数使用 raw 0-4（契约规范：不使用 0-100 原始分数）",
+    "layered_display": "展示用分层文本（产品流程 4.1），不用 0-100",
+    "exclude_from_scoring": ["q01_goal", "q02_mood_weather", "q04_worry_control", "q16_physical_safety", "q17_duration", "q19_self_harm", "q20_chest_breathing"],
+    "backend_authoritative": "dimension_scores 由后端重新计算，不能信任前端提交值",
+    "single_question_no_diagnosis": "单题不能直接决定证型或情绪；组合维度才有 candidate_syndromes",
+    "Qwen_independent_safety": "安全规则先于 LLM 执行，Qwen 不可用时仍生效",
+    "worry_control_qualitative": "q04 worry_control 仅作为 context.worry_control 定性字段（契约 A5 方案 A），避免 double-count"
+  },
+  "display_layers": {
+    "formula": "按维度 raw 均值分层（契约 product-flow.md 4.1）",
+    "layers": [
+      {"range": [0, 0.75], "label": "当前不明显"},
+      {"range": [0.76, 1.75], "label": "轻微出现"},
+      {"range": [1.76, 2.75], "label": "有一定表现"},
+      {"range": [2.76, 3.50], "label": "较明显"},
+      {"range": [3.51, 4.00], "label": "持续或非常明显"}
+    ]
+  },
+  "dimensions": {
+    "tension_worry": {"source_question": "q03_tension_freq", "raw_score_range": [0, 4], "weight": 1.0},
+    "overthinking": {"source_question": "q05_overthinking", "raw_score_range": [0, 4], "weight": 1.0, "score_map": {"calm": 0, "ripple": 1, "waves": 2, "swell": 3, "storm": 4}},
+    "irritability_anger": {"source_question": "q06_irritability", "raw_score_range": [0, 4], "weight": 1.0},
+    "concentration": {"source_question": "q07_concentration", "raw_score_range": [0, 4], "weight": 1.0},
+    "low_mood": {"source_question": "q08_low_mood", "raw_score_range": [0, 4], "weight": 1.0},
+    "interest_loss": {"source_question": "q09_interest_loss", "raw_score_range": [0, 4], "weight": 1.0},
+    "social_function": {"source_question": "q10_social_function", "raw_score_range": [0, 4], "weight": 1.0},
+    "positive_experience": {"source_question": "q11_positive_experience", "raw_score_range": [0, 4], "weight": 1.0, "reverse_scored": true, "notes": "反向计分：选项 0=几乎每天积极 → 4=从不积极，值越高积极体验越少"},
+    "sleep_disturbance": {"source_question": "q12_sleep", "raw_score_range": [0, 4], "weight": 1.0},
+    "low_energy": {"source_question": "q13_energy", "raw_score_range": [0, 4], "weight": 1.0, "score_map": {"full": 0, "three_quarters": 1, "half": 2, "quarter": 3, "empty": 4}},
+    "appetite_change": {"source_question": "q14_appetite", "raw_score_range": [0, 4], "weight": 1.0},
+    "physical_discomfort": {"source_question": "q16_physical_safety", "raw_score_range": [0, 4], "weight": 1.0},
+    "daily_impact": {"source_question": "q18_daily_impact", "raw_score_range": [0, 4], "weight": 1.0}
+  },
+  "qualitative_fields": {
+    "worry_control": {
+      "source_question": "q04_worry_control",
+      "output_field": "context.worry_control",
+      "value_options": ["able", "partial", "hard"],
+      "usage": "仅作为评估上下文标签；不参与任何组合维度计算，避免与 q03 tension_worry 双重计分（契约 A5 方案 A）"
+    },
+    "duration": {
+      "source_question": "q17_duration",
+      "output_field": "context.duration",
+      "value_options": ["lt_3d", "3_6d", "1_2w", "2w_1m", "1_3m", "gt_3m"],
+      "usage": "持续时间，用于缺失信息判断与动态追问（契约 MissingInformation.duration）"
+    },
+    "user_goal": {
+      "source_question": "q01_goal",
+      "output_field": "user_goal",
+      "value_options": ["relaxation", "understand_state", "sleep_improve", "emotion_improve", "energy_improve", "just_try"],
+      "usage": "本次评估目标，输出到 Assessment.user_goal"
+    }
+  },
+  "combinations": {
+    "紧张负担": {
+      "dimensions": ["tension_worry"],
+      "method": "value",
+      "label": "紧张与担忧",
+      "purpose": "反映紧张频率（Q03）；worry_control 为定性上下文不参与",
+      "candidate_syndromes": ["syd_001", "syd_003", "syd_007", "syd_008"]
+    },
+    "反复思虑": {
+      "dimensions": ["overthinking", "concentration"],
+      "method": "average",
+      "label": "思虑与专注",
+      "purpose": "反映反复思虑与注意力负担",
+      "candidate_syndromes": ["syd_004", "syd_005"]
+    },
+    "烦躁状态": {
+      "dimensions": ["irritability_anger"],
+      "method": "value",
+      "label": "烦躁易怒",
+      "purpose": "反映烦躁易怒程度",
+      "candidate_syndromes": ["syd_001", "syd_003"]
+    },
+    "低落与兴趣": {
+      "dimensions": ["low_mood", "interest_loss", "social_function", "positive_experience"],
+      "method": "average",
+      "label": "低落、兴趣与积极体验",
+      "purpose": "反映抑郁倾向（含反向计分的积极体验）",
+      "candidate_syndromes": ["syd_002", "syd_006"]
+    },
+    "身体与生活负担": {
+      "dimensions": ["sleep_disturbance", "low_energy", "appetite_change", "physical_discomfort", "daily_impact"],
+      "method": "average",
+      "label": "身体与生活综合负担",
+      "purpose": "反映睡眠/精力/食欲/身体不适/日常影响综合负担",
+      "candidate_syndromes": ["syd_002", "syd_004", "syd_005", "syd_006", "syd_007"]
+    }
+  },
+  "evidence_coverage_score": {
+    "formula": "coverage = (有证据的维度数 / 总维度数) × 来源多样性系数（契约 sprint4-scope.md A6）",
+    "source_diversity": "min(1.0, 不同 source_type 数量 / 3)；source_type ∈ {questionnaire, narrative, document}",
+    "examples": [
+      {"desc": "三源都有且维度全覆盖", "coverage": 1.0},
+      {"desc": "仅问卷", "coverage": 0.50}
+    ],
+    "thresholds": {
+      "follow_up_trigger": 0.70,
+      "note": "evidence_coverage < 0.70 或有冲突 → 生成动态追问（契约 product-flow.md 三）"
+    }
+  },
+  "result_display_chain": {
+    "order": [
+      "输入处理状态（问卷/文本/材料各自状态）",
+      "状态摘要",
+      "情绪维度（分层展示 + 证据来源标签）",
+      "身体信号",
+      "生活事件",
+      "冲突信息（如有）",
+      "缺失信息（如有）",
+      "动态追问（0-6 题）",
+      "用户确认 → Diagnosis"
+    ],
+    "constraints": [
+      "输出只能称'状态评估'或'辅助辨证倾向'",
+      "每条辨证倾向至少显示一条可理解依据",
+      "页面固定显示'不构成医学诊断'声明",
+      "worry_control 不得作为辨证依据单独出现",
+      "情绪维度不使用 0-100 分数，用分层文本（当前不明显/轻微出现/有一定表现/较明显/持续或非常明显）",
+      "每个结论旁显示来源标签（问卷/文本/材料/追问/修正）"
+    ]
+  },
+  "output_schema": {
+    "schema_version": "questionnaire_v2.1",
+    "time_window_days": 7,
+    "started_at": "ISO8601 string",
+    "completed_at": "ISO8601 string",
+    "answers": [
+      {
+        "question_id": "string",
+        "type": "enum[visual_single|frequency_0_4|visual_multi|single_choice|qualitative_3]",
+        "value": "string|number|array",
+        "score": "number|null"
+      }
+    ],
+    "dimension_scores": {
+      "tension_worry": 0,
+      "overthinking": 0,
+      "irritability_anger": 0,
+      "concentration": 0,
+      "low_mood": 0,
+      "interest_loss": 0,
+      "social_function": 0,
+      "positive_experience": 0,
+      "sleep_disturbance": 0,
+      "low_energy": 0,
+      "appetite_change": 0,
+      "physical_discomfort": 0,
+      "daily_impact": 0
+    },
+    "context": {
+      "mood_metaphor": "string",
+      "worry_control": "string|null",
+      "duration": "string|null",
+      "physical_signals": ["string"]
+    },
+    "user_goal": "string|null",
+    "evidence_coverage_score": 0.0,
+    "safety_flags": ["string"],
+    "completion_seconds": 0
+  },
+  "evidence_legend": {
+    "五级证据标记": "[直接证据]/[病机相关]/[旁证-同类证型]/[旁证-五行归属]/[经典理论]（详见 emotion-to-syndrome.json）",
+    "本地扩展": "该标记体系为 nob 本地扩展，未写入陈家智 knowledge-architecture.md spec"
+  }
+}
