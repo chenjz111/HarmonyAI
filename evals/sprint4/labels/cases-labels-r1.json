@@ -1,0 +1,1136 @@
+{
+  "schema_version": "s4_labels_r1_contract_v2.1",
+  "total": 60,
+  "labels": [
+    {
+      "case_id": "S4_C001",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.23,
+      "evidence_item_count": 9,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C002",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.23,
+      "evidence_item_count": 9,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C003",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.15,
+      "evidence_item_count": 6,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C004",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_006"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C005",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.23,
+      "evidence_item_count": 9,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C006",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_006"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.18,
+      "evidence_item_count": 7,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C007",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.15,
+      "evidence_item_count": 6,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C008",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.13,
+      "evidence_item_count": 5,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C009",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.18,
+      "evidence_item_count": 7,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C010",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.18,
+      "evidence_item_count": 7,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C011",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_004",
+        "syd_005",
+        "syd_006",
+        "syd_007"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.15,
+      "evidence_item_count": 6,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C012",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_004",
+        "syd_005",
+        "syd_006",
+        "syd_007"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.13,
+      "evidence_item_count": 5,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C013",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C014",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_004",
+        "syd_005",
+        "syd_006",
+        "syd_007"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.15,
+      "evidence_item_count": 6,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C015",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.15,
+      "evidence_item_count": 6,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C016",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.13,
+      "evidence_item_count": 5,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C017",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_004",
+        "syd_005",
+        "syd_006",
+        "syd_007"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.13,
+      "evidence_item_count": 5,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C018",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_004",
+        "syd_005",
+        "syd_006",
+        "syd_007"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.1,
+      "evidence_item_count": 4,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C019",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": null,
+      "candidate_syndromes": [],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.08,
+      "evidence_item_count": 3,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C020",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": null,
+      "candidate_syndromes": [],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.03,
+      "evidence_item_count": 1,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C021",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": null,
+      "candidate_syndromes": [],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.1,
+      "evidence_item_count": 4,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C022",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_006"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.13,
+      "evidence_item_count": 5,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C023",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_006"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.1,
+      "evidence_item_count": 4,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C024",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.13,
+      "evidence_item_count": 5,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C025",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.13,
+      "evidence_item_count": 5,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C026",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.18,
+      "evidence_item_count": 7,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C027",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.13,
+      "evidence_item_count": 5,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C028",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C029",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.18,
+      "evidence_item_count": 7,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C030",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "fine",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_004",
+        "syd_005",
+        "syd_006",
+        "syd_007"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.13,
+      "evidence_item_count": 5,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C031",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_004",
+        "syd_005",
+        "syd_006",
+        "syd_007"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C032",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.26,
+      "evidence_item_count": 10,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C033",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C034",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C035",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": null,
+      "candidate_syndromes": [],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C036",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.15,
+      "evidence_item_count": 6,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C037",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.26,
+      "evidence_item_count": 10,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C038",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C039",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_004",
+        "syd_005",
+        "syd_006",
+        "syd_007"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.26,
+      "evidence_item_count": 10,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C040",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.26,
+      "evidence_item_count": 10,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C041",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.15,
+      "evidence_item_count": 6,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C042",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.26,
+      "evidence_item_count": 10,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C043",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C044",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.23,
+      "evidence_item_count": 9,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C045",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_004",
+        "syd_005",
+        "syd_006",
+        "syd_007"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.26,
+      "evidence_item_count": 10,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C046",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.18,
+      "evidence_item_count": 7,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C047",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.23,
+      "evidence_item_count": 9,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C048",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.31,
+      "evidence_item_count": 12,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C049",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": null,
+      "candidate_syndromes": [],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C050",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.23,
+      "evidence_item_count": 9,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C051",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.28,
+      "evidence_item_count": 11,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C052",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.33,
+      "evidence_item_count": 13,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C053",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003",
+        "syd_007",
+        "syd_008"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.15,
+      "evidence_item_count": 6,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C054",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.31,
+      "evidence_item_count": 12,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C055",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_006"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.31,
+      "evidence_item_count": 12,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C056",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": null,
+      "candidate_syndromes": [],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.18,
+      "evidence_item_count": 7,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C057",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_002",
+      "candidate_syndromes": [
+        "syd_002",
+        "syd_006"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.15,
+      "evidence_item_count": 6,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C058",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_004",
+      "candidate_syndromes": [
+        "syd_004",
+        "syd_005"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.26,
+      "evidence_item_count": 10,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C059",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": null,
+      "candidate_syndromes": [],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.23,
+      "evidence_item_count": 9,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    },
+    {
+      "case_id": "S4_C060",
+      "annotator": "nob",
+      "annotated_at": "2026-08-06",
+      "round": 1,
+      "precision": "basic",
+      "analysis_mode": "questionnaire_only",
+      "primary_syndrome": "syd_001",
+      "candidate_syndromes": [
+        "syd_001",
+        "syd_003"
+      ],
+      "safety_flags": [],
+      "evidence_coverage_score": 0.21,
+      "evidence_item_count": 8,
+      "conflict_count": 0,
+      "missing_info_count": 0
+    }
+  ]
+}
