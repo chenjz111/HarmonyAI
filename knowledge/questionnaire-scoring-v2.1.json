@@ -1,177 +1,255 @@
 {
   "schema_version": "questionnaire_scoring_v2.1",
-  "collection_id": "questionnaire-scoring-v2.1",
-  "version": "1.0.0",
+  "collection_id": "harmonyai-questionnaire-scoring-v2.1",
+  "version": "2.1",
   "created": "2026-08-06",
-  "author": "肖宇翔（nob）· Medical Knowledge Engineer",
-  "status": "reviewed-by-nob",
-  "spec_ref": "docs/sprint4/questionnaire-contract-v2.1.md + assessment-contract-v2.1.md + product-flow.md（陈家智契约）",
-  "scoring_principles": {
-    "deterministic": "所有问卷分数可复现，不由 Qwen 自由生成",
-    "raw_scale": "维度分数使用 raw 0-4（契约规范：不使用 0-100 原始分数）",
-    "layered_display": "展示用分层文本（产品流程 4.1），不用 0-100",
-    "exclude_from_scoring": ["q01_goal", "q02_mood_weather", "q04_worry_control", "q16_physical_safety", "q17_duration", "q19_self_harm", "q20_chest_breathing"],
-    "backend_authoritative": "dimension_scores 由后端重新计算，不能信任前端提交值",
-    "single_question_no_diagnosis": "单题不能直接决定证型或情绪；组合维度才有 candidate_syndromes",
-    "Qwen_independent_safety": "安全规则先于 LLM 执行，Qwen 不可用时仍生效",
-    "worry_control_qualitative": "q04 worry_control 仅作为 context.worry_control 定性字段（契约 A5 方案 A），避免 double-count"
-  },
-  "display_layers": {
-    "formula": "按维度 raw 均值分层（契约 product-flow.md 4.1）",
-    "layers": [
-      {"range": [0, 0.75], "label": "当前不明显"},
-      {"range": [0.76, 1.75], "label": "轻微出现"},
-      {"range": [1.76, 2.75], "label": "有一定表现"},
-      {"range": [2.76, 3.50], "label": "较明显"},
-      {"range": [3.51, 4.00], "label": "持续或非常明显"}
-    ]
-  },
+  "updated": "2026-08-09",
+  "author": "nob",
+  "status": "review_pending",
+  "spec_ref": "docs/sprint4/questionnaire-contract-v2.1.md §7",
+  "scoring_principles": [
+    "single_question_no_diagnosis: 单题不能直接决定证型，证型由领域聚合 + 多源证据共同确定",
+    "every_scored_question_has_dimension: 每道计分题明确标注对应维度",
+    "safety_questions_bypass_scoring: 安全题只做分流入安全流程，不参与状态评分",
+    "visual_questions_preserve_semantics_and_values: 视觉题同时保存语义字符串和数值分数",
+    "appetite_direction_preserved_separately: 食欲变化必须分方向 increase/decrease/none，不简单合并",
+    "reverse_scored_explicit: 正向题标记 reverse_scored: true"
+  ],
+  "display_layers": [
+    {"range": [0.0, 0.75], "label": "当前不明显", "note": "非临床阈值，仅内部状态分层"},
+    {"range": [0.76, 1.75], "label": "轻微出现", "note": "非临床阈值，仅内部状态分层"},
+    {"range": [1.76, 2.75], "label": "有一定表现", "note": "非临床阈值，仅内部状态分层"},
+    {"range": [2.76, 3.50], "label": "较明显", "note": "非临床阈值，仅内部状态分层"},
+    {"range": [3.51, 4.00], "label": "持续或非常明显", "note": "非临床阈值，仅内部状态分层"}
+  ],
   "dimensions": {
-    "tension_worry": {"source_question": "q03_tension_freq", "raw_score_range": [0, 4], "weight": 1.0},
-    "overthinking": {"source_question": "q05_overthinking", "raw_score_range": [0, 4], "weight": 1.0, "score_map": {"calm": 0, "ripple": 1, "waves": 2, "swell": 3, "storm": 4}},
-    "irritability_anger": {"source_question": "q06_irritability", "raw_score_range": [0, 4], "weight": 1.0},
-    "concentration": {"source_question": "q07_concentration", "raw_score_range": [0, 4], "weight": 1.0},
-    "low_mood": {"source_question": "q08_low_mood", "raw_score_range": [0, 4], "weight": 1.0},
-    "interest_loss": {"source_question": "q09_interest_loss", "raw_score_range": [0, 4], "weight": 1.0},
-    "social_function": {"source_question": "q10_social_function", "raw_score_range": [0, 4], "weight": 1.0},
-    "positive_experience": {"source_question": "q11_positive_experience", "raw_score_range": [0, 4], "weight": 1.0, "reverse_scored": true, "notes": "反向计分：选项 0=几乎每天积极 → 4=从不积极，值越高积极体验越少"},
-    "sleep_disturbance": {"source_question": "q12_sleep", "raw_score_range": [0, 4], "weight": 1.0},
-    "low_energy": {"source_question": "q13_energy", "raw_score_range": [0, 4], "weight": 1.0, "score_map": {"full": 0, "three_quarters": 1, "half": 2, "quarter": 3, "empty": 4}},
-    "appetite_change": {"source_question": "q14_appetite", "raw_score_range": [0, 4], "weight": 1.0},
-    "physical_discomfort": {"source_question": "q16_physical_safety", "raw_score_range": [0, 4], "weight": 1.0},
-    "daily_impact": {"source_question": "q18_daily_impact", "raw_score_range": [0, 4], "weight": 1.0}
-  },
-  "qualitative_fields": {
+    "tension_worry": {
+      "source_question": "q03_tension_worry",
+      "type": "frequency_0_4",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "direct"
+    },
     "worry_control": {
       "source_question": "q04_worry_control",
-      "output_field": "context.worry_control",
-      "value_options": ["able", "partial", "hard"],
-      "usage": "仅作为评估上下文标签；不参与任何组合维度计算，避免与 q03 tension_worry 双重计分（契约 A5 方案 A）"
+      "type": "frequency_0_4",
+      "scored": false,
+      "reverse_scored": false,
+      "weight": 0,
+      "aggregation": "qualitative",
+      "notes": "定性记录，输出到 context.worry_control，不参与 tension_worry 聚合，避免 double-count（契约方案A）"
     },
-    "duration": {
-      "source_question": "q17_duration",
-      "output_field": "context.duration",
-      "value_options": ["lt_3d", "3_6d", "1_2w", "2w_1m", "1_3m", "gt_3m"],
-      "usage": "持续时间，用于缺失信息判断与动态追问（契约 MissingInformation.duration）"
+    "overthinking": {
+      "source_question": "q05_overthinking",
+      "type": "visual_single",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "direct",
+      "score_map": {"calm": 0, "ripple": 1, "waves": 2, "swell": 3, "storm": 4}
     },
-    "user_goal": {
-      "source_question": "q01_goal",
-      "output_field": "user_goal",
-      "value_options": ["relaxation", "understand_state", "sleep_improve", "emotion_improve", "energy_improve", "just_try"],
-      "usage": "本次评估目标，输出到 Assessment.user_goal"
+    "irritability_anger": {
+      "source_question": "q06_irritability_anger",
+      "type": "frequency_0_4",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "direct"
+    },
+    "fear_unease": {
+      "source_question": "q07_fear_unease",
+      "type": "frequency_0_4",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "direct"
+    },
+    "low_mood": {
+      "source_question": "q08_low_mood",
+      "type": "frequency_0_4",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "direct"
+    },
+    "interest_loss": {
+      "source_question": "q09_interest_loss",
+      "type": "frequency_0_4",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "direct"
+    },
+    "calm_wellbeing": {
+      "source_question": "q10_calm_wellbeing",
+      "type": "frequency_0_4",
+      "scored": true,
+      "reverse_scored": true,
+      "weight": 1.0,
+      "aggregation": "direct_reverse",
+      "reverse_formula": "calm_wellbeing_reversed = 4 - raw_score"
+    },
+    "emotional_recovery": {
+      "source_question": "q11_emotional_recovery",
+      "type": "single_choice",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "direct",
+      "score_map": {"quick": 0, "fast": 1, "moderate": 2, "slow": 3, "very_slow": 4}
+    },
+    "sleep_disturbance": {
+      "source_question": "q12_sleep_disturbance",
+      "type": "frequency_0_4",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "domain_average",
+      "domain": "sleep",
+      "notes": "Q12=入睡过程问题"
+    },
+    "unrefreshing_sleep": {
+      "source_question": "q13_unrefreshing_sleep",
+      "type": "frequency_0_4",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "domain_average",
+      "domain": "sleep",
+      "notes": "Q13=醒来感受，与 Q12 区分"
+    },
+    "low_energy": {
+      "source_question": "q14_low_energy",
+      "type": "visual_single",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "direct",
+      "score_map": {"full": 0, "three_quarters": 1, "half": 2, "quarter": 3, "empty": 4}
+    },
+    "appetite_change": {
+      "source_question": "q15_appetite_change",
+      "type": "single_choice",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "directional",
+      "notes": "保存 {direction: increase|decrease|none, severity: 0-4}。direction=none 时 severity 强制为 0",
+      "direction_values": ["increase", "decrease", "none"]
+    },
+    "daily_impact": {
+      "source_question": "q18_daily_impact",
+      "type": "frequency_0_4",
+      "scored": true,
+      "reverse_scored": false,
+      "weight": 1.0,
+      "aggregation": "direct"
+    },
+    "physical_signals": {
+      "source_question": "q16_physical_signals",
+      "type": "multi_choice",
+      "scored": false,
+      "reverse_scored": false,
+      "weight": 0,
+      "aggregation": "evidence_only",
+      "notes": "只记录证据（evidence items），不直接映射证型"
     }
   },
-  "combinations": {
-    "紧张负担": {
-      "dimensions": ["tension_worry"],
-      "method": "value",
-      "label": "紧张与担忧",
-      "purpose": "反映紧张频率（Q03）；worry_control 为定性上下文不参与",
-      "candidate_syndromes": ["syd_001", "syd_003", "syd_007", "syd_008"]
-    },
-    "反复思虑": {
-      "dimensions": ["overthinking", "concentration"],
-      "method": "average",
-      "label": "思虑与专注",
-      "purpose": "反映反复思虑与注意力负担",
-      "candidate_syndromes": ["syd_004", "syd_005"]
-    },
-    "烦躁状态": {
-      "dimensions": ["irritability_anger"],
-      "method": "value",
-      "label": "烦躁易怒",
-      "purpose": "反映烦躁易怒程度",
-      "candidate_syndromes": ["syd_001", "syd_003"]
-    },
-    "低落与兴趣": {
-      "dimensions": ["low_mood", "interest_loss", "social_function", "positive_experience"],
-      "method": "average",
-      "label": "低落、兴趣与积极体验",
-      "purpose": "反映抑郁倾向（含反向计分的积极体验）",
-      "candidate_syndromes": ["syd_002", "syd_006"]
-    },
-    "身体与生活负担": {
-      "dimensions": ["sleep_disturbance", "low_energy", "appetite_change", "physical_discomfort", "daily_impact"],
-      "method": "average",
-      "label": "身体与生活综合负担",
-      "purpose": "反映睡眠/精力/食欲/身体不适/日常影响综合负担",
-      "candidate_syndromes": ["syd_002", "syd_004", "syd_005", "syd_006", "syd_007"]
+  "qualitative_fields": {
+    "worry_control": {"source": "q04_worry_control", "notes": "定性记录，避免与 tension_worry double-count"},
+    "user_goal": {"source": "q01_user_goal", "notes": "影响音乐目标，不计分"},
+    "duration": {"source": "q17_duration", "notes": "不计分，影响评估时长维度"},
+    "mood_weather": {"source": "q02_mood_weather", "notes": "表达辅助，不计分"}
+  },
+  "domain_aggregation": {
+    "formula": "维度得分 = Σ(题目得分 × 题目权重) / Σ(题目权重)",
+    "domains": {
+      "sleep": {
+        "label": "睡眠领域",
+        "members": [
+          {"question": "q12_sleep_disturbance", "weight": 1.0, "note": "Q12=入睡过程"},
+          {"question": "q13_unrefreshing_sleep", "weight": 1.0, "note": "Q13=醒来感受"}
+        ],
+        "example": "sleep_disturbance = (Q12 × 1.0 + Q13 × 1.0) / 2.0"
+      },
+      "negative_affect": {
+        "label": "负性情绪领域",
+        "members": [
+          {"question": "q03_tension_worry", "weight": 1.0},
+          {"question": "q06_irritability_anger", "weight": 1.0},
+          {"question": "q07_fear_unease", "weight": 1.0},
+          {"question": "q08_low_mood", "weight": 1.0}
+        ],
+        "notes": "仅用于展示聚合，单题不直接决定证型"
+      },
+      "cognitive": {
+        "label": "认知领域",
+        "members": [
+          {"question": "q05_overthinking", "weight": 1.0},
+          {"question": "q04_worry_control", "weight": 0, "note": "定性，不参与数值聚合"}
+        ],
+        "notes": "worry_control 只作上下文标签"
+      }
     }
   },
-  "evidence_coverage_score": {
-    "formula": "coverage = (有证据的维度数 / 总维度数) × 来源多样性系数（契约 sprint4-scope.md A6）",
-    "source_diversity": "min(1.0, 不同 source_type 数量 / 3)；source_type ∈ {questionnaire, narrative, document}",
-    "examples": [
-      {"desc": "三源都有且维度全覆盖", "coverage": 1.0},
-      {"desc": "仅问卷", "coverage": 0.50}
-    ],
-    "thresholds": {
-      "follow_up_trigger": 0.70,
-      "note": "evidence_coverage < 0.70 或有冲突 → 生成动态追问（契约 product-flow.md 三）"
-    }
+  "reverse_scoring": {
+    "calm_wellbeing": {"formula": "4 - raw_score", "note": "高分=好状态，反向计分后高分=状态差"}
   },
-  "result_display_chain": {
-    "order": [
-      "输入处理状态（问卷/文本/材料各自状态）",
-      "状态摘要",
-      "情绪维度（分层展示 + 证据来源标签）",
-      "身体信号",
-      "生活事件",
-      "冲突信息（如有）",
-      "缺失信息（如有）",
-      "动态追问（0-6 题）",
-      "用户确认 → Diagnosis"
-    ],
-    "constraints": [
-      "输出只能称'状态评估'或'辅助辨证倾向'",
-      "每条辨证倾向至少显示一条可理解依据",
-      "页面固定显示'不构成医学诊断'声明",
-      "worry_control 不得作为辨证依据单独出现",
-      "情绪维度不使用 0-100 分数，用分层文本（当前不明显/轻微出现/有一定表现/较明显/持续或非常明显）",
-      "每个结论旁显示来源标签（问卷/文本/材料/追问/修正）"
+  "appetite_handling": {
+    "format": {
+      "appetite_change": {
+        "direction": "decrease|increase|none",
+        "severity": 0,
+        "severity_display": "较明显下降",
+        "source": "q15_appetite_change"
+      }
+    },
+    "rules": [
+      "direction=none 时 severity 强制为 0",
+      "direction 必须显式保存，不允许简单合并为单一分数"
     ]
   },
-  "output_schema": {
-    "schema_version": "questionnaire_v2.1",
-    "time_window_days": 7,
-    "started_at": "ISO8601 string",
-    "completed_at": "ISO8601 string",
-    "answers": [
-      {
-        "question_id": "string",
-        "type": "enum[visual_single|frequency_0_4|visual_multi|single_choice|qualitative_3]",
-        "value": "string|number|array",
-        "score": "number|null"
-      }
+  "safety_routing": {
+    "rules": [
+      {"trigger": "q19_self_harm 选择 sometimes/often/concrete_plan", "flag": "SAFETY_SELF_HARM", "action": "进入安全流程，不进入 Prescription/Music Agent"},
+      {"trigger": "q20_emergency 选择任何紧急情况", "flag": "SAFETY_EMERGENCY_PHYSICAL", "action": "进入安全流程，不进入 Prescription/Music Agent"}
     ],
-    "dimension_scores": {
-      "tension_worry": 0,
-      "overthinking": 0,
-      "irritability_anger": 0,
-      "concentration": 0,
-      "low_mood": 0,
-      "interest_loss": 0,
-      "social_function": 0,
-      "positive_experience": 0,
-      "sleep_disturbance": 0,
-      "low_energy": 0,
-      "appetite_change": 0,
-      "physical_discomfort": 0,
-      "daily_impact": 0
-    },
-    "context": {
-      "mood_metaphor": "string",
-      "worry_control": "string|null",
-      "duration": "string|null",
-      "physical_signals": ["string"]
-    },
-    "user_goal": "string|null",
+    "bypass": "Q19/Q20 答案不进入状态评分"
+  },
+  "evidence_coverage_score": {
+    "formula": "coverage = (有证据维度数 / 总维度数) × 来源多样性系数",
+    "total_dimensions": 14,
+    "source_diversity_coefficient": {"1_source": 0.8, "2_sources": 0.9, "3_sources": 1.0},
+    "threshold": {"follow_up_trigger": 0.70}
+  },
+  "result_display_chain": [
+    "raw 得分计算（含反向计分）",
+    "领域聚合（加权平均）",
+    "display_layers 分层映射",
+    "证据覆盖度计算",
+    "安全分流检查（Q19/Q20 优先）"
+  ],
+  "output_schema": {
+    "dimension_scores": {"tension_worry": 0.0, "overthinking": 0, "irritability_anger": 0, "fear_unease": 0, "low_mood": 0, "interest_loss": 0, "calm_wellbeing": 0, "emotional_recovery": 0, "sleep_disturbance": 0, "unrefreshing_sleep": 0, "low_energy": 0, "daily_impact": 0},
+    "domain_scores": {"sleep": 0.0, "negative_affect": 0.0, "cognitive": 0.0},
+    "qualitative": {"worry_control": null, "user_goal": null, "duration": null, "mood_weather": null},
+    "appetite": {"direction": null, "severity": 0},
+    "physical_signals": [],
+    "safety_flags": [],
+    "display_levels": {},
     "evidence_coverage_score": 0.0,
-    "safety_flags": ["string"],
-    "completion_seconds": 0
+    "candidate_syndromes": []
+  },
+  "combination_principles": {
+    "rule": "candidate_syndromes 只能在组合/领域层输出，单题不直接给出证型候选",
+    "note": "证型候选由领域聚合 + 多源证据共同确定，作为后续组合分析候选"
   },
   "evidence_legend": {
-    "五级证据标记": "[直接证据]/[病机相关]/[旁证-同类证型]/[旁证-五行归属]/[经典理论]（详见 emotion-to-syndrome.json）",
-    "本地扩展": "该标记体系为 nob 本地扩展，未写入陈家智 knowledge-architecture.md spec"
+    "direct": "直接证据",
+    "mechanism": "病机相关",
+    "analogous_syndrome": "旁证-同类证型",
+    "five_element": "旁证-五行归属",
+    "classical": "经典理论/理论依据"
   }
 }
