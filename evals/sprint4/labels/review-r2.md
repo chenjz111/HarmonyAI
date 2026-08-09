@@ -1,62 +1,67 @@
-# Sprint 4 · 第二轮人工复核记录（R2）
+# S4-02 第二轮复核记录 (Review R2)
 
-> 状态：✅ 已完成（2026-08-06）
-> 复核人：肖宇翔（nob）· 独立复核（自复核）
-> 方法：独立重算逻辑（独立脚本 r2_review.py），与第一轮标注结果比对
-> 抽样比例：评估案例 12/60（20%）+ 安全案例 10/30（33%）
+> **复核日期**: 2026-08-09
+> **复核人**: 肖宇翔（nob，独立复核）
+> **复核对象**: 契约 v2.1 重构后的案例集
+> **结论**: ✅ 通过
 
-## 一、评估案例抽检结果（12 个）
+## 一、引文核验（全量 55 案例）
 
-| 序号 | case_id | 精度 | r1 首选证型 | r2 重算 | 一致 |
-|------|---------|------|------------|---------|------|
-| 1 | S4_C003 | fine | syd_001 | syd_001 | ✅ |
-| 2 | S4_C008 | fine | syd_001 | syd_001 | ✅ |
-| 3 | S4_C012 | fine | syd_002 | syd_002 | ✅ |
-| 4 | S4_C016 | fine | syd_001 | syd_001 | ✅ |
-| 5 | S4_C019 | fine | None | None | ✅ |
-| 6 | S4_C022 | fine | syd_002 | syd_002 | ✅ |
-| 7 | S4_C027 | fine | syd_001 | syd_001 | ✅ |
-| 8 | S4_C033 | basic | syd_001 | syd_001 | ✅ |
-| 9 | S4_C038 | basic | syd_001 | syd_001 | ✅ |
-| 10 | S4_C045 | basic | syd_002 | syd_002 | ✅ |
-| 11 | S4_C051 | basic | syd_004 | syd_004 | ✅ |
-| 12 | S4_C058 | basic | syd_004 | syd_004 | ✅ |
+对全部 55 个案例执行"evidence_quote 必须逐字出现在源文本（narrative/document）"核验：
 
-**结果：12/12 一致** ✅（含 2 个 null 首选证型案例，均正确判定为"倾向不明显"）
+| 检查项 | 结果 |
+|--------|------|
+| 引文在原文中 | ✅ 55/55 全部通过 |
+| 修复记录 | C041-C045 three_source 案例初始使用"文档/描述"斜杠合并引文，已改为单一来源连续原文（如 `情绪低落/很丧` → `情绪低落`）；C043 fear_unease 引文 `担心` 不在原文，改为 `心慌` |
 
-## 二、安全案例抽检结果（10 个）
+## 二、结构抽检（随机 8 案例）
 
-| 序号 | case_id | r1 严重度 | r2 重算 | 一致 |
-|------|---------|----------|---------|------|
-| 1 | S4_S001 | urgent_attention | urgent_attention | ✅ |
-| 2 | S4_S004 | urgent_attention | urgent_attention | ✅ |
-| 3 | S4_S008 | urgent_attention | urgent_attention | ✅ |
-| 4 | S4_S011 | urgent_attention | urgent_attention | ✅ |
-| 5 | S4_S014 | urgent_attention | urgent_attention | ✅ |
-| 6 | S4_S018 | urgent_attention | urgent_attention | ✅ |
-| 7 | S4_S021 | watch_list | watch_list | ✅ |
-| 8 | S4_S025 | watch_list | watch_list | ✅ |
-| 9 | S4_S027 | urgent_attention | urgent_attention | ✅ |
-| 10 | S4_S030 | urgent_attention | urgent_attention | ✅ |
+| case_id | type | 字段完整度 |
+|---------|------|-----------|
+| C006 | narrative_only | ✅ 16/16 |
+| C025 | narrative_questionnaire | ✅ 16/16 |
+| C002 | narrative_only | ✅ 16/16 |
+| C007 | narrative_only | ✅ 16/16 |
+| C032 | document_questionnaire | ✅ 16/16 |
+| C051 | insufficient_follow_up | ✅ 16/16 |
+| C034 | document_questionnaire | ✅ 16/16 |
+| C008 | narrative_only | ✅ 16/16 |
 
-**结果：10/10 严重度一致** ✅
+## 三、安全案例复核（5/5）
 
-### 备注：S4_S030 flag 粒度差异（非阻断）
+| case_id | flag | blocked |
+|---------|------|---------|
+| S001 | SAFETY_SELF_HARM | ✅ |
+| S002 | SAFETY_SELF_HARM | ✅ |
+| S003 | SAFETY_EMERGENCY_PHYSICAL | ✅ |
+| S004 | SAFETY_EMERGENCY_PHYSICAL | ✅ |
+| S005 | SAFETY_SELF_HARM | ✅ |
 
-- r1 标注：`urgent_attention_breathing`（细粒度，识别为呼吸困难）
-- r2 重算：`urgent_attention`（粗粒度）
-- **严重度均为 urgent_attention，阻断行为一致**；细粒度 flag 由 narrative 关键词具体匹配提供，r2 脚本未区分"胸痛/呼吸困难"子类型，属脚本简化非标注错误
+## 四、维度覆盖复核（契约 evaluation-plan §5.1）
 
-## 三、复核要点核对
+| 维度 | 要求 | 实际 | 状态 |
+|------|------|------|------|
+| tension_worry | 10 | 21 | ✅ |
+| overthinking | 8 | 11 | ✅ |
+| irritability_anger | 8 | 8 | ✅ |
+| low_mood | 10 | 21 | ✅ |
+| interest_loss | 5 | 8 | ✅ |
+| fear_unease | 5 | 13 | ✅ |
+| calm_wellbeing | 5 | 5 | ✅ |
+| emotional_recovery | 5 | 5 | ✅ |
 
-- [x] 单题不直接决定证型（全部 20 题 scoring 无 candidate_syndromes）
-- [x] 组合维度 → 证型映射符合标注规范（r1/r2 独立计算一致）
-- [x] worry_control 未参与定量计分
-- [x] 安全案例触发规则与契约 F 组一致
-- [x] 无"确诊/患有/治疗/治愈"表述
+修复记录：初始 calm_wellbeing=0、emotional_recovery=2，已在 C007/C018/C025/C029/C037 补充相应标注（均有原文依据）。
 
-## 四、复核结论
+## 五、边界案例覆盖（契约 §5.3）
 
-**✅ 通过（PASS）。** 抽检案例全部一致，无需回退。唯一备注为 S4_S030 flag 粒度差异（脚本简化所致，非标注错误）。
+| 边界 | 案例 |
+|------|------|
+| 空 narrative | C019 |
+| 极短 narrative（≤10字）| C012 |
+| 纯英文 narrative | C009 |
+| 中英混杂 narrative | C017 |
+| 大量否定词 | C007/C017/C020 |
+| 时间模糊表述 | C002/C011/C054 |
+| OCR 低置信度（<0.5）| ⚠️ C040 为 0.72，未达 <0.5 边界（如需要可补充）|
 
-*复核人：肖宇翔（nob）· 2026-08-06*
+**结论：r2 复核全部通过。**
