@@ -139,7 +139,7 @@
 真实音乐生成 API / 扩充曲库 / 修改五音映射 / 用户注册 / 会员支付 / 七日方案 / 可穿戴设备 / 重设计App / Agent改名 / Docker CI/CD / 宣称临床诊断量表
 
 ### 集成分支
-`integration/sprint4-real-input`（已同步 `origin/dev` 并完成 S4-01 hardening；精确提交见分支 HEAD）
+`integration/sprint4-real-input@c456f2b` 已 fast-forward 合并并推送到 `dev`；S4-01 状态为 FROZEN / MERGED。
 
 ### PR 顺序
 S4-01(陈家智,contracts) → S4-02(肖宇翔,问卷+eval) → S4-03(蔡子鑫,OCR+backend) → S4-04(钟睿宸,AI) → S4-05(彭翔,frontend) → S4-06(陈家智,集成验收)
@@ -161,7 +161,7 @@ Day1(契约冻结) → Day2(问卷初稿+PaddleOCR POC) → Day3(契约落地) �
 
 ## Sprint 4 实施进度
 
-### S4-01: 契约 (陈家智) — ✅ 完成
+### S4-01: 契约 (陈家智) — ✅ FROZEN / MERGED
 
 **8 份文档全部就绪**（`docs/sprint4/`）:
 1. `sprint4-scope.md` (277行) — 目标、不做事项、12天排期、风险评估
@@ -179,11 +179,11 @@ Day1(契约冻结) → Day2(问卷初稿+PaddleOCR POC) → Day3(契约落地) �
 
 | # | 负责人 | 状态 |
 |---|---|---|
-| #52 | 陈家智 — Sprint 范围与契约 | ✅ 完成 |
-| #53 | 肖宇翔 — 问卷V2.1与评估集 | ⬜ 待开始 |
-| #54 | 蔡子鑫 — 真实OCR与后端基础 | ⬜ 待开始 |
-| #55 | 钟睿宸 — Assessment与Diagnosis增强 | ⬜ 待开始 |
-| #56 | 彭翔 — uni-app真实产品流程 | ⬜ 待开始 |
+| #52 | 陈家智 — Sprint 范围与契约 | ✅ CLOSED |
+| #53 | 肖宇翔 — 问卷V2.1与评估集 | READY |
+| #54 | 蔡子鑫 — 真实OCR与后端基础 | READY |
+| #55 | 钟睿宸 — Assessment与Diagnosis增强 | READY |
+| #56 | 彭翔 — uni-app真实产品流程 | READY |
 
 ### Contract Tests — ✅ 完成
 
@@ -211,18 +211,18 @@ Day1(契约冻结) → Day2(问卷初稿+PaddleOCR POC) → Day3(契约落地) �
 
 | 项目 | 值 |
 |---|---|
-| dev HEAD | `e0640b3`（已同步到 integration） |
-| integration/sprint4-real-input HEAD | 见当前分支 HEAD（S4-01 hardening） |
+| dev S4-01 Freeze HEAD | `c456f2b662733e9694f749369e7c0e998f515b7f` |
+| integration/sprint4-real-input HEAD | `c456f2b662733e9694f749369e7c0e998f515b7f` |
 | dev领先main | 220 commits |
 | 远程分支 | main / dev / integration/sprint4-real-input |
 | 测试 | 422 passed, 0 failed；Contract 30 passed |
 | Sprint 3 Issues | #43-#51 全部合并, #31/#40/#41 已关闭 |
-| Sprint 4 Issues | #52(✅) / #53(⬜) / #54(⬜) / #55(⬜) / #56(⬜) |
+| Sprint 4 Issues | #52(CLOSED) / #53(READY) / #54(READY) / #55(READY) / #56(READY) |
 
 ### 当前阻塞项
 | # | 阻塞项 | 负责人 | 影响 |
 |---|---|---|---|
-| 1 | S4-01 merge到dev | 陈家智 | Contract 已冻结并通过测试，等待合并决定 |
+| — | 无 | — | Q04 已冻结，不再存在 blocker |
 
 
 ---
@@ -299,6 +299,7 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 08-05~06: Competition Freeze Review → PR #51 合并 → README/main.py 更新
 - 08-06: 仓库清理 (18旧分支+3旧Issue) → Sprint 4 规划最终定稿
 - 08-06~08: Sprint 4 契约7文档 + Contract Tests + 审查报告
+- 08-10: S4-01 Contract FROZEN，经 Final Gate 后 fast-forward 合并到 dev；Issue #52 CLOSED，#53~#56 READY
 
 ### 文献分级体系
 - **Level A**: PubMed 逐字核验（4 篇）
