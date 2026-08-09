@@ -1,6 +1,7 @@
 # HarmonyAI Sprint 4 — Integration Checklist
 
 > **Owner**: 陈家智
+> **Status**: FROZEN
 > **Integration Branch**: `integration/sprint4-real-input`
 > **Target**: dev
 
@@ -23,16 +24,16 @@
 
 ### S4-01: 契约
 
-- [ ] `docs/sprint4/sprint4-scope.md` 已 Review
-- [ ] `docs/sprint4/product-flow.md` 已 Review
-- [ ] `docs/sprint4/assessment-contract-v2.1.md` 已 Review
-- [ ] EvidenceItem Schema 冻结
-- [ ] Conflict Schema 冻结
-- [ ] MissingInformation Schema 冻结
-- [ ] FollowUpQuestion Schema 冻结
-- [ ] AssessmentRevision Schema 冻结
-- [ ] InputProcessingStatus Schema 冻结
-- [ ] 无字段各写各的情况
+- [x] `docs/sprint4/sprint4-scope.md` 已 Review
+- [x] `docs/sprint4/product-flow.md` 已 Review
+- [x] `docs/sprint4/assessment-contract-v2.1.md` 已 Review
+- [x] EvidenceItem Schema 冻结
+- [x] Conflict Schema 冻结
+- [x] MissingInformation Schema 冻结
+- [x] FollowUpQuestion Schema 冻结
+- [x] AssessmentRevision Schema 冻结
+- [x] InputProcessingStatus Schema 冻结
+- [x] 无字段各写各的情况
 
 ### S4-02: 问卷与评估集
 
@@ -83,7 +84,7 @@
 - [ ] 来源合并/去重/否定/时间窗
 - [ ] 冲突检测
 - [ ] 缺失信息检测
-- [ ] 动态追问生成 (0-6 题)
+- [ ] 动态追问生成 (0-4 题)
 - [ ] Evidence Coverage 计算
 - [ ] Assessment Revision 机制
 - [ ] 用户修正融合

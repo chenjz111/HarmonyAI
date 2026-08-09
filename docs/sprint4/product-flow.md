@@ -1,7 +1,7 @@
 # HarmonyAI Sprint 4 — Product Flow
 
 > **Owner**: 陈家智
-> **Status**: DRAFT
+> **Status**: FROZEN — S4-01 Contract Tests 与全量回归通过
 > **用途**: 定义 Sprint 4 完整用户流程，供前端、后端、AI 三方对齐
 
 ---
@@ -49,7 +49,7 @@
 │    → 冲突信息 (如有)                                       │
 │    → 缺失信息 (如有)                                       │
 │                                                         │
-│  STEP 6: 动态追问 (0-6题)                                 │
+│  STEP 6: 动态追问 (0-4题)                                 │
 │    → "为了更好地理解你，请回答以下问题:"                     │
 │    → 追问 1-N                                             │
 │    → 提交 → 重新生成评估 (revision+1)                      │
@@ -112,14 +112,18 @@
 
 ```
 Assessment 初步结果
-  ├── evidence_coverage ≥ 70% 且无冲突 → 直接进入确认
-  ├── evidence_coverage < 70% 或有冲突 → 生成追问
+  ├── 无 critical/important 缺失、无未解决冲突且 evidence_coverage_score 达标 → 直接进入确认
+  ├── 存在关键缺失、未解决冲突或 evidence_coverage_score 未达标 → 生成追问（最多4题）
   │     └── 用户回答 → 重新生成 Assessment (revision+1)
   └── 用户确认
         ├── 完全准确 → 进入 Diagnosis
         ├── 部分准确 → 用户修正 → revision+1 → 重新确认
         └── 不准确 → 用户重新填写关键信息 → revision+1
 ```
+
+---
+
+`source_diversity` 仅用于展示当前使用了哪些来源，不参与 `evidence_coverage_score` 计算，也不能单独触发追问。完整 questionnaire-only 输入不会仅因缺少 document/narrative 被判定信息不足。
 
 ---
 
@@ -166,7 +170,7 @@ Assessment 初步结果
 | 问卷 | 12 题 V2.0 | 20 题 V2.1 + 6 题 Quick |
 | 证据 | 简单维度列表 | EvidenceItem 完整结构 |
 | 冲突 | 不检测 | Conflict 检测 + 展示 |
-| 追问 | 无 | 0-6 题动态追问 |
+| 追问 | 无 | 0-4 题动态追问 |
 | 用户确认 | 无 | 多级确认 + 修订 |
 | Diagnosis | 总有一个证型 | 可 abstained |
 | 评估集 | 无 | 60 个标注案例 |

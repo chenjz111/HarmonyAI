@@ -1,0 +1,342 @@
+{
+    "schema_version":  "assessment_v2.1_contract",
+    "status":  "frozen",
+    "evidence_item_schema":  {
+                                 "$schema":  "https://json-schema.org/draft/2020-12/schema",
+                                 "type":  "object",
+                                 "required":  [
+                                                  "category",
+                                                  "value"
+                                              ],
+                                 "additionalProperties":  false,
+                                 "properties":  {
+                                                    "category":  {
+                                                                     "enum":  [
+                                                                                  "emotion",
+                                                                                  "sleep",
+                                                                                  "energy",
+                                                                                  "appetite",
+                                                                                  "physical",
+                                                                                  "life_event",
+                                                                                  "goal"
+                                                                              ]
+                                                                 },
+                                                    "value":  {
+                                                                  "oneOf":  [
+                                                                                {
+                                                                                    "type":  "integer",
+                                                                                    "minimum":  0,
+                                                                                    "maximum":  4
+                                                                                },
+                                                                                {
+                                                                                    "type":  "string",
+                                                                                    "minLength":  1
+                                                                                },
+                                                                                {
+                                                                                    "type":  "array",
+                                                                                    "minItems":  1,
+                                                                                    "uniqueItems":  true,
+                                                                                    "items":  {
+                                                                                                  "type":  "string",
+                                                                                                  "minLength":  1
+                                                                                              }
+                                                                                },
+                                                                                {
+                                                                                    "type":  "object",
+                                                                                    "required":  [
+                                                                                                     "direction",
+                                                                                                     "severity"
+                                                                                                 ],
+                                                                                    "additionalProperties":  false,
+                                                                                    "properties":  {
+                                                                                                       "direction":  {
+                                                                                                                         "enum":  [
+                                                                                                                                      "increase",
+                                                                                                                                      "decrease",
+                                                                                                                                      "none"
+                                                                                                                                  ]
+                                                                                                                     },
+                                                                                                       "severity":  {
+                                                                                                                        "type":  "integer",
+                                                                                                                        "minimum":  0,
+                                                                                                                        "maximum":  4
+                                                                                                                    }
+                                                                                                   },
+                                                                                    "allOf":  [
+                                                                                                  {
+                                                                                                      "if":  {
+                                                                                                                 "properties":  {
+                                                                                                                                    "direction":  {
+                                                                                                                                                      "const":  "none"
+                                                                                                                                                  }
+                                                                                                                                }
+                                                                                                             },
+                                                                                                      "then":  {
+                                                                                                                   "properties":  {
+                                                                                                                                      "severity":  {
+                                                                                                                                                       "const":  0
+                                                                                                                                                   }
+                                                                                                                                  }
+                                                                                                               }
+                                                                                                  }
+                                                                                              ]
+                                                                                }
+                                                                            ]
+                                                              }
+                                                },
+                                 "allOf":  [
+                                               {
+                                                   "if":  {
+                                                              "properties":  {
+                                                                                 "category":  {
+                                                                                                  "enum":  [
+                                                                                                               "emotion",
+                                                                                                               "sleep",
+                                                                                                               "energy"
+                                                                                                           ]
+                                                                                              }
+                                                                             }
+                                                          },
+                                                   "then":  {
+                                                                "properties":  {
+                                                                                   "value":  {
+                                                                                                 "type":  "integer",
+                                                                                                 "minimum":  0,
+                                                                                                 "maximum":  4
+                                                                                             }
+                                                                               }
+                                                            }
+                                               },
+                                               {
+                                                   "if":  {
+                                                              "properties":  {
+                                                                                 "category":  {
+                                                                                                  "enum":  [
+                                                                                                               "life_event",
+                                                                                                               "goal"
+                                                                                                           ]
+                                                                                              }
+                                                                             }
+                                                          },
+                                                   "then":  {
+                                                                "properties":  {
+                                                                                   "value":  {
+                                                                                                 "type":  "string",
+                                                                                                 "minLength":  1
+                                                                                             }
+                                                                               }
+                                                            }
+                                               },
+                                               {
+                                                   "if":  {
+                                                              "properties":  {
+                                                                                 "category":  {
+                                                                                                  "const":  "physical"
+                                                                                              }
+                                                                             }
+                                                          },
+                                                   "then":  {
+                                                                "properties":  {
+                                                                                   "value":  {
+                                                                                                 "type":  "array",
+                                                                                                 "minItems":  1,
+                                                                                                 "uniqueItems":  true,
+                                                                                                 "items":  {
+                                                                                                               "type":  "string",
+                                                                                                               "minLength":  1
+                                                                                                           }
+                                                                                             }
+                                                                               }
+                                                            }
+                                               },
+                                               {
+                                                   "if":  {
+                                                              "properties":  {
+                                                                                 "category":  {
+                                                                                                  "const":  "appetite"
+                                                                                              }
+                                                                             }
+                                                          },
+                                                   "then":  {
+                                                                "properties":  {
+                                                                                   "value":  {
+                                                                                                 "type":  "object",
+                                                                                                 "required":  [
+                                                                                                                  "direction",
+                                                                                                                  "severity"
+                                                                                                              ],
+                                                                                                 "additionalProperties":  false,
+                                                                                                 "properties":  {
+                                                                                                                    "direction":  {
+                                                                                                                                      "enum":  [
+                                                                                                                                                   "increase",
+                                                                                                                                                   "decrease",
+                                                                                                                                                   "none"
+                                                                                                                                               ]
+                                                                                                                                  },
+                                                                                                                    "severity":  {
+                                                                                                                                     "type":  "integer",
+                                                                                                                                     "minimum":  0,
+                                                                                                                                     "maximum":  4
+                                                                                                                                 }
+                                                                                                                },
+                                                                                                 "allOf":  [
+                                                                                                               {
+                                                                                                                   "if":  {
+                                                                                                                              "properties":  {
+                                                                                                                                                 "direction":  {
+                                                                                                                                                                   "const":  "none"
+                                                                                                                                                               }
+                                                                                                                                             }
+                                                                                                                          },
+                                                                                                                   "then":  {
+                                                                                                                                "properties":  {
+                                                                                                                                                   "severity":  {
+                                                                                                                                                                    "const":  0
+                                                                                                                                                                }
+                                                                                                                                               }
+                                                                                                                            }
+                                                                                                               }
+                                                                                                           ]
+                                                                                             }
+                                                                               }
+                                                            }
+                                               }
+                                           ]
+                             },
+    "valid_examples":  {
+                           "numeric":  {
+                                           "category":  "emotion",
+                                           "value":  3
+                                       },
+                           "categorical":  {
+                                               "category":  "goal",
+                                               "value":  "relaxation"
+                                           },
+                           "string_list":  {
+                                               "category":  "physical",
+                                               "value":  [
+                                                             "neck_tension",
+                                                             "palpitation"
+                                                         ]
+                                           },
+                           "appetite":  {
+                                            "category":  "appetite",
+                                            "value":  {
+                                                          "direction":  "decrease",
+                                                          "severity":  3
+                                                      }
+                                        }
+                       },
+    "invalid_examples":  [
+                             {
+                                 "category":  "emotion",
+                                 "value":  5
+                             },
+                             {
+                                 "category":  "physical",
+                                 "value":  [
+
+                                           ]
+                             },
+                             {
+                                 "category":  "appetite",
+                                 "value":  {
+                                               "direction":  "unknown",
+                                               "severity":  2
+                                           }
+                             },
+                             {
+                                 "category":  "appetite",
+                                 "value":  {
+                                               "direction":  "none",
+                                               "severity":  2
+                                           }
+                             },
+                             {
+                                 "category":  "goal",
+                                 "value":  {
+                                               "free_form":  "unbounded"
+                                           }
+                             },
+                             {
+                                 "category":  "emotion",
+                                 "value":  "relaxation"
+                             },
+                             {
+                                 "category":  "appetite",
+                                 "value":  3
+                             },
+                             {
+                                 "category":  "goal",
+                                 "value":  [
+                                               "neck_tension"
+                                           ]
+                             },
+                             {
+                                 "category":  "physical",
+                                 "value":  "neck_tension"
+                             }
+                         ],
+    "questionnaire_processing":  {
+                                     "scored_dimensions":  [
+                                                               "appetite_change",
+                                                               "calm_wellbeing",
+                                                               "daily_impact",
+                                                               "emotional_recovery",
+                                                               "fear_unease",
+                                                               "interest_loss",
+                                                               "irritability_anger",
+                                                               "low_energy",
+                                                               "low_mood",
+                                                               "overthinking",
+                                                               "sleep_disturbance",
+                                                               "tension_worry",
+                                                               "unrefreshing_sleep"
+                                                           ],
+                                     "scored_dimension_count":  13,
+                                     "derivation":  "unique dimensions where questionnaire question scored=true"
+                                 },
+    "evidence_coverage":  {
+                              "formula":  "supported_applicable_key_items / applicable_key_items",
+                              "numerator":  "关键评估维度和关键信息中获得有效 Evidence 支持的数量",
+                              "denominator":  "当前场景适用的关键评估维度和关键信息总数",
+                              "source_diversity_affects_follow_up":  false,
+                              "follow_up_triggers":  [
+                                                         "critical_missing_information",
+                                                         "important_missing_information",
+                                                         "unresolved_conflict",
+                                                         "evidence_coverage_below_threshold"
+                                                     ]
+                          },
+    "source_diversity":  {
+                             "allowed_sources":  [
+                                                     "questionnaire",
+                                                     "narrative",
+                                                     "document",
+                                                     "user_follow_up",
+                                                     "user_correction"
+                                                 ],
+                             "semantics":  "descriptive_only"
+                         },
+    "coverage_examples":  {
+                              "questionnaire_only_complete":  {
+                                                                  "supported_applicable_key_items":  13,
+                                                                  "applicable_key_items":  13,
+                                                                  "evidence_coverage_score":  1.0,
+                                                                  "source_diversity":  {
+                                                                                           "count":  1,
+                                                                                           "sources":  [
+                                                                                                           "questionnaire"
+                                                                                                       ]
+                                                                                       },
+                                                                  "critical_or_important_missing_information":  [
+
+                                                                                                                ],
+                                                                  "unresolved_conflicts":  [
+
+                                                                                           ],
+                                                                  "follow_up_required":  false
+                                                              }
+                          }
+}

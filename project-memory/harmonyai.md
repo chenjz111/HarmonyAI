@@ -45,7 +45,7 @@
 | 后端 | FastAPI (Python 3.10+) |
 | 数据库 | SQLite (默认) / MySQL 8.0 |
 | 前端 | uni-app (Vue 3) + 独立 HTML Demo |
-| 测试 | pytest (**408 tests**: 392 原有 + 16 contract) |
+| 测试 | pytest (**422 tests**，其中 30 contract) |
 
 ### 五音映射（核心规则，不调 LLM）
 
@@ -93,7 +93,7 @@
 - 安全规则引擎: 自杀/自残/胸痛/呼吸困难关键词拦截，LLM 调用前阻断
 - 比赛版 Demo: full-demo.html (759 行, V2/V1 双模式, URL 参数切换)
 - 版本号统一为 0.3.0（pyproject.toml / .env.example / config.py 三处一致）
-- 392 测试全部通过 → 408 tests（Sprint 4 contract tests 加入后）
+- 当时 392 个 Sprint 3 测试全部通过；首次加入 16 个 Sprint 4 contract tests 后为 408 tests（历史记录，当前计数见下方状态表）
 
 ### 版本修复（PR #51）
 - pyproject.toml: 0.1.0 → 0.3.0
@@ -139,7 +139,7 @@
 真实音乐生成 API / 扩充曲库 / 修改五音映射 / 用户注册 / 会员支付 / 七日方案 / 可穿戴设备 / 重设计App / Agent改名 / Docker CI/CD / 宣称临床诊断量表
 
 ### 集成分支
-`integration/sprint4-real-input` @ `c6e9260`
+`integration/sprint4-real-input`（已同步 `origin/dev` 并完成 S4-01 hardening；精确提交见分支 HEAD）
 
 ### PR 顺序
 S4-01(陈家智,contracts) → S4-02(肖宇翔,问卷+eval) → S4-03(蔡子鑫,OCR+backend) → S4-04(钟睿宸,AI) → S4-05(彭翔,frontend) → S4-06(陈家智,集成验收)
@@ -154,8 +154,8 @@ Day1(契约冻结) → Day2(问卷初稿+PaddleOCR POC) → Day3(契约落地) �
 | 🔴 | 60案例标注20-30小时 | 分批: 30精细+30基础, 自动预标注 |
 | 🔴 | 彭翔前端7页面可能超8天 | P0(核心3页)→P1(2页)→P2(2页) |
 | 🟡 | 动态追问复杂度高 | Sprint4只用硬编码决策树, 不上LLM追问 |
-| 🟡 | Q04 worry_control double-count | 肖宇翔决策: scored=false或加权平均 |
-| 🟡 | evidence_coverage算法未定 | Day1冻结公式: (有证据维度数/总维度数)×min(1.0,source_type数/3) |
+| ✅ | Q04 worry_control double-count | 已冻结为 `scored=false`、`weight=0`，仅作定性 Evidence |
+| ✅ | evidence_coverage算法未定 | 已按“获得有效证据支持的适用关键项 / 适用关键项”冻结；source diversity 仅作描述 |
 
 ---
 
@@ -173,7 +173,7 @@ Day1(契约冻结) → Day2(问卷初稿+PaddleOCR POC) → Day3(契约落地) �
 7. `integration-checklist.md` (156行) — 6个PR合并顺序、每阶段验收项
 8. `contract-review-report.md` — 跨文档一致性审查结果
 
-**契约审查结论**: 15 EvidenceItem字段一致、4问卷版本跨5文档一致、10错误码完整、7 P0指标完整。2个问题已记录(FU max→4已修复, Q04待肖宇翔决策)。
+**契约审查结论**: S4-01 Contract 已完成 hardening 并冻结。Q19/Q20 safety、V2.0 q12 迁移、Q04、Evidence value、coverage、Provider 同步/异步与日志隐私规则均已统一；无剩余 Contract blocker。
 
 ### S4-01: GitHub Issues — ✅ 完成
 
@@ -187,10 +187,10 @@ Day1(契约冻结) → Day2(问卷初稿+PaddleOCR POC) → Day3(契约落地) �
 
 ### Contract Tests — ✅ 完成
 
-`tests/contract/` (3文件, 16 tests):
-- `test_questionnaire_schema.py`: V2.0验证(6 passed + 2 skipped V2.1 placeholder)
-- `test_evidence_schema.py`: EvidenceItem/Conflict/FollowUp/Disclaimer验证(8 passed)
-- 全量测试: **408 passed, 0 failed**
+`tests/contract/` 使用 canonical fixtures 验证 questionnaire、assessment/evidence 与 provider 契约，共 **30 passed, 0 skipped, 0 failed**。
+
+
+- 全量测试: **422 passed, 0 failed**
 
 ### 仓库清理 — ✅ 完成
 - 删除 18 个旧远程分支 (Sprint 1-3 的 feat/integration/fix 分支)
@@ -207,23 +207,23 @@ Day1(契约冻结) → Day2(问卷初稿+PaddleOCR POC) → Day3(契约落地) �
 
 ---
 
-## 当前仓库状态 (2026-08-08)
+## 当前仓库状态 (2026-08-10)
 
 | 项目 | 值 |
 |---|---|
-| dev HEAD | `a38099c` |
-| integration/sprint4-real-input HEAD | `c6e9260` |
+| dev HEAD | `e0640b3`（已同步到 integration） |
+| integration/sprint4-real-input HEAD | 见当前分支 HEAD（S4-01 hardening） |
 | dev领先main | 220 commits |
 | 远程分支 | main / dev / integration/sprint4-real-input |
-| 测试 | 408 passed, 0 failed |
+| 测试 | 422 passed, 0 failed；Contract 30 passed |
 | Sprint 3 Issues | #43-#51 全部合并, #31/#40/#41 已关闭 |
 | Sprint 4 Issues | #52(✅) / #53(⬜) / #54(⬜) / #55(⬜) / #56(⬜) |
 
 ### 当前阻塞项
 | # | 阻塞项 | 负责人 | 影响 |
 |---|---|---|---|
-| 1 | S4-01 merge到dev (契约冻结) | 陈家智 | 阻塞S4-02~S4-05启动 |
-| 2 | Q04 worry_control 决策 | 肖宇翔 | 阻塞questionnaire JSON |
+| 1 | S4-01 merge到dev | 陈家智 | Contract 已冻结并通过测试，等待合并决定 |
+
 
 ---
 
@@ -262,10 +262,10 @@ cd C:\Users\ASUS\HarmonyAI
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 
 # 测试 (全部)
-python -m pytest tests/ -q    # 408 tests
+python -m pytest tests/ -q    # 422 tests
 
 # Contract tests only
-python -m pytest tests/contract/ -v   # 16 tests
+python -m pytest tests/contract/ -v   # 30 tests
 
 # 前端 (uni-app H5)
 cd frontend && npm run dev:h5   # http://localhost:5173
