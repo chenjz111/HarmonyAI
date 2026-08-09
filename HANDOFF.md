@@ -31,12 +31,12 @@
 ## 3. 当前分支状态
 
 ```
-当前分支: integration/sprint4-real-input
-dev HEAD: e0640b3 (origin/dev，已合并到 integration)
+当前分支: dev
+dev S4-01 Freeze HEAD: c456f2b662733e9694f749369e7c0e998f515b7f
 远程分支: main / dev / integration/sprint4-real-input
 ```
 
-`integration/sprint4-real-input` 已同步最新 `origin/dev`，并完成 S4-01 Contract hardening；精确提交见当前分支 HEAD。
+`integration/sprint4-real-input@c456f2b` 已通过 fast-forward 合并并推送到 `dev`；Contract 状态为 **FROZEN / MERGED**。
 
 ```
 c6e9260 feat: Sprint 4 contract tests — questionnaire + evidence schema validation
@@ -45,7 +45,7 @@ a09ea76 docs: Sprint 4 remaining contracts — questionnaire V2.1, provider, eva
 61e3d33 docs: Sprint 4 contracts — scope, product flow, assessment V2.1, integration checklist
 ```
 
-这些 commit 包含了 Sprint 4 的全部契约文档和 Contract Tests，**尚未 merge 到 dev**。
+这些 commit 包含 Sprint 4 的全部契约文档和 Contract Tests，现已完整进入 `dev`。
 
 ---
 
@@ -71,7 +71,7 @@ a09ea76 docs: Sprint 4 remaining contracts — questionnaire V2.1, provider, eva
 
 | # | 阻塞项 | 负责人 | 影响 |
 |---|---|---|---|
-| 🟡 | S4-01 merge 到 dev | 陈家智 | Contract 已冻结并通过测试，等待合并决定 |
+| — | 无 | — | Q04 已冻结，不再存在 blocker |
 
 
 ---
@@ -83,7 +83,7 @@ S4-01 (陈家智, ✅) → S4-02 (肖宇翔, 问卷+评估) → S4-03 (蔡子鑫
   → S4-04 (钟睿宸, AI) → S4-05 (彭翔, 前端) → S4-06 (陈家智, 集成验收)
 ```
 
-GitHub Issues: #52(✅) / #53(⬜) / #54(⬜) / #55(⬜) / #56(⬜)
+GitHub Issues: #52(CLOSED) / #53(READY) / #54(READY) / #55(READY) / #56(READY)
 
 ---
 
@@ -152,7 +152,7 @@ yu    (羽调)      → 58   → 箫、古琴
 
 ## 10. 给接手的 AI 的第一句话
 
-> 你已经对齐了 HarmonyAI 项目的全部上下文。S4-01 Contract 已完成 hardening、状态为 FROZEN，Contract Tests 与 Full Tests 均通过；当前在 `integration/sprint4-real-input`，尚未 merge 到 dev。下一步仅需审查并决定是否把 S4-01 合并到 dev，不要提前启动 #53-#56。
+> 你已经对齐了 HarmonyAI 项目的全部上下文。S4-01 Contract 已 FROZEN / MERGED，Issue #52 已关闭，Contract Tests 30/30、Full Tests 422/422 通过。#53～#56 当前为 READY，但尚未开始实现。
 
 ---
 
