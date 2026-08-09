@@ -31,12 +31,12 @@
 ## 3. 当前分支状态
 
 ```
-当前分支: dev
-dev HEAD: a38099c (PR #51 合并后的最新提交)
+当前分支: integration/sprint4-real-input
+dev HEAD: e0640b3 (origin/dev，已合并到 integration)
 远程分支: main / dev / integration/sprint4-real-input
 ```
 
-`integration/sprint4-real-input` 领先 dev **4 个 commit**：
+`integration/sprint4-real-input` 已同步最新 `origin/dev`，并完成 S4-01 Contract hardening；精确提交见当前分支 HEAD。
 
 ```
 c6e9260 feat: Sprint 4 contract tests — questionnaire + evidence schema validation
@@ -59,9 +59,9 @@ a09ea76 docs: Sprint 4 remaining contracts — questionnaire V2.1, provider, eva
 
 ### Sprint 4 启动（8月6-8日）
 - **8 份契约文档**写入 `docs/sprint4/`（在 `integration/sprint4-real-input` 分支上）
-- **16 个 Contract Tests** 写入 `tests/contract/`（同上分支）
+- **30 个 Contract Tests** 写入 `tests/contract/`（同上分支）
 - **跨文档一致性审查**完成（`docs/sprint4/contract-review-report.md`）
-- 全量测试: **408 passed, 0 failed**（392 原有 + 16 contract）
+- 全量测试: **422 passed, 0 failed**（其中 30 个 contract tests）
 - **仓库清理**: 18 个旧远程分支 + 3 个遗留 Issue 已关闭
 - **记忆系统**: 从 Claude 长时记忆迁移到 `project-memory/` 目录
 
@@ -71,8 +71,8 @@ a09ea76 docs: Sprint 4 remaining contracts — questionnaire V2.1, provider, eva
 
 | # | 阻塞项 | 负责人 | 影响 |
 |---|---|---|---|
-| 🔴 | S4-01 merge 到 dev | 陈家智 | 阻塞 S4-02~S4-05 启动 |
-| 🔴 | Q04 worry_control 决策 | 肖宇翔 | 阻塞问卷 JSON 定稿 |
+| 🟡 | S4-01 merge 到 dev | 陈家智 | Contract 已冻结并通过测试，等待合并决定 |
+
 
 ---
 
@@ -95,10 +95,10 @@ cd C:\Users\ASUS\HarmonyAI
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 
 # 全量测试
-python -m pytest tests/ -q    # 408 tests
+python -m pytest tests/ -q    # 422 tests
 
 # Contract tests only
-python -m pytest tests/contract/ -v   # 16 tests
+python -m pytest tests/contract/ -v   # 30 tests
 
 # 前端 (uni-app H5)
 cd frontend && npm run dev:h5
@@ -152,7 +152,7 @@ yu    (羽调)      → 58   → 箫、古琴
 
 ## 10. 给接手的 AI 的第一句话
 
-> 你已经对齐了 HarmonyAI 项目的全部上下文。当前停留在 Sprint 4 的起点：S4-01 契约已完成（在 `integration/sprint4-real-input` 分支上，尚未 merge 到 dev），等待用户决策下一步。请直接问用户：要 merge 吗？推进哪个 Issue？还是先 review 上一棒的产出？
+> 你已经对齐了 HarmonyAI 项目的全部上下文。S4-01 Contract 已完成 hardening、状态为 FROZEN，Contract Tests 与 Full Tests 均通过；当前在 `integration/sprint4-real-input`，尚未 merge 到 dev。下一步仅需审查并决定是否把 S4-01 合并到 dev，不要提前启动 #53-#56。
 
 ---
 

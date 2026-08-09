@@ -2,6 +2,7 @@
 
 > **Sprint**: Sprint 4: Real Input & Grounded State Understanding
 > **Version**: v0.4.0
+> **Status**: FROZEN
 > **Duration**: 12 working days (8 dev + 2 eval + 1 regression + 1 review)
 > **Baseline**: v0.3.0 (dev @ `a38099c`)
 > **Integration Branch**: `integration/sprint4-real-input`
@@ -45,7 +46,7 @@
   → 完成 20 题阶段性问卷
   → Assessment Agent 融合三类来源
   → 识别支持证据、冲突和缺失信息
-  → 必要时生成动态追问 (0-6 题)
+  → 必要时生成动态追问 (0-4 题)
   → 用户回答并确认评估结果
   → Diagnosis Agent 基于确认后的证据输出辅助辨证倾向
   → 进入现有 Prescription → Music → Feedback 流程
@@ -99,7 +100,7 @@
 
 ### 5.2 动态追问
 
-Assessment Agent 根据用户信息决定 **0-6 题动态追问**（正常 1-3 题）。
+Assessment Agent 根据用户信息决定 **0-4 题动态追问**（正常 1-3 题）。
 
 触发条件:
 - 时间不明确
@@ -126,7 +127,7 @@ Assessment Agent 根据用户信息决定 **0-6 题动态追问**（正常 1-3 �
 |---|---|---|---|
 | 阶段性完整评估 | `questionnaire_v2.1` | 20 | 首次/定期评估 |
 | 快速状态 | `quick_state_v1` | 6 | 每次听前 |
-| 动态追问 | `follow_up_v1` | 0-6 | Assessment 触发 |
+| 动态追问 | `follow_up_v1` | 0-4 | Assessment 触发 |
 | 旧版兼容 | `questionnaire_v2.0` | 12 | 向后兼容 |
 
 ---
@@ -218,29 +219,28 @@ Assessment Agent 根据用户信息决定 **0-6 题动态追问**（正常 1-3 �
 - "时间不明确"和"影响程度不明确"合并为一道复合追问
 - 最多 4 题（而非规划中的 6 题），进一步控制体验风险
 
-### 🟡 A5. Q04 worry_control 可能 double-count
+### 🟡 A5. Q04 worry_control double-count（已冻结）
 
-**风险**: Q03（紧张频率）和 Q04（担忧控制困难）高度相关。如果两道题答案接近，tension_worry 维度会被双倍加权。医学术语叫"维度内共线性"。
+Q03（紧张频率）和 Q04（担忧控制困难）高度相关。Sprint 4 正式采用以下规则：
 
-**缓解措施**:
-- **方案 A（推荐）**: Q04 只做定性记录（scored: false），不参与 tension_worry 维度聚合
-- **方案 B**: Q03 和 Q04 做加权平均（各 0.5 权重），不是简单相加
-- 决策权交给肖宇翔，但在评分规则 JSON 中必须明确标注
+- `question_id=q04_worry_control`
+- `dimension=worry_control`
+- `scored=false`
+- `weight=0`
+- 仅保留为定性 Evidence，不参与 `tension_worry` 聚合
 
-### 🟡 A6. evidence_coverage_score 算法
+该决定避免与 Q03 double-count；未来只有在评估数据和医学审核支持时才通过新版本调整。
+### 🟡 A6. evidence_coverage_score 算法（已冻结）
 
-**风险**: 这个数字展示给用户作为"系统证据充分度"。算得不合理会直接打击用户信任。当前没有定义算法。
+`evidence_coverage_score` 只衡量当前场景适用的关键评估维度和关键信息是否获得有效 Evidence 支持：
 
-**缓解措施**:
-- **Day 1 冻结公式**:
-  ```
-  coverage = (有证据的维度数 / 总维度数) × 来源多样性系数
-  来源多样性系数 = min(1.0, 不同 source_type 数量 / 3)
-  ```
-  - 三源都有且维度全覆盖 → 1.0
-  - 仅问卷 → 0.50
-  - 算法透明，可向用户解释
+```
+evidence_coverage_score = 获得有效 Evidence 支持的适用关键信息数 / 当前场景适用的关键信息总数
+```
 
+`source_diversity` 单独记录已使用的 questionnaire、narrative、document、user_follow_up、user_correction 来源数量与列表，仅用于解释，不能乘入 coverage，也不能单独触发追问。
+
+Follow-Up 主要由 critical/important missing_information、未解决 conflict 或低 evidence_coverage_score 触发。完整 questionnaire-only 用户可以达到 1.0，不能因为未上传材料或未填写自由描述而自动判定信息不足。
 ---
 
 ## 附录 B: 排期风险评估

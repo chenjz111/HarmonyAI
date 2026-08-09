@@ -4,7 +4,7 @@
 > **Sprint**: Sprint 4
 > **Replaces**: v2.0 (12 题, 保留兼容)
 > **Also defines**: Quick State V1 (6 题), Follow-Up V1 (动态追问)
-> **Status**: DRAFT — 待肖宇翔 Review 后冻结
+> **Status**: FROZEN — S4-01 Contract Tests 与全量回归通过
 > **Owner**: 陈家智 (契约) / 肖宇翔 (内容)
 
 ---
@@ -26,7 +26,7 @@
 |---|---|---|---|---|
 | 阶段性完整评估 | `questionnaire_v2.1` | 20 | 首次/定期评估 | ✅ |
 | 快速状态 | `quick_state_v1` | 6 | 每次听前 | ✅ |
-| 动态追问 | `follow_up_v1` | 0-6 | Assessment 触发 | 按触发 |
+| 动态追问 | `follow_up_v1` | 0-4 | Assessment 触发 | 按触发 |
 | 旧版兼容 | `questionnaire_v2.0` | 12 | Sprint 3 兼容 | — |
 
 ### 版本识别
@@ -49,16 +49,16 @@
   "module": "B_activation",
   "order": 3,
   "text": "过去两周，你有多经常感到紧张、担忧或难以放松？",
-  "type": "frequency_0_4 | visual_single | single_choice | multi_choice | scale_0_10 | duration_choice",
+  "type": "frequency_0_4",
   "time_window": "past_14_days",
-  "options": [ ... ],
+  "options": [{"value": 0, "label": "从不"}, {"value": 1, "label": "偶尔"}, {"value": 2, "label": "有时"}, {"value": 3, "label": "经常"}, {"value": 4, "label": "几乎每天"}],
   "dimension": "tension_worry",
   "scored": true,
   "reverse_scored": false,
   "safety_only": false,
   "weight": 1.0,
   "ui": {
-    "layout": "button-row | card-horizontal | slider | multi-select",
+    "layout": "button-row",
     "icon_required": false,
     "progress_required": true
   },
@@ -201,12 +201,16 @@
 | q01_user_goal | 你这次最希望音乐帮助你做什么？ | single_choice | null | ❌ | 8 选项，影响后续音乐目标 |
 | q02_mood_weather | 把最近的整体状态比作天气 | visual_single | null | ❌ | 5 天气图，仅作表达辅助 |
 
+冻结选项：
+- Q01：`relaxation` 放松紧张 / `sleep` 帮助入睡 / `calm_irritability` 平复烦躁 / `improve_low_mood` 缓解低落 / `focus` 提升专注 / `restore_energy` 恢复精力 / `release_emotion` 释放情绪 / `other` 其他。
+- Q02：`clear` 晴朗 / `variable` 阴晴不定 / `rainy` 连绵阴雨 / `fog` 浓雾弥漫 / `storm` 雷电交加；语义值分别保留对应的 `score=0..4`，但本题不进入普通评分。
+
 ### B 模块: 紧张、思虑与情绪激活 (5 题)
 
 | ID | 题目 | 类型 | 维度 | 计分 | 权重 | 说明 |
 |---|---|---|---|---|---|---|
 | q03_tension_worry | 过去两周多常感到紧张/担忧/难以放松？ | frequency_0_4 | tension_worry | ✅ | 1.0 | — |
-| q04_worry_control | 开始担忧后多难让自己停止？ | frequency_0_4 | worry_control | ⚠️ | — | **定性记录**，不参与 tension_worry 聚合。避免与 Q03 double-count。肖宇翔 Decision Required |
+| q04_worry_control | 开始担忧后多难让自己停止？ | frequency_0_4 | worry_control | ❌ | 0 | **已冻结：`scored=false`、`weight=0`，仅保留为定性 Evidence，不参与 tension_worry 聚合。** |
 | q05_overthinking | 思绪是否反复围绕同一件事打转？ | visual_single | overthinking | ✅ | 1.0 | 海面视觉图，保存语义+数值 |
 | q06_irritability_anger | 多经常感到烦躁/易怒/没有耐心？ | frequency_0_4 | irritability_anger | ✅ | 1.0 | — |
 | q07_fear_unease | 多经常感到不安/害怕/担心坏事发生？ | frequency_0_4 | fear_unease | ✅ | 1.0 | — |
@@ -242,6 +246,8 @@ Q15 保存格式:
 ```
 
 Q16 选项: 肩颈紧绷 / 头痛或头部沉重 / 心慌 / 胸口发紧 / 胃部不适 / 四肢乏力 / 手脚发冷 / 出汗 / 口干 / 无明显不适 / 其他
+
+Q16 的 `none`（无明显不适）与其他身体信号互斥，前端和后端都必须执行 `mutually_exclusive_value="none"`。
 
 ### E 模块: 持续时间与生活影响 (2 题)
 
@@ -330,11 +336,12 @@ direction 为 "none" 时 severity 强制为 0。
 
 ### 7.5 安全题分流
 
-Q19 和 Q20 的答案不进入状态评分。命中以下条件直接进入安全流程：
-- Q19 选择"有时想到"/"经常想到"/"有具体计划" → `SAFETY_SELF_HARM`
-- Q20 选择任何紧急情况 → `SAFETY_EMERGENCY_PHYSICAL`
+Q19 和 Q20 的答案不进入状态评分：
+- Q19 只有选择“从未有过”才可继续普通评估；选择“偶尔闪过”“有时想到”“经常想到”或“有具体计划”中的任何一项，均立即进入 `SAFETY_SELF_HARM` 安全流程。
+- Q20 选择任何紧急情况均进入 `SAFETY_EMERGENCY_PHYSICAL` 安全流程。
+- Q20 的“无以上情况”与所有紧急情况选项互斥；选择“无以上情况”时必须清除其他选项，选择任一紧急情况时必须清除“无以上情况”。
 
-安全流程不进入 Prescription/Music Agent。
+任何进入安全流程的结果都不得直接进入 Diagnosis → Prescription → Music。安全流程内部可在后续实现中继续区分风险等级，但不能绕过首次安全分流。
 
 ---
 
@@ -395,9 +402,11 @@ V2.0 的 12 题可以直接映射到 V2.1 的对应维度：
 | q10_appetite_change | q15_appetite_change | 需要方向适配 |
 | q11_daily_impact | q18_daily_impact | 直接 |
 | q01_mood_weather | q02_mood_weather | 直接 |
-| q12_physical_safety | q16_physical_signals | 需要格式适配 |
+| q12_physical_safety 普通 `physical_signal` | q16_physical_signals | 保留普通身体信号 |
+| q12_physical_safety `self_harm_thoughts` | q19_self_harm | 必须进入安全流程 |
+| q12_physical_safety `severe_chest_pain` / `severe_breathing_difficulty` | q20_emergency | 必须进入紧急身体安全流程 |
 
-V2.0 缺少的 8 个新维度在兼容模式下留空，evidence_coverage 会相应降低。
+V2.0 缺少的新增维度在兼容模式下留空，`evidence_coverage_score` 会按当前场景适用的关键信息重新计算。迁移器必须逐个处理旧 Q12 的选项，不能把整个数组直接写入 Q16；任何旧版 `safety_risk` 都必须保留并先完成安全分流。
 
 ---
 
@@ -412,4 +421,4 @@ V2.0 缺少的 8 个新维度在兼容模式下留空，evidence_coverage 会相
 
 ---
 
-*陈家智起草，待肖宇翔 Review 后冻结。Q04 决策待定。*
+*陈家智起草；Q04 已冻结为不计分的定性 Evidence。*

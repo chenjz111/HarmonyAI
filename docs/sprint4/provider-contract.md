@@ -3,7 +3,7 @@
 > **Version**: 1.0
 > **Sprint**: Sprint 4
 > **Applies to**: QwenCompatibleProvider / all LLM providers / OCR provider
-> **Status**: DRAFT — 待钟睿宸 + 蔡子鑫 Review 后冻结
+> **Status**: FROZEN — S4-01 Contract Tests 与全量回归通过
 > **Owner**: 陈家智
 
 ---
@@ -38,7 +38,15 @@ class QwenCompatibleProvider:
     ) -> None: ...
 
     def complete_json(self, system_prompt: str, user_prompt: str) -> dict[str, object]:
-        """返回结构化 JSON。失败抛出 LLMProviderError。"""
+        """同步返回结构化 JSON。失败抛出 LLMProviderError。"""
+        ...
+
+    async def acomplete_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> dict[str, object]:
+        """异步返回与 complete_json 相同的结构化 JSON。"""
         ...
 ```
 
@@ -55,6 +63,13 @@ class QwenCompatibleProvider:
 | Prompt 版本 | 无 | **prompt_version 字段** |
 | 错误码 | 通用 Exception | **标准化 ErrorCode 枚举** |
 | Mock Provider | 无 | **MockProvider 用于测试和评估** |
+
+同步 `complete_json()` 与异步 `acomplete_json()` 必须：
+- 返回相同的结构化结果 Schema；
+- 使用同一组 `ProviderErrorCode`；
+- 使用相同的重试次数、退避和不可重试条件；
+- 使用相同的 JSON 修复与 Schema validation；
+- 仅执行模型调用方式不同，不得产生行为差异。
 
 ### 2.3 错误码标准化
 
@@ -152,7 +167,7 @@ GET /api/v2/providers/health
       "last_checked": "2026-08-06T10:00:00Z"
     }
   },
-  "meta": { ... }
+  "meta": {"request_id": "req_uuid"}
 }
 ```
 
@@ -319,26 +334,35 @@ Provider 初始化时验证：
 
 ## 八、日志规范
 
-### 8.1 记录内容
+### 8.1 普通日志红线
 
-| 可以记录 | 不能记录 |
-|---|---|
-| request_id, session_id, agent_id | 用户原文 (narrative_text, document_text) |
-| provider, model, prompt_version | 问卷答案全文 |
-| latency_ms, input_tokens, output_tokens | system_prompt 和 user_prompt 完整内容 |
-| error_code, retry_count | api_key 的任何部分 |
-| OCR 处理的文件类型和大小 | OCR 识别的完整文本 (> 前 100 字符) |
+普通日志禁止记录任何用户原文，也禁止记录截断后的用户原文。禁止字段包括：
 
-### 8.2 脱敏规则
+- `narrative_text`
+- `document_text`
+- `ocr_text`
+- `questionnaire_answer_text`
+- `system_prompt`
+- `user_prompt`
 
-```python
-def sanitize_for_log(text: str, max_chars: int = 100) -> str:
-    """截断文本用于日志。"""
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars] + f"... [{len(text) - max_chars} chars truncated]"
-```
+普通日志只允许记录：
 
+- `request_id`
+- `session_id`
+- `agent_id`
+- `source_type`
+- `text_length`
+- `provider`
+- `model`
+- `prompt_version`
+- `latency_ms`
+- `input_tokens`
+- `output_tokens`
+- `status`
+- `error_code`
+- `retry_count`
+
+不得通过“保留前 100 字符”、截断、摘要或其他方式把用户文本写入普通日志，也不新增用户文本 hash 机制。Secret 和数据库连接信息同样不得进入日志。机器可校验的允许/禁止字段位于 `tests/contract/fixtures/provider.contract.json`。
 ---
 
 ## 九、交付物清单
@@ -356,4 +380,4 @@ def sanitize_for_log(text: str, max_chars: int = 100) -> str:
 
 ---
 
-*陈家智起草，待钟睿宸 + 蔡子鑫 Review 后冻结。*
+*陈家智起草，已完成 S4-01 Review。*

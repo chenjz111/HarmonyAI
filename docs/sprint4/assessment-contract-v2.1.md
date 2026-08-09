@@ -3,7 +3,7 @@
 > **Version**: 2.1
 > **Sprint**: Sprint 4
 > **Replaces**: v2.0 (保留兼容)
-> **Status**: DRAFT — 待 Review
+> **Status**: FROZEN — S4-01 Contract Tests 与全量回归通过
 > **Owner**: 陈家智
 
 ---
@@ -47,7 +47,7 @@
 | category | enum | ✅ | emotion/sleep/energy/appetite/physical/life_event/goal |
 | label | string | ✅ | 对应维度 key |
 | display_name | string | ✅ | 中文展示名 |
-| value | int | ✅ | 0-4 或 0-100 (统一为 0-4) |
+| value | constrained union | ✅ | 仅允许 numeric scalar、categorical string、`list[string]` 或 appetite structured value |
 | polarity | enum | ✅ | present/absent/reduced/increased/unchanged |
 | severity | enum | ✅ | none/mild/moderate/severe |
 | severity_display | string | ✅ | 前端展示文本 |
@@ -58,6 +58,42 @@
 | extraction_confidence | float | 条件 | narrative 来源时必填 |
 | confirmed | bool | ✅ | 用户确认后为 true |
 | dimension_score | int\|null | ❌ | 问卷维度分 (0-100) |
+
+### EvidenceItem.value 联合类型
+
+`value` 禁止使用无约束的 `Any` 或任意 `dict`。其 JSON Schema 采用四个互斥分支：
+
+```json
+{
+  "oneOf": [
+    {"type": "integer", "minimum": 0, "maximum": 4},
+    {"type": "string", "minLength": 1},
+    {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    {
+      "type": "object",
+      "required": ["direction", "severity"],
+      "additionalProperties": false,
+      "properties": {
+        "direction": {"enum": ["increase", "decrease", "none"]},
+        "severity": {"type": "integer", "minimum": 0, "maximum": 4}
+      }
+    }
+  ]
+}
+```
+
+- numeric scalar：维度强度，例如 `3`；
+- categorical string：目标或类别，例如 `"relaxation"`；
+- `list[string]`：多项身体信号，例如 `["neck_tension", "palpitation"]`；
+- appetite structured value：`{"direction":"decrease","severity":3}`；当 `direction="none"` 时 `severity` 必须为 0。
+
+联合类型同时按 `category` 判别，不能只校验 value 的外形：
+- `emotion` / `sleep` / `energy` → 0-4 integer；
+- `life_event` / `goal` → non-empty string；
+- `physical` → non-empty unique `list[string]`；
+- `appetite` → 仅允许上述 `{direction, severity}` 结构。
+
+权威、机器可校验的完整 Schema 位于 `tests/contract/fixtures/assessment-v2.1.contract.json`。
 
 ---
 
@@ -111,9 +147,9 @@
   "question_id": "fu_duration_001",
   "text": "这些状态大概持续了多久？",
   "type": "single_choice|multi_choice|scale_0_10|text",
-  "options": ["少于3天", "3-6天", "1-2周", ...],
+  "options": ["少于3天", "3-6天", "1-2周", "2周-1个月", "1-3个月", "超过3个月"],
   "required": true,
-  "max_questions_total": 6
+  "max_questions_total": 4
 }
 ```
 
@@ -162,7 +198,23 @@
       "version": "questionnaire_v2.1",
       "status": "processed",
       "questions_answered": 20,
-      "dimensions_scored": 15,
+      "scored_dimensions": [
+        "appetite_change",
+        "calm_wellbeing",
+        "daily_impact",
+        "emotional_recovery",
+        "fear_unease",
+        "interest_loss",
+        "irritability_anger",
+        "low_energy",
+        "low_mood",
+        "overthinking",
+        "sleep_disturbance",
+        "tension_worry",
+        "unrefreshing_sleep"
+      ],
+      "scored_dimension_count": 13,
+      "scored_dimension_derivation": "unique dimensions where questionnaire question scored=true",
       "safety_flags": []
     },
     "narrative": {
@@ -185,7 +237,25 @@
 
 ---
 
-## 八、完整 Assessment V2.1 输出
+## 八、Evidence Coverage 与来源多样性
+
+`evidence_coverage_score` 与 `source_diversity` 是两个独立指标：
+
+```text
+evidence_coverage_score = 获得有效 Evidence 支持的适用关键信息数 / 当前场景适用的关键信息总数
+```
+
+- “关键信息”包括适用的状态维度、持续时间、日常影响及安全信息；不适用项不进入分母。
+- `source_diversity` 只描述实际使用的来源数量和来源列表，可包含 questionnaire、narrative、document、user_follow_up、user_correction。
+- `source_diversity` 不参与 coverage 乘法，也不能单独触发追问。
+- Follow-Up 主要由 critical/important `missing_information`、未解决 `conflict` 或低 `evidence_coverage_score` 触发。
+- 完整 questionnaire-only 输入可以达到 `evidence_coverage_score=1.0`；不能仅因没有 document/narrative 就判断信息不足。
+
+权威示例位于 `tests/contract/fixtures/assessment-v2.1.contract.json`。
+
+---
+
+## 九、完整 Assessment V2.1 输出
 
 ```json
 {
@@ -193,26 +263,27 @@
   "assessment_id": "asmt_uuid",
   "session_id": "sess_uuid",
   "user_id": "demo_user_001",
-  "status": "success|degraded|needs_follow_up|blocked_safety|awaiting_confirmation",
+  "status": "awaiting_confirmation",
   "revision": 1,
   "analysis_mode": "document_narrative_questionnaire",
   "confidence": 0.76,
   "confidence_semantics": "evidence_coverage",
-  "input_processing_status": { ... },
-  "emotion_profile": { ... },
-  "physical_profile": { ... },
-  "life_events": { "triggers": [...] },
+  "input_processing_status": {},
+  "emotion_profile": {},
+  "physical_profile": {},
+  "life_events": {"triggers": []},
   "user_goal": "relaxation",
-  "assessment_summary": "...",
-  "evidence_items": [ ... ],
+  "assessment_summary": "当前信息支持进一步进行用户确认。",
+  "evidence_items": [],
   "evidence_coverage_score": 0.76,
-  "conflicts": [ ... ],
-  "missing_information": [ ... ],
-  "follow_up_questions": [ ... ],
+  "source_diversity": {"count": 3, "sources": ["questionnaire", "narrative", "document"]},
+  "conflicts": [],
+  "missing_information": [],
+  "follow_up_questions": [],
   "requires_user_confirmation": true,
   "safety_flags": [],
-  "degradation": { ... },
-  "warnings": [ ... ],
+  "degradation": {},
+  "warnings": [],
   "model_metadata": {
     "provider": "qwen",
     "model": "qwen2.5-7b-instruct",
@@ -227,7 +298,7 @@
 
 ---
 
-## 九、与 V2.0 的兼容性
+## 十、与 V2.0 的兼容性
 
 - V2.0 的 12 题问卷继续接受 (`schema_version: "questionnaire_v2.0"`)
 - V2.1 使用 `schema_version: "questionnaire_v2.1"`
@@ -236,4 +307,4 @@
 
 ---
 
-*陈家智审定，待全员 Review*
+*陈家智审定，已完成 S4-01 Review*

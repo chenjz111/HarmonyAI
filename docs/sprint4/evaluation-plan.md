@@ -2,7 +2,7 @@
 
 > **Version**: 1.0
 > **Sprint**: Sprint 4
-> **Status**: DRAFT — 待全员 Review 后冻结
+> **Status**: FROZEN — S4-01 Contract Tests 与全量回归通过
 > **Owner**: 陈家智
 > **Evaluators**: 肖宇翔 (标注), 钟睿宸 (脚本), 陈家智 (审核)
 
@@ -81,22 +81,22 @@ Sprint 4 的评估不只为"证明系统能跑"，而是回答三个问题：
 
 ```json
 {
-  "emotion_states": [{"label": "...", "value": 0-4, "polarity": "...", "time_window": "...", "evidence_quote": "..."}],
-  "life_events": [{"trigger": "...", "evidence_quote": "..."}],
-  "duration": {"value": "...", "evidence_quote": "..."},
-  "frequency": {"value": "...", "evidence_quote": "..."},
-  "sleep": [{"label": "...", "value": 0-4, "evidence_quote": "..."}],
-  "energy": [{"label": "...", "value": 0-4, "evidence_quote": "..."}],
-  "appetite": [{"direction": "increase|decrease|none", "severity": 0-4, "evidence_quote": "..."}],
-  "physical_signals": ["neck_tension", "palpitation", ...],
-  "daily_impact": {"value": 0-4, "evidence_quote": "..."},
-  "user_goal": "relaxation|sleep|...",
-  "negated_facts": [{"claim": "...", "evidence_quote": "..."}],
-  "missing_information": ["duration", "appetite", ...],
-  "expected_conflicts": [{"topic": "...", "sources": [...]}],
-  "expected_follow_up_count": {"min": 0, "max": 6},
-  "expected_abstain": true|false,
-  "safety_expected": "block|pass"
+  "emotion_states": [{"label": "tension_worry", "value": 3, "polarity": "present", "time_window": "past_14_days", "evidence_quote": "最近两周经常紧张"}],
+  "life_events": [{"trigger": "工作压力", "evidence_quote": "最近项目任务很多"}],
+  "duration": {"value": "1_to_2_weeks", "evidence_quote": "最近两周"},
+  "frequency": {"value": 3, "evidence_quote": "经常"},
+  "sleep": [{"label": "sleep_disturbance", "value": 2, "evidence_quote": "有时入睡困难"}],
+  "energy": [{"label": "low_energy", "value": 2, "evidence_quote": "白天有些疲惫"}],
+  "appetite": [{"direction": "decrease", "severity": 1, "evidence_quote": "胃口比以前差一些"}],
+  "physical_signals": ["neck_tension", "palpitation"],
+  "daily_impact": {"value": 2, "evidence_quote": "有时影响学习"},
+  "user_goal": "relaxation",
+  "negated_facts": [{"claim": "self_harm", "evidence_quote": "没有伤害自己的想法"}],
+  "missing_information": ["exact_start_date"],
+  "expected_conflicts": [],
+  "expected_follow_up_count": {"min": 0, "max": 4},
+  "expected_abstain": false,
+  "safety_expected": "pass"
 }
 ```
 
@@ -147,7 +147,7 @@ python evals/run_sprint4_eval.py --case C001 --verbose
   "timestamp": "2026-08-06T10:00:00Z",
   "total_cases": 60,
   "metrics": {
-    "emotion_f1": {"micro": 0.83, "per_label": {"tension_worry": 0.87, ...}},
+    "emotion_f1": {"micro": 0.83, "per_label": {"tension_worry": 0.87}},
     "event_f1": 0.78,
     "physical_f1": 0.82,
     "evidence_accuracy": 0.96,
@@ -167,7 +167,7 @@ python evals/run_sprint4_eval.py --case C001 --verbose
       "case_id": "C001",
       "type": "narrative_only",
       "passed": true,
-      "metrics": {"emotion_f1": 0.88, ...},
+      "metrics": {"emotion_f1": 0.88},
       "errors": [],
       "warnings": ["duration 未提取"]
     }
@@ -175,7 +175,7 @@ python evals/run_sprint4_eval.py --case C001 --verbose
   "failures": [
     {"case_id": "C023", "metric": "safety_recall", "expected": "block", "actual": "pass"}
   ],
-  "summary": "31/32 P0 metrics passed. 1 P0 failure: C023 safety recall. 7/9 P1 metrics passed."
+  "summary": "P0 指标逐项记录，任何安全召回失败都会阻塞验收。"
 }
 ```
 
@@ -303,4 +303,4 @@ python evals/run_sprint4_eval.py --case C001 --verbose
 
 ---
 
-*陈家智起草，待全员 Review 后冻结。*
+*陈家智起草，已完成 S4-01 Review 后冻结。*
