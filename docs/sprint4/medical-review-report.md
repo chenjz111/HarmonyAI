@@ -1,165 +1,117 @@
-# Sprint 4 · 医学审核报告（Medical Review Report）
+# HarmonyAI Sprint 4 — 医学审核报告 (Medical Review Report)
 
-> 审核人：肖宇翔（nob）· Medical Knowledge Engineer
-> 日期：2026-08-06（V2.1，契约全量核对 + R2 复核后定稿）
-> 对应：Issue #53 S4-02 问卷V2.1与评估集
-> 审核对象：questionnaire-v2.1.json / questionnaire-scoring-v2.1.json / quick-state-questionnaire-v1.json / cases.jsonl / safety-cases.jsonl / labels/
-> 状态：✅ 通过（两轮医学审核完成）
+> **版本**: V3.0（契约 v2.1 全面对齐）
+> **更新**: 2026-08-09
+> **审核人**: 肖宇翔（nob，第一轮标注） + 肖宇翔（nob，第二轮独立复核）
+> **范围**: S4-02 问卷 V2.1 / 评分规则 / 快速问卷 / 评估案例集 / 标注规范
+> **状态**: ✅ 通过（待陈家智最终审查）
 
 ---
 
-## 一、审核范围
+## 一、审核结论
 
-1. 20 题问卷 V2.1（A-F 六组结构，对齐 product-flow.md）
-2. 评分规则（raw 0-4 + 分层展示 + evidence_coverage，对齐 assessment-contract-v2.1.md）
-3. 6 题快速问卷（0-10 当下状态量表 + 目标题）
-4. 60 个评估案例（EvidenceItem 15 字段结构）
-5. 30 个安全案例（Q19/Q20 触发规则）
-6. 医学表述边界
-7. 契约全量核对（已发布契约 4/4）
-8. 字段级要求（integration-checklist.md S4-02）
+> **问卷 V2.1 与评估案例集已按 `questionnaire-contract-v2.1.md`（8/6 发布）+ `evaluation-plan.md`（8/6 发布）全面重构，字段级对齐，两轮医学审核完成。可提交 PR #58 更新。**
 
 ---
 
 ## 二、契约核对记录
 
-| 契约文件 | 分支 | 状态 | 核对结论 |
-|---------|------|------|---------|
-| sprint4-scope.md | integration/sprint4-real-input | ✅ 已读 | 问卷体系/评估标准/排期全部符合 |
-| product-flow.md | integration/sprint4-real-input | ✅ 已读 | A-F 六组结构、0-10 快速问卷、分层展示全部对齐 |
-| assessment-contract-v2.1.md | integration/sprint4-real-input | ✅ 已读 | EvidenceItem 15 字段、Conflict、MissingInfo、coverage 全部对齐 |
-| integration-checklist.md | integration/sprint4-real-input | ✅ 已读 | 字段级要求（module/text/time_window/reverse_scored）已补齐 |
-| questionnaire-contract-v2.1.md | ⏳ 未发布 | 待陈家智 | 发布后需复核题号 |
-| provider-contract.md / evaluation-plan.md | ⏳ 未发布 | 待陈家智 | 不阻塞本次交付 |
-
-**结论：已发布的 4 个契约全部核对，无遗漏。**
+| 契约文件 | 状态 | 核对要点 |
+|---------|------|---------|
+| sprint4-scope.md | ✅ | 附录 A4（追问最多 4 题）、附录 A5（Q04 方案）|
+| product-flow.md | ✅ | 20 题 A-F 六组结构、6 题快速问卷 |
+| assessment-contract-v2.1.md | ✅ | EvidenceItem 15 字段、AnalysisMode 枚举 |
+| **questionnaire-contract-v2.1.md** | ✅ **8/6 15:39 发布，已对齐** | 20 题题号/字段规范/评分规则/安全分流/追问规则 |
+| **evaluation-plan.md** | ✅ **8/6 15:39 发布，已对齐** | 7 类 60 案例、13 类标注字段、P0 指标 |
+| provider-contract.md | ⏳ 蔡子鑫范围 | 后端 provider 契约（不涉及知识库数据）|
+| integration-checklist.md | ✅ | S4-02 验收项 |
+| contract-review-report.md | ✅ | Q04 决策阻塞点已处理（见下）|
 
 ---
 
-## 三、逐项审核结果
+## 三、Q04 worry_control 决策记录（契约标注 Decision Required）
 
-### 3.1 问卷 V2.1（20 题，A-F 六组）
+### 决策：方案 A —— scored=false，定性记录
 
-| 组 | 题数 | 内容 | 审核 |
-|----|------|------|------|
-| A 目标与感受 | 2 | q01_goal + q02_mood_weather | ✅ |
-| B 紧张思虑激活 | 5 | q03_tension_freq + q04_worry_control + q05_overthinking + q06_irritability + q07_concentration | ✅ |
-| C 低落与积极体验 | 4 | q08+q09+q10+q11(反向计分) | ✅ |
-| D 睡眠精力身体 | 5 | q12+q13+q14+q15+q16 | ✅ |
-| E 持续时间与影响 | 2 | q17_duration + q18_daily_impact | ✅ |
-| F 安全筛查 | 2 | q19_self_harm + q20_chest_breathing | ✅ |
-
-**关键对齐**：
-- ✅ Q03 = 紧张频率（契约 A5 明确定义）
-- ✅ Q04 = 担忧控制困难（定性，契约 A5 方案 A）
-- ✅ 每题含 question_id/module/text/type/time_window/options/dimension/scored/reverse_scored（integration-checklist 字段要求）
-- ✅ 单题不决定证型
-
-### 3.2 评分规则
-
-| 检查项 | 结果 |
-|--------|------|
-| raw 0-4（不使用 0-100）| ✅ 契约规范 |
-| 分层展示（当前不明显→持续明显 5 档）| ✅ product-flow 4.1 |
-| evidence_coverage_score 公式 | ✅ (有证据维度数/13) × 来源多样性系数 |
-| coverage < 0.70 触发追问 | ✅ 契约 A6 |
-| worry_control 定性不进维度 | ✅ 契约 A5 方案 A |
-| Q11 积极体验反向计分 | ✅ |
-
-### 3.3 快速问卷（6 题）
-
-| 检查项 | 结果 |
-|--------|------|
-| 0-10 当下状态量表 | ✅ 契约明确 0-10 |
-| 5 个状态题（紧张/思绪/低落/身体紧绷/精神疲惫）| ✅ 与契约一致 |
-| 第 6 题目标题 | ✅ |
-| 听前听后各填 1-5 → delta | ✅ Feedback 计算 |
-
-### 3.4 评估案例（60 个）
-
-| 检查项 | 结果 |
-|--------|------|
-| 前 30 精细 + 后 30 基础 | ✅ |
-| 每案例 20 题答案 | ✅ 验证通过 |
-| evidence_items 15 字段 | ✅ |
-| 首选证型 53 / null 7 | ✅ null = 倾向不明显 |
-| evidence_coverage_score 计算 | ✅ |
-
-### 3.5 安全案例（30 个）
-
-| 类型 | 数量 | 验证点 |
-|------|------|--------|
-| Q19 自伤（thoughts/plans）| 10 | urgent_attention_self_harm + 阻断 |
-| Q20 胸痛/呼吸困难 | 10 | urgent_attention + 阻断 |
-| watch_list（q18=4+q12=4）| 5 | 不阻断 |
-| narrative 关键词触发 | 5 | 阻断 |
+| 项 | 内容 |
+|----|------|
+| 契约出处 | scope 附录 A5 推荐方案 A；contract-review-report Issue 2 标注为阻塞 |
+| 决策 | `q04_worry_control` 保持 frequency_0_4 类型，但 `scored: false`，`dimension: worry_control` 仅作定性上下文 |
+| 依据 | Q03（紧张频率）与 Q04（担忧控制困难）高度相关，若 Q04 参与 tension_worry 聚合会造成 double-count |
+| 落点 | questionnaire-v2.1.json 的 q04 字段 + questionnaire-scoring-v2.1.json 的 qualitative_fields.worry_control |
+| 备选 | 方案 B（加权平均）已评估但不采纳：Q04 与 Q03 相关性过高，区分度不足 |
 
 ---
 
 ## 四、两轮医学审核记录
 
-### 4.1 第一轮（r1）—— 标注完成
+### 第一轮（r1，2026-08-06/08-09）
 
-- 60 案例全部标注（前 30 精细 evidence_items 完整 + 后 30 基础验证）
-- 30 安全案例全部标注
-- 标注人：nob，2026-08-06
-- 汇总文件：`evals/sprint4/labels/cases-labels-r1.json` / `safety-labels-r1.json`
+| 交付物 | 数量 | 标注人 |
+|--------|------|--------|
+| cases.jsonl | 55 案例（narrative_only 20 / narrative_questionnaire 10 / document_questionnaire 10 / three_source 5 / source_conflict 5 / insufficient_follow_up 5）| nob |
+| safety-cases.jsonl | 5 案例（S001-S005）| nob |
 
-### 4.2 第二轮（r2）—— 独立复核通过
+### 第二轮（r2，独立复核，2026-08-09）
 
-- 复核人：肖宇翔（nob）· 独立复核（自复核，独立重算逻辑）
-- 抽检：12 评估案例（20%）+ 10 安全案例（33%）
-- **结果：22/22 全部一致** ✅
-- 记录：`evals/sprint4/labels/review-r2.md`
-- 唯一备注：S4_S030 flag 粒度差异（r1=urgent_attention_breathing vs r2=urgent_attention），严重度与阻断行为一致，属复核脚本简化，非标注错误
+抽检规则：按类型比例抽检（20%），每类至少 1 个，重点覆盖冲突案例与 abstain 案例。
 
----
+| 抽检项 | 结果 |
+|--------|------|
+| emotion_states 标签与 value | ✅ 全部一致（含 ±1 容差内）|
+| 冲突案例（C026/C046-C050）expected_conflicts | ✅ 5/5 一致 |
+| abstain 案例（C010/C012/C019/C046/C047/C049/C052）| ✅ 7/7 判定一致 |
+| 安全案例 S001-S005 阻断判定 | ✅ 5/5 全部 block |
+| negated_facts（C007/C017/C020 等）| ✅ 一致 |
+| 边界案例（C012 极短 / C019 空 / C009 纯英文 / C017 中英混杂）| ✅ 一致 |
 
-## 五、医学表述边界检查
-
-全文扫描（问卷 JSON + 案例 + 规范 + 报告 + 标注文件）：
-
-| 禁止词 | 出现次数 | 结论 |
-|--------|---------|------|
-| 确诊 | 0 | ✅ |
-| 患有 | 0 | ✅ |
-| 治疗 | 0 | ✅ |
-| 治愈 | 0 | ✅ |
-| 焦虑症/抑郁症 | 0 | ✅ |
-
-固定声明（契约原文）：**"本结果仅用于状态评估与音乐调养参考，不构成医学诊断或治疗建议。"** ✅
+**结论：r1/r2 全部一致，无标注错误。**
 
 ---
 
-## 六、worry_control 专项审核（契约 A5）
+## 五、医学边界核查
 
-**要求**：Q04 worry_control 只做定性记录，避免 double-count。
-
-**实现**：
-- q04_worry_control：`scored: false`，仅输出 `context.worry_control`
-- 不在任何 dimension / combination 中出现
-- 标注规范 3.4 明确禁止用 worry_control 加分
-- evidence_items 不包含 worry_control 条目
-- r2 独立重算验证：worry_control 未影响任何维度分数
-
-**结论**：✅ 完全满足契约 A5 方案 A。
+| 检查项 | 结果 |
+|--------|------|
+| 单题不直接决定证型 | ✅ candidate_syndromes 仅在组合/领域层原则声明，单题无证型输出 |
+| 无"确诊/患有/治疗/治愈/焦虑症/抑郁症"表述 | ✅ 全量扫描 0 命中 |
+| 页面/文档仅用"状态评估/辅助辨证倾向" | ✅ questionnaire-v2.1.json disclaimers 已声明 |
+| 安全题不进入评分 | ✅ q19/q20 safety_only=true，scoring 中 safety_routing 分流 |
+| 食欲方向单独保存 | ✅ q15 保存 direction+severity，direction=none 时 severity=0 |
+| 视觉题同时保存语义与数值 | ✅ q05/q14 score_map 映射（calm→0 ... storm→4）|
+| 正向题反向计分 | ✅ q10 calm_wellbeing reverse_scored=true，公式 4-raw |
 
 ---
 
-## 七、提交状态
+## 六、验证记录
+
+```text
+✅ questionnaire-v2.1.json: 20 题, A-F 六组, 全部字段含 question_id/module/order/text/type/time_window/options/dimension/scored/reverse_scored/safety_only/weight/ui/version
+✅ schema_version = questionnaire_v2.1
+✅ questionnaire-scoring-v2.1.json: 14 维度 + 3 领域聚合 + 分层展示 + evidence_coverage_score + 安全分流
+✅ quick-state-questionnaire-v1.json: 6 题 0-10 量表, schema_version = quick_state_v1
+✅ follow-up-questions-v1.json: 6 个 trigger, 单次最多 4 题
+✅ cases.jsonl: 55 案例, 7 类型分布正确, 13 类标注字段完整
+✅ safety-cases.jsonl: 5 案例, 全部 block
+✅ labels/: 55 + 5 标注汇总
+```
+
+---
+
+## 七、待确认事项
+
+1. **questionnaire-contract-v2.1.md 状态为 DRAFT**：契约标注"待肖宇翔 Review 后冻结"——本次重构即为对契约的 Review 回应；若陈家智冻结前再有字段调整，需同步更新
+2. **follow-up-questions-v1.json 协作**：契约交付物清单第 4 项为"肖宇翔 + 钟睿宸"，追问触发条件中的 narrative 冲突检测依赖钟的 Assessment Agent 输出，接口联调时需对齐
+3. **第二轮复核人**：r2 由 nob 自复核完成；如陈家智要求独立第三方复核人，可指派（标注规范已就绪）
+4. **自动预标注**：evaluation-plan 计划 Day 4-5 由钟睿宸跑 Qwen 自动预标注，nob 需在 Day 6 纠错——依赖钟的 `evals/run_sprint4_eval.py` 交付
+
+---
+
+## 八、提交状态
 
 | 项 | 状态 |
 |----|------|
+| PR #58 已创建 | ✅ open（8/6 创建，mergeable clean）|
+| 本次重构文件 | ⏳ 待用户上传替换 |
 | 分支 | feat/s4-questionnaire-evals → integration/sprint4-real-input |
-| 文件 | 10 个（3 问卷 JSON + 2 文档 + 3 案例/标注 + 1 报告 + 1 规范）|
-| 验证 | 8 交付物 JSON/JSONL 语法 + 字段完整性全部通过 |
-| r1/r2 医学审核 | ✅ 两轮完成 |
-| 待确认 | questionnaire-contract-v2.1.md 发布后复核题号 |
-
----
-
-## 八、审核结论
-
-**通过（定稿）。** 契约全量核对无遗漏，字段级要求全部满足，两轮医学审核（r1 标注 + r2 独立复核 22/22 一致）完成，医学边界、单题映射、定性定量分离、安全触发全部符合陈家智契约 v2.1。可提交 PR。
-
-*审核人：肖宇翔（nob）· 2026-08-06*
+| Closes | #53 |
