@@ -1,0 +1,102 @@
+{
+  "schema_version": "quick_state_v1",
+  "title": "HarmonyAI 快速状态评估",
+  "description": "每次听音乐前后的即时状态评估",
+  "total_questions": 6,
+  "estimated_seconds": 60,
+  "usage": "pre_listening / post_listening",
+  "questions": [
+    {
+      "question_id": "qs01_tension",
+      "order": 1,
+      "text": "此刻紧张或担忧程度",
+      "type": "scale_0_10",
+      "time_window": "current",
+      "min": 0,
+      "max": 10,
+      "step": 1,
+      "label_min": "完全没有",
+      "label_max": "极其严重",
+      "dimension": "tension_current",
+      "scored": true,
+      "version": "1"
+    },
+    {
+      "question_id": "qs02_overthinking",
+      "order": 2,
+      "text": "此刻思绪反复程度",
+      "type": "scale_0_10",
+      "time_window": "current",
+      "min": 0,
+      "max": 10,
+      "step": 1,
+      "label_min": "完全没有",
+      "label_max": "极其严重",
+      "dimension": "overthinking_current",
+      "scored": true,
+      "version": "1"
+    },
+    {
+      "question_id": "qs03_low_mood",
+      "order": 3,
+      "text": "此刻情绪低落程度",
+      "type": "scale_0_10",
+      "time_window": "current",
+      "min": 0,
+      "max": 10,
+      "step": 1,
+      "label_min": "完全没有",
+      "label_max": "极其严重",
+      "dimension": "low_mood_current",
+      "scored": true,
+      "version": "1"
+    },
+    {
+      "question_id": "qs04_body_tension",
+      "order": 4,
+      "text": "此刻身体紧绷程度",
+      "type": "scale_0_10",
+      "time_window": "current",
+      "min": 0,
+      "max": 10,
+      "step": 1,
+      "label_min": "完全没有",
+      "label_max": "极其严重",
+      "dimension": "body_tension_current",
+      "scored": true,
+      "version": "1"
+    },
+    {
+      "question_id": "qs05_mental_fatigue",
+      "order": 5,
+      "text": "此刻精神疲惫程度",
+      "type": "scale_0_10",
+      "time_window": "current",
+      "min": 0,
+      "max": 10,
+      "step": 1,
+      "label_min": "完全没有",
+      "label_max": "极其严重",
+      "dimension": "mental_fatigue_current",
+      "scored": true,
+      "version": "1"
+    },
+    {
+      "question_id": "qs06_goal",
+      "order": 6,
+      "text": "这次希望达到的目标",
+      "type": "single_choice",
+      "time_window": "current",
+      "options": [
+        { "value": "relaxation", "label": "放松" },
+        { "value": "sleep", "label": "睡眠" },
+        { "value": "restore_energy", "label": "恢复精力" },
+        { "value": "focus", "label": "专注" },
+        { "value": "release_emotion", "label": "释放情绪" }
+      ],
+      "dimension": null,
+      "scored": false,
+      "version": "1"
+    }
+  ]
+}

@@ -47,19 +47,31 @@
     {
       "path": "pages/player/player",
       "style": { "navigationBarTitleText": "疗愈播放" }
+    },
+    {
+      "path": "pages/questionnaire-v2/questionnaire-v2",
+      "style": { "navigationBarTitleText": "状态评估", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/quick-state/quick-state",
+      "style": { "navigationBarTitleText": "快速状态", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/assessment-result/assessment-result",
+      "style": { "navigationBarTitleText": "评估结果", "navigationStyle": "custom" }
     }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "white",
     "navigationBarTitleText": "HarmonyAI",
-    "navigationBarBackgroundColor": "#534AB7",
-    "backgroundColor": "#F8F8F8"
+    "navigationBarBackgroundColor": "#4A6B5C",
+    "backgroundColor": "#F7F3EB"
   },
   "tabBar": {
-    "color": "#888780",
-    "selectedColor": "#534AB7",
-    "backgroundColor": "#ffffff",
-    "borderStyle": "black",
+    "color": "#9C9585",
+    "selectedColor": "#4A6B5C",
+    "backgroundColor": "#FFFEFA",
+    "borderStyle": "white",
     "list": [
       { "pagePath": "pages/index/index", "text": "首页" },
       { "pagePath": "pages/player/player", "text": "播放" }

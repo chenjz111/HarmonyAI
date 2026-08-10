@@ -1,0 +1,131 @@
+{
+  "schema_version": "follow_up_questions_v1",
+  "description": "HarmonyAI 评估追问库 V1 — 基于契约 §8 决策树，单次最多 4 题",
+  "max_questions_per_request": 4,
+  "triggers": [
+    {
+      "trigger_id": "fu_duration_unclear",
+      "trigger_reason": "duration_unclear",
+      "priority": 1,
+      "condition": "narrative 和 questionnaire 均未明确状态持续时间",
+      "question": {
+        "question_id": "fu_duration_001",
+        "text": "这些状态大概持续了多久？",
+        "type": "single_choice",
+        "options": [
+          { "value": "less_than_3_days", "label": "少于3天" },
+          { "value": "3_to_6_days", "label": "3-6天" },
+          { "value": "1_to_2_weeks", "label": "1-2周" },
+          { "value": "2_weeks_to_1_month", "label": "2周-1个月" },
+          { "value": "1_to_3_months", "label": "1-3个月" },
+          { "value": "over_3_months", "label": "超过3个月" },
+          { "value": "recurrent_unclear", "label": "反复出现，难以判断" }
+        ],
+        "required": true
+      }
+    },
+    {
+      "trigger_id": "fu_severity_clarify",
+      "trigger_reason": "severity_clarification",
+      "priority": 2,
+      "condition": "某维度证据不足或分值处于临界区间，需要用户确认实际影响",
+      "question": {
+        "question_id": "fu_severity_001",
+        "text": "这些状态对你日常学习、工作或社交的影响有多大？",
+        "type": "single_choice",
+        "options": [
+          { "value": "none", "label": "没有影响" },
+          { "value": "mild", "label": "轻微影响，能正常完成" },
+          { "value": "moderate", "label": "有一定影响，需要额外努力" },
+          { "value": "severe", "label": "较大影响，明显干扰" },
+          { "value": "extreme", "label": "严重影响，难以维持" }
+        ],
+        "required": true
+      }
+    },
+    {
+      "trigger_id": "fu_source_conflict",
+      "trigger_reason": "source_conflict",
+      "priority": 3,
+      "condition": "不同来源（questionnaire / narrative / document）对同一维度描述冲突",
+      "question": {
+        "question_id": "fu_conflict_001",
+        "text": "你觉得自己最近两周整体情绪状态更接近哪一种？",
+        "type": "single_choice",
+        "options": [
+          { "value": "mostly_calm", "label": "总体平静，偶尔波动" },
+          { "value": "often_low", "label": "经常低落或疲惫" },
+          { "value": "often_tense", "label": "经常紧张或烦躁" },
+          { "value": "mixed_unclear", "label": "说不清楚，变化很大" }
+        ],
+        "required": true
+      }
+    },
+    {
+      "trigger_id": "fu_physical_signal_detail",
+      "trigger_reason": "physical_signal_detail",
+      "priority": 4,
+      "condition": "用户勾选了身体信号，需要补充部位/频率/诱因",
+      "question": {
+        "question_id": "fu_physical_001",
+        "text": "你最近的身体不适（如紧绷、疼痛、心慌等）大概多久出现一次？",
+        "type": "single_choice",
+        "options": [
+          { "value": "rare", "label": "很少出现" },
+          { "value": "few_times_week", "label": "每周几次" },
+          { "value": "daily", "label": "几乎每天" },
+          { "value": "persistent", "label": "持续存在" }
+        ],
+        "required": true
+      }
+    },
+    {
+      "trigger_id": "fu_recovery_context",
+      "trigger_reason": "emotional_recovery_context",
+      "priority": 5,
+      "condition": "情绪恢复力维度得分异常，需了解支持资源",
+      "question": {
+        "question_id": "fu_recovery_001",
+        "text": "当你情绪低落或紧张时，通常会用什么方式让自己好起来？",
+        "type": "multi_choice",
+        "options": [
+          { "value": "talk_to_someone", "label": "找人倾诉" },
+          { "value": "exercise", "label": "运动" },
+          { "value": "music", "label": "听音乐" },
+          { "value": "rest", "label": "休息或睡觉" },
+          { "value": "hobby", "label": "做自己喜欢的事" },
+          { "value": "none", "label": "暂时没有什么办法" }
+        ],
+        "required": true,
+        "mutually_exclusive_value": "none"
+      }
+    },
+    {
+      "trigger_id": "fu_sleep_detail",
+      "trigger_reason": "sleep_quality_detail",
+      "priority": 6,
+      "condition": "睡眠维度得分较高，需了解睡眠问题类型",
+      "question": {
+        "question_id": "fu_sleep_001",
+        "text": "你最近的睡眠问题主要是？",
+        "type": "multi_choice",
+        "options": [
+          { "value": "falling_asleep", "label": "入睡困难" },
+          { "value": "night_awakening", "label": "夜间易醒" },
+          { "value": "early_awakening", "label": "早醒" },
+          { "value": "unrefreshing", "label": "醒后仍累" },
+          { "value": "short_sleep", "label": "睡眠时间短" },
+          { "value": "none", "label": "没有明显问题" }
+        ],
+        "required": true,
+        "mutually_exclusive_value": "none"
+      }
+    }
+  ],
+  "selection_rules": {
+    "max_per_assessment": 4,
+    "sort_by": "priority",
+    "deduplicate_by": "question_id",
+    "skip_if_safety_triggered": true
+  }
+}

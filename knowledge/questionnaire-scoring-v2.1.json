@@ -1,0 +1,168 @@
+{
+  "schema_version": "questionnaire_scoring_v2.1",
+  "description": "HarmonyAI 问卷 V2.1 评分规则 — 领域聚合 + 正向反向 + 分层展示",
+  "scoring_principles": {
+    "domain_aggregation": "维度得分 = Σ(题目得分 × 题目权重) / Σ(题目权重)",
+    "reverse_scoring": "正向题反向计分: reversed = 4 - raw_score",
+    "safety_bypass": "安全题只做分流入安全流程，不参与状态评分",
+    "single_question_rule": "单题不能直接决定证型，证型由领域聚合 + 多源证据共同确定"
+  },
+  "dimensions": [
+    {
+      "key": "tension_worry",
+      "display_name": "紧张与担忧",
+      "category": "emotion",
+      "questions": ["q03_tension_worry"],
+      "aggregation": "weighted_average",
+      "max_score": 4
+    },
+    {
+      "key": "worry_control",
+      "display_name": "担忧控制",
+      "category": "emotion",
+      "questions": ["q04_worry_control"],
+      "scored": false,
+      "note": "已冻结为不计分定性 Evidence，不参与 tension_worry 聚合"
+    },
+    {
+      "key": "overthinking",
+      "display_name": "思虑反复",
+      "category": "emotion",
+      "questions": ["q05_overthinking"],
+      "aggregation": "weighted_average",
+      "max_score": 4,
+      "value_source": "visual_single.score"
+    },
+    {
+      "key": "irritability_anger",
+      "display_name": "烦躁易怒",
+      "category": "emotion",
+      "questions": ["q06_irritability_anger"],
+      "aggregation": "weighted_average",
+      "max_score": 4
+    },
+    {
+      "key": "fear_unease",
+      "display_name": "不安恐惧",
+      "category": "emotion",
+      "questions": ["q07_fear_unease"],
+      "aggregation": "weighted_average",
+      "max_score": 4
+    },
+    {
+      "key": "low_mood",
+      "display_name": "情绪低落",
+      "category": "emotion",
+      "questions": ["q08_low_mood"],
+      "aggregation": "weighted_average",
+      "max_score": 4
+    },
+    {
+      "key": "interest_loss",
+      "display_name": "兴趣减退",
+      "category": "emotion",
+      "questions": ["q09_interest_loss"],
+      "aggregation": "weighted_average",
+      "max_score": 4
+    },
+    {
+      "key": "calm_wellbeing",
+      "display_name": "平静安稳",
+      "category": "emotion",
+      "questions": ["q10_calm_wellbeing"],
+      "aggregation": "weighted_average",
+      "max_score": 4,
+      "reverse_scored": true,
+      "reverse_formula": "calm_wellbeing_reversed = 4 - raw_score",
+      "note": "正向题，高分=好状态。展示时用 reversed 值参与状态分层"
+    },
+    {
+      "key": "emotional_recovery",
+      "display_name": "情绪恢复力",
+      "category": "emotion",
+      "questions": ["q11_emotional_recovery"],
+      "aggregation": "weighted_average",
+      "max_score": 4,
+      "reverse_scored": true,
+      "reverse_formula": "emotional_recovery_reversed = 4 - raw_score",
+      "note": "高分=恢复力强=好状态。展示时用 reversed 值"
+    },
+    {
+      "key": "sleep_disturbance",
+      "display_name": "睡眠困扰",
+      "category": "sleep",
+      "questions": ["q12_sleep_disturbance"],
+      "aggregation": "weighted_average",
+      "max_score": 4
+    },
+    {
+      "key": "unrefreshing_sleep",
+      "display_name": "睡眠不解乏",
+      "category": "sleep",
+      "questions": ["q13_unrefreshing_sleep"],
+      "aggregation": "weighted_average",
+      "max_score": 4,
+      "note": "与 sleep_disturbance 区分：Q12=入睡过程，Q13=醒来感受"
+    },
+    {
+      "key": "low_energy",
+      "display_name": "精力不足",
+      "category": "energy",
+      "questions": ["q14_low_energy"],
+      "aggregation": "weighted_average",
+      "max_score": 4,
+      "value_source": "visual_single.score"
+    },
+    {
+      "key": "appetite_change",
+      "display_name": "食欲变化",
+      "category": "appetite",
+      "questions": ["q15_appetite_change"],
+      "aggregation": "structured",
+      "value_structure": { "direction": "increase|decrease|none", "severity": "0-4" },
+      "note": "必须分方向保存。direction=none 时 severity 强制为 0"
+    },
+    {
+      "key": "daily_impact",
+      "display_name": "日常影响",
+      "category": "life_event",
+      "questions": ["q18_daily_impact"],
+      "aggregation": "weighted_average",
+      "max_score": 4
+    }
+  ],
+  "severity_display_tiers": [
+    { "range": [0, 0.75], "label": "当前不明显", "color": "#5A8A6B" },
+    { "range": [0.76, 1.75], "label": "轻微出现", "color": "#8AAF7C" },
+    { "range": [1.76, 2.75], "label": "有一定表现", "color": "#D4A542" },
+    { "range": [2.76, 3.50], "label": "较明显", "color": "#C8896D" },
+    { "range": [3.51, 4.00], "label": "持续或非常明显", "color": "#C44A3E" }
+  ],
+  "safety_flows": {
+    "SAFETY_SELF_HARM": {
+      "trigger_question": "q19_self_harm",
+      "pass_value": "never",
+      "description": "Q19 选择非 never 的任何选项均触发",
+      "action": "进入安全流程，不直接进入 Diagnosis → Prescription → Music"
+    },
+    "SAFETY_EMERGENCY_PHYSICAL": {
+      "trigger_question": "q20_emergency",
+      "pass_value": "none",
+      "description": "Q20 选择任何紧急情况选项均触发",
+      "action": "进入紧急身体安全流程",
+      "mutual_exclusion": "none 与所有紧急情况选项互斥"
+    }
+  },
+  "quick_state_scoring": {
+    "schema_version": "quick_state_v1",
+    "dimensions": [
+      { "key": "tension_current", "source": "qs01_tension", "scale": "0-10" },
+      { "key": "overthinking_current", "source": "qs02_overthinking", "scale": "0-10" },
+      { "key": "low_mood_current", "source": "qs03_low_mood", "scale": "0-10" },
+      { "key": "body_tension_current", "source": "qs04_body_tension", "scale": "0-10" },
+      { "key": "mental_fatigue_current", "source": "qs05_mental_fatigue", "scale": "0-10" }
+    ],
+    "delta_calculation": "post_value - pre_value (负值=改善，正值=加重)",
+    "note": "听后重复 qs01-qs05，Feedback Agent 计算 delta"
+  }
+}

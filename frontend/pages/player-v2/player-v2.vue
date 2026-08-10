@@ -63,6 +63,12 @@
         </view>
       </view>
 
+      <!-- 严重状态安全提示 -->
+      <view v-if="safetyNotice" class="safety-notice-card">
+        <text class="safety-notice-icon">!</text>
+        <text class="safety-notice-text">{{ safetyNotice }}</text>
+      </view>
+
       <!-- 处方卡 -->
       <view class="prescription-card">
         <view class="prescription-row">
@@ -131,7 +137,7 @@ export default {
   data() {
     return {
       status: 'loading', errorMsg: '', audioContext: null, isPlaying: false,
-      currentTime: 0, duration: 0, pauseCount: 0,
+      currentTime: 0, duration: 0, pauseCount: 0, safetyNotice: '',
       prescription: { toneName: '', bpm: 68, instruments: [], reason: '', trackId: '', audioUrl: '', matched: true }
     }
   },
@@ -147,12 +153,19 @@ export default {
     async loadAudio() {
       this.status = 'loading'
       this.errorMsg = ''
+      this.safetyNotice = ''
       try {
         const session = getSprint3Session()
         const workflow = session.workflow || {}
-        const prescription = workflow.prescription
-        if (!prescription || prescription.status === 'blocked_safety') {
-          throw new Error('当前状态不适合提供普通音乐调养建议')
+        let prescription = workflow.prescription
+        // 如果没有处方或状态严重，降级到通用安抚音乐，不再阻断
+        if (!prescription) {
+          prescription = {
+            status: 'degraded',
+            recommended_tone: '角调',
+            music_feature: { tone_name: '角调', bpm: 68, instruments: ['古琴', '箫'] },
+            explanation: '未获取到辨证处方，已使用通用舒缓音乐。'
+          }
         }
         let music = workflow.music
         if (!music?.stream_url) music = await requestMusic(prescription, session.session_id)
@@ -162,19 +175,20 @@ export default {
           toneName: music.mode || feature.tone_name || '角调',
           bpm: music.bpm || feature.bpm || 68,
           instruments: music.instruments || feature.instruments || [],
-          reason: prescription.explanation || prescription.music_reason || '根据辅助辨证倾向和音乐参数规则匹配',
+          reason: music.explanation || prescription.explanation || prescription.music_reason || '根据辅助辨证倾向和音乐参数规则匹配',
           trackId: music.music_id,
           audioUrl: resolveMediaUrl(music.stream_url),
           matched: music.source_type === 'matched'
         }
+        this.safetyNotice = music.safety_notice || ''
         updateSprint3Session({
           music,
           prescription_id: workflow.prescription_id || workflow.result_id || `rx_${Date.now()}`
         })
         this.initAudio()
         this.status = 'success'
-        if (music.status === 'degraded') {
-          uni.showToast({ title: '生成服务不可用，已切换本地曲库', icon: 'none' })
+        if (prescription.status === 'blocked_safety' || music.status === 'degraded') {
+          uni.showToast({ title: '已切换为辅助舒缓音乐', icon: 'none', duration: 2500 })
         }
       } catch (error) {
         this.status = 'error'
@@ -286,6 +300,37 @@ export default {
   font-size: 26rpx;
   color: #6B6862;
   display: block;
+}
+
+/* ============ 安全提示 ============ */
+.safety-notice-card {
+  margin: 24rpx 40rpx 0;
+  padding: 24rpx 28rpx;
+  background: #FFF6F2;
+  border: 1rpx solid #E8C4B8;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+}
+.safety-notice-icon {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  background: #C85A45;
+  color: #FFFFFF;
+  font-size: 26rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.safety-notice-text {
+  flex: 1;
+  font-size: 24rpx;
+  color: #6B3A2E;
+  line-height: 1.7;
 }
 
 /* ============ 沉浸式封面 ============ */
