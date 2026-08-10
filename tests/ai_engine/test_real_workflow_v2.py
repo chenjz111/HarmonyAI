@@ -230,8 +230,15 @@ def test_v2_workflow_exposes_qwen_resolution_degradation(monkeypatch):
     assert result["degradations"]["assessment"]["reason_codes"] == [
         "LLM_NOT_CONFIGURED"
     ]
-    assert result["agent_statuses"]["diagnosis"] == "degraded"
+    assert result["agent_statuses"]["diagnosis"] == "success"
+    assert result["diagnosis"]["confidence"] == {
+        "level": "medium",
+        "score": 0.65,
+    }
+    assert result["agent_statuses"]["prescription"] == "success"
     assert result["agent_statuses"]["music"] == "degraded"
+    assert result["music"]["music_id"] == "music-jiao-01"
+    assert result["music"]["fallback_applied"] is True
 
 
 def test_v2_workflow_does_not_touch_repository_without_feedback_payload():

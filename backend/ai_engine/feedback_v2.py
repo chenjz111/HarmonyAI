@@ -47,6 +47,7 @@ def submit_feedback_v2(
         inserted = repository.save_once(record, preference_patch)
     except Exception:
         return {
+            "agent_id": "feedback_agent",
             "status": "failed",
             "feedback_id": feedback_id,
             "error_code": "PERSISTENCE_FAILED",
@@ -177,6 +178,7 @@ def _optional_delta(
 
 def _invalid(field: str) -> dict[str, object]:
     return {
+        "agent_id": "feedback_agent",
         "status": "failed",
         "error_code": "INVALID_PAYLOAD",
         "field": field,

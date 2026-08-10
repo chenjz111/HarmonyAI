@@ -9,9 +9,14 @@ export default {
       // 页面状态：idle（初始） / loading（分析中） / error（出错）
       status: 'idle',
       errorMsg: '',
-      currentStep: 1,
-      totalSteps: 3,
+      currentStep: 0,
+      totalSteps: 4,
+      narrativeText: '',
       steps: [
+        {
+          title: '最近发生了什么？',
+          isNarrative: true
+        },
         {
           title: '情绪状态',
           questions: [
@@ -75,16 +80,21 @@ export default {
     this.tone = options.tone || ''
   },
   computed: {
+    isNarrativeStep() {
+      return this.steps[this.currentStep] && this.steps[this.currentStep].isNarrative
+    },
     currentQuestions() {
-      return this.steps[this.currentStep - 1].questions
+      const step = this.steps[this.currentStep]
+      return step && step.questions ? step.questions : []
     },
     currentTitle() {
-      return this.steps[this.currentStep - 1].title
+      return this.steps[this.currentStep] ? this.steps[this.currentStep].title : ''
     },
     progress() {
-      return Math.round((this.currentStep / this.totalSteps) * 100)
+      return Math.round(((this.currentStep) / (this.totalSteps - 1)) * 100)
     },
     canSubmit() {
+      if (this.isNarrativeStep) return true
       const currentQs = this.currentQuestions
       for (let i = 0; i < currentQs.length; i++) {
         const key = `step${this.currentStep}_q${i}`
@@ -111,14 +121,14 @@ export default {
         return
       }
 
-      if (this.currentStep < this.totalSteps) {
+      if (this.currentStep < this.totalSteps - 1) {
         this.currentStep++
       } else {
         this.submitSurvey()
       }
     },
     prevStep() {
-      if (this.currentStep > 1) {
+      if (this.currentStep > 0) {
         this.currentStep--
       }
     },
@@ -127,16 +137,20 @@ export default {
 
       try {
         // === Agent 1: 评估 ===
-        // 把问卷答案转成 emotion_scores
-        const emotionScores = {
+        // 把问卷答案组装成 questionnaire 格式
+        const questionnaire = {
           emotion: this.emotion,
           tone: this.tone,
           answer_count: Object.keys(this.answers).length,
           total_questions: 30,
           answers: this.answers
         }
+        // Attach narrative_text if user entered anything
+        if (this.narrativeText && this.narrativeText.trim()) {
+          questionnaire.narrative_text = this.narrativeText.trim()
+        }
 
-        const assessmentEnvelope = await submitAssessment(emotionScores)
+        const assessmentEnvelope = await submitAssessment(questionnaire)
         const sessionId = assessmentEnvelope.session_id
 
         // === Agent 2: 辨证 ===
@@ -184,11 +198,26 @@ export default {
       <view class="progress-track">
         <view class="progress-fill" :style="{ width: progress + '%' }"></view>
       </view>
-      <text class="progress-text">{{ currentStep }} / {{ totalSteps }} {{ currentTitle }}</text>
+      <text class="progress-text">{{ currentStep + 1 }} / {{ totalSteps }} {{ currentTitle }}</text>
+    </view>
+
+    <!-- 叙事输入（第一步，可选） -->
+    <view class="narrative-card" v-if="isNarrativeStep && (status === 'idle' || status === 'error')">
+      <text class="narrative-title">最近发生了什么？</text>
+      <text class="narrative-hint">描述最近几天经历的事情、身体状态和感受。越详细，AI 越能理解你。AI 不会根据这段文字直接诊断，只是辅助理解你的状态。</text>
+      <text class="narrative-privacy">请勿填写姓名、电话、身份证等个人敏感信息</text>
+      <textarea
+        class="narrative-area"
+        v-model="narrativeText"
+        placeholder="比如：这两周工作压力很大，老板催项目催得紧，昨晚又失眠了，今天胸口闷闷的..."
+        :maxlength="500"
+        auto-height
+      ></textarea>
+      <text class="narrative-count">{{ narrativeText.length }}/500</text>
     </view>
 
     <!-- 正常问卷内容 -->
-    <view class="question-list" v-if="status === 'idle' || status === 'error'">
+    <view class="question-list" v-if="!isNarrativeStep && (status === 'idle' || status === 'error')">
       <view
         v-for="(question, index) in currentQuestions"
         :key="index"
@@ -233,13 +262,13 @@ export default {
     <view class="btn-group" v-if="status === 'idle' || status === 'error'">
       <view
         class="btn btn-secondary"
-        :class="{ disabled: currentStep === 1 }"
+        :class="{ disabled: currentStep === 0 }"
         @click="prevStep"
       >
         <text class="btn-text">上一步</text>
       </view>
       <view class="btn btn-primary" @click="nextStep">
-        <text class="btn-text">{{ currentStep < totalSteps ? '下一步' : '提交评估' }}</text>
+        <text class="btn-text">{{ isNarrativeStep ? '开始问卷' : (currentStep < totalSteps - 1 ? '下一步' : '提交评估') }}</text>
       </view>
     </view>
   </view>
@@ -289,6 +318,53 @@ export default {
 .progress-text {
   font-size: 24rpx;
   color: #888780;
+  margin-top: 12rpx;
+  display: block;
+}
+
+/* 叙事输入卡片 */
+.narrative-card {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 36rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+  border-left: 8rpx solid #534AB7;
+}
+.narrative-title {
+  font-size: 32rpx;
+  color: #2C2C2A;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 12rpx;
+}
+.narrative-hint {
+  font-size: 24rpx;
+  color: #888780;
+  display: block;
+  margin-bottom: 10rpx;
+  line-height: 1.6;
+}
+.narrative-privacy {
+  font-size: 22rpx;
+  color: #E74C3C;
+  display: block;
+  margin-bottom: 20rpx;
+}
+.narrative-area {
+  width: 100%;
+  min-height: 240rpx;
+  background: #F8F8F8;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  font-size: 28rpx;
+  color: #2C2C2A;
+  box-sizing: border-box;
+}
+.narrative-count {
+  text-align: right;
+  font-size: 22rpx;
+  color: #C8C8C8;
   margin-top: 12rpx;
   display: block;
 }

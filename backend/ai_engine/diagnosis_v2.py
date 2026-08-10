@@ -10,6 +10,17 @@ from .real_agents import MVP_SYNDROMES
 
 
 _DISCLAIMER = "本结果仅用于音乐调养参考，不构成医学诊断。"
+_RECOVERABLE_ASSESSMENT_CODES = frozenset({
+    "LLM_NOT_CONFIGURED",
+    "LLM_TIMEOUT",
+    "LLM_INVALID_JSON",
+    "LLM_MISSING_FIELDS",
+    "LLM_SCHEMA_INVALID",
+    "LLM_PROVIDER_ERROR",
+    "LLM_UNEXPECTED_ERROR",
+    "LLM_UNKNOWN_SOURCE",
+    "LLM_PROHIBITED_MEDICAL_FIELD",
+})
 _LOCAL_RULES = {
     "syd_001": ("tension_worry", "irritability_anger"),
     "syd_002": ("tension_worry", "overthinking", "low_mood"),
@@ -109,8 +120,19 @@ def run_diagnosis_v2(
                     if candidate["id"] != selected["id"]
                 ]
 
+    local_assessment_fallback = (
+        assessment_data.get("status") == "degraded"
+        and allows_deterministic_assessment_fallback(
+            assessment_degradation
+        )
+    )
     if assessment_data.get("status") == "degraded":
-        reason_codes.append("ASSESSMENT_DEGRADED")
+        if local_assessment_fallback:
+            warnings.append(
+                "Qwen不可用，辅助辨证已使用确定性问卷规则。"
+            )
+        else:
+            reason_codes.append("ASSESSMENT_DEGRADED")
     if conflicts:
         reason_codes.append("SOURCE_CONFLICT")
     reason_codes = _unique(reason_codes)
@@ -118,7 +140,11 @@ def run_diagnosis_v2(
     confidence = (
         {"level": "low", "score": 0.3}
         if status == "degraded"
-        else {"level": "high", "score": 0.85}
+        else (
+            {"level": "medium", "score": 0.65}
+            if local_assessment_fallback
+            else {"level": "high", "score": 0.85}
+        )
     )
     evidence_summary = [
         _evidence_summary(selected),
@@ -139,6 +165,20 @@ def run_diagnosis_v2(
         degradation={"active": bool(reason_codes), "reason_codes": reason_codes},
     )
 
+
+def allows_deterministic_assessment_fallback(
+    degradation: object,
+) -> bool:
+    if not isinstance(degradation, Mapping):
+        return False
+    raw_codes = degradation.get("reason_codes")
+    codes = {
+        code for code in raw_codes if isinstance(code, str)
+    } if isinstance(raw_codes, list) else set()
+    reason_code = degradation.get("reason_code")
+    if isinstance(reason_code, str):
+        codes.add(reason_code)
+    return bool(codes) and codes <= _RECOVERABLE_ASSESSMENT_CODES
 
 def _local_candidates(value: object) -> list[dict[str, object]]:
     dimensions = value if isinstance(value, Mapping) else {}
@@ -243,6 +283,7 @@ def _result(
     degradation: dict[str, object],
 ) -> dict:
     return {
+        "agent_id": "diagnosis_agent",
         "status": status,
         "presentation": {"title": "辅助辨证倾向"},
         "primary_tendency": deepcopy(primary_tendency),
