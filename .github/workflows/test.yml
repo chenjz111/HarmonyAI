@@ -11,7 +11,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest chromadb langgraph
+          pip install pytest pytest-asyncio chromadb langgraph
       - name: Run full test suite
         run: pytest tests/ -v
       - uses: actions/setup-node@v4
