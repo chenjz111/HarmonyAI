@@ -17,11 +17,21 @@ from backend.app.schemas.v2 import v2_ok, v2_err
 router = APIRouter()
 
 
-@router.post("/assessments/{session_id}/follow-up", summary="Sprint 4 — 追问缺失信息")
+MAX_FOLLOWUPS = 4  # Sprint 4 frozen contract limit
+
+@router.post("/assessments/{session_id}/follow-up", summary="Sprint 4 — 追问缺失信息 (max 4)")
 async def create_followup(session_id: str, body: dict, db: Session = Depends(get_db)):
-    """提交一条追问问题。"""
+    """提交追问问题。每个 session 最多 4 题。"""
     req_id = f"req_{datetime.now(timezone.utc).strftime('%H%M%S')}_{uuid.uuid4().hex[:4]}"
     try:
+        # Enforce max 4
+        existing = db.query(AssessmentFollowUp).filter(
+            AssessmentFollowUp.session_id == session_id,
+            AssessmentFollowUp.status == "pending",
+        ).count()
+        if existing >= MAX_FOLLOWUPS:
+            return v2_err("MAX_FOLLOWUPS", f"最多{MAX_FOLLOWUPS}题追问", req_id, retryable=False)
+
         fuid = f"fu_{datetime.now(timezone.utc).strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}"
         fu = AssessmentFollowUp(
             session_id=session_id, followup_id=fuid,
@@ -32,7 +42,7 @@ async def create_followup(session_id: str, body: dict, db: Session = Depends(get
         )
         db.add(fu)
         db.commit()
-        return v2_ok({"followup_id": fuid, "status": "pending"}, req_id)
+        return v2_ok({"followup_id": fuid, "status": "pending", "remaining": MAX_FOLLOWUPS - existing - 1}, req_id)
     except Exception as e:
         db.rollback()
         return v2_err("FOLLOWUP_FAILED", str(e)[:200], req_id)
