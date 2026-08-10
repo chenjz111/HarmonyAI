@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import json
 import os
+import time
 from typing import Any, Callable
 from typing import Mapping, Protocol
 from urllib.request import Request, urlopen
+
+from .sprint4_contracts import (
+    ProviderError,
+    ProviderRequest,
+    ProviderResponse,
+)
 
 
 class LLMProvider(Protocol):
@@ -15,6 +23,11 @@ class LLMProvider(Protocol):
 
 class JsonLLMProvider(Protocol):
     def complete_json(self, system_prompt: str, user_prompt: str) -> dict[str, object]:
+        ...
+
+
+class AsyncJsonProvider(Protocol):
+    async def complete_json(self, request: ProviderRequest) -> ProviderResponse:
         ...
 
 
@@ -86,6 +99,171 @@ class QwenCompatibleProvider:
         request = Request(url, data=body, headers=headers, method="POST")
         with urlopen(request, timeout=timeout) as response:
             return response.read()
+
+
+class AsyncQwenCompatibleProvider:
+    """Async Qwen-compatible gateway with bounded retries and typed failures."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        transport: Callable[[str, dict[str, str], bytes, float], bytes] | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+        self.transport = transport or QwenCompatibleProvider._http_transport
+
+    async def complete_json(self, request: ProviderRequest) -> ProviderResponse:
+        if not self.base_url or not self.api_key or not self.model:
+            raise ProviderError(
+                "NOT_CONFIGURED",
+                False,
+                "Qwen Provider 未配置。",
+            )
+
+        body = json.dumps(
+            {
+                "model": self.model,
+                "temperature": 0,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": request.system_prompt},
+                    {"role": "user", "content": request.user_prompt},
+                ],
+            },
+            ensure_ascii=False,
+        ).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        started = time.perf_counter()
+        attempts = 0
+        while attempts < 2:
+            attempts += 1
+            try:
+                raw = await asyncio.to_thread(
+                    self.transport,
+                    f"{self.base_url}/chat/completions",
+                    headers,
+                    body,
+                    request.timeout_seconds,
+                )
+                payload = json.loads(raw.decode("utf-8"))
+                content = payload["choices"][0]["message"]["content"]
+                parsed = QwenCompatibleProvider._parse_json_content(content)
+                if not isinstance(parsed, dict):
+                    raise ValueError("response must be a JSON object")
+                usage = payload.get("usage", {})
+                return ProviderResponse(
+                    data=parsed,
+                    provider="qwen",
+                    model=self.model,
+                    latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
+                    input_tokens=_token_count(usage, "prompt_tokens"),
+                    output_tokens=_token_count(usage, "completion_tokens"),
+                    attempts=attempts,
+                )
+            except TimeoutError as exc:
+                if attempts < 2:
+                    continue
+                raise ProviderError(
+                    "TIMEOUT",
+                    True,
+                    "文本分析超时，请稍后重试。",
+                    cause=exc,
+                ) from exc
+            except OSError as exc:
+                if attempts < 2:
+                    continue
+                raise ProviderError(
+                    "NETWORK",
+                    True,
+                    "文本分析服务暂时不可用。",
+                    cause=exc,
+                ) from exc
+            except json.JSONDecodeError as exc:
+                raise ProviderError(
+                    "INVALID_JSON",
+                    False,
+                    "文本分析返回了无法解析的结果。",
+                    cause=exc,
+                ) from exc
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                raise ProviderError(
+                    "SCHEMA_ERROR",
+                    False,
+                    "文本分析返回了不完整的结果。",
+                    cause=exc,
+                ) from exc
+
+        raise ProviderError("NETWORK", True, "文本分析服务暂时不可用。")
+
+
+class MockProvider:
+    """Deterministic async Provider for tests and offline evaluation."""
+
+    def __init__(
+        self,
+        response: dict[str, object] | None = None,
+        *,
+        error: ProviderError | None = None,
+    ) -> None:
+        self.response = dict(response or {})
+        self.error = error
+        self.calls = 0
+
+    async def complete_json(self, request: ProviderRequest) -> ProviderResponse:
+        del request
+        attempts = 0
+        while attempts < 2:
+            attempts += 1
+            self.calls += 1
+            if self.error is None:
+                return ProviderResponse(
+                    data=dict(self.response),
+                    provider="mock",
+                    model="mock",
+                    latency_ms=0,
+                    input_tokens=0,
+                    output_tokens=0,
+                    attempts=attempts,
+                )
+            if not self.error.retryable or attempts == 2:
+                raise self.error
+        raise self.error
+
+
+class SyncJsonProviderAdapter:
+    """Named bridge for legacy synchronous V2.0/V2.1 call sites."""
+
+    def __init__(self, provider: AsyncJsonProvider) -> None:
+        self.provider = provider
+
+    def complete_json(self, system_prompt: str, user_prompt: str) -> dict[str, object]:
+        response = asyncio.run(
+            self.provider.complete_json(
+                ProviderRequest(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    operation="legacy_json_completion",
+                    prompt_version="legacy",
+                )
+            )
+        )
+        return response.data
+
+
+def _token_count(usage: object, key: str) -> int | None:
+    if not isinstance(usage, Mapping):
+        return None
+    value = usage.get(key)
+    return value if type(value) is int and value >= 0 else None
 
 
 def qwen_provider_from_env() -> QwenCompatibleProvider | None:

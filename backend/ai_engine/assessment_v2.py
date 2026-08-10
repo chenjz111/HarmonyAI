@@ -1,21 +1,27 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from datetime import datetime, timezone
 import json
 import re
 from typing import Any, TypedDict
 import unicodedata
+from uuid import uuid4
 
 from .providers import (
     JsonLLMProvider,
     LLMProviderError,
     qwen_provider_from_env,
 )
+from .narrative_schema import extract_narrative
 from .questionnaire_v2 import (
     QuestionnaireValidationError,
     score_questionnaire,
+    score_questionnaire_v21,
 )
+from .sprint4_contracts import EvidenceItem, NarrativeExtractionResult
 from .safety_rules import evaluate_safety
 
 
@@ -837,3 +843,422 @@ def _is_json_value(value: object) -> bool:
             for key, item in value.items()
         )
     return False
+
+
+def run_assessment_v21(
+    submission: Mapping[str, object],
+    *,
+    provider: object | None = None,
+) -> dict[str, object]:
+    """Run the Sprint 4 evidence-first Assessment path synchronously."""
+    return asyncio.run(_run_assessment_v21_async(submission, provider=provider))
+
+
+async def _run_assessment_v21_async(
+    submission: Mapping[str, object],
+    *,
+    provider: object | None,
+) -> dict[str, object]:
+    if not isinstance(submission, Mapping):
+        raise AssessmentValidationError("assessment_v2.1 submission must be a mapping")
+    assessment_id = _v21_required_id(submission, "assessment_id")
+    session_id = _v21_required_id(submission, "session_id")
+    user_id = _v21_required_id(submission, "user_id")
+    try:
+        questionnaire = score_questionnaire_v21(
+            submission.get("questionnaire_answers")  # type: ignore[arg-type]
+        )
+    except QuestionnaireValidationError as exc:
+        raise AssessmentValidationError("invalid questionnaire_v2.1") from exc
+
+    narrative_text = _non_blank_text(submission.get("narrative_text"))
+    document_text = _non_blank_text(submission.get("document_text"))
+    document_confirmed = submission.get("document_confirmed") is True
+    if document_text is not None and not document_confirmed:
+        document_text = None
+
+    safety = evaluate_safety(
+        narrative_text=narrative_text,
+        confirmed_ocr_text=document_text,
+        questionnaire_safety_flags=list(questionnaire.safety_flags),
+    )
+    evidence = _v21_questionnaire_evidence(questionnaire)
+    input_status: dict[str, dict[str, object]] = {
+        "questionnaire": {
+            "version": questionnaire.schema_version,
+            "status": "processed",
+            "questions_answered": questionnaire.questions_answered,
+            "dimensions_scored": len(questionnaire.dimension_scores),
+            "safety_flags": list(questionnaire.safety_flags),
+        },
+        "narrative": {
+            "status": "skipped" if narrative_text is None else "unavailable",
+            "text_length": len(narrative_text or ""),
+            "evidence_items_extracted": 0,
+            "warnings": [],
+        },
+        "document": {
+            "status": "skipped" if document_text is None else "confirmed",
+            "evidence_items_extracted": 0,
+            "warnings": [],
+        },
+    }
+    degradation_reasons: list[str] = []
+
+    if safety["status"] == "blocked_safety":
+        return _v21_result(
+            assessment_id=assessment_id,
+            session_id=session_id,
+            user_id=user_id,
+            status="blocked_safety",
+            evidence=[],
+            conflicts=[],
+            missing_information=[],
+            follow_up_questions=[],
+            input_status=input_status,
+            questionnaire=questionnaire,
+            safety_flags=list(safety["flags"]),
+            degradation={"active": True, "reason_codes": ["SAFETY_BLOCKED"]},
+            requires_confirmation=False,
+        )
+
+    if provider is not None and narrative_text is not None:
+        narrative_result = await extract_narrative(
+            narrative_text,
+            source_type="narrative",
+            provider=provider,  # type: ignore[arg-type]
+        )
+        _merge_v21_narrative_status(input_status["narrative"], narrative_result)
+        if narrative_result.status == "processed":
+            evidence.extend(
+                _v21_narrative_evidence(narrative_result, source_type="narrative")
+            )
+        else:
+            degradation_reasons.append(
+                narrative_result.reason_code or "NARRATIVE_UNAVAILABLE"
+            )
+
+    if provider is not None and document_text is not None:
+        document_result = await extract_narrative(
+            document_text,
+            source_type="document",
+            provider=provider,  # type: ignore[arg-type]
+        )
+        _merge_v21_narrative_status(input_status["document"], document_result)
+        input_status["document"]["status"] = "confirmed"
+        if document_result.status == "processed":
+            evidence.extend(
+                _v21_narrative_evidence(document_result, source_type="document")
+            )
+        else:
+            degradation_reasons.append(
+                document_result.reason_code or "DOCUMENT_EXTRACTION_UNAVAILABLE"
+            )
+
+    conflicts = _v21_conflicts(evidence)
+    coverage = _v21_evidence_coverage(evidence, len(questionnaire.dimension_scores))
+    missing_information = _v21_missing_information(
+        narrative_text=narrative_text,
+        document_text=document_text,
+        evidence=evidence,
+    )
+    follow_up_questions = _v21_follow_up_questions(
+        assessment_id=assessment_id,
+        coverage=coverage,
+        missing_information=missing_information,
+        conflicts=conflicts,
+    )
+    status = "needs_follow_up" if follow_up_questions else "success"
+    if degradation_reasons and status == "success":
+        status = "degraded"
+    return _v21_result(
+        assessment_id=assessment_id,
+        session_id=session_id,
+        user_id=user_id,
+        status=status,
+        evidence=evidence,
+        conflicts=conflicts,
+        missing_information=missing_information,
+        follow_up_questions=follow_up_questions,
+        input_status=input_status,
+        questionnaire=questionnaire,
+        safety_flags=list(safety["flags"]),
+        degradation={
+            "active": bool(degradation_reasons),
+            "reason_codes": _unique_strings(degradation_reasons),
+        },
+        requires_confirmation=submission.get("confirmation_status") != "confirmed",
+        coverage=coverage,
+    )
+
+
+def _v21_required_id(submission: Mapping[str, object], key: str) -> str:
+    value = submission.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise AssessmentValidationError(f"{key} must be a non-empty string")
+    return value.strip()
+
+
+def _v21_questionnaire_evidence(questionnaire: object) -> list[EvidenceItem]:
+    result: list[EvidenceItem] = []
+    for dimension, score in questionnaire.dimension_scores.items():
+        result.append(
+            {
+                "evidence_id": f"ev-questionnaire-{dimension}",
+                "category": "emotion",
+                "label": dimension,
+                "display_name": dimension,
+                "value": score.raw_score,
+                "polarity": "present" if score.raw_score else "absent",
+                "severity": _v21_severity(score.raw_score),
+                "severity_display": _v21_severity(score.raw_score),
+                "time_window": "过去两周",
+                "source_type": "questionnaire",
+                "source_ref": f"questionnaire:{score.source_questions[0]}",
+                "confirmed": True,
+                "dimension_score": score.normalized_score,
+            }
+        )
+    return result
+
+
+def _v21_narrative_evidence(
+    extraction: NarrativeExtractionResult,
+    *,
+    source_type: str,
+) -> list[EvidenceItem]:
+    return [
+        {
+            "evidence_id": f"ev-{source_type}-{index}-{uuid4().hex[:8]}",
+            "category": item.category,
+            "label": item.label,
+            "display_name": item.label,
+            "value": item.value,
+            "polarity": item.polarity,
+            "severity": "moderate" if item.value else "none",
+            "severity_display": "有一定表现" if item.value else "当前不明显",
+            "time_window": item.time_window or "未说明",
+            "source_type": source_type,  # type: ignore[typeddict-item]
+            "source_ref": item.source_ref,
+            "quote": item.quote,
+            "extraction_confidence": item.extraction_confidence,
+            "confirmed": source_type == "document",
+            "negated": item.negated,
+        }
+        for index, item in enumerate(extraction.items, start=1)
+    ]
+
+
+def _merge_v21_narrative_status(
+    target: dict[str, object],
+    result: NarrativeExtractionResult,
+) -> None:
+    target["status"] = result.status
+    target["evidence_items_extracted"] = len(result.items)
+    target["warnings"] = list(result.warnings)
+    if result.model_metadata:
+        target["model_metadata"] = result.model_metadata
+
+
+def _v21_evidence_coverage(evidence: list[EvidenceItem], total_dimensions: int) -> float:
+    if total_dimensions <= 0:
+        return 0.0
+    covered = {
+        item["label"]
+        for item in evidence
+        if item.get("confirmed") is True or item["source_type"] == "questionnaire"
+    }
+    source_types = {item["source_type"] for item in evidence}
+    return (len(covered) / total_dimensions) * min(1.0, len(source_types) / 3)
+
+
+def _v21_missing_information(
+    *,
+    narrative_text: str | None,
+    document_text: str | None,
+    evidence: list[EvidenceItem],
+) -> list[dict[str, object]]:
+    missing: list[dict[str, object]] = []
+    labels = {item["label"] for item in evidence}
+    if narrative_text is None and document_text is None:
+        missing.append(
+            {
+                "field": "supplementary_context",
+                "display_name": "补充描述或材料",
+                "reason": "当前只有问卷来源，缺少第二类可靠来源。",
+                "severity": "important",
+            }
+        )
+    if "duration" not in labels and narrative_text is not None:
+        missing.append(
+            {
+                "field": "duration",
+                "display_name": "状态持续时间",
+                "reason": "文本和现有证据未提供可定位的持续时间。",
+                "severity": "important",
+            }
+        )
+    return missing
+
+
+def _v21_conflicts(evidence: list[EvidenceItem]) -> list[dict[str, object]]:
+    by_label: dict[str, list[EvidenceItem]] = {}
+    for item in evidence:
+        by_label.setdefault(item["label"], []).append(item)
+    conflicts: list[dict[str, object]] = []
+    for label, items in by_label.items():
+        values = {str(item.get("value")) for item in items}
+        sources = {item["source_type"] for item in items}
+        if len(values) > 1 and len(sources) > 1:
+            conflicts.append(
+                {
+                    "conflict_id": f"cf-{label}",
+                    "topic": label,
+                    "display_topic": label,
+                    "severity": "moderate",
+                    "sources": [
+                        {"source_type": item["source_type"], "value": item.get("value")}
+                        for item in items
+                    ],
+                    "summary": f"{label} 在多个来源中存在不同值。",
+                    "resolution": "awaiting_user",
+                }
+            )
+    return conflicts
+
+
+def _v21_follow_up_questions(
+    *,
+    assessment_id: str,
+    coverage: float,
+    missing_information: list[dict[str, object]],
+    conflicts: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    questions: list[dict[str, object]] = []
+    if any(item["field"] == "duration" for item in missing_information):
+        questions.append(
+            {
+                "follow_up_id": f"fu-{uuid4().hex[:8]}",
+                "assessment_id": assessment_id,
+                "trigger_reason": "duration_unclear",
+                "priority": 1,
+                "question_id": "fu_duration_001",
+                "text": "这些状态大概持续了多久？",
+                "type": "single_choice",
+                "options": ["少于3天", "3-6天", "1-2周", "2周以上"],
+                "required": True,
+                "max_questions_total": 6,
+            }
+        )
+    if conflicts:
+        questions.append(
+            {
+                "follow_up_id": f"fu-{uuid4().hex[:8]}",
+                "assessment_id": assessment_id,
+                "trigger_reason": "source_conflict",
+                "priority": 3,
+                "question_id": "fu_conflict_001",
+                "text": "不同来源对这项状态的描述不一致，哪一种更接近你当前的感受？",
+                "type": "single_choice",
+                "options": ["问卷更准确", "文字或材料更准确", "都不准确"],
+                "required": True,
+                "max_questions_total": 6,
+            }
+        )
+    if coverage < 0.70 and not questions:
+        questions.append(
+            {
+                "follow_up_id": f"fu-{uuid4().hex[:8]}",
+                "assessment_id": assessment_id,
+                "trigger_reason": "supplementary_context",
+                "priority": 7,
+                "question_id": "fu_context_001",
+                "text": "可以补充描述最近发生了什么，以及它对日常生活的影响吗？",
+                "type": "text",
+                "options": [],
+                "required": True,
+                "max_questions_total": 6,
+            }
+        )
+    return sorted(questions, key=lambda item: int(item["priority"]))[:4]
+
+
+def _v21_result(
+    *,
+    assessment_id: str,
+    session_id: str,
+    user_id: str,
+    status: str,
+    evidence: list[EvidenceItem],
+    conflicts: list[dict[str, object]],
+    missing_information: list[dict[str, object]],
+    follow_up_questions: list[dict[str, object]],
+    input_status: dict[str, dict[str, object]],
+    questionnaire: object,
+    safety_flags: list[str],
+    degradation: dict[str, object],
+    requires_confirmation: bool,
+    coverage: float = 0.0,
+) -> dict[str, object]:
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "agent_id": "assessment_agent",
+        "assessment_id": assessment_id,
+        "session_id": session_id,
+        "user_id": user_id,
+        "status": status,
+        "revision": 1,
+        "analysis_mode": _v21_analysis_mode(input_status),
+        "confidence": coverage,
+        "confidence_semantics": "evidence_coverage",
+        "input_processing_status": input_status,
+        "emotion_profile": {
+            "dimension_scores": {
+                label: score.normalized_score
+                for label, score in questionnaire.dimension_scores.items()
+            }
+        },
+        "physical_profile": {
+            "physical_signals": list(questionnaire.physical_signals)
+        },
+        "life_events": {"triggers": []},
+        "user_goal": questionnaire.qualitative.get("goal"),
+        "assessment_summary": "已根据可追溯来源生成状态评估，等待用户确认。",
+        "evidence_items": evidence,
+        "evidence_coverage_score": coverage,
+        "conflicts": conflicts,
+        "missing_information": missing_information,
+        "follow_up_questions": follow_up_questions,
+        "requires_user_confirmation": requires_confirmation,
+        "safety_flags": safety_flags,
+        "degradation": degradation,
+        "warnings": [],
+        "revision_metadata": {
+            "revision": 1,
+            "created_at": now,
+            "previous_revision": None,
+        },
+        "disclaimer": _DISCLAIMER,
+    }
+
+
+def _v21_analysis_mode(input_status: Mapping[str, Mapping[str, object]]) -> str:
+    has_document = input_status["document"]["status"] == "confirmed"
+    has_narrative = input_status["narrative"]["status"] == "processed"
+    if has_document and has_narrative:
+        return "document_narrative_questionnaire"
+    if has_document:
+        return "document_questionnaire"
+    if has_narrative:
+        return "narrative_questionnaire"
+    return "questionnaire_only"
+
+
+def _v21_severity(value: int) -> str:
+    if value <= 0:
+        return "none"
+    if value == 1:
+        return "mild"
+    if value <= 3:
+        return "moderate"
+    return "severe"
