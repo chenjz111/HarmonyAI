@@ -345,3 +345,173 @@ def _mapping_or_default(value: object, default: dict[str, object]) -> dict[str, 
 
 def _unique(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
+
+
+def run_diagnosis_v21(
+    assessment: Mapping[str, object],
+    *,
+    provider: JsonLLMProvider | None = None,
+) -> dict[str, object]:
+    """Produce evidence-grounded, non-diagnostic candidates for Assessment V2.1."""
+    del provider
+    assessment_data = dict(assessment)
+    if assessment_data.get("status") == "blocked_safety":
+        return _v21_diagnosis_result(
+            assessment_data,
+            status="blocked_safety",
+            candidates=[],
+            abstained=True,
+            abstain_reason="SAFETY_BLOCKED",
+            reason_codes=["SAFETY_BLOCKED"],
+        )
+    if assessment_data.get("requires_user_confirmation") is not False:
+        return _v21_diagnosis_result(
+            assessment_data,
+            status="degraded",
+            candidates=[],
+            abstained=True,
+            abstain_reason="ASSESSMENT_NOT_CONFIRMED",
+            reason_codes=["ASSESSMENT_NOT_CONFIRMED"],
+        )
+
+    conflicts = _mapping_list(assessment_data.get("conflicts"))
+    if any(
+        conflict.get("severity") == "major"
+        and conflict.get("resolution") != "resolved_by_user"
+        for conflict in conflicts
+    ):
+        return _v21_diagnosis_result(
+            assessment_data,
+            status="degraded",
+            candidates=[],
+            abstained=True,
+            abstain_reason="UNRESOLVED_MAJOR_CONFLICT",
+            reason_codes=["UNRESOLVED_MAJOR_CONFLICT"],
+        )
+
+    coverage = assessment_data.get("evidence_coverage_score")
+    if isinstance(coverage, (int, float)) and float(coverage) < 0.5:
+        return _v21_diagnosis_result(
+            assessment_data,
+            status="degraded",
+            candidates=[],
+            abstained=True,
+            abstain_reason="INSUFFICIENT_EVIDENCE",
+            reason_codes=["INSUFFICIENT_EVIDENCE"],
+        )
+    missing_information = _mapping_list(assessment_data.get("missing_information"))
+    if any(item.get("severity") in {"critical", "important"} for item in missing_information):
+        return _v21_diagnosis_result(
+            assessment_data,
+            status="degraded",
+            candidates=[],
+            abstained=True,
+            abstain_reason="INSUFFICIENT_EVIDENCE",
+            reason_codes=["INSUFFICIENT_EVIDENCE"],
+        )
+
+    emotion_profile = _mapping_or_default(assessment_data.get("emotion_profile"), {})
+    dimensions = _mapping_or_default(emotion_profile.get("dimension_scores"), {})
+    evidence_items = _mapping_list(assessment_data.get("evidence_items"))
+    candidates: list[dict[str, object]] = []
+    for tendency_id, rule_dimensions in _LOCAL_RULES.items():
+        supported_dimensions = [
+            dimension
+            for dimension in rule_dimensions
+            if _score(dimensions.get(dimension)) > 0
+        ]
+        if len(supported_dimensions) < 2:
+            continue
+        base = _tendency(
+            tendency_id,
+            sum(_score(dimensions.get(dimension)) for dimension in supported_dimensions)
+            / len(supported_dimensions),
+            supported_dimensions,
+        )
+        supporting_ids = [
+            str(item["evidence_id"])
+            for item in evidence_items
+            if item.get("label") in supported_dimensions
+            and _score(item.get("value")) > 0
+            and isinstance(item.get("evidence_id"), str)
+        ]
+        contradicting_ids = [
+            str(item["evidence_id"])
+            for item in evidence_items
+            if item.get("label") in rule_dimensions
+            and (
+                _score(item.get("value")) == 0
+                or item.get("polarity") == "absent"
+                or item.get("negated") is True
+            )
+            and isinstance(item.get("evidence_id"), str)
+        ]
+        candidates.append(
+            {
+                **base,
+                "supporting_evidence_ids": _unique(supporting_ids),
+                "contradicting_evidence_ids": _unique(contradicting_ids),
+                "reasoning_summary": "由多个独立维度和可定位证据共同支持。",
+            }
+        )
+
+    candidates.sort(key=lambda item: (-float(item["score"]), str(item["id"])))
+    if not candidates:
+        return _v21_diagnosis_result(
+            assessment_data,
+            status="degraded",
+            candidates=[],
+            abstained=True,
+            abstain_reason="INSUFFICIENT_EVIDENCE",
+            reason_codes=["INSUFFICIENT_EVIDENCE"],
+        )
+    return _v21_diagnosis_result(
+        assessment_data,
+        status="success",
+        candidates=candidates,
+        abstained=False,
+        abstain_reason=None,
+        reason_codes=[],
+    )
+
+
+def _v21_diagnosis_result(
+    assessment: Mapping[str, object],
+    *,
+    status: str,
+    candidates: list[dict[str, object]],
+    abstained: bool,
+    abstain_reason: str | None,
+    reason_codes: list[str],
+) -> dict[str, object]:
+    primary = candidates[0] if candidates else None
+    secondary = candidates[1:] if candidates else []
+    confidence_score = 0.0 if abstained else min(1.0, float(primary["score"]) / 100.0)
+    return {
+        "status": status,
+        "presentation": {"title": "辅助辨证倾向"},
+        "abstained": abstained,
+        "abstain_reason": abstain_reason,
+        "candidate_tendencies": deepcopy(candidates),
+        "primary_tendency": deepcopy(primary),
+        "secondary_tendencies": deepcopy(secondary),
+        "confidence": {
+            "level": "low" if abstained else "medium",
+            "score": confidence_score,
+        },
+        "supporting_evidence_ids": (
+            list(primary.get("supporting_evidence_ids", [])) if primary else []
+        ),
+        "contradicting_evidence_ids": (
+            list(primary.get("contradicting_evidence_ids", [])) if primary else []
+        ),
+        "conflicts": deepcopy(_mapping_list(assessment.get("conflicts"))),
+        "warnings": [],
+        "assessment_status": assessment.get("status"),
+        "assessment_revision": assessment.get("revision", 1),
+        "degradation": {
+            "active": bool(reason_codes),
+            "reason_codes": _unique(reason_codes),
+        },
+        "disclaimer": _DISCLAIMER,
+    }
