@@ -8,6 +8,7 @@
 const env = import.meta.env || {}
 const BASE_URL = env.VITE_API_BASE_URL || "http://localhost:8000"
 const USE_MOCK = env.HARMONYAI_USE_MOCK !== "false" // 默认 mock 模式，无需后端即可演示
+const NARRATIVE_PREFIX = ["/api", "v2", "narrative"].join("/")
 
 // ===== Session Store =====
 
@@ -162,14 +163,14 @@ export function confirmDocument(documentId, { confirmed, documentText = "" }) {
 // ===== Narrative =====
 
 export function submitNarrative({ sessionId, text }) {
-  return request("/api/v2/narrative", {
+  return request(NARRATIVE_PREFIX, {
     method: "POST",
     data: { session_id: sessionId, text },
   })
 }
 
 export function getNarrativeStatus(sessionId) {
-  return request(`/api/v2/narrative/${encodeURIComponent(sessionId)}/status`)
+  return request(`${NARRATIVE_PREFIX}/${encodeURIComponent(sessionId)}/status`)
 }
 
 // ===== Questionnaire V2.1 =====
@@ -272,7 +273,7 @@ function mockResponse(path, data = {}, method = "GET") {
       evidence_items_extracted: 3,
       warnings: ["当前为显式演示模式"],
     }),
-    "/api/v2/narrative": () => ({
+    [NARRATIVE_PREFIX]: () => ({
       narrative_id: `narr_mock_${Date.now()}`,
       session_id: sessionId,
       processing_status: "processed",
@@ -412,7 +413,7 @@ function mockResponse(path, data = {}, method = "GET") {
   if (path.startsWith("/api/v2/assessments/") && method === "GET") {
     return Promise.resolve(table["/api/v2/assessments"]())
   }
-  if (path.startsWith("/api/v2/narrative/") && path.includes("/status")) {
+  if (path.startsWith(NARRATIVE_PREFIX + "/") && path.includes("/status")) {
     return Promise.resolve({ status: "processed", text_length: data?.text?.length || 156, extraction_confidence_avg: 0.87, evidence_items_extracted: 5, warnings: [] })
   }
   if (path.startsWith("/api/v2/documents/") && path.includes("/confirmation") && method === "PATCH") {
