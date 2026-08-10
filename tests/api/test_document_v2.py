@@ -69,14 +69,15 @@ def test_document_rejects_pdf_over_three_pages(upload_dir):
     assert list(upload_dir.iterdir()) == []
 
 
-def test_document_upload_confirm_list_and_delete(upload_dir):
+def test_document_upload_confirm_list_and_delete(upload_dir, monkeypatch):
+    from backend.app.core.ocr import OCRProvider
+
+    monkeypatch.setattr(OCRProvider, "_init_paddle", lambda self: None)
     uploaded = _upload().json()
     assert uploaded["success"] is True
-    assert uploaded["data"]["ocr_status"] == "needs_confirmation"
-    assert uploaded["data"]["warnings"] == [
-        "OCR为Stub实现，请确认文本",
-        "provider=stub",
-    ]
+    assert uploaded["data"]["ocr_status"] == "degraded"
+    assert uploaded["data"]["ocr_provider"] == "stub"
+    assert uploaded["data"]["warnings"] == ["OCR降级: paddleocr_not_available"]
 
     document_id = uploaded["data"]["document_id"]
     stored_files = list(upload_dir.iterdir())
