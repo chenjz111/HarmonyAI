@@ -12,13 +12,13 @@ const USE_MOCK = false
 
 /**
  * Agent 1 — 评估
- * @param {Object} emotionScores - 情绪评分 { emotion, answers, ... }
+ * @param {Object} questionnaire - 问卷数据 { emotion, answers, ... }
  * @returns {Promise} assessment envelope
  */
-export function submitAssessment(emotionScores) {
+export function submitAssessment(questionnaire) {
   if (USE_MOCK) {
     return mockRequest({
-      agent_id: 'evaluation_agent',
+      agent_id: 'assessment_agent',
       agent_name: '评估Agent',
       agent_layer: 'medical_analysis',
       run_id: 'run_mock_eval',
@@ -26,23 +26,34 @@ export function submitAssessment(emotionScores) {
       user_id: 'u_001',
       status: 'success',
       confidence: 0.85,
-      reason: ['mock：使用提交的情绪评分'],
+      reason: ['mock：使用提交的问卷数据'],
       warnings: [],
-      input: { emotion_scores: emotionScores },
-      output: { emotion_profile: emotionScores },
+      input: { questionnaire },
+      output: {
+        emotion_profile: { dominant_emotion: 'anxiety', dominant_score: 70 },
+        analysis_mode: 'questionnaire_only',
+        degraded: false
+      },
       processing_time_ms: 200,
       timestamp: new Date().toISOString(),
-      retry_count: 0
+      retry_count: 0,
+      degradation_triggered: false
     })
+  }
+
+  const data = {
+    user_id: 'u_001',
+    questionnaire
+  }
+  // Attach narrative_text if present in questionnaire
+  if (questionnaire.narrative_text) {
+    data.narrative_text = questionnaire.narrative_text
   }
 
   return request({
     url: `${BASE_URL}/api/v1/assessment`,
     method: 'POST',
-    data: {
-      user_id: 'u_001',
-      emotion_scores: emotionScores
-    }
+    data
   })
 }
 
@@ -121,14 +132,16 @@ export function submitPrescription(sessionId, diagnosisEnvelope) {
           tone_id: 'jiao',
           tone_name: '角调式',
           bpm: 68,
-          instruments: ['古筝', '古琴']
+          instruments: ['古筝', '古琴'],
+          duration_minutes: 15
         },
         prompt_template: {
           template_id: 'CN_V1',
           template_version: '1.0.0',
-          parameters: { duration: 15, bpm: 68, tone: '角调式' }
+          text: '请生成一段15分钟的传统五声音阶疗愈音乐，以角调为主要调式，速度为68 BPM。'
         },
-        rendered_prompt: '古筝独奏，角调式，BPM 68，舒缓宁静'
+        prompt_tags: { tone_id: 'jiao', style: 'healing', duration: '15_minutes' },
+        evidence: []
       },
       processing_time_ms: 180,
       timestamp: new Date().toISOString(),

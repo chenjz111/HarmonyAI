@@ -95,3 +95,65 @@ class APIFailureException(AgentException):
     def __init__(self, agent_id: str, provider: str):
         super().__init__(agent_id=agent_id, message=f"{provider} API call failed",
                          level=ErrorLevel.DEGRADE, error_code="API_FAILURE")
+
+
+# ---------------------------------------------------------------------------
+# Universal error response builder (for Router try/except)
+# ---------------------------------------------------------------------------
+
+from backend.app.schemas.common import (
+    UniversalOutput, AgentStatus, AgentLayer, make_run_id,
+)
+
+
+def build_error_response(
+    agent_id: str,
+    agent_name: str,
+    agent_layer: AgentLayer,
+    session_id: str,
+    user_id: str,
+    error: Exception,
+    run_id: str = "",
+    retry_count: int = 0,
+) -> dict:
+    """Build a Universal Shell error response — NEVER return 500."""
+    if not run_id:
+        run_id = make_run_id(agent_id.split("_")[0])
+
+    # Classify error
+    if isinstance(error, AgentException):
+        status_map = {
+            ErrorLevel.RETRY: AgentStatus.RETRY,
+            ErrorLevel.DEGRADE: AgentStatus.DEGRADED,
+            ErrorLevel.FAIL: AgentStatus.SKIPPED,
+        }
+        status = status_map.get(error.level, AgentStatus.FAILED)
+        error_code = error.error_code
+        message = error.message
+    else:
+        status = AgentStatus.FAILED
+        error_code = "INTERNAL_ERROR"
+        message = "服务暂时不可用，请稍后重试"
+
+    # Sanitize: never leak full traceback or internal details in response
+    safe_message = message[:200] if message else "internal error"
+    safe_message = safe_message.replace("\n", " ").replace('"', "'")
+
+    warnings = [f"{error_code}: {safe_message}"]
+
+    return UniversalOutput(
+        agent_id=agent_id,
+        agent_name=agent_name,
+        agent_layer=agent_layer,
+        run_id=run_id,
+        session_id=session_id,
+        user_id=user_id,
+        status=status,
+        confidence=0.0,
+        reason=[f"异常:{safe_message}"],
+        warnings=warnings,
+        input=None,
+        output=None,
+        processing_time_ms=0,
+        retry_count=retry_count,
+    ).model_dump(mode="json")

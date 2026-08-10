@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
+
 from collections.abc import Mapping
 from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
 
 from .providers import AsyncJsonProvider
 from .sprint4_contracts import (
@@ -180,3 +184,72 @@ def _provider_metadata(response: object) -> dict[str, object] | None:
         "attempts": response.attempts,
         "prompt_version": "narrative_extraction_v2.1",
     }
+
+
+# Compatibility exports required by the integrated Sprint 4 narrative API.
+# The canonical extraction path above remains EvidenceItem-oriented and
+# source-grounded; these models preserve the existing consumer-facing shape.
+def _coerce_evidence(value: Any) -> str:
+    if isinstance(value, list):
+        return "; ".join(str(item) for item in value if item)
+    return str(value) if value else ""
+
+
+class LifeEvent(BaseModel):
+    description: str = Field(..., description="Brief description of the event")
+    timeframe: str = Field(default="recent", description="When it happened")
+
+
+class EmotionSignal(BaseModel):
+    emotion: str
+    intensity: int = Field(..., ge=0, le=100)
+    evidence: str = ""
+
+    _coerce_evidence = field_validator("evidence", mode="before")(_coerce_evidence)
+
+
+class PhysicalSignal(BaseModel):
+    symptom: str
+    severity: str = "moderate"
+    evidence: str = ""
+
+    _coerce_evidence = field_validator("evidence", mode="before")(_coerce_evidence)
+
+
+class NarrativeAnalysis(BaseModel):
+    model_config = {"extra": "ignore"}
+
+    life_events: list[LifeEvent] = Field(default_factory=list)
+    emotion_signals: list[EmotionSignal] = Field(default_factory=list)
+    physical_signals: list[PhysicalSignal] = Field(default_factory=list)
+    evidence: str = ""
+    summary: str = ""
+    needs_confirmation: bool = False
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _coerce_top_evidence(cls, value: Any) -> str:
+        return _coerce_evidence(value)
+
+
+NARRATIVE_SYSTEM_PROMPT = (
+    "Extract only factual observations from the user's free text. "
+    "Do not diagnose, assign syndrome labels, or suggest treatment. Return JSON."
+)
+SAFETY_KEYWORDS = (
+    "不想活", "自杀", "结束生命", "自残", "伤害自己", "不想活了",
+    "kill myself", "self-harm", "suicide", "end my life",
+)
+MAX_NARRATIVE_LENGTH = 1000
+
+
+def check_safety_alert(text: str) -> bool:
+    normalized = text.lower()
+    return any(keyword.lower() in normalized for keyword in SAFETY_KEYWORDS)
+
+
+def sanitize_narrative(text: str | None) -> str | None:
+    if text is None:
+        return None
+    normalized = text.strip()
+    return normalized[:MAX_NARRATIVE_LENGTH] or None

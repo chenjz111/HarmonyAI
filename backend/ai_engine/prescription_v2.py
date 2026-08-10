@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from .diagnosis_v2 import allows_deterministic_assessment_fallback
 from .prompt_engine import PromptEngine
 from .real_agents import MVP_SYNDROMES
 
@@ -49,6 +50,7 @@ def run_prescription_v2(
         str(syndrome["name"]),
     )
     return {
+        "agent_id": "prescription_agent",
         "status": "success",
         "generation_mode": "matched",
         "music_feature": {
@@ -84,7 +86,14 @@ def run_prescription_v2(
 def _withheld_reason(diagnosis: Mapping[str, object]) -> str | None:
     if diagnosis.get("status") == "blocked_safety":
         return "SAFETY_BLOCKED"
-    if diagnosis.get("status") == "degraded" or diagnosis.get("assessment_status") == "degraded":
+    if diagnosis.get("status") == "degraded":
+        return "ASSESSMENT_DEGRADED"
+    if (
+        diagnosis.get("assessment_status") == "degraded"
+        and not allows_deterministic_assessment_fallback(
+            diagnosis.get("assessment_degradation")
+        )
+    ):
         return "ASSESSMENT_DEGRADED"
     confidence = diagnosis.get("confidence")
     if not isinstance(confidence, Mapping) or confidence.get("level") == "low":
@@ -103,6 +112,7 @@ def _withheld_reason(diagnosis: Mapping[str, object]) -> str | None:
 
 def _withheld(reason: str) -> dict:
     return {
+        "agent_id": "prescription_agent",
         "status": "blocked_safety" if reason == "SAFETY_BLOCKED" else "degraded",
         "action": "withhold_music_recommendation",
         "generation_mode": "withheld",

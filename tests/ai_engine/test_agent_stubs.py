@@ -55,5 +55,5 @@ def test_stub_nodes_produce_schema_shaped_handoff_data():
 
     assert state["diagnosis"]["output"]["syndrome_diagnosis"]["primary"]["name"] == "肝郁化火"
     assert state["prescription"]["output"]["music_feature"]["tone_id"] == "jiao"
-    assert state["generation"]["output"]["audio"]["url"].startswith("local://")
+    assert state["generation"]["output"]["audio"]["url"].endswith(".wav")
     assert state["feedback"]["output"]["decision"]["action"] == "continue"

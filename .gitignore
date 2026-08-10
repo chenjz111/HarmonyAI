@@ -5,6 +5,7 @@
 __pycache__/
 *.pyc
 *.pyo
+.venv/
 
 # IDE
 .vscode/
@@ -16,6 +17,9 @@ logs/
 
 # 数据库
 *.db
+
+# 运行时数据 (Chroma, SQLite)
+data/
 
 # 系统
 .DS_Store

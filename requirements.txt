@@ -25,5 +25,9 @@ redis==8.0.1
 # HTTP
 python-multipart==0.0.32
 
+# Agent & Knowledge
+langgraph>=0.2
+chromadb>=1.2
+
 # Dev
 python-dotenv>=1.0.0

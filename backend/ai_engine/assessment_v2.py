@@ -199,6 +199,7 @@ def run_assessment_v2(
         "safety_flags": list(safety["flags"]),
         "disclaimer": _DISCLAIMER,
     }
+    _set_confidence(result, model_contract_valid=False)
 
     if safety["status"] == "blocked_safety":
         result["status"] = "blocked_safety"
@@ -297,6 +298,7 @@ def run_assessment_v2(
         result["status"] = "degraded"
     result["degradation"] = _degradation(reason_codes)
     result["warnings"] = _warning_messages(reason_codes)
+    _set_confidence(result, model_contract_valid=True)
     return result
 
 
@@ -444,6 +446,7 @@ def _apply_llm_fallback(result: dict[str, object]) -> None:
             and source.get("status") in {"confirmed", "used"}
         ):
             source["status"] = "unavailable"
+    _set_confidence(result, model_contract_valid=False)
 
 
 def _document_source(
@@ -469,6 +472,42 @@ def _non_blank_text(value: object) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _set_confidence(
+    result: dict[str, object],
+    *,
+    model_contract_valid: bool,
+) -> None:
+    """Set evidence sufficiency; this is not diagnostic accuracy."""
+    sources = result.get("sources_used", [])
+    if not isinstance(sources, list):
+        sources = []
+
+    questionnaire_valid = any(
+        isinstance(source, Mapping)
+        and source.get("source") == "questionnaire"
+        and source.get("status") == "used"
+        for source in sources
+    )
+    optional_sources_used = sum(
+        1
+        for source in sources
+        if isinstance(source, Mapping)
+        and source.get("source") in {"document", "narrative"}
+        and source.get("status") in {"confirmed", "used"}
+    )
+    used_source_count = int(questionnaire_valid) + optional_sources_used
+    conflicts = result.get("conflicts", [])
+    has_conflicts = isinstance(conflicts, list) and bool(conflicts)
+
+    score = 0.50 if questionnaire_valid else 0.0
+    score += min(optional_sources_used, 2) * 0.10
+    if used_source_count >= 2 and not has_conflicts:
+        score += 0.15
+    if model_contract_valid and result.get("status") == "success":
+        score += 0.15
+    result["confidence"] = round(min(score, 1.0), 2)
 
 
 def _analysis_mode(*, has_document: bool, has_narrative: bool) -> str:

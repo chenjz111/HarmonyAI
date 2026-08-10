@@ -1,0 +1,49 @@
+{
+  "schema_version": "provider_contract_v1",
+  "status": "frozen",
+  "methods": [
+    {
+      "name": "complete_json",
+      "mode": "sync",
+      "result_schema": "structured_json",
+      "error_codes": "ProviderErrorCode",
+      "retry_semantics": "shared_v1",
+      "schema_validation": "shared_v1"
+    },
+    {
+      "name": "acomplete_json",
+      "mode": "async",
+      "result_schema": "structured_json",
+      "error_codes": "ProviderErrorCode",
+      "retry_semantics": "shared_v1",
+      "schema_validation": "shared_v1"
+    }
+  ],
+  "ordinary_logging": {
+    "allowed_fields": [
+      "request_id",
+      "session_id",
+      "agent_id",
+      "source_type",
+      "text_length",
+      "provider",
+      "model",
+      "prompt_version",
+      "latency_ms",
+      "input_tokens",
+      "output_tokens",
+      "status",
+      "error_code",
+      "retry_count"
+    ],
+    "forbidden_fields": [
+      "narrative_text",
+      "document_text",
+      "ocr_text",
+      "questionnaire_answer_text",
+      "system_prompt",
+      "user_prompt"
+    ],
+    "allow_truncated_user_text": false
+  }
+}
