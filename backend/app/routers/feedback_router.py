@@ -5,22 +5,26 @@ Integrated with AI Engine: real agents when HARMONYAI_REAL_AGENTS=true, stubs ot
 Exception/degradation handling per agent-architecture.md Chapter 3.
 """
 from datetime import datetime, timezone
+import json
+import logging
 import traceback
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import ValidationError
 
+from backend.ai_engine.feedback_v2 import submit_feedback_v2
 from backend.app.core.database import get_db
 from backend.app.core.agent_config import use_real_agents, get_feedback_store
 from backend.app.models.feedback import Feedback
 from backend.app.models.session import Session as SessionModel
 from backend.app.schemas.common import make_run_id, AgentLayer
 from backend.app.core.exceptions import build_error_response
-from backend.app.schemas.v2 import v2_ok, v2_err, FeedbackV2Request
+from backend.app.schemas.v2 import v2_ok, v2_err
 
 router = APIRouter()
+v2_router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _ensure_session(session_id: str, db: Session):
@@ -133,114 +137,165 @@ async def feedback_v1(body: dict, db: Session = Depends(get_db)):
         )
 
 
-# ===== V2 Feedback endpoint (uses Pydantic — fixes Review issue #6) =====
+# ===== V2 Feedback endpoint =====
 
-@router.post("/v2/feedback", summary="V2 — Feedback 2.0 完整提交")
-async def feedback_v2(body: dict, db: Session = Depends(get_db)):
-    """Feedback 2.0 per feedback-v2-spec.md: pre/post state + experience + playback."""
-    session_id = body.get("session_id")
-    req_id = f"req_{datetime.now(timezone.utc).strftime('%H%M%S')}_{uuid.uuid4().hex[:4]}"
+class _SQLAlchemyFeedbackRepository:
+    """Persist the canonical AI Feedback V2 record exactly once."""
 
-    if not session_id:
-        return v2_err("MISSING_SESSION", "session_id is required", req_id, retryable=False)
+    def __init__(self, db: Session):
+        self.db = db
 
-    # Validate with Pydantic (fixes Review issue #6)
-    try:
-        validated = FeedbackV2Request(**body)
-    except ValidationError as ve:
-        return v2_err("VALIDATION_ERROR", str(ve), req_id, retryable=False)
+    def save_once(
+        self,
+        record: dict[str, object],
+        preference_patch: dict[str, object],
+    ) -> bool:
+        feedback_id = str(record["feedback_id"])
+        existing = self.db.query(Feedback).filter(
+            Feedback.feedback_id == feedback_id
+        ).first()
+        if existing is not None:
+            return False
 
-    try:
-        _ensure_session(session_id, db)
+        session_id = str(record["session_id"])
+        _ensure_session(session_id, self.db)
+        pre = dict(record["pre_state"])
+        post = dict(record["post_state"])
+        experience = dict(record["experience"])
+        playback_value = record.get("playback")
+        playback = (
+            dict(playback_value)
+            if isinstance(playback_value, dict)
+            else None
+        )
+        completion_rate = None
+        if playback is not None:
+            duration = int(playback["duration_seconds"])
+            listened = int(playback["listened_seconds"])
+            completion_rate = min(listened / duration, 1.0)
 
-        pre = validated.pre_state
-        post = validated.post_state
-        exp = validated.experience
-        pb = validated.playback or PlaybackData()
+        disliked_features = list(experience["disliked_features"])
+        disliked_instruments = list(experience["disliked_instruments"])
+        change_label = str(post["change_label"])
+        if change_label == "worse":
+            decision_action = "reduce_current_music"
+        elif disliked_features or disliked_instruments or experience["favorite"]:
+            decision_action = "adjust_personal_preference"
+        else:
+            decision_action = "keep_personal_preference"
 
-        # Compute deltas
-        tension_delta = (post.tension or 0) - (pre.tension or 0)
-        body_delta = (post.body_tension or 0) - (pre.body_tension or 0)
-        fatigue_delta = (post.mental_fatigue or 0) - (pre.mental_fatigue or 0)
-
-        feedback_id = _make_feedback_id()
-
-        # Persist ALL v2 fields (fixes Review issue #7)
-        db_fb = Feedback(
+        tension_delta = int(post["tension"]) - int(pre["tension"])
+        body_delta = _optional_delta(
+            pre.get("body_tension"),
+            post.get("body_tension"),
+        )
+        fatigue_delta = _optional_delta(
+            pre.get("mental_fatigue"),
+            post.get("mental_fatigue"),
+        )
+        feedback = Feedback(
             user_id=1,
             session_id=session_id,
             feedback_id=feedback_id,
-            prescription_id=validated.prescription_id,
-            track_id=validated.music_id,
+            prescription_id=str(record["prescription_id"]),
+            track_id=str(record["music_id"]),
             schema_version="2.0",
-
-            # Satisfaction & ratings (from ExperienceData model)
-            subjective_satisfaction=exp.overall_rating,
-            subjective_relaxation=exp.relaxation_rating,
-            subjective_emotion_match=exp.music_match_rating,
-            subjective_text=exp.comment[:500] if exp.comment else "",
-
-            # Pre/post state (0-10)
-            mood_before=pre.tension,
-            mood_after=post.tension,
-            relaxation_before=pre.body_tension,
-            relaxation_after=post.body_tension,
-
-            # Mental fatigue + goal
-            profile_update=str({
-                "mental_fatigue_before": pre.mental_fatigue,
-                "mental_fatigue_after": post.mental_fatigue,
-                "goal": pre.goal,
-                "change_label": post.change_label,
-            }),
-
-            # Music & preferences
-            music_match=exp.music_match_rating,
-            will_continue=1 if exp.continue_use == "yes" else (0 if exp.continue_use == "no" else None),
-            is_favorite=1 if exp.favorite else 0,
-            disliked_features=str(exp.disliked_features + exp.disliked_instruments),
-
-            # Playback
-            behavioral_completion_rate=pb.completion_rate if pb else None,
+            subjective_satisfaction=int(experience["overall_rating"]),
+            subjective_relaxation=int(experience["relaxation_rating"]),
+            subjective_emotion_match=int(experience["music_match_rating"]),
+            subjective_text=str(experience["comment"]),
+            mood_before=int(pre["tension"]),
+            mood_after=int(post["tension"]),
+            relaxation_before=pre.get("body_tension"),
+            relaxation_after=post.get("body_tension"),
+            music_match=int(experience["music_match_rating"]),
+            will_continue=(
+                1
+                if experience["continue_use"] == "yes"
+                else (0 if experience["continue_use"] == "no" else None)
+            ),
+            is_favorite=1 if experience["favorite"] else 0,
+            disliked_features=json.dumps(
+                disliked_features + disliked_instruments,
+                ensure_ascii=False,
+            ),
+            behavioral_completion_rate=completion_rate,
             behavioral_replay_count=0,
-            behavioral_listen_session=str(pb.listened_seconds) if pb else None,
-
-            # Decision
-            decision_action="adjust_personal_preference",
+            behavioral_pause_count=(
+                int(playback["pause_count"])
+                if playback is not None
+                else None
+            ),
+            behavioral_skip_count=(
+                int(playback["skip_count"])
+                if playback is not None
+                else None
+            ),
+            decision_action=decision_action,
             decision_next_step="complete",
-            decision_adjustments=str({
-                "tension_delta": tension_delta,
-                "body_tension_delta": body_delta,
-                "mental_fatigue_delta": fatigue_delta,
-            }),
-
-            # Safety — NEVER modified
+            decision_adjustments=json.dumps(
+                {
+                    "tension_delta": tension_delta,
+                    "body_tension_delta": body_delta,
+                    "mental_fatigue_delta": fatigue_delta,
+                },
+                ensure_ascii=False,
+            ),
+            profile_update=json.dumps(
+                {
+                    "goal": pre["goal"],
+                    "change_label": change_label,
+                    "personal_preference_patch": preference_patch,
+                },
+                ensure_ascii=False,
+            ),
             global_rules_modified=0,
-            confidence=0.8,
+            confidence=1.0,
+            reason="结构化反馈已通过 Feedback V2 合同校验",
+            processing_time_ms=0,
         )
-        db.add(db_fb)
-        db.query(SessionModel).filter(SessionModel.session_id == session_id).update(
-            {"status": "completed"}
+        self.db.add(feedback)
+        self.db.query(SessionModel).filter(
+            SessionModel.session_id == session_id
+        ).update({"status": "completed", "current_agent": "feedback"})
+        self.db.commit()
+        return True
+
+
+def _optional_delta(before: object, after: object) -> int | None:
+    if before is None or after is None:
+        return None
+    return int(after) - int(before)
+
+
+@v2_router.post("/feedback", summary="V2 — Feedback 2.0 完整提交")
+async def feedback_v2(body: dict, db: Session = Depends(get_db)):
+    req_id = f"req_feedback_{uuid.uuid4().hex[:10]}"
+    result = submit_feedback_v2(
+        body,
+        _SQLAlchemyFeedbackRepository(db),
+    )
+    if result.get("status") != "failed":
+        return v2_ok(result, req_id)
+
+    db.rollback()
+    if result.get("error_code") == "INVALID_PAYLOAD":
+        return v2_err(
+            "VALIDATION_ERROR",
+            "反馈数据格式不正确，请检查后重试",
+            req_id,
+            retryable=False,
+            next_actions=["review_feedback_fields"],
         )
-        db.commit()
 
-        return v2_ok({
-            "feedback_id": feedback_id,
-            "agent_id": "feedback_agent",
-            "status": "success",
-            "subjective_change": {
-                "tension_delta": tension_delta,
-                "body_tension_delta": body_delta,
-                "mental_fatigue_delta": fatigue_delta,
-            },
-            "decision": {"action": "adjust_personal_preference", "next_step": "complete"},
-            "personal_preference_patch": {
-                "reduce_instruments": exp.disliked_instruments,
-                "favorite_tracks_add": [validated.music_id] if exp.favorite and validated.music_id else [],
-            },
-            "global_rule_update": False,
-        }, req_id)
-
-    except Exception as e:
-        db.rollback()
-        return v2_err("FEEDBACK_FAILED", str(e), req_id, retryable=True)
+    logger.error(
+        "feedback v2 persistence failed",
+        extra={"error_code": result.get("error_code")},
+    )
+    return v2_err(
+        "FEEDBACK_FAILED",
+        "反馈保存失败，请稍后重试",
+        req_id,
+        retryable=True,
+        next_actions=["retry_feedback"],
+    )

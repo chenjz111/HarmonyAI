@@ -4,7 +4,7 @@ Unified response format:
   { success, data, error, meta }
 """
 from __future__ import annotations
-from typing import Optional, Any
+from typing import Optional
 from datetime import datetime, timezone
 from enum import Enum
 from pydantic import BaseModel, Field
@@ -83,55 +83,3 @@ class DocumentConfirmationRequest(BaseModel):
     confirmed: bool
     document_text: Optional[str] = None
     redactions_confirmed: bool = False
-
-
-# ---------------------------------------------------------------------------
-# Feedback 2.0 (per docs/feedback-v2-spec.md)
-# ---------------------------------------------------------------------------
-class PreState(BaseModel):
-    tension: int = Field(ge=0, le=10)
-    body_tension: int = Field(ge=0, le=10)
-    mental_fatigue: int = Field(ge=0, le=10)
-    goal: str = Field(default="relax", description="relax/sleep/calm/focus/other")
-
-
-class PostState(BaseModel):
-    tension: int = Field(ge=0, le=10)
-    body_tension: int = Field(ge=0, le=10)
-    mental_fatigue: int = Field(ge=0, le=10)
-    change_label: str = Field(default="no_change", description="better/slightly_better/no_change/slightly_worse/worse")
-
-
-class PlaybackData(BaseModel):
-    listened_seconds: int = Field(ge=0)
-    duration_seconds: int = Field(ge=0)
-    completion_rate: float = Field(ge=0, le=1)
-    pause_count: int = Field(ge=0, default=0)
-    skip_count: int = Field(ge=0, default=0)
-
-
-class ExperienceData(BaseModel):
-    """Feedback 2.0 experience — explicit Pydantic model (NOT arbitrary dict)."""
-    overall_rating: Optional[int] = Field(None, ge=1, le=5)
-    relaxation_rating: Optional[int] = Field(None, ge=1, le=5)
-    music_match_rating: Optional[int] = Field(None, ge=1, le=5)
-    continue_use: Optional[str] = Field(None, pattern="^(yes|maybe|no)$")
-    favorite: bool = False
-    disliked_features: list[str] = Field(default_factory=list)
-    disliked_instruments: list[str] = Field(default_factory=list)
-    comment: str = Field(default="", max_length=500)
-
-
-class FeedbackV2Request(BaseModel):
-    """Feedback 2.0 full request — per feedback-v2-spec.md §4."""
-    schema_version: str = "feedback_v2.0"
-    session_id: str
-    prescription_id: Optional[str] = None
-    music_id: Optional[str] = None
-
-    pre_state: PreState
-    post_state: PostState
-
-    experience: ExperienceData = Field(default_factory=ExperienceData)
-    playback: Optional[PlaybackData] = None
-    submitted_at: Optional[str] = None
