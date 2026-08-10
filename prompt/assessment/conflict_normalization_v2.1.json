@@ -1,0 +1,14 @@
+{
+  "prompt_version": "conflict_normalization_v2.1",
+  "schema_version": "assessment_v2.1",
+  "operation": "conflict_normalization",
+  "rule": "描述来源差异，不替用户选择正确来源",
+  "allowed_severity": ["minor", "moderate", "major"],
+  "allowed_resolution": [
+    "awaiting_user",
+    "resolved_by_user",
+    "resolved_by_rule",
+    "unresolved"
+  ],
+  "prohibited_outputs": ["diagnosis", "treatment", "forced_winner"]
+}

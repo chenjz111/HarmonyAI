@@ -1,107 +1,255 @@
-"""Pydantic schema for Qwen narrative text analysis output.
-
-Validates structured extraction from user free-text input.
-The model MUST NOT output medical diagnoses or TCM syndrome labels.
-"""
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
+
+from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from .providers import AsyncJsonProvider
+from .sprint4_contracts import (
+    NarrativeEvidence,
+    NarrativeExtractionResult,
+    ProviderError,
+    ProviderRequest,
+)
 
-def _coerce_evidence(v: Any) -> str:
-    """Accept str or list[str]; join lists with semicolons."""
-    if isinstance(v, list):
-        return "; ".join(str(item) for item in v if item)
-    return str(v) if v else ""
+
+NARRATIVE_CATEGORIES = frozenset(
+    {
+        "emotion_state",
+        "worry_thought",
+        "irritability",
+        "mood_interest",
+        "fear_unease",
+        "sleep",
+        "energy",
+        "appetite",
+        "physical_signal",
+        "life_event",
+        "duration",
+        "daily_impact",
+        "goal_and_expectation",
+    }
+)
+_POLARITIES = frozenset(
+    {"present", "absent", "reduced", "increased", "unchanged"}
+)
+_ALLOWED_ITEM_FIELDS = frozenset(
+    {
+        "category",
+        "label",
+        "value",
+        "polarity",
+        "time_window",
+        "quote",
+        "source_ref",
+        "extraction_confidence",
+        "negated",
+    }
+)
+
+
+async def extract_narrative(
+    text: str,
+    *,
+    source_type: Literal["narrative", "document"],
+    provider: AsyncJsonProvider,
+) -> NarrativeExtractionResult:
+    """Extract grounded evidence from one reliable text source."""
+    normalized_text = text.strip() if isinstance(text, str) else ""
+    if not normalized_text:
+        return NarrativeExtractionResult(
+            status="unavailable",
+            items=(),
+            evidence_quotes=(),
+            reason_code="EMPTY_TEXT",
+            warnings=("文本为空，未执行结构化提取。",),
+        )
+
+    try:
+        response = await provider.complete_json(
+            ProviderRequest(
+                system_prompt=(
+                    "你是证据提取器，只返回符合 narrative_extraction_v2.1 "
+                    "结构的 JSON，不生成诊断或治疗结论。"
+                ),
+                user_prompt=normalized_text,
+                operation="narrative_extraction",
+                prompt_version="narrative_extraction_v2.1",
+            )
+        )
+    except ProviderError as exc:
+        status = "degraded" if exc.retryable else "unavailable"
+        return NarrativeExtractionResult(
+            status=status,
+            items=(),
+            evidence_quotes=(),
+            reason_code=exc.reason_code,
+            warnings=(exc.user_message,),
+        )
+    except Exception as exc:
+        return NarrativeExtractionResult(
+            status="unavailable",
+            items=(),
+            evidence_quotes=(),
+            reason_code="PROVIDER_UNEXPECTED_ERROR",
+            warnings=(f"文本提取不可用：{type(exc).__name__}",),
+        )
+
+    try:
+        items = _normalize_items(response.data.get("items"), normalized_text, source_type)
+    except ValueError as exc:
+        return NarrativeExtractionResult(
+            status="degraded",
+            items=(),
+            evidence_quotes=(),
+            reason_code="NARRATIVE_SCHEMA_ERROR",
+            warnings=(str(exc),),
+            model_metadata=_provider_metadata(response),
+        )
+    return NarrativeExtractionResult(
+        status="processed",
+        items=tuple(items),
+        evidence_quotes=tuple(items),
+        model_metadata=_provider_metadata(response),
+    )
+
+
+def _normalize_items(
+    raw_items: object,
+    source_text: str,
+    source_type: Literal["narrative", "document"],
+) -> list[NarrativeEvidence]:
+    if isinstance(raw_items, (str, bytes)) or not isinstance(raw_items, list):
+        raise ValueError("items must be a JSON array")
+
+    normalized: list[NarrativeEvidence] = []
+    for index, raw_item in enumerate(raw_items, start=1):
+        if not isinstance(raw_item, Mapping):
+            raise ValueError(f"items[{index}] must be an object")
+        unknown = set(raw_item) - _ALLOWED_ITEM_FIELDS
+        if unknown:
+            raise ValueError(f"items[{index}] has unknown fields: {sorted(unknown)}")
+        category = raw_item.get("category")
+        if category not in NARRATIVE_CATEGORIES:
+            raise ValueError(f"items[{index}].category is not allowed")
+        label = raw_item.get("label")
+        quote = raw_item.get("quote")
+        source_ref = raw_item.get("source_ref")
+        time_window = raw_item.get("time_window")
+        polarity = raw_item.get("polarity")
+        confidence = raw_item.get("extraction_confidence")
+        negated = raw_item.get("negated")
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError(f"items[{index}].label is required")
+        if not isinstance(quote, str) or not quote.strip() or quote not in source_text:
+            raise ValueError(f"items[{index}].quote must be a source substring")
+        if not isinstance(source_ref, str) or not source_ref.startswith(f"{source_type}:"):
+            raise ValueError(f"items[{index}].source_ref must identify the source")
+        if not isinstance(time_window, str) or not time_window.strip():
+            raise ValueError(f"items[{index}].time_window is required")
+        if polarity not in _POLARITIES:
+            raise ValueError(f"items[{index}].polarity is not allowed")
+        if type(confidence) not in (int, float) or not 0 <= confidence <= 1:
+            raise ValueError(f"items[{index}].extraction_confidence must be 0..1")
+        if type(negated) is not bool:
+            raise ValueError(f"items[{index}].negated must be boolean")
+        normalized.append(
+            NarrativeEvidence(
+                category=category,
+                label=label.strip(),
+                value=raw_item.get("value"),
+                polarity=polarity,
+                time_window=time_window.strip(),
+                quote=quote.strip(),
+                source_ref=source_ref,
+                extraction_confidence=float(confidence),
+                negated=negated,
+            )
+        )
+    return normalized
+
+
+def _provider_metadata(response: object) -> dict[str, object] | None:
+    if not hasattr(response, "provider"):
+        return None
+    return {
+        "provider": response.provider,
+        "model": response.model,
+        "latency_ms": response.latency_ms,
+        "tokens_input": response.input_tokens,
+        "tokens_output": response.output_tokens,
+        "attempts": response.attempts,
+        "prompt_version": "narrative_extraction_v2.1",
+    }
+
+
+# Compatibility exports required by the integrated Sprint 4 narrative API.
+# The canonical extraction path above remains EvidenceItem-oriented and
+# source-grounded; these models preserve the existing consumer-facing shape.
+def _coerce_evidence(value: Any) -> str:
+    if isinstance(value, list):
+        return "; ".join(str(item) for item in value if item)
+    return str(value) if value else ""
 
 
 class LifeEvent(BaseModel):
     description: str = Field(..., description="Brief description of the event")
-    timeframe: str = Field(default="recent", description="When it happened: today/recent/past")
+    timeframe: str = Field(default="recent", description="When it happened")
 
 
 class EmotionSignal(BaseModel):
-    emotion: str = Field(..., description="Detected emotion label (anxiety/depression/anger/fear/overthinking/fatigue/grief/insomnia)")
-    intensity: int = Field(..., ge=0, le=100, description="Intensity score 0-100")
-    evidence: str = Field(default="", description="Quote or paraphrase from user text supporting this")
+    emotion: str
+    intensity: int = Field(..., ge=0, le=100)
+    evidence: str = ""
 
     _coerce_evidence = field_validator("evidence", mode="before")(_coerce_evidence)
 
 
 class PhysicalSignal(BaseModel):
-    symptom: str = Field(..., description="Physical symptom described")
-    severity: str = Field(default="moderate", description="mild/moderate/severe")
-    evidence: str = Field(default="", description="Supporting text from user")
+    symptom: str
+    severity: str = "moderate"
+    evidence: str = ""
 
     _coerce_evidence = field_validator("evidence", mode="before")(_coerce_evidence)
 
 
 class NarrativeAnalysis(BaseModel):
-    """Structured output from Qwen after analyzing user free-text.
-
-    The model is instructed NOT to output medical diagnoses or TCM labels.
-    This output feeds into the existing AssessmentAgent pipeline, not Diagnosis directly.
-    """
     model_config = {"extra": "ignore"}
 
     life_events: list[LifeEvent] = Field(default_factory=list)
     emotion_signals: list[EmotionSignal] = Field(default_factory=list)
     physical_signals: list[PhysicalSignal] = Field(default_factory=list)
-    evidence: str = Field(default="", description="Key phrases from user text supporting the analysis")
-    summary: str = Field(default="", description="One-sentence summary of user's state, in user's own framing")
-    needs_confirmation: bool = Field(default=False)
+    evidence: str = ""
+    summary: str = ""
+    needs_confirmation: bool = False
 
     @field_validator("evidence", mode="before")
     @classmethod
-    def _coerce_top_evidence(cls, v: Any) -> str:
-        return _coerce_evidence(v)
+    def _coerce_top_evidence(cls, value: Any) -> str:
+        return _coerce_evidence(value)
 
 
-# ---------------------------------------------------------------------------
-# Prompt template for narrative extraction
-# ---------------------------------------------------------------------------
 NARRATIVE_SYSTEM_PROMPT = (
-    "You are a clinical intake assistant. Analyze the user's free-text description "
-    "of recent experiences. Extract ONLY factual observations — do NOT diagnose, "
-    "do NOT assign TCM syndromes, do NOT suggest treatments. "
-    "Return JSON with these fields:\n"
-    "- life_events: list of {description, timeframe (today/recent/past)}\n"
-    "- emotion_signals: list of {emotion, intensity (0-100), evidence}\n"
-    "  (emotion must be one of: anxiety, depression, anger, fear, overthinking, fatigue, grief, insomnia)\n"
-    "- physical_signals: list of {symptom, severity (mild/moderate/severe), evidence}\n"
-    "- evidence: key phrases from user text\n"
-    "- summary: one-sentence neutral summary\n"
-    "- needs_confirmation: true/false\n"
-    "If the text describes self-harm or immediate danger to self/others, "
-    "set a field called safety_alert to true and set summary to 'recommend_professional_help'. "
-    "Return ONLY valid JSON, no explanation."
+    "Extract only factual observations from the user's free text. "
+    "Do not diagnose, assign syndrome labels, or suggest treatment. Return JSON."
 )
-
-
-# ---------------------------------------------------------------------------
-# Safety constants
-# ---------------------------------------------------------------------------
-SAFETY_KEYWORDS = [
+SAFETY_KEYWORDS = (
     "不想活", "自杀", "结束生命", "自残", "伤害自己", "不想活了",
     "kill myself", "self-harm", "suicide", "end my life",
-]
-
-MAX_NARRATIVE_LENGTH = 1000  # chars
+)
+MAX_NARRATIVE_LENGTH = 1000
 
 
 def check_safety_alert(text: str) -> bool:
-    """Check if free text contains potential self-harm keywords."""
-    text_lower = text.lower()
-    return any(kw.lower() in text_lower for kw in SAFETY_KEYWORDS)
+    normalized = text.lower()
+    return any(keyword.lower() in normalized for keyword in SAFETY_KEYWORDS)
 
 
 def sanitize_narrative(text: str | None) -> str | None:
-    """Trim whitespace and cap length. Return None for empty/whitespace-only strings."""
     if text is None:
         return None
-    cleaned = text.strip()
-    if not cleaned:
-        return None
-    return cleaned[:MAX_NARRATIVE_LENGTH]
+    normalized = text.strip()
+    return normalized[:MAX_NARRATIVE_LENGTH] or None
