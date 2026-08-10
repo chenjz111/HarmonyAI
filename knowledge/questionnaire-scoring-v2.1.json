@@ -16,11 +16,46 @@
     "reverse_scored_explicit: 正向题标记 reverse_scored: true"
   ],
   "display_layers": [
-    {"range": [0.0, 0.75], "label": "当前不明显", "note": "非临床阈值，仅内部状态分层"},
-    {"range": [0.76, 1.75], "label": "轻微出现", "note": "非临床阈值，仅内部状态分层"},
-    {"range": [1.76, 2.75], "label": "有一定表现", "note": "非临床阈值，仅内部状态分层"},
-    {"range": [2.76, 3.50], "label": "较明显", "note": "非临床阈值，仅内部状态分层"},
-    {"range": [3.51, 4.00], "label": "持续或非常明显", "note": "非临床阈值，仅内部状态分层"}
+    {
+      "range": [
+        0.0,
+        0.75
+      ],
+      "label": "当前不明显",
+      "note": "非临床阈值，仅内部状态分层"
+    },
+    {
+      "range": [
+        0.76,
+        1.75
+      ],
+      "label": "轻微出现",
+      "note": "非临床阈值，仅内部状态分层"
+    },
+    {
+      "range": [
+        1.76,
+        2.75
+      ],
+      "label": "有一定表现",
+      "note": "非临床阈值，仅内部状态分层"
+    },
+    {
+      "range": [
+        2.76,
+        3.5
+      ],
+      "label": "较明显",
+      "note": "非临床阈值，仅内部状态分层"
+    },
+    {
+      "range": [
+        3.51,
+        4.0
+      ],
+      "label": "持续或非常明显",
+      "note": "非临床阈值，仅内部状态分层"
+    }
   ],
   "dimensions": {
     "tension_worry": {
@@ -47,7 +82,13 @@
       "reverse_scored": false,
       "weight": 1.0,
       "aggregation": "direct",
-      "score_map": {"calm": 0, "ripple": 1, "waves": 2, "swell": 3, "storm": 4}
+      "score_map": {
+        "calm": 0,
+        "ripple": 1,
+        "waves": 2,
+        "swell": 3,
+        "storm": 4
+      }
     },
     "irritability_anger": {
       "source_question": "q06_irritability_anger",
@@ -97,7 +138,13 @@
       "reverse_scored": false,
       "weight": 1.0,
       "aggregation": "direct",
-      "score_map": {"quick": 0, "fast": 1, "moderate": 2, "slow": 3, "very_slow": 4}
+      "score_map": {
+        "quick": 0,
+        "fast": 1,
+        "moderate": 2,
+        "slow": 3,
+        "very_slow": 4
+      }
     },
     "sleep_disturbance": {
       "source_question": "q12_sleep_disturbance",
@@ -126,7 +173,11 @@
       "reverse_scored": false,
       "weight": 1.0,
       "aggregation": "direct",
-      "score_map": {"full": 0, "three_quarters": 1, "half": 2, "quarter": 3, "empty": 4}
+      "score_map": {
+        "full": 0,
+        "half": 2,
+        "empty": 4
+      }
     },
     "appetite_change": {
       "source_question": "q15_appetite_change",
@@ -136,7 +187,11 @@
       "weight": 1.0,
       "aggregation": "directional",
       "notes": "保存 {direction: increase|decrease|none, severity: 0-4}。direction=none 时 severity 强制为 0",
-      "direction_values": ["increase", "decrease", "none"]
+      "direction_values": [
+        "increase",
+        "decrease",
+        "none"
+      ]
     },
     "daily_impact": {
       "source_question": "q18_daily_impact",
@@ -153,14 +208,27 @@
       "reverse_scored": false,
       "weight": 0,
       "aggregation": "evidence_only",
-      "notes": "只记录证据（evidence items），不直接映射证型"
+      "notes": "只记录证据（evidence items），不直接映射证型",
+      "mutually_exclusive_value": "none"
     }
   },
   "qualitative_fields": {
-    "worry_control": {"source": "q04_worry_control", "notes": "定性记录，避免与 tension_worry double-count"},
-    "user_goal": {"source": "q01_user_goal", "notes": "影响音乐目标，不计分"},
-    "duration": {"source": "q17_duration", "notes": "不计分，影响评估时长维度"},
-    "mood_weather": {"source": "q02_mood_weather", "notes": "表达辅助，不计分"}
+    "worry_control": {
+      "source": "q04_worry_control",
+      "notes": "定性记录，避免与 tension_worry double-count"
+    },
+    "user_goal": {
+      "source": "q01_user_goal",
+      "notes": "影响音乐目标，不计分。8 个固定 option value 与 Frozen Contract 统一"
+    },
+    "duration": {
+      "source": "q17_duration",
+      "notes": "不计分，影响评估时长维度"
+    },
+    "mood_weather": {
+      "source": "q02_mood_weather",
+      "notes": "表达辅助，不计分"
+    }
   },
   "domain_aggregation": {
     "formula": "维度得分 = Σ(题目得分 × 题目权重) / Σ(题目权重)",
@@ -168,33 +236,63 @@
       "sleep": {
         "label": "睡眠领域",
         "members": [
-          {"question": "q12_sleep_disturbance", "weight": 1.0, "note": "Q12=入睡过程"},
-          {"question": "q13_unrefreshing_sleep", "weight": 1.0, "note": "Q13=醒来感受"}
+          {
+            "question": "q12_sleep_disturbance",
+            "weight": 1.0,
+            "note": "Q12=入睡过程"
+          },
+          {
+            "question": "q13_unrefreshing_sleep",
+            "weight": 1.0,
+            "note": "Q13=醒来感受"
+          }
         ],
         "example": "sleep_disturbance = (Q12 × 1.0 + Q13 × 1.0) / 2.0"
       },
       "negative_affect": {
         "label": "负性情绪领域",
         "members": [
-          {"question": "q03_tension_worry", "weight": 1.0},
-          {"question": "q06_irritability_anger", "weight": 1.0},
-          {"question": "q07_fear_unease", "weight": 1.0},
-          {"question": "q08_low_mood", "weight": 1.0}
+          {
+            "question": "q03_tension_worry",
+            "weight": 1.0
+          },
+          {
+            "question": "q06_irritability_anger",
+            "weight": 1.0
+          },
+          {
+            "question": "q07_fear_unease",
+            "weight": 1.0
+          },
+          {
+            "question": "q08_low_mood",
+            "weight": 1.0
+          }
         ],
         "notes": "仅用于展示聚合，单题不直接决定证型"
       },
       "cognitive": {
         "label": "认知领域",
         "members": [
-          {"question": "q05_overthinking", "weight": 1.0},
-          {"question": "q04_worry_control", "weight": 0, "note": "定性，不参与数值聚合"}
+          {
+            "question": "q05_overthinking",
+            "weight": 1.0
+          },
+          {
+            "question": "q04_worry_control",
+            "weight": 0,
+            "note": "定性，不参与数值聚合"
+          }
         ],
         "notes": "worry_control 只作上下文标签"
       }
     }
   },
   "reverse_scoring": {
-    "calm_wellbeing": {"formula": "4 - raw_score", "note": "高分=好状态，反向计分后高分=状态差"}
+    "calm_wellbeing": {
+      "formula": "4 - raw_score",
+      "note": "高分=好状态，反向计分后高分=状态差"
+    }
   },
   "appetite_handling": {
     "format": {
@@ -212,29 +310,74 @@
   },
   "safety_routing": {
     "rules": [
-      {"trigger": "q19_self_harm 选择 sometimes/often/concrete_plan", "flag": "SAFETY_SELF_HARM", "action": "进入安全流程，不进入 Prescription/Music Agent"},
-      {"trigger": "q20_emergency 选择任何紧急情况", "flag": "SAFETY_EMERGENCY_PHYSICAL", "action": "进入安全流程，不进入 Prescription/Music Agent"}
+      {
+        "trigger": "q19_self_harm 选择 fleeting/sometimes/often/specific_plan（即除 never 外的任何选项）",
+        "flag": "SAFETY_SELF_HARM",
+        "action": "进入安全流程，不进入 Diagnosis/Prescription/Music"
+      },
+      {
+        "trigger": "q20_emergency 选择任何紧急情况",
+        "flag": "SAFETY_EMERGENCY_PHYSICAL",
+        "action": "进入安全流程，不进入 Diagnosis/Prescription/Music"
+      }
+    ],
+    "mutual_exclusivity": [
+      {
+        "question": "q20_emergency",
+        "mutually_exclusive_value": "none",
+        "rule": "选择 none 时必须清除其他选项；选择任一紧急选项时必须清除 none"
+      },
+      {
+        "question": "q16_physical_signals",
+        "mutually_exclusive_value": "none",
+        "rule": "选择 none 时必须清除其他身体信号"
+      }
     ],
     "bypass": "Q19/Q20 答案不进入状态评分"
   },
   "evidence_coverage_score": {
-    "formula": "coverage = (有证据维度数 / 总维度数) × 来源多样性系数",
+    "formula": "evidence_coverage_score = 有证据的维度数 / 总维度数",
     "total_dimensions": 14,
-    "source_diversity_coefficient": {"1_source": 0.8, "2_sources": 0.9, "3_sources": 1.0},
-    "threshold": {"follow_up_trigger": 0.70}
+    "note": "独立计算，不再乘 source_diversity（Frozen Contract 更新）"
   },
   "result_display_chain": [
     "raw 得分计算（含反向计分）",
     "领域聚合（加权平均）",
     "display_layers 分层映射",
-    "证据覆盖度计算",
+    "evidence_coverage_score 独立计算",
+    "source_diversity 独立计算",
     "安全分流检查（Q19/Q20 优先）"
   ],
   "output_schema": {
-    "dimension_scores": {"tension_worry": 0.0, "overthinking": 0, "irritability_anger": 0, "fear_unease": 0, "low_mood": 0, "interest_loss": 0, "calm_wellbeing": 0, "emotional_recovery": 0, "sleep_disturbance": 0, "unrefreshing_sleep": 0, "low_energy": 0, "daily_impact": 0},
-    "domain_scores": {"sleep": 0.0, "negative_affect": 0.0, "cognitive": 0.0},
-    "qualitative": {"worry_control": null, "user_goal": null, "duration": null, "mood_weather": null},
-    "appetite": {"direction": null, "severity": 0},
+    "dimension_scores": {
+      "tension_worry": 0.0,
+      "overthinking": 0,
+      "irritability_anger": 0,
+      "fear_unease": 0,
+      "low_mood": 0,
+      "interest_loss": 0,
+      "calm_wellbeing": 0,
+      "emotional_recovery": 0,
+      "sleep_disturbance": 0,
+      "unrefreshing_sleep": 0,
+      "low_energy": 0,
+      "daily_impact": 0
+    },
+    "domain_scores": {
+      "sleep": 0.0,
+      "negative_affect": 0.0,
+      "cognitive": 0.0
+    },
+    "qualitative": {
+      "worry_control": null,
+      "user_goal": null,
+      "duration": null,
+      "mood_weather": null
+    },
+    "appetite": {
+      "direction": null,
+      "severity": 0
+    },
     "physical_signals": [],
     "safety_flags": [],
     "display_levels": {},
@@ -251,5 +394,9 @@
     "analogous_syndrome": "旁证-同类证型",
     "five_element": "旁证-五行归属",
     "classical": "经典理论/理论依据"
+  },
+  "source_diversity": {
+    "formula": "source_diversity = min(1.0, 不同 source_type 数量 / 3)",
+    "note": "与 evidence_coverage_score 独立输出，两者不互相影响"
   }
 }
