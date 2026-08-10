@@ -389,6 +389,27 @@ def run_diagnosis_v21(
             reason_codes=["UNRESOLVED_MAJOR_CONFLICT"],
         )
 
+    coverage = assessment_data.get("evidence_coverage_score")
+    if isinstance(coverage, (int, float)) and float(coverage) < 0.5:
+        return _v21_diagnosis_result(
+            assessment_data,
+            status="degraded",
+            candidates=[],
+            abstained=True,
+            abstain_reason="INSUFFICIENT_EVIDENCE",
+            reason_codes=["INSUFFICIENT_EVIDENCE"],
+        )
+    missing_information = _mapping_list(assessment_data.get("missing_information"))
+    if any(item.get("severity") in {"critical", "important"} for item in missing_information):
+        return _v21_diagnosis_result(
+            assessment_data,
+            status="degraded",
+            candidates=[],
+            abstained=True,
+            abstain_reason="INSUFFICIENT_EVIDENCE",
+            reason_codes=["INSUFFICIENT_EVIDENCE"],
+        )
+
     emotion_profile = _mapping_or_default(assessment_data.get("emotion_profile"), {})
     dimensions = _mapping_or_default(emotion_profile.get("dimension_scores"), {})
     evidence_items = _mapping_list(assessment_data.get("evidence_items"))

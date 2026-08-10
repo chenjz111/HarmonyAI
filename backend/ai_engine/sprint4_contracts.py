@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Literal, NotRequired, TypedDict
 
 
@@ -13,15 +14,21 @@ EvidenceSourceType = Literal[
 ]
 
 
-ProviderReasonCode = Literal[
-    "TIMEOUT",
-    "NETWORK",
-    "RATE_LIMIT",
-    "SERVER_ERROR",
-    "INVALID_JSON",
-    "SCHEMA_ERROR",
-    "NOT_CONFIGURED",
-]
+class ProviderErrorCode(str, Enum):
+    NOT_CONFIGURED = "NOT_CONFIGURED"
+    CONNECTION_TIMEOUT = "CONNECTION_TIMEOUT"
+    READ_TIMEOUT = "READ_TIMEOUT"
+    RATE_LIMITED = "RATE_LIMITED"
+    SERVER_ERROR = "SERVER_ERROR"
+    INVALID_RESPONSE = "INVALID_RESPONSE"
+    INVALID_JSON = "INVALID_JSON"
+    JSON_REPAIR_FAILED = "JSON_REPAIR_FAILED"
+    SCHEMA_VIOLATION = "SCHEMA_VIOLATION"
+    EMPTY_RESPONSE = "EMPTY_RESPONSE"
+
+
+# Compatibility alias for the pre-freeze internal name.
+ProviderReasonCode = str
 
 
 class EvidenceItem(TypedDict):
@@ -112,13 +119,16 @@ class ProviderResponse:
 class ProviderError(RuntimeError):
     def __init__(
         self,
-        reason_code: ProviderReasonCode,
+        reason_code: ProviderErrorCode | str,
         retryable: bool,
         user_message: str,
         *,
         cause: BaseException | None = None,
     ) -> None:
-        self.reason_code = reason_code
+        self.reason_code = (
+            reason_code.value if isinstance(reason_code, ProviderErrorCode) else reason_code
+        )
+        self.error_code = self.reason_code
         self.retryable = retryable
         self.user_message = user_message
         self.cause = cause
