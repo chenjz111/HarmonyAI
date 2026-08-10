@@ -1,0 +1,47 @@
+{
+  "prompt_version": "narrative_extraction_v2.1",
+  "schema_version": "assessment_v2.1",
+  "operation": "narrative_extraction",
+  "allowed_categories": [
+    "emotion_state",
+    "worry_thought",
+    "irritability",
+    "mood_interest",
+    "fear_unease",
+    "sleep",
+    "energy",
+    "appetite",
+    "physical_signal",
+    "life_event",
+    "duration",
+    "daily_impact",
+    "goal_and_expectation"
+  ],
+  "required_item_fields": [
+    "category",
+    "label",
+    "value",
+    "polarity",
+    "time_window",
+    "quote",
+    "source_ref",
+    "extraction_confidence",
+    "negated"
+  ],
+  "prohibited_outputs": ["diagnosis", "treatment", "guarantee"],
+  "example": {
+    "items": [
+      {
+        "category": "sleep",
+        "label": "sleep_disturbance",
+        "value": 3,
+        "polarity": "present",
+        "time_window": "过去两周",
+        "quote": "晚上睡不好",
+        "source_ref": "narrative:sentence_1",
+        "extraction_confidence": 0.9,
+        "negated": false
+      }
+    ]
+  }
+}
