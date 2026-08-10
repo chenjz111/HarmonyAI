@@ -1,0 +1,1449 @@
+{
+  "schema_version": "s4_labels_r1_contract_v2.1",
+  "total": 55,
+  "labels": [
+    {
+      "case_id": "C001",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "overthinking",
+        "irritability_anger"
+      ],
+      "life_events": [
+        "工作压力"
+      ],
+      "physical_signals": [
+        "chest_tightness"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 2
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C002",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "interest_loss",
+        "low_mood"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "duration_exact_start",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C003",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "irritability_anger",
+        "irritability_anger"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "user_goal",
+        "duration_exact_start"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C004",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "interest_loss"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C005",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease",
+        "overthinking",
+        "worry_control"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "palpitation",
+        "sweating"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "sleep",
+        "user_goal",
+        "duration_exact_start"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C006",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_energy"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "limb_fatigue"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "user_goal",
+        "duration_exact_start",
+        "low_mood"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C007",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "overthinking",
+        "calm_wellbeing",
+        "emotional_recovery"
+      ],
+      "life_events": [
+        "考试压力"
+      ],
+      "physical_signals": [],
+      "negated_facts": [
+        "不是抑郁"
+      ],
+      "missing_information": [
+        "user_goal",
+        "duration_exact_start"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C008",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "overthinking",
+        "fear_unease"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C009",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease"
+      ],
+      "life_events": [
+        "work"
+      ],
+      "physical_signals": [
+        "palpitation"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "low_mood",
+        "user_goal",
+        "duration_exact_start"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C010",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "irritability_anger"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [
+        "有时候觉得自己很平静"
+      ],
+      "missing_information": [
+        "appetite",
+        "sleep",
+        "user_goal",
+        "duration_exact_start"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C011",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "stomach_discomfort"
+      ],
+      "negated_facts": [
+        "没有器质性问题"
+      ],
+      "missing_information": [
+        "emotion_states",
+        "sleep",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 3
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C012",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "emotion_states",
+        "sleep",
+        "appetite",
+        "duration",
+        "daily_impact",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 2,
+        "max": 4
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C013",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "fear_unease",
+        "fear_unease"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "palpitation"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C014",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "interest_loss"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "sleep",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C015",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease"
+      ],
+      "life_events": [
+        "工作"
+      ],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "user_goal",
+        "duration_exact_start"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C016",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "overthinking",
+        "tension_worry"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C017",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease",
+        "overthinking"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "chest_tightness"
+      ],
+      "negated_facts": [
+        "情绪没有问题",
+        "身体检查无异常"
+      ],
+      "missing_information": [
+        "appetite",
+        "user_goal",
+        "duration_exact_start"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C018",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "emotional_recovery",
+        "calm_wellbeing"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "sleep",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C019",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "emotion_states",
+        "sleep",
+        "appetite",
+        "duration",
+        "daily_impact",
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 2,
+        "max": 4
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C020",
+      "type": "narrative_only",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "interest_loss"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [
+        "没有自伤意图"
+      ],
+      "missing_information": [
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 2
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C021",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease"
+      ],
+      "life_events": [
+        "工作压力"
+      ],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C022",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "interest_loss"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "sleep",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C023",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "stomach_discomfort",
+        "limb_fatigue"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "duration_exact_start"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C024",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease",
+        "worry_control"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "palpitation",
+        "sweating"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "sleep",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C025",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "tension_worry",
+        "calm_wellbeing",
+        "emotional_recovery"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C026",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [
+        "状态不错"
+      ],
+      "missing_information": [],
+      "expected_conflicts": [
+        "low_mood"
+      ],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C027",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "irritability_anger",
+        "low_mood",
+        "tension_worry"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C028",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "sleep"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C029",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "emotional_recovery",
+        "calm_wellbeing"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "sleep",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C030",
+      "type": "narrative_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease",
+        "overthinking"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "chest_tightness",
+        "palpitation"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "sleep",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C031",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "emotion_states"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C032",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "interest_loss"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C033",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "irritability_anger"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "chest_tightness",
+        "palpitation"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "low_mood"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C034",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "overthinking"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "stomach_discomfort",
+        "limb_fatigue"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "emotion_states",
+        "sleep"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C035",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease",
+        "worry_control"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "low_mood"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C036",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "interest_loss"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "user_goal"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C037",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "calm_wellbeing",
+        "emotional_recovery"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C038",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "irritability_anger"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "chest_tightness"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "low_mood"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C039",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "head_heaviness",
+        "sweating"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "emotion_states"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C040",
+      "type": "document_questionnaire",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease"
+      ],
+      "life_events": [
+        "工作压力"
+      ],
+      "physical_signals": [],
+      "negated_facts": [
+        "器质性检查正常"
+      ],
+      "missing_information": [
+        "appetite",
+        "low_mood"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C041",
+      "type": "three_source",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "overthinking",
+        "low_mood"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C042",
+      "type": "three_source",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "interest_loss"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C043",
+      "type": "three_source",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "fear_unease",
+        "worry_control"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "palpitation",
+        "chest_tightness"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "appetite",
+        "low_mood"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C044",
+      "type": "three_source",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "irritability_anger"
+      ],
+      "life_events": [
+        "工作压力"
+      ],
+      "physical_signals": [
+        "head_heaviness",
+        "neck_tension"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "sleep",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C045",
+      "type": "three_source",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "overthinking"
+      ],
+      "life_events": [],
+      "physical_signals": [
+        "stomach_discomfort"
+      ],
+      "negated_facts": [],
+      "missing_information": [
+        "low_mood",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 0,
+        "max": 1
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C046",
+      "type": "source_conflict",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [
+        "心态很好"
+      ],
+      "missing_information": [],
+      "expected_conflicts": [
+        "tension_worry",
+        "sleep_disturbance"
+      ],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C047",
+      "type": "source_conflict",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [],
+      "expected_conflicts": [
+        "low_mood"
+      ],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C048",
+      "type": "source_conflict",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [],
+      "expected_conflicts": [
+        "sleep_disturbance"
+      ],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C049",
+      "type": "source_conflict",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [
+        "情绪特别好"
+      ],
+      "missing_information": [],
+      "expected_conflicts": [
+        "low_mood",
+        "interest_loss"
+      ],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C050",
+      "type": "source_conflict",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_energy"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [],
+      "expected_conflicts": [
+        "tension_worry"
+      ],
+      "expected_follow_up_count": {
+        "min": 1,
+        "max": 2
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C051",
+      "type": "insufficient_follow_up",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood",
+        "sleep_disturbance"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "duration_exact_start",
+        "daily_impact",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 2,
+        "max": 3
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C052",
+      "type": "insufficient_follow_up",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "emotion_states",
+        "duration_exact_start",
+        "daily_impact",
+        "sleep",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 2,
+        "max": 4
+      },
+      "expected_abstain": true,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C053",
+      "type": "insufficient_follow_up",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "tension_worry",
+        "overthinking"
+      ],
+      "life_events": [
+        "工作压力"
+      ],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "duration_exact_start",
+        "daily_impact",
+        "sleep",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 2,
+        "max": 3
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C054",
+      "type": "insufficient_follow_up",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [
+        "low_mood"
+      ],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "duration_exact_start",
+        "daily_impact",
+        "sleep",
+        "appetite"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 2,
+        "max": 3
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    },
+    {
+      "case_id": "C055",
+      "type": "insufficient_follow_up",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "emotion_labels": [],
+      "life_events": [],
+      "physical_signals": [],
+      "negated_facts": [],
+      "missing_information": [
+        "duration_exact_start",
+        "daily_impact",
+        "appetite",
+        "emotion_states"
+      ],
+      "expected_conflicts": [],
+      "expected_follow_up_count": {
+        "min": 2,
+        "max": 3
+      },
+      "expected_abstain": false,
+      "safety_expected": "pass"
+    }
+  ]
+}
