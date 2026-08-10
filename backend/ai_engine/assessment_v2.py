@@ -994,12 +994,28 @@ async def _run_assessment_v21_async(
                 document_result.reason_code or "DOCUMENT_EXTRACTION_UNAVAILABLE"
             )
 
+    correction_evidence, revision_changes = _v21_user_correction_evidence(
+        submission.get("user_correction"),
+        assessment_id=assessment_id,
+    )
+    evidence.extend(correction_evidence)
+    previous_revision = submission.get("previous_revision", 0)
+    if type(previous_revision) is not int or previous_revision < 0:
+        previous_revision = 0
+    revision = previous_revision + 1
+
     conflicts = _v21_conflicts(evidence)
-    coverage = _v21_evidence_coverage(evidence, len(questionnaire.dimension_scores))
+    coverage = _v21_evidence_coverage(
+        evidence,
+        len(questionnaire.dimension_scores),
+        independent_sources=questionnaire.source.startswith("frozen"),
+        dimension_labels=set(questionnaire.dimension_scores),
+    )
     missing_information = _v21_missing_information(
         narrative_text=narrative_text,
         document_text=document_text,
         evidence=evidence,
+        questionnaire_source=questionnaire.source,
     )
     follow_up_questions = _v21_follow_up_questions(
         assessment_id=assessment_id,
@@ -1028,6 +1044,9 @@ async def _run_assessment_v21_async(
         },
         requires_confirmation=submission.get("confirmation_status") != "confirmed",
         coverage=coverage,
+        revision=revision,
+        previous_revision=previous_revision or None,
+        revision_changes=revision_changes,
     )
 
 
@@ -1041,13 +1060,17 @@ def _v21_required_id(submission: Mapping[str, object], key: str) -> str:
 def _v21_questionnaire_evidence(questionnaire: object) -> list[EvidenceItem]:
     result: list[EvidenceItem] = []
     for dimension, score in questionnaire.dimension_scores.items():
+        category = _v21_category_for_dimension(dimension)
+        value: object = score.raw_score
+        if dimension == "appetite_change":
+            value = questionnaire.qualitative.get("appetite_change", score.raw_score)
         result.append(
             {
                 "evidence_id": f"ev-questionnaire-{dimension}",
-                "category": "emotion",
+                "category": category,
                 "label": dimension,
                 "display_name": dimension,
-                "value": score.raw_score,
+                "value": value,
                 "polarity": "present" if score.raw_score else "absent",
                 "severity": _v21_severity(score.raw_score),
                 "severity_display": _v21_severity(score.raw_score),
@@ -1058,7 +1081,54 @@ def _v21_questionnaire_evidence(questionnaire: object) -> list[EvidenceItem]:
                 "dimension_score": score.normalized_score,
             }
         )
+    physical_signals = list(questionnaire.physical_signals)
+    result.append(
+        {
+            "evidence_id": "ev-questionnaire-physical-signals",
+            "category": "physical",
+            "label": "physical_signals",
+            "display_name": "身体感受",
+            "value": physical_signals or ["none"],
+            "polarity": "present" if physical_signals else "absent",
+            "severity": "moderate" if physical_signals else "none",
+            "severity_display": "有记录" if physical_signals else "无明显不适",
+            "time_window": "过去两周",
+            "source_type": "questionnaire",
+            "source_ref": "questionnaire:q16_physical_signals",
+            "confirmed": True,
+            "dimension_score": None,
+        }
+    )
+    goal = questionnaire.qualitative.get("goal")
+    if isinstance(goal, str) and goal:
+        result.append(
+            {
+                "evidence_id": "ev-questionnaire-goal",
+                "category": "goal",
+                "label": "user_goal",
+                "display_name": "用户目标",
+                "value": goal,
+                "polarity": "present",
+                "severity": "none",
+                "severity_display": "已提供",
+                "time_window": "当前",
+                "source_type": "questionnaire",
+                "source_ref": "questionnaire:q01_user_goal",
+                "confirmed": True,
+                "dimension_score": None,
+            }
+        )
     return result
+
+
+def _v21_category_for_dimension(dimension: str) -> str:
+    if dimension in {"sleep_disturbance", "unrefreshing_sleep"}:
+        return "sleep"
+    if dimension == "low_energy":
+        return "energy"
+    if dimension == "appetite_change":
+        return "appetite"
+    return "emotion"
 
 
 def _v21_narrative_evidence(
@@ -1069,10 +1139,10 @@ def _v21_narrative_evidence(
     return [
         {
             "evidence_id": f"ev-{source_type}-{index}-{uuid4().hex[:8]}",
-            "category": item.category,
+            "category": _v21_narrative_category(item.category),
             "label": item.label,
             "display_name": item.label,
-            "value": item.value,
+            "value": _v21_evidence_value(_v21_narrative_category(item.category), item.value),
             "polarity": item.polarity,
             "severity": "moderate" if item.value else "none",
             "severity_display": "有一定表现" if item.value else "当前不明显",
@@ -1088,6 +1158,53 @@ def _v21_narrative_evidence(
     ]
 
 
+def _v21_user_correction_evidence(
+    raw_corrections: object,
+    *,
+    assessment_id: str,
+) -> tuple[list[EvidenceItem], list[dict[str, object]]]:
+    if raw_corrections is None:
+        return [], []
+    corrections = raw_corrections if isinstance(raw_corrections, list) else [raw_corrections]
+    evidence: list[EvidenceItem] = []
+    changes: list[dict[str, object]] = []
+    for index, correction in enumerate(corrections, start=1):
+        if not isinstance(correction, Mapping):
+            continue
+        field = correction.get("field")
+        value = correction.get("value")
+        if not isinstance(field, str) or not field.strip() or value is None:
+            continue
+        label = field.rsplit(".", 2)[-2] if field.endswith(".value") else field.rsplit(".", 1)[-1]
+        category = _v21_category_for_dimension(label)
+        normalized_value = _v21_evidence_value(category, value)
+        evidence.append(
+            {
+                "evidence_id": f"ev-correction-{assessment_id}-{index}",
+                "category": category,
+                "label": label,
+                "display_name": label,
+                "value": normalized_value,
+                "polarity": "present" if normalized_value else "absent",
+                "severity": _v21_severity(normalized_value) if type(normalized_value) is int else "moderate",
+                "severity_display": "用户已修正",
+                "time_window": "当前",
+                "source_type": "user_correction",
+                "source_ref": f"user_correction:{index}",
+                "confirmed": True,
+                "dimension_score": normalized_value if type(normalized_value) is int else None,
+            }
+        )
+        changes.append(
+            {
+                "field": field,
+                "from": correction.get("from"),
+                "to": value,
+            }
+        )
+    return evidence, changes
+
+
 def _merge_v21_narrative_status(
     target: dict[str, object],
     result: NarrativeExtractionResult,
@@ -1099,16 +1216,26 @@ def _merge_v21_narrative_status(
         target["model_metadata"] = result.model_metadata
 
 
-def _v21_evidence_coverage(evidence: list[EvidenceItem], total_dimensions: int) -> float:
+def _v21_evidence_coverage(
+    evidence: list[EvidenceItem],
+    total_dimensions: int,
+    *,
+    independent_sources: bool = False,
+    dimension_labels: set[str] | None = None,
+) -> float:
     if total_dimensions <= 0:
         return 0.0
     covered = {
         item["label"]
         for item in evidence
-        if item.get("confirmed") is True or item["source_type"] == "questionnaire"
+        if (item.get("confirmed") is True or item["source_type"] == "questionnaire")
+        and (dimension_labels is None or item["label"] in dimension_labels)
     }
+    coverage = len(covered) / total_dimensions
+    if independent_sources:
+        return coverage
     source_types = {item["source_type"] for item in evidence}
-    return (len(covered) / total_dimensions) * min(1.0, len(source_types) / 3)
+    return coverage * min(1.0, len(source_types) / 3)
 
 
 def _v21_missing_information(
@@ -1116,10 +1243,11 @@ def _v21_missing_information(
     narrative_text: str | None,
     document_text: str | None,
     evidence: list[EvidenceItem],
+    questionnaire_source: str = "",
 ) -> list[dict[str, object]]:
     missing: list[dict[str, object]] = []
     labels = {item["label"] for item in evidence}
-    if narrative_text is None and document_text is None:
+    if narrative_text is None and document_text is None and not questionnaire_source.startswith("frozen"):
         missing.append(
             {
                 "field": "supplementary_context",
@@ -1186,7 +1314,7 @@ def _v21_follow_up_questions(
                 "type": "single_choice",
                 "options": ["少于3天", "3-6天", "1-2周", "2周以上"],
                 "required": True,
-                "max_questions_total": 6,
+                "max_questions_total": 4,
             }
         )
     if conflicts:
@@ -1201,7 +1329,7 @@ def _v21_follow_up_questions(
                 "type": "single_choice",
                 "options": ["问卷更准确", "文字或材料更准确", "都不准确"],
                 "required": True,
-                "max_questions_total": 6,
+                "max_questions_total": 4,
             }
         )
     if coverage < 0.70 and not questions:
@@ -1216,7 +1344,7 @@ def _v21_follow_up_questions(
                 "type": "text",
                 "options": [],
                 "required": True,
-                "max_questions_total": 6,
+                "max_questions_total": 4,
             }
         )
     return sorted(questions, key=lambda item: int(item["priority"]))[:4]
@@ -1238,6 +1366,9 @@ def _v21_result(
     degradation: dict[str, object],
     requires_confirmation: bool,
     coverage: float = 0.0,
+    revision: int = 1,
+    previous_revision: int | None = None,
+    revision_changes: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     now = datetime.now(timezone.utc).isoformat()
     return {
@@ -1246,7 +1377,7 @@ def _v21_result(
         "session_id": session_id,
         "user_id": user_id,
         "status": status,
-        "revision": 1,
+        "revision": revision,
         "analysis_mode": _v21_analysis_mode(input_status),
         "confidence": coverage,
         "confidence_semantics": "evidence_coverage",
@@ -1265,6 +1396,7 @@ def _v21_result(
         "assessment_summary": "已根据可追溯来源生成状态评估，等待用户确认。",
         "evidence_items": evidence,
         "evidence_coverage_score": coverage,
+        "source_diversity": _v21_source_diversity(evidence),
         "conflicts": conflicts,
         "missing_information": missing_information,
         "follow_up_questions": follow_up_questions,
@@ -1273,9 +1405,10 @@ def _v21_result(
         "degradation": degradation,
         "warnings": [],
         "revision_metadata": {
-            "revision": 1,
+            "revision": revision,
             "created_at": now,
-            "previous_revision": None,
+            "previous_revision": previous_revision,
+            "changes": list(revision_changes or []),
         },
         "disclaimer": _DISCLAIMER,
     }
@@ -1301,3 +1434,40 @@ def _v21_severity(value: int) -> str:
     if value <= 3:
         return "moderate"
     return "severe"
+
+
+def _v21_source_diversity(evidence: list[EvidenceItem]) -> dict[str, object]:
+    sources = sorted({str(item["source_type"]) for item in evidence})
+    return {"count": len(sources), "sources": sources}
+
+
+def _v21_narrative_category(category: str) -> str:
+    if category == "sleep":
+        return "sleep"
+    if category == "energy":
+        return "energy"
+    if category == "appetite":
+        return "appetite"
+    if category == "physical_signal":
+        return "physical"
+    if category == "life_event":
+        return "life_event"
+    if category == "goal_and_expectation":
+        return "goal"
+    return "emotion"
+
+
+def _v21_evidence_value(category: str, value: object) -> object:
+    if category in {"emotion", "sleep", "energy"}:
+        return value if type(value) is int and 0 <= value <= 4 else 1
+    if category in {"life_event", "goal"}:
+        return value if isinstance(value, str) and value else "未明确"
+    if category == "physical":
+        if isinstance(value, list) and value and all(isinstance(item, str) and item for item in value):
+            return list(dict.fromkeys(value))
+        return [str(value)] if value else ["other"]
+    if category == "appetite":
+        if isinstance(value, Mapping) and value.get("direction") in {"increase", "decrease", "none"} and type(value.get("severity")) is int:
+            return {"direction": value["direction"], "severity": value["severity"]}
+        return {"direction": "none", "severity": 0}
+    return value

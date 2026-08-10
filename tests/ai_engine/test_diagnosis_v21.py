@@ -63,3 +63,15 @@ def test_diagnosis_abstains_before_provider_when_assessment_is_unconfirmed():
 
     assert result["abstained"] is True
     assert result["abstain_reason"] == "ASSESSMENT_NOT_CONFIRMED"
+
+
+def test_diagnosis_abstains_when_evidence_coverage_is_insufficient():
+    from backend.ai_engine.diagnosis_v2 import run_diagnosis_v21
+
+    assessment = confirmed_assessment_with_conflict()
+    assessment["evidence_coverage_score"] = 0.2
+
+    result = run_diagnosis_v21(assessment, provider=None)
+
+    assert result["abstained"] is True
+    assert result["abstain_reason"] == "INSUFFICIENT_EVIDENCE"

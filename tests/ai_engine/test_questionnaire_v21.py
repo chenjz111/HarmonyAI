@@ -1,3 +1,5 @@
+import pytest
+
 from backend.ai_engine.questionnaire_v2 import (
     V21_QUESTION_IDS,
     score_questionnaire_v21,
@@ -55,3 +57,63 @@ def test_quick_state_requires_six_items_and_0_to_10_values():
     assert result.schema_version == "quick_state_v1"
     assert result.values["tension"] == 8
     assert result.goal == "relax"
+
+
+def frozen_v21_envelope(*, self_harm="never", emergency=None):
+    values = {
+        "q01_user_goal": "relaxation",
+        "q02_mood_weather": "clear",
+        "q03_tension_worry": 1,
+        "q04_worry_control": 4,
+        "q05_overthinking": "calm",
+        "q06_irritability_anger": 0,
+        "q07_fear_unease": 0,
+        "q08_low_mood": 0,
+        "q09_interest_loss": 0,
+        "q10_calm_wellbeing": 4,
+        "q11_emotional_recovery": 1,
+        "q12_sleep_disturbance": 2,
+        "q13_unrefreshing_sleep": 1,
+        "q14_low_energy": "half",
+        "q15_appetite_change": {"direction": "none", "severity": 0},
+        "q16_physical_signals": ["neck_tension"],
+        "q17_duration": "1_to_2_weeks",
+        "q18_daily_impact": 1,
+        "q19_self_harm": self_harm,
+        "q20_emergency": emergency or ["none"],
+    }
+    return {
+        "schema_version": "questionnaire_v2.1",
+        "time_window_days": 14,
+        "answers": [{"question_id": key, "value": value} for key, value in values.items()],
+    }
+
+
+def test_frozen_v21_ids_preserve_q04_qualitative_q15_direction_and_reverse_score():
+    from backend.ai_engine.questionnaire_v2 import score_questionnaire_v21
+
+    result = score_questionnaire_v21(frozen_v21_envelope())
+
+    assert result.questions_answered == 20
+    assert result.dimension_scores["tension_worry"].q04_qualitative == 4
+    assert result.dimension_scores["calm_wellbeing"].raw_score == 0
+    assert result.qualitative["appetite_change"] == {"direction": "none", "severity": 0}
+    assert result.physical_signals == ("neck_tension",)
+
+
+@pytest.mark.parametrize("answer", ["fleeting", "sometimes", "often", "specific_plan"])
+def test_frozen_q19_non_never_is_safety(answer):
+    from backend.ai_engine.questionnaire_v2 import score_questionnaire_v21
+
+    assert "self_harm_thoughts" in score_questionnaire_v21(
+        frozen_v21_envelope(self_harm=answer)
+    ).safety_flags
+
+
+def test_frozen_q20_emergency_and_none_are_mutually_exclusive():
+    from backend.ai_engine.questionnaire_v2 import score_questionnaire_v21, QuestionnaireValidationError
+
+    with pytest.raises(QuestionnaireValidationError):
+        score_questionnaire_v21(
+            frozen_v21_envelope(emergency=["none", "confusion"])
+        )
