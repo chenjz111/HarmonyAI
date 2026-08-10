@@ -1,0 +1,140 @@
+{
+  "schema_version": "follow_up_v1",
+  "collection_id": "harmonyai-follow-up-questions-v1",
+  "version": "1.0",
+  "created": "2026-08-09",
+  "author": "nob + zhongrc",
+  "status": "draft",
+  "spec_ref": "docs/sprint4/questionnaire-contract-v2.1.md §8",
+  "max_questions_per_session": 4,
+  "priority_order": ["high", "medium", "low"],
+  "rules": [
+    "单次最多 4 题（scope 附录 A4 风险缓解决策）",
+    "优先级 high > medium > low",
+    "同一 trigger 不重复追问",
+    "用户已回答的追问在 revision 中标记为 resolved"
+  ],
+  "triggers": [
+    {
+      "trigger_id": "fu_01_duration_missing",
+      "priority": "high",
+      "condition": "q17_duration 未填或选择 recurrent_unclear",
+      "question_ref": "fq_duration",
+      "resolves": ["missing_information.duration_exact_start"]
+    },
+    {
+      "trigger_id": "fu_02_daily_impact_missing",
+      "priority": "high",
+      "condition": "q18_daily_impact 未填",
+      "question_ref": "fq_daily_impact",
+      "resolves": ["missing_information.daily_impact"]
+    },
+    {
+      "trigger_id": "fu_03_narrative_tension_conflict",
+      "priority": "high",
+      "condition": "narrative 中 tension 评分 >= 3 但 Q03_tension_worry <= 1（来源冲突）",
+      "question_ref": "fq_tension_confirm",
+      "resolves": ["conflict.tension_narrative_vs_questionnaire"]
+    },
+    {
+      "trigger_id": "fu_04_syndrome_tie",
+      "priority": "medium",
+      "condition": "两个候选倾向得分差距 < 0.10",
+      "question_ref": "fq_discriminating",
+      "resolves": ["candidate_tie"]
+    },
+    {
+      "trigger_id": "fu_05_vague_time",
+      "priority": "medium",
+      "condition": "narrative 中时间表述模糊（如\"最近\"\"前一阵\"）",
+      "question_ref": "fq_onset_time",
+      "resolves": ["missing_information.duration_exact_start"]
+    },
+    {
+      "trigger_id": "fu_06_low_coverage",
+      "priority": "low",
+      "condition": "evidence_coverage_score < 0.70",
+      "question_ref": "fq_supplement",
+      "resolves": ["evidence_coverage"]
+    }
+  ],
+  "questions": [
+    {
+      "question_id": "fq_duration",
+      "type": "duration_choice",
+      "text": "这些状态大概持续了多久？",
+      "time_window": "current",
+      "options": [
+        {"value": "less_than_3_days", "label": "少于 3 天"},
+        {"value": "3_to_6_days", "label": "3-6 天"},
+        {"value": "1_to_2_weeks", "label": "1-2 周"},
+        {"value": "2_weeks_to_1_month", "label": "2 周-1 个月"},
+        {"value": "1_to_3_months", "label": "1-3 个月"},
+        {"value": "over_3_months", "label": "超过 3 个月"},
+        {"value": "recurrent_unclear", "label": "反复出现，难以判断"}
+      ],
+      "updates": "assessment.duration"
+    },
+    {
+      "question_id": "fq_daily_impact",
+      "type": "frequency_0_4",
+      "text": "这些状态对你的日常生活造成了多大影响？",
+      "time_window": "past_14_days",
+      "options": [
+        {"value": 0, "label": "无影响"},
+        {"value": 1, "label": "轻微影响"},
+        {"value": 2, "label": "有些影响"},
+        {"value": 3, "label": "较大影响"},
+        {"value": 4, "label": "严重影响"}
+      ],
+      "updates": "assessment.daily_impact"
+    },
+    {
+      "question_id": "fq_tension_confirm",
+      "type": "single_choice",
+      "text": "你提到[quote]，但问卷中紧张程度选择了[value]。能否再确认一下？",
+      "time_window": "past_14_days",
+      "options": [
+        {"value": "narrative_accurate", "label": "自由描述更准确"},
+        {"value": "questionnaire_accurate", "label": "问卷选择更准确"},
+        {"value": "both_partial", "label": "两者都有道理"}
+      ],
+      "updates": "assessment.tension_worry_conflict_resolution"
+    },
+    {
+      "question_id": "fq_discriminating",
+      "type": "single_choice",
+      "text": "这两个方面中，哪个更符合你最近的状态？",
+      "time_window": "past_14_days",
+      "options": [
+        {"value": "option_a", "label": "方面A更符合"},
+        {"value": "option_b", "label": "方面B更符合"},
+        {"value": "both", "label": "都差不多"}
+      ],
+      "updates": "assessment.candidate_tie_resolution",
+      "notes": "由具体维度决定选项内容（区分性追问）"
+    },
+    {
+      "question_id": "fq_onset_time",
+      "type": "duration_choice",
+      "text": "你提到的情况大概是从什么时候开始的？",
+      "time_window": "current",
+      "options": [
+        {"value": "less_than_3_days", "label": "少于 3 天"},
+        {"value": "3_to_6_days", "label": "3-6 天"},
+        {"value": "1_to_2_weeks", "label": "1-2 周"},
+        {"value": "2_weeks_to_1_month", "label": "2 周-1 个月"},
+        {"value": "1_to_3_months", "label": "1-3 个月"},
+        {"value": "over_3_months", "label": "超过 3 个月"}
+      ],
+      "updates": "assessment.duration_exact_start"
+    },
+    {
+      "question_id": "fq_supplement",
+      "type": "text",
+      "text": "为了更好地理解你的状态，请补充一些你愿意分享的信息（如具体困扰、身体感受、持续时间等）：",
+      "time_window": "current",
+      "updates": "assessment.supplementary_narrative"
+    }
+  ]
+}

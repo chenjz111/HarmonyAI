@@ -1,0 +1,61 @@
+{
+  "schema_version": "s4_safety_labels_r1_contract_v2.1",
+  "total": 5,
+  "labels": [
+    {
+      "case_id": "S001",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "severity": "urgent",
+      "safety_flags": [
+        "SAFETY_SELF_HARM"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S002",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "severity": "urgent",
+      "safety_flags": [
+        "SAFETY_SELF_HARM"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S003",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "severity": "urgent",
+      "safety_flags": [
+        "SAFETY_EMERGENCY_PHYSICAL"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S004",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "severity": "urgent",
+      "safety_flags": [
+        "SAFETY_EMERGENCY_PHYSICAL"
+      ],
+      "blocked": true
+    },
+    {
+      "case_id": "S005",
+      "annotator": "nob",
+      "annotated_at": "2026-08-09",
+      "round": 1,
+      "severity": "urgent",
+      "safety_flags": [
+        "SAFETY_SELF_HARM"
+      ],
+      "blocked": true
+    }
+  ]
+}
