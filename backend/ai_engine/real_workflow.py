@@ -4,14 +4,23 @@ from collections.abc import Mapping, Sequence
 from typing import Any, NotRequired, TypedDict
 from uuid import uuid4
 
-from langgraph.graph import END, START, StateGraph
+try:
+    from langgraph.graph import END, START, StateGraph
+except ModuleNotFoundError:  # pragma: no cover - optional local test dependency
+    END = "__end__"
+    START = "__start__"
+    StateGraph = None  # type: ignore[assignment,misc]
 
 from .agent_stubs import generation_stub
-from .assessment_v2 import run_assessment_v2
-from .diagnosis_v2 import run_diagnosis_v2
+from .assessment_v2 import run_assessment_v2, run_assessment_v21
+from .diagnosis_v2 import run_diagnosis_v2, run_diagnosis_v21
 from .feedback_store import SQLiteFeedbackStore
 from .feedback_v2 import FeedbackRepository, submit_feedback_v2
-from .langgraph_workflow import low_confidence_handler, route_after_diagnosis
+try:
+    from .langgraph_workflow import low_confidence_handler, route_after_diagnosis
+except ModuleNotFoundError:  # pragma: no cover - optional local test dependency
+    low_confidence_handler = None
+    route_after_diagnosis = None
 from .music_agent import match_music_v2
 from .prescription_v2 import run_prescription_v2
 from .providers import JsonLLMProvider, qwen_provider_from_env
@@ -269,6 +278,80 @@ def run_real_workflow_v2(
         "assessment_confirmed": assessment_confirmed,
         "feedback_payload": feedback_payload,
     }))
+
+
+def run_real_workflow_v21(
+    *,
+    user_id: str,
+    session_id: str,
+    questionnaire_answers: object,
+    assessment_confirmed: bool,
+    assessment_id: str | None = None,
+    document_text: str | None = None,
+    narrative_text: str | None = None,
+    provider: object | None = None,
+    knowledge_store: Any | None = None,
+    music_catalog: Sequence[Mapping[str, object]] = (),
+) -> dict[str, object]:
+    """Run the opt-in Sprint 4 AI Understanding path without replacing V2.0."""
+    if type(assessment_confirmed) is not bool:
+        raise TypeError("assessment_confirmed must be a bool")
+    assessment = run_assessment_v21(
+        {
+            "assessment_id": assessment_id or f"v21-assessment-{uuid4().hex[:12]}",
+            "session_id": session_id,
+            "user_id": user_id,
+            "questionnaire_answers": questionnaire_answers,
+            "document_text": document_text,
+            "document_confirmed": document_text is not None,
+            "narrative_text": narrative_text,
+            "confirmation_status": "confirmed" if assessment_confirmed else "pending",
+        },
+        provider=provider,
+    )
+    if assessment["status"] == "blocked_safety":
+        confirmation_status = "blocked_safety"
+    elif not assessment_confirmed:
+        confirmation_status = "needs_confirmation"
+    elif assessment.get("follow_up_questions"):
+        confirmation_status = "needs_follow_up"
+    else:
+        confirmation_status = "confirmed"
+
+    diagnosis: dict[str, object] | None = None
+    prescription: dict[str, object] | None = None
+    music: dict[str, object] | None = None
+    if confirmation_status == "confirmed":
+        diagnosis = run_diagnosis_v21(assessment, provider=provider)  # type: ignore[arg-type]
+        if diagnosis.get("abstained") is not True:
+            prescription = run_prescription_v2(
+                diagnosis,
+                knowledge_store=knowledge_store,
+            )
+            music = match_music_v2(prescription, music_catalog)
+
+    return {
+        "assessment": assessment,
+        "confirmation": {"status": confirmation_status},
+        "diagnosis": diagnosis,
+        "prescription": prescription,
+        "music": music,
+        "feedback": {"status": "not_submitted"},
+        "agent_statuses": {
+            "assessment": str(assessment.get("status", "unknown")),
+            "confirmation": confirmation_status,
+            "diagnosis": _status(diagnosis or {}),
+            "prescription": _status(prescription or {}),
+            "music": _status(music or {}),
+            "feedback": "not_submitted",
+        },
+        "degradations": {
+            "assessment": _degradation(assessment),
+            "diagnosis": _degradation(diagnosis or {}),
+            "prescription": _degradation(prescription or {}),
+            "music": _degradation(music or {}),
+        },
+    }
 
 
 def _mapping_value(value: object) -> dict[str, object]:

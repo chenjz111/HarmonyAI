@@ -20,6 +20,18 @@ _RULES = (
         "severe_breathing_difficulty",
         "SAFETY_SEVERE_BREATHING_DIFFICULTY",
     ),
+    (
+        "confusion",
+        "SAFETY_ACUTE_CONFUSION",
+    ),
+    (
+        "near_fainting",
+        "SAFETY_NEAR_FAINTING",
+    ),
+    (
+        "rapid_worsening",
+        "SAFETY_RAPID_WORSENING",
+    ),
 )
 
 _RISK_PATTERNS = {
@@ -106,6 +118,9 @@ _RISK_PATTERNS = {
             r"(?:cannot|can't|unable).{0,10}\bspeak\b"
         ),
     ),
+    "confusion": (),
+    "near_fainting": (),
+    "rapid_worsening": (),
 }
 
 _CLAUSE_SPLIT_RE = re.compile(r"[。.!?！？;\n]+")
