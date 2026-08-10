@@ -107,33 +107,52 @@ async def upload_document(
     try:
         _ensure_session(session_id, db)
 
-        # OCR stub — honestly labeled (fixes Review issue #2)
+        # Real OCR (Sprint 4)
         from backend.app.core.ocr import OCRProvider
         ocr = OCRProvider()
         ocr_result = ocr.process(file_path, ext)
+
+        # OCR failure → degraded, not fake success
+        ocr_status = "confirmed" if ocr_result.confidence in ("high", "medium") else (
+            "needs_confirmation" if ocr_result.confidence == "low" else "degraded"
+        )
+        if ocr_result.degraded or ocr_result.confidence == "failed":
+            ocr_status = "degraded"
 
         doc = Document(
             user_id=1, session_id=session_id, document_id=doc_id,
             original_filename=file.filename or "unknown",
             file_type=ext, file_size_bytes=file_size,
             page_count=page_count,
-            storage_path=file_path,  # Real path now
+            storage_path=file_path,
             status="uploaded",
-            ocr_text=ocr_result.text + " [provider=stub]",
-            ocr_confidence="low",
+            ocr_text=ocr_result.text or None,
+            ocr_confidence=ocr_result.confidence,
             ocr_confirmed=False,
         )
         db.add(doc)
         db.commit()
 
+        warnings = []
+        if ocr_result.degraded:
+            warnings.append(f"OCR降级: {ocr_result.error or 'paddleocr_not_available'}")
+        if ocr_result.encrypted:
+            warnings.append("PDF已加密，无法提取文本")
+        if ocr_status == "needs_confirmation":
+            warnings.append("请确认识别文本")
+
         return v2_ok({
             "document_id": doc_id,
             "session_id": session_id,
             "file": {"name": file.filename, "media_type": file.content_type,
-                     "size_bytes": file_size, "page_count": page_count},
-            "ocr_status": "needs_confirmation",
-            "extracted_text": ocr_result.text,
-            "warnings": ["OCR为Stub实现，请确认文本", "provider=stub"],
+                     "size_bytes": file_size, "page_count": page_count,
+                     "encrypted": ocr_result.encrypted},
+            "ocr_status": ocr_status,
+            "ocr_confidence": ocr_result.confidence,
+            "ocr_provider": ocr_result.provider,
+            "extracted_text": ocr_result.text or None,
+            "page_confidences": ocr_result.page_confidences,
+            "warnings": warnings,
             "retention": "temporary",
             "document_type": document_type,
         }, req_id)
