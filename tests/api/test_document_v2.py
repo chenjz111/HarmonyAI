@@ -1,8 +1,10 @@
 """Sprint 3 document upload API tests."""
 
+import io
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from pypdf import PdfWriter
 import pytest
 
 from backend.app.main import app
@@ -31,6 +33,17 @@ def _upload(content=PNG_BYTES, *, consent="true", filename="record.png", media_t
     )
 
 
+def _pdf_bytes(page_count=1, password=None):
+    writer = PdfWriter()
+    for _ in range(page_count):
+        writer.add_blank_page(width=72, height=72)
+    if password:
+        writer.encrypt(password)
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
 def test_document_requires_consent(upload_dir):
     data = _upload(consent="false").json()
 
@@ -57,7 +70,7 @@ def test_document_rejects_file_larger_than_ten_megabytes(upload_dir):
 
 
 def test_document_rejects_pdf_over_three_pages(upload_dir):
-    content = b"%PDF\n" + (b"/Type /Page\n" * 4) + b"%%EOF"
+    content = _pdf_bytes(page_count=4)
     data = _upload(
         content=content,
         filename="record.pdf",
@@ -69,15 +82,68 @@ def test_document_rejects_pdf_over_three_pages(upload_dir):
     assert list(upload_dir.iterdir()) == []
 
 
-def test_document_upload_confirm_list_and_delete(upload_dir, monkeypatch):
-    from backend.app.core.ocr import OCRProvider
+def test_document_rejects_invalid_mime_even_with_valid_signature(upload_dir):
+    data = _upload(media_type="text/plain").json()
 
-    monkeypatch.setattr(OCRProvider, "_init_paddle", lambda self: None)
+    assert data["success"] is False
+    assert data["error"]["code"] == "INVALID_FILE_TYPE"
+    assert list(upload_dir.iterdir()) == []
+
+
+def test_document_accepts_jpeg_signature_and_degrades_honestly(upload_dir):
+    data = _upload(
+        content=b"\xff\xd8\xff" + b"jpeg-image",
+        filename="record.jpg",
+        media_type="image/jpeg",
+    ).json()
+
+    assert data["success"] is True
+    assert data["data"]["file"]["page_count"] == 1
+    assert data["data"]["ocr_status"] == "degraded"
+    assert data["data"]["ocr_provider"] == "paddleocr"
+
+
+def test_valid_multipage_pdf_reaches_ocr_with_real_page_count(upload_dir):
+    data = _upload(
+        content=_pdf_bytes(page_count=2),
+        filename="record.pdf",
+        media_type="application/pdf",
+    ).json()
+
+    assert data["success"] is True
+    assert data["data"]["file"]["page_count"] == 2
+    assert data["data"]["ocr_status"] == "degraded"
+
+
+def test_document_rejects_encrypted_pdf(upload_dir):
+    data = _upload(
+        content=_pdf_bytes(page_count=1, password="secret"),
+        filename="record.pdf",
+        media_type="application/pdf",
+    ).json()
+
+    assert data["success"] is False
+    assert data["error"]["code"] == "ENCRYPTED_PDF"
+    assert list(upload_dir.iterdir()) == []
+
+
+def test_document_upload_confirm_list_and_delete(upload_dir):
     uploaded = _upload().json()
     assert uploaded["success"] is True
     assert uploaded["data"]["ocr_status"] == "degraded"
-    assert uploaded["data"]["ocr_provider"] == "stub"
-    assert uploaded["data"]["warnings"] == ["OCR降级: paddleocr_not_available"]
+    assert uploaded["data"]["ocr_provider"] == "paddleocr"
+    assert uploaded["data"]["extracted_text"] is None
+    assert uploaded["data"]["degradation"] == {
+        "triggered": True,
+        "reason_code": "OCR_ENGINE_UNAVAILABLE",
+        "message": "文字识别服务暂时不可用，请手动输入、重试或跳过。",
+        "fallback": "manual_or_skip",
+    }
+    assert uploaded["data"]["next_actions"] == [
+        "manual_input",
+        "retry_ocr",
+        "skip_document",
+    ]
 
     document_id = uploaded["data"]["document_id"]
     stored_files = list(upload_dir.iterdir())

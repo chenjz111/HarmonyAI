@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Optional real OCR runtime for S4-03 deployment/POC.
+paddlepaddle>=2.6,<3.0
+paddleocr==2.8.1

@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Optional
 from datetime import datetime, timezone
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -83,3 +83,12 @@ class DocumentConfirmationRequest(BaseModel):
     confirmed: bool
     document_text: Optional[str] = None
     redactions_confirmed: bool = False
+
+    @model_validator(mode="after")
+    def validate_confirmation(self):
+        if self.confirmed:
+            if not self.redactions_confirmed:
+                raise ValueError("redactions_confirmed is required")
+            if not self.document_text or not self.document_text.strip():
+                raise ValueError("document_text is required")
+        return self
