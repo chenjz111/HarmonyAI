@@ -70,6 +70,7 @@ class OCRProvider:
     def process(self, file_path: str, file_type: str) -> OCRResult:
         """Run OCR. Returns degraded/failed on error, never fakes success."""
         paddle = self._init_paddle()
+        provider = "paddleocr" if paddle is not None else "stub"
 
         # PDF checks
         page_count = 1
@@ -80,7 +81,7 @@ class OCRProvider:
                 return OCRResult(
                     text="",
                     confidence="failed",
-                    provider="paddleocr",
+                    provider=provider,
                     page_count=0,
                     encrypted=True,
                     error="encrypted_pdf",
@@ -91,7 +92,7 @@ class OCRProvider:
                 return OCRResult(
                     text="",
                     confidence="failed",
-                    provider="paddleocr",
+                    provider=provider,
                     page_count=0,
                     error="pdf_page_count_failed",
                     degraded=True,
@@ -102,7 +103,7 @@ class OCRProvider:
             return OCRResult(
                 text="",
                 confidence="failed",
-                provider="paddleocr",
+                provider=provider,
                 page_count=page_count,
                 encrypted=encrypted,
                 error="file_not_found",
