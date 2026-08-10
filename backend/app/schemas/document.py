@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 ALLOWED_TYPES = {"image/jpeg", "image/png", "application/pdf"}
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "pdf"}
 MAX_FILE_SIZE_MB = 10
-MAX_PDF_PAGES = 50
+MAX_PDF_PAGES = 3
 
 
 class DocumentStatus(str, Enum):
@@ -27,7 +27,7 @@ class DocumentUploadRequest(BaseModel):
     original_filename: str = Field(..., description="原始文件名")
     file_type: str = Field(..., description="jpg / png / pdf")
     file_size_bytes: int = Field(..., gt=0)
-    page_count: int = Field(default=1, ge=1, le=50)
+    page_count: int = Field(default=1, ge=1, le=MAX_PDF_PAGES)
     storage_path: str = Field(..., description="云存储路径(相对路径)")
 
     @field_validator("file_type")
