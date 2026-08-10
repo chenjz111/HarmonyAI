@@ -18,7 +18,7 @@ SENSITIVE_FIELDS = [
 def sanitize_log(data: dict | str, max_len: int = 100) -> str:
     """Return a log-safe string with sensitive values replaced."""
     if isinstance(data, str):
-        return data[:max_len]
+        return "[REDACTED]"
 
     safe = {}
     for k, v in data.items():

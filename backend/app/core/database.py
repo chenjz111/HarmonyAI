@@ -22,6 +22,9 @@ Base = declarative_base()
 def init_database() -> None:
     """Create the lightweight local schema for development and demos."""
     Base.metadata.create_all(bind=engine)
+    from backend.app.core.sprint4_migrations import apply_sprint4_migrations
+
+    apply_sprint4_migrations(engine)
 
 
 def get_db():
