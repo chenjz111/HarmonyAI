@@ -1,0 +1,14 @@
+{
+  "prompt_version": "candidate_rank_v2.1",
+  "schema_version": "assessment_v2.1",
+  "operation": "diagnosis_rank",
+  "input_fields": [
+    "allowed_tendency_ids",
+    "candidate_scores",
+    "supporting_evidence_ids",
+    "contradicting_evidence_ids"
+  ],
+  "output_fields": ["tendency_id", "confidence"],
+  "rule": "只能从 allowed_tendency_ids 中选择，不得创建新倾向",
+  "prohibited_outputs": ["diagnosis", "treatment", "new_tendency_id"]
+}
