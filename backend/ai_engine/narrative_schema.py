@@ -101,10 +101,11 @@ def _narrative_system_prompt(source_type: Literal["narrative", "document"]) -> s
         "daily_impact label 必须是 daily_impact，value 必须是 0 到 4 的整数；goal_and_expectation label 必须是 user_goal。"
         "无法确定时间时 time_window 必须为 null；polarity 只能逐字使用给定的五个英文枚举。"
         "quote 必须逐字复制自用户原文，禁止改写或补造；"
-        "???????????????????????????????????? item?"
-        "???????????? life_event?????????? overthinking?"
-        "????? irritability_anger?????? chest_tightness??????? sleep_disturbance?"
-        "?????????????????? item ????????? quote?"
+        "Scan every sentence and extract every grounded fact; do not select only one or two."
+        "Emit different facts as separate items. Work or exam pressure is a life_event;"
+        "a racing mind is overthinking; irritability is irritability_anger; chest tightness is"
+        "chest_tightness; poor sleep is sleep_disturbance. One sentence may support multiple items."
+        "Represent grounded negated statements too, using polarity=absent and negated=true."
         f"source_ref 必须以 {source_type}: 开头；"
         "extraction_confidence 必须在 0 到 1 之间。"
     )
@@ -228,8 +229,7 @@ def _normalize_items(
         if category == "life_event" and (
             not isinstance(value, str) or not value.strip() or value not in quote
         ):
-            raise ValueError(
-                f"items[{index}].value must be an exact source span for life_event")
+            value = quote.strip()
         if not isinstance(source_ref, str) or not source_ref.startswith(f"{source_type}:"):
             raise ValueError(f"items[{index}].source_ref must identify the source")
         if time_window is not None and (not isinstance(time_window, str) or not time_window.strip()):
