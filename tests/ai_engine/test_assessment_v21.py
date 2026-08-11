@@ -241,3 +241,18 @@ def test_physical_narrative_evidence_uses_canonical_label_as_value():
 
     assert evidence[0]["category"] == "physical"
     assert evidence[0]["value"] == ["chest_tightness"]
+def test_questionnaire_evidence_preserves_original_positive_q10_direction():
+    from backend.ai_engine.assessment_v2 import _v21_questionnaire_evidence
+    from backend.ai_engine.questionnaire_v2 import score_questionnaire_v21
+
+    envelope = frozen_v21_envelope()
+    for answer in envelope["answers"]:
+        if answer["question_id"] == "q10_calm_wellbeing":
+            answer["value"] = 1
+    questionnaire = score_questionnaire_v21(envelope)
+
+    evidence = _v21_questionnaire_evidence(questionnaire)
+    calm = next(item for item in evidence if item["label"] == "calm_wellbeing")
+
+    assert questionnaire.dimension_scores["calm_wellbeing"].raw_score == 3
+    assert calm["value"] == 1

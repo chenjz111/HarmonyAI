@@ -378,3 +378,48 @@ async def test_grounded_lexical_supplement_discards_unsupported_or_hedged_labels
     assert "tension_worry" in labels
     assert "overthinking" not in labels
     assert "calm_wellbeing" not in labels
+@pytest.mark.asyncio
+async def test_grounded_lexical_supplement_disambiguates_irritable_unease_from_fear():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    quote = "\u70e6\u8e81\u4e0d\u5b89"
+    provider = MockProvider({
+        "items": [{
+            "category": "fear_unease",
+            "label": "fear_unease",
+            "value": 3,
+            "polarity": "present",
+            "time_window": None,
+            "quote": quote,
+            "source_ref": "document:sentence_1",
+            "extraction_confidence": 0.7,
+            "negated": False,
+        }]
+    })
+    result = await extract_narrative(
+        quote,
+        source_type="document",
+        provider=provider,
+    )
+
+    labels = {item.label for item in result.items if not item.negated}
+    assert "irritability_anger" in labels
+    assert "fear_unease" not in labels
+
+
+@pytest.mark.asyncio
+async def test_grounded_lexical_supplement_records_explicit_no_pressure_and_good_sleep():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    text = "\u6700\u8fd1\u6ca1\u4ec0\u4e48\u538b\u529b\uff0c\u7761\u5f97\u9999\u3002"
+    result = await extract_narrative(
+        text,
+        source_type="narrative",
+        provider=MockProvider({"items": []}),
+    )
+
+    by_label = {item.label: item for item in result.items}
+    assert by_label["tension_worry"].polarity == "absent"
+    assert by_label["sleep_disturbance"].polarity == "absent"
+    assert by_label["tension_worry"].value == 0
+    assert by_label["sleep_disturbance"].value == 0
