@@ -261,3 +261,14 @@ P1 失败默认阻塞发布。确需延期时，发布报告必须同时包含�
 - 本地与 GitHub CI 均通过；
 - 十项验收场景完成签署；
 - 发布报告明确给出 `passed` 或合规的 `degraded`，不得以口头结论替代。
+
+## 13. 本次实现落地边界
+
+本轮在不修改 Frozen Contract 的前提下，落地了四个可复用边界：
+
+- `evals/sprint4/asset_validation.py` 校验 20 题、55 个普通案例和 5 个安全案例；
+- `evals/sprint4/prediction_schema.py` 与 `generate_predictions.py` 统一预测输出，并在持久化前移除原文字段；
+- `evals/run_sprint4_eval.py` 与 `validate_release.py` 强制预测覆盖、分离 evidence coverage/source diversity，并执行 P0/P1 门禁；
+- `evals/sprint4/run_acceptance.py` 输出机器可读 JSON 和人工 Review 用 Markdown。
+
+当前无真实 Provider 时，验收结果必须是 `blocked`，并记录 `PREDICTION_PROVIDER_REQUIRED`；真实 Qwen/OCR/数据库健康检查及十项场景签署仍需在 Provider 和联调环境可用后执行。
