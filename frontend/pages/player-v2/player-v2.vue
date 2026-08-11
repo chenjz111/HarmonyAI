@@ -19,16 +19,16 @@
     />
 
     <error-state
-      v-else-if="status === 'degraded'"
-      title="音频已降级"
+      v-else-if="status === 'business'"
+      :title="businessTitle"
       :message="errorMsg"
+      :showRetry="false"
       :showFallback="true"
-      fallbackText="播放示例音频"
-      @retry="loadAudio"
-      @fallback="playFallback"
+      fallbackText="返回补充信息"
+      @fallback="returnToAssessment"
     />
 
-    <!-- 播放器主体 -->
+<!-- 播放器主体 -->
     <view v-else-if="status === 'success'">
       <!-- 沉浸式封面 -->
       <view class="cover-section">
@@ -131,6 +131,7 @@
 import ErrorState from '@/components/sprint3/error-state.vue'
 import { requestMusic, resolveMediaUrl } from '@/common/api-v2.js'
 import { resolveAuthoritativeMusic } from '@/common/workflow-gate.js'
+import { safeUiError } from '@/common/safe-ui-error.js'
 import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
 
 export default {
@@ -138,7 +139,7 @@ export default {
   data() {
     return {
       status: 'loading', errorMsg: '', audioContext: null, isPlaying: false,
-      currentTime: 0, duration: 0, pauseCount: 0, safetyNotice: '',
+      currentTime: 0, duration: 0, pauseCount: 0, safetyNotice: '', businessTitle: '',
       prescription: { toneName: '', bpm: 68, instruments: [], reason: '', trackId: '', audioUrl: '', matched: true }
     }
   },
@@ -181,8 +182,9 @@ export default {
           uni.showToast({ title: '已切换为辅助舒缓音乐', icon: 'none', duration: 2500 })
         }
       } catch (error) {
-        this.status = 'error'
-        this.errorMsg = error.message || '音频加载失败，请检查网络'
+        const business = { SAFETY_BLOCKED: '请优先关注当前安全状态', DIAGNOSIS_ABSTAINED: '当前信息不足', NEEDS_FOLLOW_UP: '请先完成补充问题', NOT_CONFIRMED: '请先确认最新评估', PRESCRIPTION_MISSING: '暂未形成权威音乐处方' }
+        if (business[error.code]) { this.status = 'business'; this.businessTitle = business[error.code]; this.errorMsg = error.message }
+        else { this.status = 'error'; this.errorMsg = safeUiError(error, error.code === 'NO_MUSIC' ? 'NO_MUSIC' : 'MUSIC_MATCH_FAILED').message }
       }
     },
     initAudio() {
@@ -194,7 +196,7 @@ export default {
       ctx.onStop(() => { this.isPlaying = false; this.currentTime = 0 })
       ctx.onEnded(() => { this.isPlaying = false })
       ctx.onTimeUpdate(() => { this.currentTime = ctx.currentTime || 0; this.duration = ctx.duration || this.duration })
-      ctx.onError((error) => { this.status = 'error'; this.errorMsg = '音频播放错误：' + (error.errMsg || '未知错误') })
+      ctx.onError(() => { this.status = 'error'; this.errorMsg = safeUiError({ code: 'MUSIC_MATCH_FAILED' }, 'MUSIC_MATCH_FAILED').message })
       this.audioContext = ctx
     },
     togglePlay() {
@@ -205,12 +207,7 @@ export default {
     pauseAudio() { if (this.audioContext && this.isPlaying) this.audioContext.pause() },
     destroyAudio() { if (this.audioContext) { this.audioContext.destroy(); this.audioContext = null } },
     seek() {},
-    playFallback() {
-      this.prescription.audioUrl = resolveMediaUrl('/static/music/jiao-demo.wav')
-      this.prescription.trackId = 'music_jiao_001'
-      this.initAudio()
-      this.status = 'success'
-    },
+    returnToAssessment() { uni.navigateBack() },
     goFeedback() {
       this.pauseAudio()
       updateSprint3Session({

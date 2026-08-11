@@ -51,6 +51,10 @@
 
     <!-- 结果内容 -->
     <scroll-view v-if="!loading" scroll-y class="ar-scroll">
+      <view v-if="operationError" class="ar-error">
+        <text class="ar-error-title">操作未完成</text>
+        <text class="ar-error-msg">{{ operationError }}</text>
+      </view>
       <!-- 数据来源状态 -->
       <view class="ar-section">
         <text class="ar-section-title">数据来源</text>
@@ -183,6 +187,10 @@
       <view v-if="!followUpQuestions.length || followUpSubmitted" class="ar-section">
         <view class="ar-confirm-card ink-card">
           <text class="ar-confirm-title">以下评估结果是否准确？</text>
+          <view v-if="confirmationStatus === 'error'" class="ar-error">
+            <text class="ar-error-title">确认失败</text>
+            <text class="ar-error-msg">{{ confirmationError }}</text>
+          </view>
           <view v-if="!confirmationLevel" class="ar-confirm-btns">
             <view class="ar-confirm-btn ar-confirm-full" @tap="onConfirm('fully_accurate')">
               <text>完全准确</text>
@@ -246,6 +254,8 @@
 <script>
 import { submitFollowUpAnswers, confirmAssessment, runWorkflow } from "@/common/api-v2.js"
 import { getSprint3Session, updateSprint3Session } from "@/common/sprint3-session.js"
+import { safeUiError } from "@/common/safe-ui-error.js"
+import { createAssessmentFlow, applyFollowUpRevision, applyCorrectionRevision, workflowPayload, confirmationFailed } from "@/common/assessment-page-flow.js"
 
 export default {
   data() {
@@ -264,6 +274,7 @@ export default {
       confirmationError: '',
       confirmationLevel: "",
       correctionText: "",
+      operationError: "",
     }
   },
 
@@ -347,7 +358,7 @@ export default {
         if (!assessment || assessment.assessment_id !== this.assessmentId) {
           throw new Error("未找到本次评估结果，请重新完成问卷")
         }
-        this.assessment = assessment
+        this.assessment = createAssessmentFlow(assessment).assessment
         this.followUpQuestions = (assessment.follow_up_questions || []).slice(0, 4)
         if ((assessment.safety_flags || []).length > 0 || assessment.status === "blocked_safety") {
           this.isSafetyFlow = true
@@ -407,13 +418,13 @@ export default {
           answer: this.followUpAnswers[q.follow_up_id],
         }))
         const result = await submitFollowUpAnswers(this.assessmentId, this.assessment.revision || 1, answers)
-        this.assessment = result.assessment
-        updateSprint3Session({ assessment: result.assessment, assessment_revision: result.revision.revision })
+        this.assessment = applyFollowUpRevision({ assessment: this.assessment }, result).assessment
+        updateSprint3Session({ assessment: this.assessment, assessment_revision: this.assessment.revision })
         this.followUpSubmitted = true
         this.followUpQuestions = []
         uni.showToast({ title: "评估已更新", icon: "success" })
       } catch (err) {
-        uni.showToast({ title: err.message || "提交失败", icon: "none" })
+        this.operationError = safeUiError(err, 'FOLLOW_UP_FAILED').message
       } finally {
         uni.hideLoading()
       }
@@ -421,17 +432,14 @@ export default {
 
     async continueWorkflow() {
       const session = getSprint3Session()
-      const workflow = await runWorkflow({
+      const workflow = await runWorkflow(workflowPayload({ assessment: this.assessment }, {
         session_id: session.session_id,
         user_id: session.user_id || "demo_user_001",
         document_id: session.document_id || null,
         document_text: session.document_text || null,
         narrative_text: session.narrative_text || null,
         questionnaire_answers: session.questionnaire_answers,
-        assessment_confirmed: true,
-        assessment_id: this.assessment.assessment_id,
-        assessment_revision: this.assessment.revision,
-      })
+      }))
       updateSprint3Session({ workflow })
       return workflow
     },
@@ -459,10 +467,11 @@ export default {
             uni.redirectTo({ url: "/pages/player-v2/player-v2" })
           }, 1500)
         } catch (err) {
-          this.confirmationStatus = 'error'
-          this.confirmationError = err.message || '确认失败，请重试'
-          this.confirmationLevel = ''
-          uni.showToast({ title: err.message || "操作失败", icon: "none" })
+          const failed = confirmationFailed({ assessment: this.assessment, correctionText: this.correctionText }, err)
+          this.confirmationStatus = failed.confirmationStatus
+          this.confirmationError = failed.confirmationError
+          this.confirmationLevel = ""
+          uni.showToast({ title: this.confirmationError, icon: "none" })
         } finally {
           this.confirming = false
           uni.hideLoading()
@@ -493,16 +502,16 @@ export default {
             to: this.correctionText.trim(),
           }],
         })
-        this.assessment = result.assessment
+        this.assessment = applyCorrectionRevision({ assessment: this.assessment, correctionText: this.correctionText }, result, this.correctionText).assessment
         updateSprint3Session({
-          assessment: result.assessment,
+          assessment: this.assessment,
           assessment_revision: result.revision.revision,
         })
         this.confirmationLevel = ""
         this.correctionText = ""
         uni.showToast({ title: "评估已更新，请再次确认", icon: "none" })
       } catch (err) {
-        uni.showToast({ title: err.message || "修正失败", icon: "none" })
+        this.operationError = safeUiError(err, 'CONFIRMATION_FAILED').message
       } finally {
         this.confirming = false
         uni.hideLoading()
