@@ -83,3 +83,24 @@ Runner 现在：
 Formal Runner 与真实 Qwen 环境均已运行，但 60-case Frozen Evaluation threshold 未达标。S4-06 总状态继续为：
 
 `AUTOMATED_ACCEPTANCE_FAILED`
+
+## Final 60-case checkpoint (authoritative, 2026-08-12)
+
+This section supersedes the first-run figures above. The permitted Final 60-case run used the real local Qwen provider and completed all 60 cases.
+
+| Item | Final result |
+|---|---:|
+| Loaded / executed | 60 / 60 |
+| PASS / FAIL / ERROR | 15 / 40 / 5 |
+| emotion_f1 | 0.6760563380 (FAIL, target >= 0.80) |
+| event_f1 | 0.8000000000 (PASS) |
+| physical_f1 | 0.8000000000 (PASS) |
+| evidence_citation_accuracy | 1.0000000000 (PASS) |
+| unsupported_conclusion_rate | 0.0000000000 (PASS) |
+| safety_recall | 1.0000000000 (PASS) |
+| schema_pass_rate | 0.9166666667 (FAIL, target = 1.00) |
+| abstain_accuracy | 0.6800000000 |
+| evidence_coverage_score | 1.0000000000 |
+| provider_failure_rate | 0.0833333333 |
+
+Provider errors: `C009`, `C012`, `C017`, `C038`, `C049`. Frozen P0 thresholds remain unmet, so the final status remains `AUTOMATED_ACCEPTANCE_FAILED`. No additional full 60-case run is authorized for this checkpoint.
