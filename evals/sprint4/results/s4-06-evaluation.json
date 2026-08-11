@@ -1,32 +1,40 @@
 {
-  "error_count": 15,
+  "error_count": 5,
   "executed_count": 60,
   "failed_count": 40,
   "loaded_count": 60,
   "metrics": {
-    "abstain_accuracy": 0.3,
-    "emotion_f1": 0.1987179487179487,
-    "event_f1": 0.0,
+    "abstain_accuracy": 0.68,
+    "emotion_f1": 0.676056338028169,
+    "event_f1": 0.8,
     "evidence_citation_accuracy": 1.0,
     "evidence_coverage_score": 1.0,
-    "physical_f1": 0.6153846153846154,
-    "provider_failure_rate": 0.25,
+    "physical_f1": 0.8,
+    "provider_failure_rate": 0.08333333333333333,
     "safety_recall": 1.0,
-    "schema_pass_rate": 0.75,
+    "schema_pass_rate": 0.9166666666666666,
     "unsupported_conclusion_rate": 0.0
   },
-  "passed_count": 5,
+  "passed_count": 15,
   "per_case": [
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "irritability_anger",
+          "overthinking",
+          "tension_worry"
+        ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
-        "life_events": [],
-        "physical_signals": [],
+        "follow_up_count": 0,
+        "life_events": [
+          "工作压力"
+        ],
+        "physical_signals": [
+          "chest_tightness"
+        ],
         "safety_blocked": false,
         "source_types": [
           "narrative"
@@ -53,26 +61,21 @@
           "chest_tightness"
         ]
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "LIFE_EVENTS_MISMATCH",
-        "PHYSICAL_SIGNALS_MISMATCH",
-        "ABSTAIN_MISMATCH"
-      ],
+      "failure_reasons": [],
       "reason_code": null,
-      "status": "FAIL",
+      "status": "PASS",
       "type": "narrative_only"
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "兴趣下降"
+          "interest_loss"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -98,7 +101,7 @@
       },
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "FOLLOW_UP_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -106,15 +109,14 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "日常活动影响",
-          "易怒"
+          "irritability_anger"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -138,8 +140,7 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "FOLLOW_UP_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -149,12 +150,10 @@
       "actual_summary": {
         "abstained": true,
         "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "心情"
-        ],
+        "conflict_count": 1,
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 2,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -180,6 +179,8 @@
       },
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
+        "CONFLICT_MISMATCH",
+        "FOLLOW_UP_MISMATCH",
         "ABSTAIN_MISMATCH"
       ],
       "reason_code": null,
@@ -192,12 +193,17 @@
         "assessment_status": "needs_follow_up",
         "conflict_count": 0,
         "emotion_labels": [
-          "总是担心会发生不好的事"
+          "fear_unease",
+          "tension_worry",
+          "worry_control"
         ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
-        "physical_signals": [],
+        "physical_signals": [
+          "palpitation",
+          "sweating"
+        ],
         "safety_blocked": false,
         "source_types": [
           "narrative"
@@ -226,7 +232,6 @@
       },
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
-        "PHYSICAL_SIGNALS_MISMATCH",
         "ABSTAIN_MISMATCH"
       ],
       "reason_code": null,
@@ -235,12 +240,12 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -268,7 +273,7 @@
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
         "PHYSICAL_SIGNALS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "FOLLOW_UP_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -276,15 +281,17 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "日常活动影响"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
-        "life_events": [],
+        "follow_up_count": 0,
+        "life_events": [
+          "考试压力"
+        ],
         "physical_signals": [],
         "safety_blocked": false,
         "source_types": [
@@ -312,9 +319,7 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "LIFE_EVENTS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "EMOTION_LABELS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -322,14 +327,15 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "情绪稳定程度"
+          "overthinking",
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -355,30 +361,14 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "EMOTION_LABELS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
       "type": "narrative_only"
     },
     {
-      "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "work is piling up and I keep worrying about everything"
-        ],
-        "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
-        "life_events": [],
-        "physical_signals": [],
-        "safety_blocked": false,
-        "source_types": [
-          "narrative"
-        ]
-      },
+      "actual_summary": null,
       "case_id": "C009",
       "expected_summary": {
         "conflict_count": 0,
@@ -399,26 +389,22 @@
           "palpitation"
         ]
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "LIFE_EVENTS_MISMATCH",
-        "PHYSICAL_SIGNALS_MISMATCH",
-        "ABSTAIN_MISMATCH"
-      ],
-      "reason_code": null,
-      "status": "FAIL",
+      "failure_reasons": [],
+      "reason_code": "PROVIDER_ERROR",
+      "status": "ERROR",
       "type": "narrative_only"
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "情绪起伏"
+          "irritability_anger",
+          "low_mood"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -443,14 +429,31 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH"
+        "FOLLOW_UP_MISMATCH",
+        "ABSTAIN_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
       "type": "narrative_only"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "needs_follow_up",
+        "conflict_count": 1,
+        "emotion_labels": [],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 2,
+        "life_events": [],
+        "physical_signals": [
+          "appetite_change",
+          "physical_signal"
+        ],
+        "safety_blocked": false,
+        "source_types": [
+          "narrative"
+        ]
+      },
       "case_id": "C011",
       "expected_summary": {
         "conflict_count": 0,
@@ -468,9 +471,14 @@
           "stomach_discomfort"
         ]
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "PHYSICAL_SIGNALS_MISMATCH",
+        "CONFLICT_MISMATCH",
+        "ABSTAIN_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "narrative_only"
     },
     {
@@ -495,14 +503,14 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "莫名其妙的害怕"
+          "fear_unease"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -528,9 +536,7 @@
         ]
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "PHYSICAL_SIGNALS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "PHYSICAL_SIGNALS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -540,12 +546,10 @@
       "actual_summary": {
         "abstained": true,
         "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "对什么都提不起兴趣"
-        ],
+        "conflict_count": 1,
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 2,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -571,6 +575,8 @@
       },
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
+        "CONFLICT_MISMATCH",
+        "FOLLOW_UP_MISMATCH",
         "ABSTAIN_MISMATCH"
       ],
       "reason_code": null,
@@ -581,13 +587,13 @@
       "actual_summary": {
         "abstained": true,
         "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "情绪状态"
-        ],
+        "conflict_count": 1,
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
-        "life_events": [],
+        "life_events": [
+          "工作的事"
+        ],
         "physical_signals": [],
         "safety_blocked": false,
         "source_types": [
@@ -615,6 +621,7 @@
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
         "LIFE_EVENTS_MISMATCH",
+        "CONFLICT_MISMATCH",
         "ABSTAIN_MISMATCH"
       ],
       "reason_code": null,
@@ -623,14 +630,12 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
-        "emotion_labels": [
-          "情绪状态"
-        ],
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -655,33 +660,14 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "EMOTION_LABELS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
       "type": "narrative_only"
     },
     {
-      "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "health concerns",
-          "mood"
-        ],
-        "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
-        "life_events": [],
-        "physical_signals": [
-          "other"
-        ],
-        "safety_blocked": false,
-        "source_types": [
-          "narrative"
-        ]
-      },
+      "actual_summary": null,
       "case_id": "C017",
       "expected_summary": {
         "conflict_count": 0,
@@ -701,26 +687,21 @@
           "chest_tightness"
         ]
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "PHYSICAL_SIGNALS_MISMATCH",
-        "ABSTAIN_MISMATCH"
-      ],
-      "reason_code": null,
-      "status": "FAIL",
+      "failure_reasons": [],
+      "reason_code": "PROVIDER_ERROR",
+      "status": "ERROR",
       "type": "narrative_only"
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "情绪状态",
-          "担忧思绪"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -747,7 +728,7 @@
       },
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "FOLLOW_UP_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -755,7 +736,7 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
+        "abstained": false,
         "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [],
@@ -780,14 +761,28 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "FOLLOW_UP_MISMATCH"
+        "FOLLOW_UP_MISMATCH",
+        "ABSTAIN_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
       "type": "narrative_only"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "needs_follow_up",
+        "conflict_count": 1,
+        "emotion_labels": [],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 1,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "narrative"
+        ]
+      },
       "case_id": "C020",
       "expected_summary": {
         "conflict_count": 0,
@@ -804,31 +799,29 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "CONFLICT_MISMATCH",
+        "ABSTAIN_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "narrative_only"
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
           "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "工作压力"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
-        "life_events": [],
+        "follow_up_count": 0,
+        "life_events": [
+          "工作压力"
+        ],
         "physical_signals": [],
         "safety_blocked": false,
         "source_types": [
@@ -854,34 +847,22 @@
         ],
         "physical_signals": []
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "LIFE_EVENTS_MISMATCH",
-        "ABSTAIN_MISMATCH"
-      ],
+      "failure_reasons": [],
       "reason_code": null,
-      "status": "FAIL",
+      "status": "PASS",
       "type": "narrative_questionnaire"
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
           "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "情绪状态"
+          "low_mood"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -906,36 +887,22 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
-      ],
+      "failure_reasons": [],
       "reason_code": null,
-      "status": "FAIL",
+      "status": "PASS",
       "type": "narrative_questionnaire"
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry"
-        ],
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [
           "limb_fatigue",
-          "other",
           "stomach_discomfort"
         ],
         "safety_blocked": false,
@@ -963,9 +930,7 @@
         ]
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "PHYSICAL_SIGNALS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "EMOTION_LABELS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -973,23 +938,16 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
           "emotional_recovery",
           "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "紧张"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [
           "palpitation",
@@ -1022,8 +980,7 @@
         ]
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "EMOTION_LABELS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -1031,20 +988,12 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "overthinking",
-          "tension_worry"
-        ],
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -1072,8 +1021,7 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "EMOTION_LABELS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -1083,24 +1031,15 @@
       "actual_summary": {
         "abstained": true,
         "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry"
-        ],
+        "conflict_count": 1,
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
         "source_types": [
+          "narrative",
           "questionnaire"
         ]
       },
@@ -1117,33 +1056,24 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "CONFLICT_MISMATCH"
-      ],
+      "failure_reasons": [],
       "reason_code": null,
-      "status": "FAIL",
+      "status": "PASS",
       "type": "narrative_questionnaire"
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
           "interest_loss",
           "irritability_anger",
           "low_mood",
-          "overthinking",
-          "tension_worry",
-          "情绪状态"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -1170,8 +1100,7 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "EMOTION_LABELS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -1179,22 +1108,14 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry"
+          "low_mood"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -1218,31 +1139,17 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
-      ],
+      "failure_reasons": [],
       "reason_code": null,
-      "status": "FAIL",
+      "status": "PASS",
       "type": "narrative_questionnaire"
     },
     {
       "actual_summary": {
         "abstained": true,
         "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "情绪状态"
-        ],
+        "conflict_count": 1,
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -1272,6 +1179,7 @@
       },
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
+        "CONFLICT_MISMATCH",
         "ABSTAIN_MISMATCH"
       ],
       "reason_code": null,
@@ -1280,23 +1188,16 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
           "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
           "overthinking",
-          "tension_worry",
-          "担心身体出问题"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [
           "chest_tightness",
@@ -1328,12 +1229,9 @@
           "palpitation"
         ]
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "ABSTAIN_MISMATCH"
-      ],
+      "failure_reasons": [],
       "reason_code": null,
-      "status": "FAIL",
+      "status": "PASS",
       "type": "narrative_questionnaire"
     },
     {
@@ -1341,24 +1239,13 @@
         "abstained": false,
         "assessment_status": "success",
         "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry"
-        ],
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
         "source_types": [
-          "document",
           "questionnaire"
         ]
       },
@@ -1375,15 +1262,30 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH"
-      ],
+      "failure_reasons": [],
       "reason_code": null,
-      "status": "FAIL",
+      "status": "PASS",
       "type": "document_questionnaire"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "questionnaire"
+        ]
+      },
       "case_id": "C032",
       "expected_summary": {
         "conflict_count": 0,
@@ -1401,8 +1303,8 @@
         "physical_signals": []
       },
       "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "reason_code": null,
+      "status": "PASS",
       "type": "document_questionnaire"
     },
     {
@@ -1411,20 +1313,14 @@
         "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
           "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "情绪"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 0,
-        "life_events": [],
+        "life_events": [
+          "胸闷心悸反复发作三月余"
+        ],
         "physical_signals": [
           "chest_tightness",
           "palpitation"
@@ -1455,14 +1351,34 @@
         ]
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH"
+        "LIFE_EVENTS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
       "type": "document_questionnaire"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "overthinking"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [
+          "head_heaviness",
+          "limb_fatigue",
+          "stomach_discomfort"
+        ],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "questionnaire"
+        ]
+      },
       "case_id": "C034",
       "expected_summary": {
         "conflict_count": 0,
@@ -1481,13 +1397,32 @@
           "stomach_discomfort"
         ]
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "PHYSICAL_SIGNALS_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "document_questionnaire"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "questionnaire"
+        ]
+      },
       "case_id": "C035",
       "expected_summary": {
         "conflict_count": 0,
@@ -1505,9 +1440,11 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "document_questionnaire"
     },
     {
@@ -1516,24 +1453,13 @@
         "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
           "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "对日常活动丧失兴趣",
-          "情绪低落"
+          "low_mood"
         ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 0,
         "life_events": [],
-        "physical_signals": [
-          "-6"
-        ],
+        "physical_signals": [],
         "safety_blocked": false,
         "source_types": [
           "document",
@@ -1556,16 +1482,27 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "PHYSICAL_SIGNALS_MISMATCH"
-      ],
+      "failure_reasons": [],
       "reason_code": null,
-      "status": "FAIL",
+      "status": "PASS",
       "type": "document_questionnaire"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "needs_follow_up",
+        "conflict_count": 1,
+        "emotion_labels": [],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 1,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "questionnaire"
+        ]
+      },
       "case_id": "C037",
       "expected_summary": {
         "conflict_count": 0,
@@ -1583,9 +1520,13 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "CONFLICT_MISMATCH",
+        "ABSTAIN_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "document_questionnaire"
     },
     {
@@ -1613,7 +1554,26 @@
       "type": "document_questionnaire"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [
+          "dizziness",
+          "fatigue",
+          "head_heaviness",
+          "sweating"
+        ],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "questionnaire"
+        ]
+      },
       "case_id": "C039",
       "expected_summary": {
         "conflict_count": 0,
@@ -1632,13 +1592,34 @@
           "sweating"
         ]
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "PHYSICAL_SIGNALS_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "document_questionnaire"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "tension_worry"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [
+          "工作压力"
+        ],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "questionnaire"
+        ]
+      },
       "case_id": "C040",
       "expected_summary": {
         "conflict_count": 0,
@@ -1657,9 +1638,11 @@
         ],
         "physical_signals": []
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "document_questionnaire"
     },
     {
@@ -1668,17 +1651,8 @@
         "assessment_status": "needs_follow_up",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
           "overthinking",
-          "tension_worry",
-          "情绪和兴趣",
-          "情绪焦虑"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
@@ -1717,7 +1691,25 @@
       "type": "three_source"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "narrative",
+          "questionnaire"
+        ]
+      },
       "case_id": "C042",
       "expected_summary": {
         "conflict_count": 0,
@@ -1735,12 +1727,35 @@
         "physical_signals": []
       },
       "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "reason_code": null,
+      "status": "PASS",
       "type": "three_source"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [
+          "chest_tightness",
+          "palpitation",
+          "shaking",
+          "tremor"
+        ],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "narrative",
+          "questionnaire"
+        ]
+      },
       "case_id": "C043",
       "expected_summary": {
         "conflict_count": 0,
@@ -1761,13 +1776,36 @@
           "palpitation"
         ]
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "PHYSICAL_SIGNALS_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "three_source"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "needs_follow_up",
+        "conflict_count": 1,
+        "emotion_labels": [],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 1,
+        "life_events": [
+          "工作压力"
+        ],
+        "physical_signals": [
+          "head_heaviness",
+          "neck_tension"
+        ],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "narrative",
+          "questionnaire"
+        ]
+      },
       "case_id": "C044",
       "expected_summary": {
         "conflict_count": 0,
@@ -1788,13 +1826,35 @@
           "neck_tension"
         ]
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "CONFLICT_MISMATCH",
+        "ABSTAIN_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "three_source"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "needs_follow_up",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "overthinking"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 1,
+        "life_events": [],
+        "physical_signals": [
+          "stomach_discomfort"
+        ],
+        "safety_blocked": false,
+        "source_types": [
+          "narrative",
+          "questionnaire"
+        ]
+      },
       "case_id": "C045",
       "expected_summary": {
         "conflict_count": 0,
@@ -1812,29 +1872,19 @@
           "stomach_discomfort"
         ]
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "ABSTAIN_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "three_source"
     },
     {
       "actual_summary": {
         "abstained": true,
         "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "情绪状态",
-          "日常影响"
-        ],
+        "conflict_count": 3,
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -1859,7 +1909,6 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
         "CONFLICT_MISMATCH"
       ],
       "reason_code": null,
@@ -1870,16 +1919,8 @@
       "actual_summary": {
         "abstained": true,
         "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "emotional_recovery",
-          "fear_unease",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "情绪状态"
-        ],
+        "conflict_count": 1,
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -1906,8 +1947,7 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "CONFLICT_MISMATCH"
+        "EMOTION_LABELS_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -1915,27 +1955,16 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry"
-        ],
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
         "source_types": [
-          "document",
           "narrative",
           "questionnaire"
         ]
@@ -1954,40 +1983,16 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "CONFLICT_MISMATCH"
+        "CONFLICT_MISMATCH",
+        "FOLLOW_UP_MISMATCH",
+        "ABSTAIN_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
       "type": "source_conflict"
     },
     {
-      "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
-        "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "情绪状态"
-        ],
-        "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
-        "life_events": [],
-        "physical_signals": [],
-        "safety_blocked": false,
-        "source_types": [
-          "narrative",
-          "questionnaire"
-        ]
-      },
+      "actual_summary": null,
       "case_id": "C049",
       "expected_summary": {
         "conflict_count": 2,
@@ -2001,12 +2006,9 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "CONFLICT_MISMATCH"
-      ],
-      "reason_code": null,
-      "status": "FAIL",
+      "failure_reasons": [],
+      "reason_code": "PROVIDER_ERROR",
+      "status": "ERROR",
       "type": "source_conflict"
     },
     {
@@ -2015,17 +2017,8 @@
         "assessment_status": "needs_follow_up",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
           "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "心情",
-          "忙碌"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
@@ -2062,24 +2055,14 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "心情",
-          "日常活动影响"
+          "low_mood"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -2106,8 +2089,7 @@
       },
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
-        "FOLLOW_UP_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "FOLLOW_UP_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -2115,23 +2097,12 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "日常活动"
-        ],
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
+        "follow_up_count": 0,
         "life_events": [],
         "physical_signals": [],
         "safety_blocked": false,
@@ -2154,8 +2125,8 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
-        "FOLLOW_UP_MISMATCH"
+        "FOLLOW_UP_MISMATCH",
+        "ABSTAIN_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
@@ -2163,24 +2134,17 @@
     },
     {
       "actual_summary": {
-        "abstained": true,
-        "assessment_status": "needs_follow_up",
+        "abstained": false,
+        "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry",
-          "工作效率"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
-        "follow_up_count": 1,
-        "life_events": [],
+        "follow_up_count": 0,
+        "life_events": [
+          "工作压力"
+        ],
         "physical_signals": [],
         "safety_blocked": false,
         "source_types": [
@@ -2208,16 +2172,30 @@
       },
       "failure_reasons": [
         "EMOTION_LABELS_MISMATCH",
-        "LIFE_EVENTS_MISMATCH",
-        "FOLLOW_UP_MISMATCH",
-        "ABSTAIN_MISMATCH"
+        "FOLLOW_UP_MISMATCH"
       ],
       "reason_code": null,
       "status": "FAIL",
       "type": "insufficient_follow_up"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "low_mood"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "narrative",
+          "questionnaire"
+        ]
+      },
       "case_id": "C054",
       "expected_summary": {
         "conflict_count": 0,
@@ -2233,9 +2211,11 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "FOLLOW_UP_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "insufficient_follow_up"
     },
     {
@@ -2243,17 +2223,7 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 0,
-        "emotion_labels": [
-          "calm_wellbeing",
-          "daily_impact",
-          "emotional_recovery",
-          "fear_unease",
-          "interest_loss",
-          "irritability_anger",
-          "low_mood",
-          "overthinking",
-          "tension_worry"
-        ],
+        "emotion_labels": [],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -2278,7 +2248,6 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
         "FOLLOW_UP_MISMATCH",
         "ABSTAIN_MISMATCH"
       ],
@@ -2461,25 +2430,13 @@
   "threshold": {
     "failures": [
       {
-        "actual": 0.1987179487179487,
+        "actual": 0.676056338028169,
         "metric": "emotion_f1",
         "operator": ">=",
         "target": 0.8
       },
       {
-        "actual": 0.0,
-        "metric": "event_f1",
-        "operator": ">=",
-        "target": 0.75
-      },
-      {
-        "actual": 0.6153846153846154,
-        "metric": "physical_f1",
-        "operator": ">=",
-        "target": 0.8
-      },
-      {
-        "actual": 0.75,
+        "actual": 0.9166666666666666,
         "metric": "schema_pass_rate",
         "operator": ">=",
         "target": 1.0
