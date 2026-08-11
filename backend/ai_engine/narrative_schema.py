@@ -374,8 +374,10 @@ def _supplement_grounded_items(
         or any(term.casefold() in item.quote.casefold() for term in terms_by_label[item.label])
     ]
     result = [
-        item for item in result
+        item
+        for item in result
         if not (item.label == "calm_wellbeing" and "\u6709\u65f6\u5019" in item.quote)
+        and not (item.label == "fear_unease" and "\u70e6\u8e81\u4e0d\u5b89" in item.quote)
     ]
     labels = {item.label for item in result}
     for category, label, value, terms in specs:
@@ -383,6 +385,8 @@ def _supplement_grounded_items(
         if quote is None:
             continue
         if label == "calm_wellbeing" and "\u6709\u65f6\u5019" in lowered:
+            continue
+        if label == "fear_unease" and "\u70e6\u8e81\u4e0d\u5b89" in lowered:
             continue
         existing = [item for item in result if item.label == label]
         if existing:
@@ -425,8 +429,25 @@ def _supplement_grounded_items(
             polarity="absent",
             negated=True,
         ))
+    absence_specs = (
+        ("emotion_state", "tension_worry", "\u6ca1\u4ec0\u4e48\u538b\u529b"),
+        ("sleep", "sleep_disturbance", "\u7761\u5f97\u9999"),
+    )
+    for category, label, quote in absence_specs:
+        if quote not in source_text:
+            continue
+        result = [item for item in result if item.label != label]
+        result.append(_lexical_item(
+            category=category,
+            label=label,
+            value=0,
+            quote=quote,
+            source_type=source_type,
+            index=len(result) + 1,
+            polarity="absent",
+            negated=True,
+        ))
     return result
-
 
 def _lexical_item(
     *,

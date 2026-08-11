@@ -1061,8 +1061,11 @@ def _v21_questionnaire_evidence(questionnaire: object) -> list[EvidenceItem]:
     for dimension, score in questionnaire.dimension_scores.items():
         category = _v21_category_for_dimension(dimension)
         value: object = score.raw_score
+        if dimension == "calm_wellbeing":
+            value = 4 - score.raw_score
         if dimension == "appetite_change":
             value = questionnaire.qualitative.get("appetite_change", score.raw_score)
+        evidence_score = value if type(value) is int else score.raw_score
         result.append(
             {
                 "evidence_id": f"ev-questionnaire-{dimension}",
@@ -1070,9 +1073,9 @@ def _v21_questionnaire_evidence(questionnaire: object) -> list[EvidenceItem]:
                 "label": dimension,
                 "display_name": dimension,
                 "value": value,
-                "polarity": "present" if score.raw_score else "absent",
-                "severity": _v21_severity(score.raw_score),
-                "severity_display": _v21_severity(score.raw_score),
+                "polarity": "present" if evidence_score else "absent",
+                "severity": _v21_severity(evidence_score),
+                "severity_display": _v21_severity(evidence_score),
                 "time_window": "过去两周",
                 "source_type": "questionnaire",
                 "source_ref": f"questionnaire:{score.source_questions[0]}",
