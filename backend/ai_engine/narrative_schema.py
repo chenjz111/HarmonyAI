@@ -51,6 +51,23 @@ _ALLOWED_ITEM_FIELDS = frozenset(
 )
 
 
+def _narrative_system_prompt(source_type: Literal["narrative", "document"]) -> str:
+    categories = ", ".join(sorted(NARRATIVE_CATEGORIES))
+    return (
+        "你是证据提取器，只返回 JSON，不要 Markdown，不生成诊断或治疗结论。"
+        "根对象必须是 {\"items\": [...]}，items 必须是 JSON 数组；没有可靠证据时返回空数组。"
+        "每个 item 只能包含并必须包含以下字段："
+        "{\"category\":string,\"label\":string,\"value\":string|number|boolean|null,"
+        "\"polarity\":\"present|absent|reduced|increased|unchanged\","
+        "\"time_window\":string,\"quote\":string,\"source_ref\":string,"
+        "\"extraction_confidence\":number,\"negated\":boolean}。"
+        f"category 只能是：{categories}。"
+        "quote 必须逐字复制自用户原文，禁止改写或补造；"
+        f"source_ref 必须以 {source_type}: 开头；"
+        "extraction_confidence 必须在 0 到 1 之间。"
+    )
+
+
 async def extract_narrative(
     text: str,
     *,
@@ -71,10 +88,7 @@ async def extract_narrative(
     try:
         response = await provider.complete_json(
             ProviderRequest(
-                system_prompt=(
-                    "你是证据提取器，只返回符合 narrative_extraction_v2.1 "
-                    "结构的 JSON，不生成诊断或治疗结论。"
-                ),
+                system_prompt=_narrative_system_prompt(source_type),
                 user_prompt=normalized_text,
                 operation="narrative_extraction",
                 prompt_version="narrative_extraction_v2.1",
