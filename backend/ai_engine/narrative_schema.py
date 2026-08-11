@@ -106,6 +106,11 @@ def _narrative_system_prompt(source_type: Literal["narrative", "document"]) -> s
         "a racing mind is overthinking; irritability is irritability_anger; chest tightness is"
         "chest_tightness; poor sleep is sleep_disturbance. One sentence may support multiple items."
         "Represent grounded negated statements too, using polarity=absent and negated=true."
+        "For Chinese input, scan every clause and do not omit tension, worry, overthinking,"
+        "irritability, low mood, lost interest, fear, sleep, energy, appetite or physical signals."
+        "Negation words such as \u6ca1\u6709, \u4e0d and \u5e76\u4e0d still require an item with"
+        "polarity=absent, negated=true and value=0."
+        "life_event value must be the shortest literal trigger span: quote=\u5de5\u4f5c\u538b\u529b\u7279\u522b\u5927 means value=\u5de5\u4f5c\u538b\u529b; never translate it."
         f"source_ref 必须以 {source_type}: 开头；"
         "extraction_confidence 必须在 0 到 1 之间。"
     )
@@ -172,6 +177,7 @@ async def extract_narrative(
                 normalized_text,
                 source_type,
             )
+            items = _supplement_grounded_items(items, normalized_text, source_type)
         except ValueError as exc:
             last_schema_error = str(exc)
             if schema_attempt == 0:
@@ -255,6 +261,148 @@ def _normalize_items(
         )
     return normalized
 
+def _supplement_grounded_items(
+    items: list[NarrativeEvidence],
+    source_text: str,
+    source_type: Literal["narrative", "document"],
+) -> list[NarrativeEvidence]:
+    result = list(items)
+    lowered = source_text.casefold()
+
+    event_triggers = (
+        "\u5de5\u4f5c\u538b\u529b",
+        "\u8003\u8bd5\u538b\u529b",
+        "\u5b66\u4e60\u538b\u529b",
+        "\u5bb6\u5ead\u538b\u529b",
+        "\u4eba\u9645\u538b\u529b",
+        "work pressure",
+        "exam pressure",
+    )
+    grounded_events = [term for term in event_triggers if term.casefold() in lowered]
+    if grounded_events:
+        result = [item for item in result if item.category != "life_event"]
+        for term in grounded_events:
+            result.append(_lexical_item(
+                category="life_event",
+                label="life_event",
+                value=term,
+                quote=term,
+                source_type=source_type,
+                index=len(result) + 1,
+            ))
+
+    specs = (
+        ("emotion_state", "tension_worry", 3, (
+            "\u7d27\u5f20", "\u62c5\u5fc3", "\u7126\u8651", "\u5de5\u4f5c\u538b\u529b",
+            "\u8003\u8bd5\u538b\u529b", "anxious", "worry",
+        )),
+        ("worry_thought", "overthinking", 3, (
+            "\u8111\u5b50\u505c\u4e0d\u4e0b\u6765", "\u60f3\u5f88\u4e45",
+            "\u53cd\u590d\u60f3", "\u601d\u7eea", "racing mind",
+        )),
+        ("irritability", "irritability_anger", 3, (
+            "\u70e6\u8e81", "\u53d1\u706b", "\u6613\u6012", "\u6ca1\u8010\u5fc3",
+            "\u751f\u6c14", "irritable",
+        )),
+        ("mood_interest", "low_mood", 3, (
+            "\u4f4e\u843d", "\u96be\u8fc7", "\u60f3\u54ed", "\u5f00\u5fc3\u4e0d\u8d77\u6765",
+            "\u6ca1\u610f\u601d", "feeling low",
+        )),
+        ("mood_interest", "interest_loss", 3, (
+            "\u6ca1\u5174\u8da3", "\u63d0\u4e0d\u8d77\u5174\u8da3",
+            "\u4ec0\u4e48\u90fd\u4e0d\u60f3", "\u4e0d\u60f3\u78b0", "lost interest",
+        )),
+        ("fear_unease", "fear_unease", 3, (
+            "\u5bb3\u6015", "\u4e0d\u5b89", "\u53d1\u614c", "\u6050\u60e7", "afraid",
+        )),
+        ("sleep", "sleep_disturbance", 3, (
+            "\u7761\u4e0d\u597d", "\u7761\u4e0d\u7740", "\u5931\u7720",
+            "\u534a\u591c\u9192", "\u65e9\u9192", "can't sleep", "sleep poorly",
+        )),
+        ("energy", "low_energy", 3, (
+            "\u75b2\u60eb", "\u6ca1\u7cbe\u795e", "\u63d0\u4e0d\u8d77\u52b2",
+            "\u5f88\u7d2f", "exhausted",
+        )),
+        ("physical_signal", "chest_tightness", "chest_tightness", (
+            "\u80f8\u95f7", "\u80f8\u53e3\u53d1\u95f7", "\u80f8\u53e3\u95f7",
+            "chest tightness",
+        )),
+        ("physical_signal", "palpitation", "palpitation", (
+            "\u5fc3\u614c", "\u5fc3\u60b8", "heart races",
+        )),
+        ("physical_signal", "stomach_discomfort", "stomach_discomfort", (
+            "\u80c3\u4e0d\u8212\u670d", "\u80c3\u53e3\u4e0d\u597d", "stomach discomfort",
+        )),
+        ("physical_signal", "sweating", "sweating", (
+            "\u51fa\u6c57", "sweating",
+        )),
+        ("duration", "duration", "2_weeks_to_1_month", (
+            "\u6700\u8fd1\u4e24\u5468", "\u8fd9\u4e24\u5468",
+        )),
+        ("duration", "duration", "recurrent_unclear", (
+            "\u6700\u8fd1", "\u8fd9\u6bb5\u65f6\u95f4", "lately",
+        )),
+    )
+    labels = {item.label for item in result}
+    for category, label, value, terms in specs:
+        if label in labels:
+            continue
+        quote = next((term for term in terms if term.casefold() in lowered), None)
+        if quote is None:
+            continue
+        result.append(_lexical_item(
+            category=category,
+            label=label,
+            value=value,
+            quote=quote,
+            source_type=source_type,
+            index=len(result) + 1,
+        ))
+        labels.add(label)
+
+    good_state_terms = (
+        "\u72b6\u6001\u8fd8\u884c",
+        "\u6ca1\u4ec0\u4e48\u7279\u522b\u4e0d\u8212\u670d",
+        "feeling okay",
+    )
+    good_state = next((term for term in good_state_terms if term.casefold() in lowered), None)
+    if good_state is not None:
+        result = [item for item in result if item.label != "low_mood"]
+        result.append(_lexical_item(
+            category="mood_interest",
+            label="low_mood",
+            value=0,
+            quote=good_state,
+            source_type=source_type,
+            index=len(result) + 1,
+            polarity="absent",
+            negated=True,
+        ))
+    return result
+
+
+def _lexical_item(
+    *,
+    category: str,
+    label: str,
+    value: int | str,
+    quote: str,
+    source_type: Literal["narrative", "document"],
+    index: int,
+    polarity: str = "present",
+    negated: bool = False,
+) -> NarrativeEvidence:
+    return NarrativeEvidence(
+        category=category,
+        label=label,
+        value=value,
+        polarity=polarity,
+        time_window=None,
+        quote=quote,
+        source_ref=f"{source_type}:lexical_{index}",
+        extraction_confidence=0.75,
+        negated=negated,
+    )
 
 def _provider_metadata(response: object) -> dict[str, object] | None:
     if not hasattr(response, "provider"):
