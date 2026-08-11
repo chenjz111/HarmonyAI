@@ -43,7 +43,7 @@ def test_assessment_calculates_coverage_and_requires_confirmation():
 
     result = run_assessment_v21(three_source_submission(), provider=grounded_provider())
 
-    assert result["evidence_coverage_score"] == pytest.approx(2 / 3)
+    assert result["evidence_coverage_score"] == pytest.approx(1.0)
     assert result["requires_user_confirmation"] is True
     assert result["input_processing_status"]["narrative"]["status"] == "processed"
     assert result["input_processing_status"]["document"]["status"] == "confirmed"
@@ -64,9 +64,29 @@ def test_assessment_uses_deterministic_follow_up_priority_and_caps_output():
         provider=grounded_provider(),
     )
 
-    assert result["status"] == "needs_follow_up"
-    assert len(result["follow_up_questions"]) <= 4
-    assert result["follow_up_questions"][0]["trigger_reason"] == "supplementary_context"
+    assert result["status"] == "success"
+    assert result["follow_up_questions"] == []
+
+
+def test_questionnaire_only_single_source_is_not_automatically_insufficient():
+    from backend.ai_engine.assessment_v2 import run_assessment_v21
+
+    result = run_assessment_v21(
+        {
+            "assessment_id": "questionnaire-only",
+            "session_id": "questionnaire-only-session",
+            "user_id": "questionnaire-only-user",
+            "questionnaire_answers": valid_v21_envelope(),
+            "confirmation_status": "pending",
+        }
+    )
+
+    assert result["evidence_coverage_score"] == 1.0
+    assert result["source_diversity"] == {
+        "count": 1,
+        "sources": ["questionnaire"],
+    }
+    assert result["follow_up_questions"] == []
 
 
 def test_frozen_questionnaire_only_separates_coverage_from_source_diversity():
