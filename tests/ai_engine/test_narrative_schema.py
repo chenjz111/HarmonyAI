@@ -317,7 +317,7 @@ async def test_grounded_lexical_supplement_upgrades_weak_explicit_signal():
         "items": [{
             "category": "sleep",
             "label": "sleep_disturbance",
-            "value": 1,
+            "value": "poor",
             "polarity": "present",
             "time_window": None,
             "quote": "sleep poorly",
@@ -335,3 +335,46 @@ async def test_grounded_lexical_supplement_upgrades_weak_explicit_signal():
     sleep = next(item for item in result.items if item.label == "sleep_disturbance")
     assert sleep.value == 3
     assert sleep.quote == "sleep poorly"
+
+
+@pytest.mark.asyncio
+async def test_grounded_lexical_supplement_discards_unsupported_or_hedged_labels():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    provider = MockProvider({
+        "items": [
+            {
+                "category": "worry_thought",
+                "label": "overthinking",
+                "value": 3,
+                "polarity": "present",
+                "time_window": None,
+                "quote": "\u62c5\u5fc3\u505a\u4e0d\u5b8c",
+                "source_ref": "narrative:sentence_1",
+                "extraction_confidence": 0.7,
+                "negated": False,
+            },
+            {
+                "category": "emotion_state",
+                "label": "calm_wellbeing",
+                "value": 3,
+                "polarity": "present",
+                "time_window": None,
+                "quote": "\u6709\u65f6\u5019\u5f88\u5e73\u9759",
+                "source_ref": "narrative:sentence_2",
+                "extraction_confidence": 0.7,
+                "negated": False,
+            },
+        ]
+    })
+    text = "\u62c5\u5fc3\u505a\u4e0d\u5b8c\uff0c\u6709\u65f6\u5019\u5f88\u5e73\u9759\u3002"
+    result = await extract_narrative(
+        text,
+        source_type="narrative",
+        provider=provider,
+    )
+
+    labels = {item.label for item in result.items if not item.negated}
+    assert "tension_worry" in labels
+    assert "overthinking" not in labels
+    assert "calm_wellbeing" not in labels

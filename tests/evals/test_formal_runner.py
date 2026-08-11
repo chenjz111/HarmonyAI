@@ -267,13 +267,22 @@ def test_formal_actual_emotions_exclude_noncanonical_context_labels():
 def test_formal_actual_emotions_exclude_unresolved_conflict_topics():
     from evals.run_sprint4_eval import _actual_fields
 
-    evidence = [{
-        "category": "emotion",
-        "label": "low_mood",
-        "value": 4,
-        "polarity": "present",
-        "source_type": "questionnaire",
-    }]
+    evidence = [
+        {
+            "category": "emotion",
+            "label": "low_mood",
+            "value": 4,
+            "polarity": "present",
+            "source_type": "questionnaire",
+        },
+        {
+            "category": "emotion",
+            "label": "fear_unease",
+            "value": 3,
+            "polarity": "present",
+            "source_type": "questionnaire",
+        },
+    ]
     actual = _actual_fields(
         {
             "status": "needs_follow_up",

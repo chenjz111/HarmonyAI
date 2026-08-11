@@ -296,13 +296,25 @@ def _supplement_grounded_items(
             "\u7d27\u5f20", "\u62c5\u5fc3", "\u7126\u8651", "\u5de5\u4f5c\u538b\u529b",
             "\u8003\u8bd5\u538b\u529b", "anxious", "worry",
         )),
+        ("emotion_state", "calm_wellbeing", 3, (
+            "\u5e73\u9759", "\u60c5\u7eea\u8fd8\u597d", "\u72b6\u6001\u7a33\u5b9a", "calm",
+        )),
+        ("emotion_state", "emotional_recovery", 3, (
+            "\u7f13\u8fc7\u6765", "\u6062\u590d", "\u597d\u8f6c", "recovering",
+        )),
+        ("worry_thought", "worry_control", 3, (
+            "\u63a7\u5236\u4e0d\u4f4f", "\u505c\u4e0d\u4e0b\u6765", "cannot control",
+        )),
+        ("sleep", "unrefreshing_sleep", 3, (
+            "\u7761\u591a\u4e45\u90fd\u7f13\u4e0d\u8fc7\u6765", "\u7761\u9192\u4e5f\u7d2f", "unrefreshing sleep",
+        )),
         ("worry_thought", "overthinking", 3, (
             "\u8111\u5b50\u505c\u4e0d\u4e0b\u6765", "\u60f3\u5f88\u4e45",
             "\u53cd\u590d\u60f3", "\u601d\u7eea", "racing mind",
         )),
         ("irritability", "irritability_anger", 3, (
             "\u70e6\u8e81", "\u53d1\u706b", "\u6613\u6012", "\u6ca1\u8010\u5fc3",
-            "\u751f\u6c14", "irritable",
+            "\u751f\u6c14", "\u5d29\u6e83", "irritable",
         )),
         ("mood_interest", "low_mood", 3, (
             "\u4f4e\u843d", "\u96be\u8fc7", "\u60f3\u54ed", "\u5f00\u5fc3\u4e0d\u8d77\u6765",
@@ -336,6 +348,15 @@ def _supplement_grounded_items(
         ("physical_signal", "sweating", "sweating", (
             "\u51fa\u6c57", "sweating",
         )),
+        ("physical_signal", "head_heaviness", "head_heaviness", (
+            "\u5934\u6c89", "\u5934\u91cd", "heavy head",
+        )),
+        ("physical_signal", "limb_fatigue", "limb_fatigue", (
+            "\u56db\u80a2\u4e4f\u529b", "\u8170\u819d\u9178\u8f6f", "limb fatigue",
+        )),
+        ("physical_signal", "neck_tension", "neck_tension", (
+            "\u80a9\u9888\u7d27\u5f20", "\u9888\u90e8\u7d27\u5f20", "neck tension",
+        )),
         ("duration", "duration", "2_weeks_to_1_month", (
             "\u6700\u8fd1\u4e24\u5468", "\u8fd9\u4e24\u5468",
         )),
@@ -343,17 +364,33 @@ def _supplement_grounded_items(
             "\u6700\u8fd1", "\u8fd9\u6bb5\u65f6\u95f4", "lately",
         )),
     )
+    terms_by_label: dict[str, tuple[str, ...]] = {}
+    for _category, label, _value, terms in specs:
+        terms_by_label[label] = (*terms_by_label.get(label, ()), *terms)
+    result = [
+        item
+        for item in result
+        if item.label not in terms_by_label
+        or any(term.casefold() in item.quote.casefold() for term in terms_by_label[item.label])
+    ]
+    result = [
+        item for item in result
+        if not (item.label == "calm_wellbeing" and "\u6709\u65f6\u5019" in item.quote)
+    ]
     labels = {item.label for item in result}
     for category, label, value, terms in specs:
         quote = next((term for term in terms if term.casefold() in lowered), None)
         if quote is None:
             continue
+        if label == "calm_wellbeing" and "\u6709\u65f6\u5019" in lowered:
+            continue
         existing = [item for item in result if item.label == label]
         if existing:
             should_upgrade = all(
-                item.polarity == "present"
-                and type(item.value) is int
-                and item.value < 2
+                item.polarity == "present" and (
+                    type(item.value) is not int
+                    or item.value < 2
+                )
                 for item in existing
             )
             if not should_upgrade:
