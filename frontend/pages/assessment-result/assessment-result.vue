@@ -411,6 +411,7 @@ export default {
         return
       }
 
+      this.operationError = ""
       uni.showLoading({ title: "更新评估..." })
       try {
         const answers = this.followUpQuestions.map((q) => ({
@@ -490,6 +491,7 @@ export default {
         uni.showToast({ title: "请描述需要修正的内容", icon: "none" })
         return
       }
+      this.operationError = ""
       this.confirming = true
       uni.showLoading({ title: "提交修正..." })
       try {

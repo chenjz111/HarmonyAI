@@ -1,3 +1,5 @@
+import { safeUiError } from './safe-ui-error.js'
+
 export function createAssessmentFlow(assessment = {}) {
   return { assessment: { ...assessment }, correctionText: '', confirmationStatus: 'idle', confirmationError: '', canRetry: false }
 }
@@ -15,5 +17,6 @@ export function workflowPayload(state, session) {
 }
 
 export function confirmationFailed(state, error = {}) {
-  return { ...state, confirmationStatus: 'error', confirmationError: error.message || '确认失败，请重试', canRetry: true }
+  const safe = safeUiError(error, 'CONFIRMATION_FAILED')
+  return { ...state, confirmationStatus: 'error', confirmationError: safe.message, canRetry: true }
 }

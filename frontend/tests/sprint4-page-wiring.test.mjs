@@ -7,8 +7,8 @@ import { resolveAuthoritativeMusic, workflowGate } from '../common/workflow-gate
 import { safeUiError } from '../common/safe-ui-error.js'
 
 test('OCR failed exposes retry/manual/skip and never success or assessment navigation', () => {
-  const state = applyOcrResponse(createDocumentPageState(), { status: 'failed', error_code: 'OCR_FAILED', message: '识别暂不可用' })
-  assert.equal(state.mode, 'failed'); assert.equal(state.errorCode, 'OCR_FAILED'); assert.equal(state.message, '识别暂不可用')
+  const state = applyOcrResponse(createDocumentPageState(), { ocr_status: 'failed', degradation: { reason_code: 'OCR_TIMEOUT', message: 'provider stack must stay private' } })
+  assert.equal(state.mode, 'failed'); assert.equal(state.errorCode, 'OCR_TIMEOUT'); assert.equal(state.message, 'OCR 识别超时，请重试、手动输入或跳过。')
   assert.deepEqual(documentActions(state), ['retry', 'manual', 'skip']); assert.equal(state.canConfirm, false); assert.equal(state.navigateAssessment, false)
 })
 

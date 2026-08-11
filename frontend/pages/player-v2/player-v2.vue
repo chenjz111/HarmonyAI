@@ -28,7 +28,7 @@
       @fallback="returnToAssessment"
     />
 
-<!-- 播放器主体 -->
+    <!-- 播放器主体 -->
     <view v-else-if="status === 'success'">
       <!-- 沉浸式封面 -->
       <view class="cover-section">
@@ -178,9 +178,6 @@ export default {
         })
         this.initAudio()
         this.status = 'success'
-        if (prescription.status === 'blocked_safety' || music.status === 'degraded') {
-          uni.showToast({ title: '已切换为辅助舒缓音乐', icon: 'none', duration: 2500 })
-        }
       } catch (error) {
         const business = { SAFETY_BLOCKED: '请优先关注当前安全状态', DIAGNOSIS_ABSTAINED: '当前信息不足', NEEDS_FOLLOW_UP: '请先完成补充问题', NOT_CONFIRMED: '请先确认最新评估', PRESCRIPTION_MISSING: '暂未形成权威音乐处方' }
         if (business[error.code]) { this.status = 'business'; this.businessTitle = business[error.code]; this.errorMsg = error.message }

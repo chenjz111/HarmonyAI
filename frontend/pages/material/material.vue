@@ -90,6 +90,13 @@
     <view v-if="ocrMode === 'failed'" class="file-actions">
       <view class="file-action" @click="skip"><text class="file-action-text">跳过材料</text></view>
     </view>
+    <view v-if="ocrMode === 'degraded'" class="file-actions">
+      <view class="file-action" @click="retryOcr"><text class="file-action-text">重新识别</text></view>
+      <view class="file-action" @click="useManualInput"><text class="file-action-text">转为手动输入</text></view>
+    </view>
+    <text v-if="ocrMode === 'failed' && ocrErrorCode" class="upload-hint">
+      错误代码：{{ ocrErrorCode }}
+    </text>
     <error-state
       v-if="status === 'error'"
       :title="'上传失败'"
