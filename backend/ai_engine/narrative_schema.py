@@ -358,7 +358,7 @@ def _supplement_grounded_items(
             "\u80a9\u9888\u7d27\u5f20", "\u9888\u90e8\u7d27\u5f20", "neck tension",
         )),
         ("duration", "duration", "2_weeks_to_1_month", (
-            "\u6700\u8fd1\u4e24\u5468", "\u8fd9\u4e24\u5468",
+            "\u6700\u8fd1\u4e24\u5468", "\u8fd9\u4e24\u5468", "two weeks",
         )),
         ("duration", "duration", "recurrent_unclear", (
             "\u6700\u8fd1", "\u8fd9\u6bb5\u65f6\u95f4", "lately",

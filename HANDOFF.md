@@ -182,3 +182,11 @@ yu    (羽调)      → 58   → 箫、古琴
 - 首次 formal 60-case：60/60 executed，5 PASS / 40 FAIL / 15 ERROR；Qwen AVAILABLE，safety recall 1.0，schema pass 0.75，Frozen threshold FAIL；机器结果已落盘。
 - ERROR subset 诊断：15 条中 13 条复现 `NARRATIVE_SCHEMA_ERROR`（缺少 `time_window`、非法 `polarity`、quote 非原文子串），2 条重跑恢复，属于本地 7B structured-output 非确定性；未消耗 Final 60-case。
 - 当前恢复点：PR #65 `e19ccb1`，CI SUCCESS、MERGEABLE；MySQL=`USER_CREDENTIAL_REQUIRED`；OCR/Android manual gate=PENDING。
+
+### S4-06 final recovery checkpoint (2026-08-12)
+
+- PR #65 branch: `fix/s4-06-integration`; latest saved evaluation commit before this status update: `7216a1d`.
+- Final real-Qwen 60-case run is complete and saved: 60/60 executed, 15 PASS / 40 FAIL / 5 ERROR; threshold FAIL.
+- Final automated regression: Full 535/535, Contract 30/30, Frontend 37/37, H5 PASS.
+- Remaining gates: emotion F1 0.6760563380 (<0.80), schema pass 0.9166666667 (<1.00), MySQL `USER_CREDENTIAL_REQUIRED`, OCR manual POC pending, Android manual pending.
+- Current status remains `AUTOMATED_ACCEPTANCE_FAILED`; do not run another full 60-case or proceed to release from this checkpoint.

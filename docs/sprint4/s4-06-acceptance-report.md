@@ -98,3 +98,13 @@ C051/C052/C053 已按 Contract/Data Owner 决定修订并经 production scorer �
 4. MySQL 等待正确凭证；OCR POC 与 Android 真机 Gate 保持人工 PENDING。
 
 在 Formal Evaluation 达到 Frozen P0 threshold 前，不得进入 v0.4.0 发布；当前严格状态为 `AUTOMATED_ACCEPTANCE_FAILED`。
+
+## Final automated checkpoint (authoritative, 2026-08-12)
+
+- Final real-Qwen evaluation: 60/60 executed; 15 PASS, 40 FAIL, 5 ERROR; Frozen threshold FAIL.
+- Final metrics: emotion F1 0.6760563380; event F1 0.8; physical F1 0.8; citation accuracy 1.0; unsupported rate 0.0; safety recall 1.0; schema pass 0.9166666667.
+- Automated regression at the final code checkpoint: Full 535/535 PASS; Contract 30/30 PASS; Frontend 37/37 PASS; H5 production build PASS.
+- MySQL: `USER_CREDENTIAL_REQUIRED` (service available; complete valid password not provided).
+- OCR: `MANUAL_OCR_POC_PENDING`.
+- Android: `MANUAL_ANDROID_TEST_PENDING`.
+- Overall status: `AUTOMATED_ACCEPTANCE_FAILED`; do not merge/release Sprint 4 as accepted.

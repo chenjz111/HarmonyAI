@@ -352,3 +352,11 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 首次 formal 60 已落盘：5 PASS / 40 FAIL / 15 ERROR；真实 Qwen AVAILABLE，safety recall 1.0，schema pass 0.75，threshold FAIL。
 - ERROR subset 诊断：15 条中 13 条复现 `NARRATIVE_SCHEMA_ERROR`（time_window/polarity/quote 约束），2 条重跑恢复，归类为本地 7B structured-output 非确定性；未执行 Final 60-case。
 - 当前恢复点：PR #65 `e19ccb1`，CI SUCCESS、MERGEABLE；MySQL=`USER_CREDENTIAL_REQUIRED`，OCR/Android manual gate=PENDING。
+
+### S4-06 final recovery checkpoint (2026-08-12)
+
+- Final real-Qwen evaluation is persisted at commit `7216a1d`: 60/60 executed, 15 PASS / 40 FAIL / 5 ERROR; Frozen threshold FAIL.
+- Final automated regression on the follow-up duration compatibility fix: Full 535/535, Contract 30/30, Frontend 37/37, H5 PASS.
+- Formal blockers: emotion F1 0.6760563380 and schema pass 0.9166666667 remain below Frozen P0 thresholds.
+- Environment/manual gates: MySQL `USER_CREDENTIAL_REQUIRED`; OCR `MANUAL_OCR_POC_PENDING`; Android `MANUAL_ANDROID_TEST_PENDING`.
+- Resume from PR #65 `fix/s4-06-integration`; do not run a third full 60-case and do not claim S4-06 acceptance or release readiness.
