@@ -354,6 +354,20 @@ def run_real_workflow_v21(
     }
 
 
+def continue_real_workflow_v21(*, assessment: Mapping[str, object], provider: object | None = None, knowledge_store: Any | None = None, music_catalog: Sequence[Mapping[str, object]] = ()) -> dict[str, object]:
+    assessment = dict(assessment)
+    confirmation_status = "blocked_safety" if assessment.get("status") == "blocked_safety" else "confirmed"
+    if assessment.get("status") != "confirmed" or assessment.get("confirmation_level") != "fully_accurate":
+        confirmation_status = "needs_confirmation"
+    if assessment.get("follow_up_questions"):
+        confirmation_status = "needs_follow_up"
+    diagnosis = prescription = music = None
+    if confirmation_status == "confirmed":
+        diagnosis = run_diagnosis_v21(assessment, provider=provider)
+        if diagnosis.get("abstained") is not True:
+            prescription = run_prescription_v2(diagnosis, knowledge_store=knowledge_store)
+            music = match_music_v2(prescription, music_catalog)
+    return {"assessment": assessment, "confirmation": {"status": confirmation_status}, "diagnosis": diagnosis, "prescription": prescription, "music": music, "feedback": {"status": "not_submitted"}, "agent_statuses": {"assessment": str(assessment.get("status", "unknown")), "confirmation": confirmation_status, "diagnosis": _status(diagnosis or {}), "prescription": _status(prescription or {}), "music": _status(music or {}), "feedback": "not_submitted"}, "degradations": {"assessment": _degradation(assessment), "diagnosis": _degradation(diagnosis or {}), "prescription": _degradation(prescription or {}), "music": _degradation(music or {})}}
 def _mapping_value(value: object) -> dict[str, object]:
     return dict(value) if isinstance(value, Mapping) else {}
 

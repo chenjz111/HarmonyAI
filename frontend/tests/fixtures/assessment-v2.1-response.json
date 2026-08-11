@@ -1,0 +1,96 @@
+{
+  "agent_id": "assessment_agent",
+  "assessment_id": "asmt_fixture_001",
+  "session_id": "sess_fixture_001",
+  "user_id": "demo_user_001",
+  "status": "success",
+  "revision": 1,
+  "analysis_mode": "questionnaire_only",
+  "confidence": 1.0,
+  "confidence_semantics": "evidence_coverage",
+  "input_processing_status": {
+    "questionnaire": {
+      "version": "questionnaire_v2.1",
+      "status": "processed",
+      "questions_answered": 20,
+      "dimensions_scored": 12,
+      "safety_flags": []
+    },
+    "narrative": {
+      "status": "skipped",
+      "text_length": 0,
+      "evidence_items_extracted": 0,
+      "warnings": []
+    },
+    "document": {
+      "status": "skipped",
+      "evidence_items_extracted": 0,
+      "warnings": []
+    }
+  },
+  "emotion_profile": {
+    "dimension_scores": {
+      "tension_worry": 100,
+      "overthinking": 0,
+      "irritability_anger": 0,
+      "low_mood": 0,
+      "interest_loss": 0,
+      "fear_unease": 0,
+      "sleep_disturbance": 0,
+      "low_energy": 0,
+      "appetite_change": 0,
+      "body_tension": 0,
+      "daily_impact": 0,
+      "social_function": 0
+    }
+  },
+  "physical_profile": {
+    "physical_signals": []
+  },
+  "life_events": {
+    "triggers": []
+  },
+  "user_goal": "relax",
+  "assessment_summary": "已根据可追溯来源生成状态评估，等待用户确认。",
+  "evidence_items": [
+    {
+      "evidence_id": "ev-questionnaire-tension_worry",
+      "category": "emotion",
+      "label": "tension_worry",
+      "display_name": "tension_worry",
+      "value": 4,
+      "polarity": "present",
+      "severity": "severe",
+      "severity_display": "severe",
+      "time_window": "过去两周",
+      "source_type": "questionnaire",
+      "source_ref": "questionnaire:q03_tension_frequency",
+      "confirmed": true,
+      "dimension_score": 100
+    }
+  ],
+  "evidence_coverage_score": 1.0,
+  "source_diversity": {
+    "count": 1,
+    "sources": [
+      "questionnaire"
+    ]
+  },
+  "conflicts": [],
+  "missing_information": [],
+  "follow_up_questions": [],
+  "requires_user_confirmation": true,
+  "safety_flags": [],
+  "degradation": {
+    "active": false,
+    "reason_codes": []
+  },
+  "warnings": [],
+  "revision_metadata": {
+    "revision": 1,
+    "created_at": "2026-08-11T00:00:00+00:00",
+    "previous_revision": null,
+    "changes": []
+  },
+  "disclaimer": "本结果仅用于状态评估与音乐调养参考，不构成医学诊断或治疗建议。"
+}

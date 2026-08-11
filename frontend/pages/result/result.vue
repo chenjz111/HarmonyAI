@@ -99,7 +99,15 @@ export default {
       return '当前输入出现需要进一步关注的风险信号。本系统不能代替医生或心理咨询师；如有严重胸痛、呼吸困难或自伤想法，请立即联系当地急救或专业人员。'
     }
   },
-  onLoad() { this.loadResult() },
+  onLoad(options) {
+    // Sprint 4 结果页已迁移到 assessment-result，老 URL 自动跳转
+    const params = Object.entries(options || {})
+      .filter(([_, v]) => v !== undefined && v !== null)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&')
+    const url = '/pages/assessment-result/assessment-result' + (params ? '?' + params : '')
+    uni.redirectTo({ url })
+  },
   methods: {
     loadResult() {
       try {

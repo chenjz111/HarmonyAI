@@ -237,6 +237,12 @@ def require_current_revision(
     return current
 
 
+def current_confirmed_snapshot(db: Session, assessment_id: str, revision: int) -> dict[str, Any]:
+    current = require_current_revision(db, assessment_id, revision)
+    snapshot = snapshot_of(current)
+    if snapshot.get("status") != "confirmed" or snapshot.get("confirmation_level") != "fully_accurate":
+        raise AssessmentContractError("ASSESSMENT_NOT_CONFIRMED", "Latest assessment revision is not confirmed")
+    return snapshot
 def append_revision(
     db: Session,
     *,

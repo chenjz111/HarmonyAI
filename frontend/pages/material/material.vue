@@ -53,8 +53,23 @@
       </view>
     </view>
 
-    <view v-if="extractedText" class="file-card ocr-confirm-card">
-      <text class="upload-title">请确认识别文字</text>
+    <!-- OCR 处理中 -->
+    <view v-if="uploading" class="ocr-loading-card">
+      <view class="ocr-loading-orb">
+        <view class="ocr-orb-ring"></view>
+        <text class="ocr-orb-text">识</text>
+      </view>
+      <text class="ocr-loading-title">OCR 识别中</text>
+      <text class="ocr-loading-desc">正在用 PaddleOCR 识别材料文字...</text>
+    </view>
+
+    <view v-if="documentId && (ocrMode === 'success' || ocrMode === 'degraded' || ocrMode === 'manual')" class="file-card ocr-confirm-card">
+      <view class="ocr-confirm-header">
+        <text class="upload-title">请确认识别文字</text>
+        <view v-if="ocrInfo" class="ocr-confidence-tag">
+          <text class="ocr-confidence-text">置信度 {{ Math.round((ocrInfo.confidence || 0) * 100) }}%</text>
+        </view>
+      </view>
       <text class="upload-hint">OCR 仅作辅助，识别有误时请直接修改</text>
       <textarea
         v-model="extractedText"
@@ -63,6 +78,25 @@
         style="width: 100%; min-height: 220rpx; margin-top: 20rpx;"
       />
     </view>
+    <error-state
+      v-if="ocrMode === 'failed'"
+      title="OCR 识别失败"
+      :message="ocrSafeMessage"
+      :showFallback="true"
+      fallbackText="手动输入"
+      @retry="retryOcr"
+      @fallback="useManualInput"
+    />
+    <view v-if="ocrMode === 'failed'" class="file-actions">
+      <view class="file-action" @click="skip"><text class="file-action-text">跳过材料</text></view>
+    </view>
+    <view v-if="ocrMode === 'degraded'" class="file-actions">
+      <view class="file-action" @click="retryOcr"><text class="file-action-text">重新识别</text></view>
+      <view class="file-action" @click="useManualInput"><text class="file-action-text">转为手动输入</text></view>
+    </view>
+    <text v-if="ocrMode === 'failed' && ocrErrorCode" class="upload-hint">
+      错误代码：{{ ocrErrorCode }}
+    </text>
     <error-state
       v-if="status === 'error'"
       :title="'上传失败'"
@@ -91,6 +125,8 @@ import ProgressBar from '@/components/sprint3/progress-bar.vue'
 import ErrorState from '@/components/sprint3/error-state.vue'
 import { confirmDocument, uploadDocument } from '@/common/api-v2.js'
 import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
+import { applyOcrResponse, createDocumentPageState, enterManualMode } from '@/common/document-page-state.js'
+import { safeUiError } from '@/common/safe-ui-error.js'
 
 export default {
   components: { ProgressBar, ErrorState },
@@ -102,7 +138,12 @@ export default {
       documentId: '',
       extractedText: '',
       status: 'idle',
-      errorMsg: ''
+      errorMsg: '',
+      uploading: false,
+      ocrInfo: null,
+      ocrMode: 'idle',
+      ocrErrorCode: '',
+      ocrSafeMessage: ''
     }
   },
   computed: {
@@ -151,6 +192,18 @@ export default {
       this.isImage = false
       this.documentId = ''
       this.extractedText = ''
+      this.ocrInfo = null
+      this.uploading = false
+      this.ocrMode = 'idle'
+      this.ocrErrorCode = ''
+      this.ocrSafeMessage = ''
+    },
+    retryOcr() { this.documentId = ''; this.ocrMode = 'idle'; this.next() },
+    useManualInput() {
+      const state = enterManualMode({ ...createDocumentPageState(), text: this.extractedText })
+      this.ocrMode = state.mode
+      this.extractedText = state.text
+      this.ocrSafeMessage = state.message
     },
     skip() {
       updateSprint3Session({
@@ -161,23 +214,45 @@ export default {
       uni.navigateTo({ url: '/pages/narrative/narrative' })
     },
     async next() {
-      if (!this.filePath) return
+      if (!this.filePath || this.uploading) return
       this.status = 'idle'
       try {
         const session = getSprint3Session()
         if (!this.documentId) {
+          this.uploading = true
           const uploaded = await uploadDocument({
             filePath: this.filePath,
             sessionId: session.session_id,
             consentConfirmed: true
           })
+          this.uploading = false
           this.documentId = uploaded.document_id
+          const ocrState = applyOcrResponse(createDocumentPageState(), uploaded)
+          this.ocrMode = ocrState.mode
+          this.extractedText = ocrState.text
+          this.ocrErrorCode = ocrState.errorCode
+          this.ocrSafeMessage = ocrState.message
+          if (ocrState.mode === 'failed') return
+
+          // 降级处理
+          if (ocrState.mode === 'degraded') {
+            this.ocrInfo = { confidence: uploaded.average_confidence || 0, degraded: true }
+            updateSprint3Session({ document_id: uploaded.document_id })
+            return
+          }
+
           this.extractedText = uploaded.extracted_text || ''
+          this.ocrInfo = {
+            confidence: uploaded.average_confidence || 0,
+            engine: uploaded.ocr_provider || 'paddleocr',
+            evidenceCount: uploaded.evidence_items_extracted || 0,
+          }
           updateSprint3Session({ document_id: uploaded.document_id })
           uni.showToast({ title: '请确认识别文字', icon: 'none' })
           return
         }
         const confirmed = await confirmDocument(this.documentId, {
+          sessionId: session.session_id,
           confirmed: true,
           documentText: this.extractedText
         })
@@ -188,8 +263,9 @@ export default {
         })
         uni.navigateTo({ url: '/pages/narrative/narrative' })
       } catch (error) {
+        this.uploading = false
         this.status = 'error'
-        this.errorMsg = error.message || '上传失败，请检查网络'
+        this.errorMsg = safeUiError(error, 'BACKEND_UNAVAILABLE').message
       }
     }
   }
@@ -408,6 +484,38 @@ export default {
 .file-action.danger .file-action-text {
   color: #C85A45;
 }
+
+/* OCR 处理中 */
+.ocr-loading-card {
+  background: #FCFAF6;
+  border-radius: 32rpx;
+  padding: 72rpx 40rpx;
+  text-align: center;
+  border: 1rpx solid #E8E2D5;
+  box-shadow: 0 6rpx 20rpx rgba(74, 107, 92, 0.06);
+  margin-bottom: 24rpx;
+}
+.ocr-loading-orb {
+  width: 140rpx; height: 140rpx; margin: 0 auto 32rpx;
+  position: relative; display: flex; align-items: center; justify-content: center;
+}
+.ocr-orb-ring {
+  position: absolute; width: 140rpx; height: 140rpx;
+  border-radius: 50%; border: 3rpx solid #EEF1ED; border-top-color: #4A6B5C;
+  animation: ocr-spin 1.2s linear infinite;
+}
+@keyframes ocr-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.ocr-orb-text { font-size: 44rpx; color: #4A6B5C; font-weight: 700; font-family: 'Kaiti SC', serif; }
+.ocr-loading-title { font-size: 32rpx; font-weight: 600; color: #2C2A28; display: block; margin-bottom: 8rpx; }
+.ocr-loading-desc { font-size: 24rpx; color: #9C9585; }
+
+/* OCR 确认头部 */
+.ocr-confirm-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4rpx; }
+.ocr-confidence-tag {
+  padding: 6rpx 16rpx; border-radius: 20rpx;
+  background: #EEF1ED; border: 1rpx solid #C8D2CB;
+}
+.ocr-confidence-text { font-size: 22rpx; color: #4A6B5C; font-weight: 600; }
 
 /* 底部按钮 */
 .btn-group {
