@@ -10,6 +10,7 @@ import {
   musicRequest,
   workflowRequest,
 } from "../common/api-contract-v2.js"
+import { applyExclusiveChoice, safetyFlowForAnswer } from "../common/questionnaire-rules.js"
 
 
 const questionnaire = JSON.parse(readFileSync(
@@ -93,3 +94,65 @@ test("confirmed workflow and music use real existing endpoints", () => {
   })
 })
 
+
+
+test("Frozen questionnaire safety and none exclusivity are enforced in the UI layer", () => {
+  assert.deepEqual(applyExclusiveChoice("q16_physical_signals", ["neck_tension"], "none"), ["none"])
+  assert.deepEqual(applyExclusiveChoice("q20_emergency", ["none"], "severe_chest_pain"), ["severe_chest_pain"])
+  assert.equal(safetyFlowForAnswer("q19_self_harm", "never"), null)
+  assert.equal(safetyFlowForAnswer("q19_self_harm", "fleeting"), "SAFETY_SELF_HARM")
+  assert.equal(safetyFlowForAnswer("q20_emergency", ["none"]), null)
+  assert.equal(safetyFlowForAnswer("q20_emergency", ["severe_breathing_difficulty"]), "SAFETY_EMERGENCY_PHYSICAL")
+})
+
+test("public API client sends real Frozen requests and unwraps responses", async () => {
+  const calls = []
+  globalThis.uni = {
+    request(options) {
+      calls.push(options)
+      options.success({ data: { success: true, data: { accepted: true } } })
+    },
+  }
+  const api = await import("../common/api-v2.js?behavior-test=1")
+  await api.confirmDocument("doc-1", {
+    sessionId: "sess-1", confirmed: true, documentText: "edited",
+  })
+  await api.submitFollowUpAnswers("asmt-1", 2, [
+    { follow_up_id: "fu-1", answer: "answer" },
+  ])
+  await api.confirmAssessment("asmt-1", {
+    revision: 3, confirmationLevel: "fully_accurate",
+  })
+  assert.deepEqual(calls.map(({ url, method, data }) => ({ url, method, data })), [
+    {
+      url: "http://localhost:8000/api/v2/documents/doc-1/confirmation",
+      method: "PATCH",
+      data: {
+        session_id: "sess-1", confirmed: true, document_text: "edited",
+        redactions_confirmed: true,
+      },
+    },
+    {
+      url: "http://localhost:8000/api/v2/assessments/asmt-1/follow-up",
+      method: "POST",
+      data: { revision: 2, answers: [{ follow_up_id: "fu-1", answer: "answer" }] },
+    },
+    {
+      url: "http://localhost:8000/api/v2/assessments/asmt-1/confirmation",
+      method: "PATCH",
+      data: { revision: 3, confirmation_level: "fully_accurate", corrections: [] },
+    },
+  ])
+  delete globalThis.uni
+})
+
+test("Sprint 4 Vue 3 pages do not call removed this.$set", () => {
+  for (const page of [
+    "../pages/questionnaire-v2/questionnaire-v2.vue",
+    "../pages/quick-state/quick-state.vue",
+    "../pages/assessment-result/assessment-result.vue",
+  ]) {
+    const source = readFileSync(new URL(page, import.meta.url), "utf8")
+    assert.equal(source.includes("this.$set"), false, page + " still uses Vue 2 this.$set")
+  }
+})

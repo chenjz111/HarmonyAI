@@ -79,7 +79,8 @@
 
 <script>
 import { quickStateV1 } from "@/common/questionnaire-data.js"
-import { submitQuickState, loadSession, saveSession } from "@/common/api-v2.js"
+import { createSession } from "@/common/api-v2.js"
+import { getSprint3Session, updateSprint3Session } from "@/common/sprint3-session.js"
 
 export default {
   data() {
@@ -118,11 +119,11 @@ export default {
 
   methods: {
     onSliderChange(questionId, e) {
-      this.$set(this.answers, questionId, e.detail.value)
+      this.answers[questionId] = e.detail.value
     },
 
     onSelectGoal(value) {
-      this.$set(this.answers, this.goalQuestion.question_id, value)
+      this.answers[this.goalQuestion.question_id] = value
     },
 
     async handleSubmit() {
@@ -130,44 +131,32 @@ export default {
         uni.showToast({ title: "请完成所有题目", icon: "none" })
         return
       }
-
       this.submitting = true
-      uni.showLoading({ title: "提交中..." })
-
       try {
-        let session = loadSession()
-        if (!session) {
-          const { createSession } = await import("@/common/api-v2.js")
-          session = await createSession({ entry_mode: "quick" })
-          saveSession(session)
+        let session = getSprint3Session()
+        if (!session.session_id) {
+          const created = await createSession({ entry_mode: "quick" })
+          session = updateSprint3Session({ session_id: created.session_id, user_id: "demo_user_001" })
         }
-
-        const answersArray = this.questions.map((q) => ({
+        const answers = this.questions.map((q) => ({
           question_id: q.question_id,
           value: this.answers[q.question_id],
         }))
-
-        const result = await submitQuickState({
-          sessionId: session.session_id,
-          phase: this.phase,
-          answers: answersArray,
+        updateSprint3Session({
+          [this.phase === "pre_listening" ? "quick_state_pre" : "quick_state_post"]: {
+            schema_version: "quick_state_v1",
+            answers,
+          },
         })
-
-        uni.showToast({ title: "提交成功", icon: "success" })
-
-        // 听前 → 跳到音乐播放页；听后 → 跳到反馈页
-        setTimeout(() => {
-          if (this.phase === "pre_listening") {
-            uni.redirectTo({ url: "/pages/player-v2/player-v2?quick_state=true" })
-          } else {
-            uni.redirectTo({ url: "/pages/feedback-v2/feedback-v2?post_quick=true" })
-          }
-        }, 1000)
+        if (this.phase === "pre_listening") {
+          uni.redirectTo({ url: "/pages/player-v2/player-v2?quick_state=true" })
+        } else {
+          uni.redirectTo({ url: "/pages/feedback-v2/feedback-v2?post_quick=true" })
+        }
       } catch (err) {
-        uni.showToast({ title: err.message || "提交失败", icon: "none", duration: 3000 })
+        uni.showToast({ title: err.message || "保存失败", icon: "none" })
       } finally {
         this.submitting = false
-        uni.hideLoading()
       }
     },
   },

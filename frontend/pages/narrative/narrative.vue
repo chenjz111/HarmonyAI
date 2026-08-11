@@ -146,7 +146,6 @@
 <script>
 import ProgressBar from '@/components/sprint3/progress-bar.vue'
 import ErrorState from '@/components/sprint3/error-state.vue'
-import { submitNarrative, getNarrativeStatus } from '@/common/api-v2.js'
 import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
 
 export default {
@@ -183,55 +182,15 @@ export default {
     async submitNarrative() {
       const text = this.narrativeText.trim()
       if (!text) return this.skip()
-
       this.phase = 'processing'
-      this.procStep = 0
-      this.processingMessage = '正在预处理文本...'
-
+      this.processingMessage = '正在保存你的描述...'
       try {
-        const session = getSprint3Session()
-
-        // 步骤动画
-        const advanceStep = async (step, msg, delay = 700) => {
-          this.procStep = step
-          this.processingMessage = msg
-          await new Promise(r => setTimeout(r, delay))
-        }
-
-        await advanceStep(1, '正在预处理文本...')
-        const result = await submitNarrative({ sessionId: session?.session_id, text })
-        await advanceStep(2, '正在提取情绪与事件...')
-        await advanceStep(3, '正在结构化证据...')
-
-        // 轮询状态（mock 直接返回 processed）
-        let status
-        try {
-          status = await getNarrativeStatus(session?.session_id)
-        } catch (e) {
-          status = { status: 'processed', evidence_items_extracted: result?.evidence_items_extracted || 0 }
-        }
-
         updateSprint3Session({ narrative_text: text, narrative_skipped: false })
-
-        if (status?.status === 'processed' || result?.processing_status === 'processed') {
-          this.narrativeResult = {
-            evidence_count: status?.evidence_items_extracted ?? result?.evidence_items_extracted ?? 0,
-            confidence: status?.extraction_confidence_avg ?? result?.extraction_confidence_avg ?? 0,
-          }
-          this.phase = 'done'
-        } else if (status?.status === 'degraded' || result?.processing_status === 'degraded') {
-          this.phase = 'degraded'
-        } else {
-          // 未知状态，当作完成处理
-          this.narrativeResult = {
-            evidence_count: result?.evidence_items_extracted ?? 0,
-            confidence: result?.extraction_confidence_avg ?? 0,
-          }
-          this.phase = 'done'
-        }
+        this.narrativeResult = { evidence_count: 0, confidence: null }
+        this.phase = 'done'
       } catch (err) {
         this.phase = 'error'
-        this.errorMsg = err.message || '文本分析失败，可跳过此步继续'
+        this.errorMsg = '描述保存失败，可跳过此步继续'
       }
     },
 
