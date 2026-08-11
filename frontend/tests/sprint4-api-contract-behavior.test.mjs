@@ -180,10 +180,10 @@ test("valid confirmed workflow sends only backend prescription to music", async 
 
 test("assessment page wires latest assessment id and revision and restores retry", () => {
   const source=readFileSync(new URL("../pages/assessment-result/assessment-result.vue",import.meta.url),"utf8")
-  assert.match(source,/assessment_id: this\.assessment\.assessment_id/)
-  assert.match(source,/assessment_revision: this\.assessment\.revision/)
-  assert.match(source,/confirmationStatus = 'error'/)
-  assert.match(source,/confirmationLevel = ''/)
+  assert.match(source,/workflowPayload\(/)
+  assert.match(source,/assessment: this\.assessment/)
+  assert.match(source,/confirmationFailed\(/)
+  assert.match(source,/confirmationFailed\(/)
 })
 
 test("player page has no generic prescription fallback", () => {

@@ -79,6 +79,18 @@
       />
     </view>
     <error-state
+      v-if="ocrMode === 'failed'"
+      title="OCR 识别失败"
+      :message="ocrSafeMessage"
+      :showFallback="true"
+      fallbackText="手动输入"
+      @retry="retryOcr"
+      @fallback="useManualInput"
+    />
+    <view v-if="ocrMode === 'failed'" class="file-actions">
+      <view class="file-action" @click="skip"><text class="file-action-text">跳过材料</text></view>
+    </view>
+    <error-state
       v-if="status === 'error'"
       :title="'上传失败'"
       :message="errorMsg"
@@ -106,6 +118,8 @@ import ProgressBar from '@/components/sprint3/progress-bar.vue'
 import ErrorState from '@/components/sprint3/error-state.vue'
 import { confirmDocument, uploadDocument } from '@/common/api-v2.js'
 import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
+import { applyOcrResponse, createDocumentPageState, enterManualMode } from '@/common/document-page-state.js'
+import { safeUiError } from '@/common/safe-ui-error.js'
 
 export default {
   components: { ProgressBar, ErrorState },
@@ -120,7 +134,9 @@ export default {
       errorMsg: '',
       uploading: false,
       ocrInfo: null,
-      ocrMode: 'idle'
+      ocrMode: 'idle',
+      ocrErrorCode: '',
+      ocrSafeMessage: ''
     }
   },
   computed: {
@@ -171,6 +187,16 @@ export default {
       this.extractedText = ''
       this.ocrInfo = null
       this.uploading = false
+      this.ocrMode = 'idle'
+      this.ocrErrorCode = ''
+      this.ocrSafeMessage = ''
+    },
+    retryOcr() { this.documentId = ''; this.ocrMode = 'idle'; this.next() },
+    useManualInput() {
+      const state = enterManualMode({ ...createDocumentPageState(), text: this.extractedText })
+      this.ocrMode = state.mode
+      this.extractedText = state.text
+      this.ocrSafeMessage = state.message
     },
     skip() {
       updateSprint3Session({
@@ -194,27 +220,17 @@ export default {
           })
           this.uploading = false
           this.documentId = uploaded.document_id
-          this.ocrMode = uploaded.ocr_status === 'failed' ? 'failed' : (uploaded.ocr_status === 'degraded' || !uploaded.extracted_text ? 'degraded' : 'success')
+          const ocrState = applyOcrResponse(createDocumentPageState(), uploaded)
+          this.ocrMode = ocrState.mode
+          this.extractedText = ocrState.text
+          this.ocrErrorCode = ocrState.errorCode
+          this.ocrSafeMessage = ocrState.message
+          if (ocrState.mode === 'failed') return
 
           // 降级处理
-          if (uploaded.ocr_status === 'degraded' || !uploaded.extracted_text) {
-            this.ocrInfo = null
-            this.extractedText = ''
-            uni.showModal({
-              title: 'OCR 识别不可用',
-              content: '材料暂时无法自动识别，你可以手动输入文字或跳过此步。',
-              confirmText: '手动输入',
-              cancelText: '跳过',
-              success: (res) => {
-                if (res.confirm) {
-                  this.extractedText = ''
-                  this.ocrMode = 'manual'
-                  this.ocrInfo = { confidence: 0, degraded: true }
-                } else {
-                  this.skip()
-                }
-              }
-            })
+          if (ocrState.mode === 'degraded') {
+            this.ocrInfo = { confidence: uploaded.average_confidence || 0, degraded: true }
+            updateSprint3Session({ document_id: uploaded.document_id })
             return
           }
 
@@ -242,7 +258,7 @@ export default {
       } catch (error) {
         this.uploading = false
         this.status = 'error'
-        this.errorMsg = error.message || '上传失败，请检查网络'
+        this.errorMsg = safeUiError(error, 'BACKEND_UNAVAILABLE').message
       }
     }
   }
