@@ -6,14 +6,17 @@ from collections.abc import Iterable, Mapping, Sequence
 def evidence_coverage(
     evidence_dimensions: int,
     total_dimensions: int,
-    source_types: Iterable[str],
 ) -> float:
-    """Calculate the Sprint 4 evidence coverage score."""
+    """Calculate only the proportion of covered evidence dimensions."""
     if total_dimensions <= 0 or evidence_dimensions <= 0:
         return 0.0
-    dimension_ratio = min(1.0, evidence_dimensions / total_dimensions)
-    source_factor = min(1.0, len(set(source_types)) / 3)
-    return dimension_ratio * source_factor
+    return min(1.0, evidence_dimensions / total_dimensions)
+
+
+def source_diversity(source_types: Iterable[str]) -> dict[str, object]:
+    """Describe source diversity without changing evidence coverage."""
+    sources = sorted({source for source in source_types if isinstance(source, str)})
+    return {"count": len(sources), "sources": sources}
 
 
 def citation_accuracy(

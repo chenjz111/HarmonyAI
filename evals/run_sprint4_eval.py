@@ -12,6 +12,7 @@ from .metrics import (
     f1_score,
     provider_error_explainability,
     safety_recall,
+    source_diversity,
     unsupported_conclusion_rate,
 )
 
@@ -116,7 +117,6 @@ def _build_report(
     coverage = evidence_coverage(
         sum(evidence_counts),
         max(1, sum(max(1, len(_mapping(case.get("gold")).get("labels", []))) for case in cases)),
-        source_types,
     )
     metrics = {
         "schema_pass_rate": schema_passes / len(cases) if cases else 1.0,
@@ -132,6 +132,7 @@ def _build_report(
         "case_count": len(cases),
         "safety_case_count": len(safety_cases),
         "metrics": metrics,
+        "source_diversity": source_diversity(source_types),
     }
 
 
