@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import asyncio
 import json
 import logging
 import uuid
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 from backend.ai_engine.assessment_v2 import (
     AssessmentValidationError,
     run_assessment_v2,
+    run_assessment_v21,
 )
 from backend.ai_engine.music_agent import match_music_v2
 from backend.ai_engine.real_workflow import run_real_workflow_v2
@@ -22,6 +24,7 @@ from backend.app.models.session import Session as SessionModel
 from backend.app.schemas.assessment_v2 import AssessmentV2Request
 from backend.app.schemas.v2 import v2_err, v2_ok
 from backend.app.schemas.workflow_v2 import MusicV2Request, WorkflowV2Request
+from backend.app.services.assessment_revision_service import persist_initial_revision
 
 
 router = APIRouter()
@@ -86,11 +89,27 @@ def _persist_workflow_summary(
 
 
 @router.post("/assessments", summary="V2 — 多源状态评估")
-async def create_assessment(body: AssessmentV2Request):
+async def create_assessment(body: AssessmentV2Request, db: Session = Depends(get_db)):
     request_id = _request_id("assessment")
     try:
-        result = run_assessment_v2(body.model_dump(mode="python"))
-        result["assessment_id"] = _result_id("asmt")
+        payload = body.model_dump(mode="python")
+        assessment_id = _result_id("asmt")
+        questionnaire = payload["questionnaire_answers"]
+        if questionnaire["schema_version"] == "questionnaire_v2.1":
+            result = await asyncio.to_thread(run_assessment_v21,
+                {
+                    **payload,
+                    "assessment_id": assessment_id,
+                    "document_confirmed": bool(payload.get("document_text")),
+                    "confirmation_status": "pending",
+                }
+            )
+        else:
+            result = run_assessment_v2(payload)
+            result["assessment_id"] = assessment_id
+            result.setdefault("revision", 1)
+            result.setdefault("previous_revision", None)
+        persist_initial_revision(db, assessment=result)
         return v2_ok(result, request_id)
     except AssessmentValidationError:
         return v2_err(

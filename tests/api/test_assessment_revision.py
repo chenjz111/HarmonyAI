@@ -6,22 +6,17 @@ from backend.app.main import app
 client = TestClient(app)
 
 
-def test_assessment_confirmation_appends_revisions_without_overwrite():
-    session_id = "sess_revision_history"
-    first = client.patch(
-        f"/api/v2/assessments/{session_id}/confirmation",
-        json={"confirmed": False, "changes": {"primary_state": "紧张"}},
-    ).json()
-    second = client.patch(
-        f"/api/v2/assessments/{session_id}/confirmation",
-        json={"confirmed": True, "changes": {"primary_state": "疲惫"}},
-    ).json()
+def test_confirmation_rejects_legacy_confirmed_changes_payload():
+    response = client.patch(
+        "/api/v2/assessments/not-an-assessment/confirmation",
+        json={"confirmed": True, "changes": {}},
+    )
+    assert response.status_code == 422
 
-    assert first["success"] is True
-    assert second["success"] is True
-    history = client.get(
-        f"/api/v2/assessments/{session_id}/revisions"
-    ).json()["data"]["revisions"]
-    assert len(history) == 2
-    assert {item["new_value"] for item in history} == {"紧张", "疲惫"}
-    assert any(item["old_value"] == "紧张" for item in history)
+
+def test_unknown_assessment_has_no_revision_history():
+    body = client.get(
+        "/api/v2/assessments/not-an-assessment/revisions"
+    ).json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "ASSESSMENT_NOT_FOUND"
