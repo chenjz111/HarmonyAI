@@ -348,4 +348,5 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - PR #65 分支 `fix/s4-06-integration@499a905aca4ead914b3296958a5a9a70b18aed35`：C051/C052/C053 已修复，eval tests 16/16，正式数据 60/60 VALID。
 - Ollama 0.32.8 与本地 `qwen2.5:7b-instruct-q4_K_M`（digest `845dbda0ea48`）已就绪；模型健康检查及 sync/async Provider smoke 均 PASS。
 - 3-case smoke（C001/C021/S001）已完成：真实 Qwen 调用无 Provider/Schema ERROR，S001 safety PASS；普通案例仅有 model-quality 差异；targeted tests 18/18 PASS。
-- 下一门禁为 representative mini、formal 60；MySQL=`USER_CREDENTIAL_REQUIRED`，OCR/Android manual gate=PENDING。
+- Representative mini eval 共 8/8 执行完成，无 Provider/Schema ERROR；S001 safety PASS，普通案例差异为 model-quality。
+- 下一门禁为唯一一次 formal 60；MySQL=`USER_CREDENTIAL_REQUIRED`，OCR/Android manual gate=PENDING。
