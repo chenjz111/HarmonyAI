@@ -345,11 +345,21 @@ def _supplement_grounded_items(
     )
     labels = {item.label for item in result}
     for category, label, value, terms in specs:
-        if label in labels:
-            continue
         quote = next((term for term in terms if term.casefold() in lowered), None)
         if quote is None:
             continue
+        existing = [item for item in result if item.label == label]
+        if existing:
+            should_upgrade = all(
+                item.polarity == "present"
+                and type(item.value) is int
+                and item.value < 2
+                for item in existing
+            )
+            if not should_upgrade:
+                continue
+            result = [item for item in result if item.label != label]
+            labels.discard(label)
         result.append(_lexical_item(
             category=category,
             label=label,
