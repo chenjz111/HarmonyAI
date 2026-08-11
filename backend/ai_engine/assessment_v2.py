@@ -1008,7 +1008,6 @@ async def _run_assessment_v21_async(
     coverage = _v21_evidence_coverage(
         evidence,
         len(questionnaire.dimension_scores),
-        independent_sources=questionnaire.source.startswith("frozen"),
         dimension_labels=set(questionnaire.dimension_scores),
     )
     missing_information = _v21_missing_information(
@@ -1220,7 +1219,6 @@ def _v21_evidence_coverage(
     evidence: list[EvidenceItem],
     total_dimensions: int,
     *,
-    independent_sources: bool = False,
     dimension_labels: set[str] | None = None,
 ) -> float:
     if total_dimensions <= 0:
@@ -1231,11 +1229,7 @@ def _v21_evidence_coverage(
         if (item.get("confirmed") is True or item["source_type"] == "questionnaire")
         and (dimension_labels is None or item["label"] in dimension_labels)
     }
-    coverage = len(covered) / total_dimensions
-    if independent_sources:
-        return coverage
-    source_types = {item["source_type"] for item in evidence}
-    return coverage * min(1.0, len(source_types) / 3)
+    return len(covered) / total_dimensions
 
 
 def _v21_missing_information(
@@ -1247,15 +1241,6 @@ def _v21_missing_information(
 ) -> list[dict[str, object]]:
     missing: list[dict[str, object]] = []
     labels = {item["label"] for item in evidence}
-    if narrative_text is None and document_text is None and not questionnaire_source.startswith("frozen"):
-        missing.append(
-            {
-                "field": "supplementary_context",
-                "display_name": "补充描述或材料",
-                "reason": "当前只有问卷来源，缺少第二类可靠来源。",
-                "severity": "important",
-            }
-        )
     if "duration" not in labels and narrative_text is not None:
         missing.append(
             {
