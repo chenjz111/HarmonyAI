@@ -225,10 +225,10 @@ def test_physical_narrative_evidence_uses_canonical_label_as_value():
             NarrativeEvidence(
                 category="physical_signal",
                 label="chest_tightness",
-                value="?????",
+                value="tight chest",
                 polarity="present",
                 time_window=None,
-                quote="?????",
+                quote="tight chest",
                 source_ref="narrative:sentence_1",
                 extraction_confidence=0.9,
                 negated=False,

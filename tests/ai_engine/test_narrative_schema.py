@@ -204,50 +204,56 @@ async def test_extraction_keeps_quote_time_window_and_negation():
     assert result.status == "processed"
     assert result.evidence_quotes[0].quote in "最近两周晚上睡不好，但没有胸痛。"
     assert any(item.negated for item in result.items)
+
+
 @pytest.mark.asyncio
 async def test_extraction_prompt_requests_all_grounded_facts_as_separate_items():
     from backend.ai_engine.narrative_schema import extract_narrative
 
     provider = CapturingProvider()
     await extract_narrative(
-        "????????????????????",
+        "work pressure, racing mind, chest tightness",
         source_type="narrative",
         provider=provider,
     )
 
     prompt = provider.request.system_prompt
-    assert "????" in prompt
-    assert "????????" in prompt
-    assert "????" in prompt
-    assert "??" in prompt
+    assert "Scan every sentence" in prompt
+    assert "Emit different facts as separate items" in prompt
+    assert "work or exam pressure" in prompt.lower()
+    assert "chest tightness" in prompt.lower()
+
+
 @pytest.mark.asyncio
-async def test_life_event_translation_is_rejected_then_repaired_to_source_span():
+async def test_life_event_translation_falls_back_to_grounded_quote():
     from backend.ai_engine.narrative_schema import extract_narrative
 
-    base = {
-        "category": "life_event",
-        "label": "life_event",
-        "polarity": "present",
-        "time_window": None,
-        "quote": "???????",
-        "source_ref": "narrative:sentence_1",
-        "extraction_confidence": 0.9,
-        "negated": False,
-    }
-    provider = SequenceProvider(
-        {"items": [{**base, "value": "work_pressure"}]},
-        {"items": [{**base, "value": "????"}]},
+    provider = MockProvider(
+        {
+            "items": [
+                {
+                    "category": "life_event",
+                    "label": "life_event",
+                    "value": "work_pressure",
+                    "polarity": "present",
+                    "time_window": None,
+                    "quote": "work pressure is intense",
+                    "source_ref": "narrative:sentence_1",
+                    "extraction_confidence": 0.9,
+                    "negated": False,
+                }
+            ]
+        }
     )
 
     result = await extract_narrative(
-        "??????????",
+        "Recently, work pressure is intense.",
         source_type="narrative",
         provider=provider,
     )
 
     assert result.status == "processed"
-    assert result.items[0].value == "????"
-    assert len(provider.requests) == 2
+    assert result.items[0].value == "work pressure is intense"
 
 
 @pytest.mark.asyncio
@@ -256,9 +262,12 @@ async def test_extraction_prompt_requires_grounded_negated_items():
 
     provider = CapturingProvider()
     await extract_narrative(
-        "??????",
+        "I am not feeling low.",
         source_type="narrative",
         provider=provider,
     )
 
-    assert "????" in provider.request.system_prompt
+    prompt = provider.request.system_prompt
+    assert "negated statements" in prompt
+    assert "polarity=absent" in prompt
+    assert "negated=true" in prompt
