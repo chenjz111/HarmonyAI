@@ -17,14 +17,14 @@ from backend.ai_engine.assessment_v2 import (
     run_assessment_v21,
 )
 from backend.ai_engine.music_agent import match_music_v2
-from backend.ai_engine.real_workflow import run_real_workflow_v2
+from backend.ai_engine.real_workflow import run_real_workflow_v2, continue_real_workflow_v21
 from backend.app.core.database import get_db
 from backend.app.core.music_catalog import load_music_catalog
 from backend.app.models.session import Session as SessionModel
 from backend.app.schemas.assessment_v2 import AssessmentV2Request
 from backend.app.schemas.v2 import v2_err, v2_ok
 from backend.app.schemas.workflow_v2 import MusicV2Request, WorkflowV2Request
-from backend.app.services.assessment_revision_service import persist_initial_revision
+from backend.app.services.assessment_revision_service import persist_initial_revision, current_confirmed_snapshot
 
 
 router = APIRouter()
@@ -134,17 +134,23 @@ async def run_workflow(body: WorkflowV2Request, db: Session = Depends(get_db)):
     request_id = _request_id("workflow")
     try:
         payload = body.model_dump(mode="python")
-        result = run_real_workflow_v2(
-            user_id=payload["user_id"],
-            session_id=payload["session_id"],
-            questionnaire_answers=payload["questionnaire_answers"],
-            assessment_confirmed=payload["assessment_confirmed"],
-            document_id=payload.get("document_id"),
-            document_text=payload.get("document_text"),
-            narrative_text=payload.get("narrative_text"),
-            music_catalog=load_music_catalog(),
-            feedback_payload=payload.get("feedback_payload"),
-        )
+        if payload.get('assessment_id') and payload.get('assessment_revision'):
+            snapshot = current_confirmed_snapshot(db, payload['assessment_id'], payload['assessment_revision'])
+            if snapshot.get('session_id') != payload['session_id']:
+                raise ValueError('Assessment session mismatch')
+            result = continue_real_workflow_v21(assessment=snapshot, music_catalog=load_music_catalog())
+        else:
+            result = run_real_workflow_v2(
+                user_id=payload["user_id"],
+                session_id=payload["session_id"],
+                questionnaire_answers=payload["questionnaire_answers"],
+                assessment_confirmed=payload["assessment_confirmed"],
+                document_id=payload.get("document_id"),
+                document_text=payload.get("document_text"),
+                narrative_text=payload.get("narrative_text"),
+                music_catalog=load_music_catalog(),
+                feedback_payload=payload.get("feedback_payload"),
+            )
         assessment = result.get("assessment")
         if isinstance(assessment, dict):
             assessment["assessment_id"] = _result_id("asmt")

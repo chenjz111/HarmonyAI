@@ -260,6 +260,8 @@ export default {
       followUpAnswers: {},
       followUpSubmitted: false,
       confirming: false,
+      confirmationStatus: 'idle',
+      confirmationError: '',
       confirmationLevel: "",
       correctionText: "",
     }
@@ -299,14 +301,12 @@ export default {
     },
 
     emotionEntries() {
-      const ep = this.assessment.emotion_profile || {}
-      return Object.entries(ep).map(([key, val]) => ({
-        key,
-        display_name: val.display_name || this.dimDisplayName(key),
-        score: val.score,
-        severity: val.severity,
-        severity_display: val.severity_display,
-        source: val.source || "questionnaire",
+      const scores = this.assessment.emotion_profile?.dimension_scores
+      if (!scores || typeof scores !== "object" || Array.isArray(scores)) return []
+      return Object.entries(scores).map(([key, score]) => ({
+        key, display_name: this.dimDisplayName(key), score: Number(score),
+        severity: Number(score) >= 3 ? "severe" : Number(score) >= 2 ? "moderate" : Number(score) > 0 ? "mild" : "none",
+        severity_display: `${Number(score).toFixed(1)} / 4`, source: "multi_source",
       }))
     },
 
@@ -429,6 +429,8 @@ export default {
         narrative_text: session.narrative_text || null,
         questionnaire_answers: session.questionnaire_answers,
         assessment_confirmed: true,
+        assessment_id: this.assessment.assessment_id,
+        assessment_revision: this.assessment.revision,
       })
       updateSprint3Session({ workflow })
       return workflow
@@ -437,6 +439,8 @@ export default {
     async onConfirm(level) {
       if (this.confirming) return
       this.confirmationLevel = level
+      this.confirmationStatus = 'submitting'
+      this.confirmationError = ''
 
       if (level === "fully_accurate") {
         this.confirming = true
@@ -449,11 +453,15 @@ export default {
           this.assessment = result.assessment
           updateSprint3Session({ assessment: result.assessment, assessment_revision: result.revision.revision })
           await this.continueWorkflow()
+          this.confirmationStatus = 'success'
           uni.showToast({ title: "已确认，进入下一步", icon: "success" })
           setTimeout(() => {
             uni.redirectTo({ url: "/pages/player-v2/player-v2" })
           }, 1500)
         } catch (err) {
+          this.confirmationStatus = 'error'
+          this.confirmationError = err.message || '确认失败，请重试'
+          this.confirmationLevel = ''
           uni.showToast({ title: err.message || "操作失败", icon: "none" })
         } finally {
           this.confirming = false

@@ -130,6 +130,7 @@
 <script>
 import ErrorState from '@/components/sprint3/error-state.vue'
 import { requestMusic, resolveMediaUrl } from '@/common/api-v2.js'
+import { resolveAuthoritativeMusic } from '@/common/workflow-gate.js'
 import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
 
 export default {
@@ -157,19 +158,8 @@ export default {
       try {
         const session = getSprint3Session()
         const workflow = session.workflow || {}
-        let prescription = workflow.prescription
-        // 如果没有处方或状态严重，降级到通用安抚音乐，不再阻断
-        if (!prescription) {
-          prescription = {
-            status: 'degraded',
-            recommended_tone: '角调',
-            music_feature: { tone_name: '角调', bpm: 68, instruments: ['古琴', '箫'] },
-            explanation: '未获取到辨证处方，已使用通用舒缓音乐。'
-          }
-        }
-        let music = workflow.music
-        if (!music?.stream_url) music = await requestMusic(prescription, session.session_id)
-        if (!music?.stream_url) throw new Error('没有可播放的本地曲目')
+        const prescription = workflow.prescription
+        const music = await resolveAuthoritativeMusic(workflow, session.session_id, requestMusic)
         const feature = prescription.music_feature || {}
         this.prescription = {
           toneName: music.mode || feature.tone_name || '角调',

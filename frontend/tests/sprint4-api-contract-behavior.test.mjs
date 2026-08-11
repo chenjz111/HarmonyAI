@@ -156,3 +156,38 @@ test("Sprint 4 Vue 3 pages do not call removed this.$set", () => {
     assert.equal(source.includes("this.$set"), false, page + " still uses Vue 2 this.$set")
   }
 })
+import { resolveAuthoritativeMusic, workflowGate } from "../common/workflow-gate.js"
+
+test("player blocks safety, follow-up, unconfirmed, abstained and missing prescription", async () => {
+  for (const [workflow, code] of [
+    [{ confirmation:{status:"blocked_safety"} }, "SAFETY_BLOCKED"],
+    [{ confirmation:{status:"needs_follow_up"} }, "NEEDS_FOLLOW_UP"],
+    [{ confirmation:{status:"needs_confirmation"} }, "NOT_CONFIRMED"],
+    [{ confirmation:{status:"confirmed"}, diagnosis:{abstained:true} }, "DIAGNOSIS_ABSTAINED"],
+    [{ confirmation:{status:"confirmed"}, diagnosis:{abstained:false} }, "PRESCRIPTION_MISSING"],
+  ]) assert.equal(workflowGate(workflow).code, code)
+  let calls=0
+  await assert.rejects(() => resolveAuthoritativeMusic({confirmation:{status:"blocked_safety"}}, "s", async()=>{calls++}), /专业帮助/)
+  assert.equal(calls,0)
+})
+
+test("valid confirmed workflow sends only backend prescription to music", async () => {
+  const prescription={status:"success", music_feature:{tone_name:"角调"}}
+  let received
+  const music=await resolveAuthoritativeMusic({confirmation:{status:"confirmed"},diagnosis:{abstained:false},prescription},"s",async p=>{received=p; return {stream_url:"/m.mp3"}})
+  assert.equal(received,prescription); assert.equal(music.stream_url,"/m.mp3")
+})
+
+test("assessment page wires latest assessment id and revision and restores retry", () => {
+  const source=readFileSync(new URL("../pages/assessment-result/assessment-result.vue",import.meta.url),"utf8")
+  assert.match(source,/assessment_id: this\.assessment\.assessment_id/)
+  assert.match(source,/assessment_revision: this\.assessment\.revision/)
+  assert.match(source,/confirmationStatus = 'error'/)
+  assert.match(source,/confirmationLevel = ''/)
+})
+
+test("player page has no generic prescription fallback", () => {
+  const source=readFileSync(new URL("../pages/player-v2/player-v2.vue",import.meta.url),"utf8")
+  assert.equal(source.includes("status: 'degraded'"),false)
+  assert.match(source,/resolveAuthoritativeMusic/)
+})
