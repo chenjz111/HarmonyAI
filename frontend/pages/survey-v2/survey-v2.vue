@@ -246,7 +246,7 @@ export default {
         }
         const workflow = await runWorkflow(payload)
         updateSprint3Session({ questionnaire_answers: questionnaire, workflow })
-        uni.navigateTo({ url: '/pages/result/result' })
+        uni.navigateTo({ url: '/pages/assessment-result/assessment-result' })
       } catch (error) {
         this.status = 'error'
         this.errorMsg = error.message || '提交失败，请检查网络'

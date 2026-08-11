@@ -19,13 +19,13 @@
     />
 
     <error-state
-      v-else-if="status === 'degraded'"
-      title="音频已降级"
+      v-else-if="status === 'business'"
+      :title="businessTitle"
       :message="errorMsg"
+      :showRetry="false"
       :showFallback="true"
-      fallbackText="播放示例音频"
-      @retry="loadAudio"
-      @fallback="playFallback"
+      fallbackText="返回补充信息"
+      @fallback="returnToAssessment"
     />
 
     <!-- 播放器主体 -->
@@ -61,6 +61,12 @@
             <text class="track-id">track · {{ prescription.trackId }}</text>
           </view>
         </view>
+      </view>
+
+      <!-- 严重状态安全提示 -->
+      <view v-if="safetyNotice" class="safety-notice-card">
+        <text class="safety-notice-icon">!</text>
+        <text class="safety-notice-text">{{ safetyNotice }}</text>
       </view>
 
       <!-- 处方卡 -->
@@ -124,6 +130,8 @@
 <script>
 import ErrorState from '@/components/sprint3/error-state.vue'
 import { requestMusic, resolveMediaUrl } from '@/common/api-v2.js'
+import { resolveAuthoritativeMusic } from '@/common/workflow-gate.js'
+import { safeUiError } from '@/common/safe-ui-error.js'
 import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
 
 export default {
@@ -131,7 +139,7 @@ export default {
   data() {
     return {
       status: 'loading', errorMsg: '', audioContext: null, isPlaying: false,
-      currentTime: 0, duration: 0, pauseCount: 0,
+      currentTime: 0, duration: 0, pauseCount: 0, safetyNotice: '', businessTitle: '',
       prescription: { toneName: '', bpm: 68, instruments: [], reason: '', trackId: '', audioUrl: '', matched: true }
     }
   },
@@ -147,38 +155,33 @@ export default {
     async loadAudio() {
       this.status = 'loading'
       this.errorMsg = ''
+      this.safetyNotice = ''
       try {
         const session = getSprint3Session()
         const workflow = session.workflow || {}
         const prescription = workflow.prescription
-        if (!prescription || prescription.status === 'blocked_safety') {
-          throw new Error('当前状态不适合提供普通音乐调养建议')
-        }
-        let music = workflow.music
-        if (!music?.stream_url) music = await requestMusic(prescription, session.session_id)
-        if (!music?.stream_url) throw new Error('没有可播放的本地曲目')
+        const music = await resolveAuthoritativeMusic(workflow, session.session_id, requestMusic)
         const feature = prescription.music_feature || {}
         this.prescription = {
           toneName: music.mode || feature.tone_name || '角调',
           bpm: music.bpm || feature.bpm || 68,
           instruments: music.instruments || feature.instruments || [],
-          reason: prescription.explanation || prescription.music_reason || '根据辅助辨证倾向和音乐参数规则匹配',
+          reason: music.explanation || prescription.explanation || prescription.music_reason || '根据辅助辨证倾向和音乐参数规则匹配',
           trackId: music.music_id,
           audioUrl: resolveMediaUrl(music.stream_url),
           matched: music.source_type === 'matched'
         }
+        this.safetyNotice = music.safety_notice || ''
         updateSprint3Session({
           music,
           prescription_id: workflow.prescription_id || workflow.result_id || `rx_${Date.now()}`
         })
         this.initAudio()
         this.status = 'success'
-        if (music.status === 'degraded') {
-          uni.showToast({ title: '生成服务不可用，已切换本地曲库', icon: 'none' })
-        }
       } catch (error) {
-        this.status = 'error'
-        this.errorMsg = error.message || '音频加载失败，请检查网络'
+        const business = { SAFETY_BLOCKED: '请优先关注当前安全状态', DIAGNOSIS_ABSTAINED: '当前信息不足', NEEDS_FOLLOW_UP: '请先完成补充问题', NOT_CONFIRMED: '请先确认最新评估', PRESCRIPTION_MISSING: '暂未形成权威音乐处方' }
+        if (business[error.code]) { this.status = 'business'; this.businessTitle = business[error.code]; this.errorMsg = error.message }
+        else { this.status = 'error'; this.errorMsg = safeUiError(error, error.code === 'NO_MUSIC' ? 'NO_MUSIC' : 'MUSIC_MATCH_FAILED').message }
       }
     },
     initAudio() {
@@ -190,7 +193,7 @@ export default {
       ctx.onStop(() => { this.isPlaying = false; this.currentTime = 0 })
       ctx.onEnded(() => { this.isPlaying = false })
       ctx.onTimeUpdate(() => { this.currentTime = ctx.currentTime || 0; this.duration = ctx.duration || this.duration })
-      ctx.onError((error) => { this.status = 'error'; this.errorMsg = '音频播放错误：' + (error.errMsg || '未知错误') })
+      ctx.onError(() => { this.status = 'error'; this.errorMsg = safeUiError({ code: 'MUSIC_MATCH_FAILED' }, 'MUSIC_MATCH_FAILED').message })
       this.audioContext = ctx
     },
     togglePlay() {
@@ -201,12 +204,7 @@ export default {
     pauseAudio() { if (this.audioContext && this.isPlaying) this.audioContext.pause() },
     destroyAudio() { if (this.audioContext) { this.audioContext.destroy(); this.audioContext = null } },
     seek() {},
-    playFallback() {
-      this.prescription.audioUrl = resolveMediaUrl('/static/music/jiao-demo.wav')
-      this.prescription.trackId = 'music_jiao_001'
-      this.initAudio()
-      this.status = 'success'
-    },
+    returnToAssessment() { uni.navigateBack() },
     goFeedback() {
       this.pauseAudio()
       updateSprint3Session({
@@ -286,6 +284,37 @@ export default {
   font-size: 26rpx;
   color: #6B6862;
   display: block;
+}
+
+/* ============ 安全提示 ============ */
+.safety-notice-card {
+  margin: 24rpx 40rpx 0;
+  padding: 24rpx 28rpx;
+  background: #FFF6F2;
+  border: 1rpx solid #E8C4B8;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+}
+.safety-notice-icon {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  background: #C85A45;
+  color: #FFFFFF;
+  font-size: 26rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.safety-notice-text {
+  flex: 1;
+  font-size: 24rpx;
+  color: #6B3A2E;
+  line-height: 1.7;
 }
 
 /* ============ 沉浸式封面 ============ */
