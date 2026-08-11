@@ -289,6 +289,7 @@ async def test_grounded_lexical_supplement_fills_clear_canonical_signals():
 
     labels = {item.label for item in result.items}
     assert {"tension_worry", "overthinking", "chest_tightness", "life_event", "duration"} <= labels
+    assert "worry_control" not in labels
     life_event = next(item for item in result.items if item.label == "life_event")
     assert life_event.value == "\u5de5\u4f5c\u538b\u529b"
     assert life_event.quote in text
