@@ -384,6 +384,20 @@ def qwen_provider_from_env() -> QwenCompatibleProvider | None:
     return QwenCompatibleProvider(base_url=base_url, api_key=api_key, model=model)
 
 
+def async_qwen_provider_from_env() -> AsyncQwenCompatibleProvider | None:
+    """Return the request-object provider used by Sprint 4 extraction."""
+    base_url = os.getenv("QWEN_BASE_URL", "").strip()
+    api_key = os.getenv("QWEN_API_KEY", "").strip()
+    model = os.getenv("QWEN_MODEL", "").strip()
+    if not all((base_url, api_key, model)):
+        return None
+    return AsyncQwenCompatibleProvider(
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+    )
+
+
 @dataclass(frozen=True)
 class KnowledgeHit:
     text: str

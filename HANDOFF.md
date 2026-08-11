@@ -157,3 +157,18 @@ yu    (羽调)      → 58   → 箫、古琴
 ---
 
 *由 Claude Code 于 2026-08-09 创建。每次换工具前更新此文件。*
+
+## 11. Sprint 4 S4-06 当前状态（2026-08-11）
+
+- integration baseline：`ecd3596f40cc11205c5af28612e647070d5b0cd2`，已包含 #53～#56。
+- 当前验收修复分支：`fix/s4-06-integration`。
+- Contract：30/30 passed；Full：499/499 passed；Frontend：37/37 passed；H5：PASS。
+- Safety Gate：5/5 PASS；10 个正式验收场景：10/10 PASS；完整产品链路：PASS。
+- SQLite、Provider failure、Privacy、Sprint 3 compatibility：PASS。
+- S4-06 小型修复：Assessment V2.1 API 接入 async Qwen Provider factory；普通日志新增 provider/prompt 输入脱敏；均有回归测试。
+- 正式 60-case runner 当前不执行 `input/expected` 数据的真实推理，55 个 normal cases 无有效预测；不得采用空集合指标。当前为 0/60 有效通过。
+- 严格状态：`AUTOMATED_ACCEPTANCE_FAILED`。
+- 下一步：先修复 evaluation runner/输入适配并在可用 Qwen 环境重跑 60 cases；随后完成 MySQL、OCR POC、Android 手工 Gate。
+- 详细证据：`docs/sprint4/s4-06-acceptance-report.md`。
+
+禁止在上述阻塞消除前执行 integration → dev、dev → main、tag v0.4.0、Release 或关闭 #53～#56。

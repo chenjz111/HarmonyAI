@@ -17,6 +17,7 @@ from backend.ai_engine.assessment_v2 import (
     run_assessment_v21,
 )
 from backend.ai_engine.music_agent import match_music_v2
+from backend.ai_engine.providers import async_qwen_provider_from_env
 from backend.ai_engine.real_workflow import run_real_workflow_v2, continue_real_workflow_v21
 from backend.app.core.database import get_db
 from backend.app.core.music_catalog import load_music_catalog
@@ -102,7 +103,8 @@ async def create_assessment(body: AssessmentV2Request, db: Session = Depends(get
                     "assessment_id": assessment_id,
                     "document_confirmed": bool(payload.get("document_text")),
                     "confirmation_status": "pending",
-                }
+                },
+                provider=async_qwen_provider_from_env(),
             )
         else:
             result = run_assessment_v2(payload)
