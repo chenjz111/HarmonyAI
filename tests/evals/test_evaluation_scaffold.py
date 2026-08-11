@@ -76,3 +76,14 @@ def test_narrative_only_scaffold_does_not_count_as_user_questionnaire_evidence(t
         "count": 1,
         "sources": ["narrative"],
     }
+def test_neutral_transport_scaffold_uses_noncommittal_midpoint_scores():
+    from evals.run_sprint4_eval import _neutral_questionnaire
+
+    answers = _neutral_questionnaire()
+
+    assert answers["q03_tension_worry"] == 2
+    assert answers["q06_irritability_anger"] == 2
+    assert answers["q08_low_mood"] == 2
+    assert answers["q10_calm_wellbeing"] == 2
+    assert answers["q12_sleep_disturbance"] == 2
+    assert answers["q18_daily_impact"] == 2

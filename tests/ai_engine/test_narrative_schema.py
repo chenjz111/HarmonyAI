@@ -220,3 +220,45 @@ async def test_extraction_prompt_requests_all_grounded_facts_as_separate_items()
     assert "????????" in prompt
     assert "????" in prompt
     assert "??" in prompt
+@pytest.mark.asyncio
+async def test_life_event_translation_is_rejected_then_repaired_to_source_span():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    base = {
+        "category": "life_event",
+        "label": "life_event",
+        "polarity": "present",
+        "time_window": None,
+        "quote": "???????",
+        "source_ref": "narrative:sentence_1",
+        "extraction_confidence": 0.9,
+        "negated": False,
+    }
+    provider = SequenceProvider(
+        {"items": [{**base, "value": "work_pressure"}]},
+        {"items": [{**base, "value": "????"}]},
+    )
+
+    result = await extract_narrative(
+        "??????????",
+        source_type="narrative",
+        provider=provider,
+    )
+
+    assert result.status == "processed"
+    assert result.items[0].value == "????"
+    assert len(provider.requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_extraction_prompt_requires_grounded_negated_items():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    provider = CapturingProvider()
+    await extract_narrative(
+        "??????",
+        source_type="narrative",
+        provider=provider,
+    )
+
+    assert "????" in provider.request.system_prompt

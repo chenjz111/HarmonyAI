@@ -212,3 +212,32 @@ def test_conflict_detection_flags_present_versus_absent_polarity():
 
     assert len(conflicts) == 1
     assert conflicts[0]["topic"] == "tension_worry"
+def test_physical_narrative_evidence_uses_canonical_label_as_value():
+    from backend.ai_engine.assessment_v2 import _v21_narrative_evidence
+    from backend.ai_engine.sprint4_contracts import (
+        NarrativeEvidence,
+        NarrativeExtractionResult,
+    )
+
+    extraction = NarrativeExtractionResult(
+        status="processed",
+        items=(
+            NarrativeEvidence(
+                category="physical_signal",
+                label="chest_tightness",
+                value="?????",
+                polarity="present",
+                time_window=None,
+                quote="?????",
+                source_ref="narrative:sentence_1",
+                extraction_confidence=0.9,
+                negated=False,
+            ),
+        ),
+        evidence_quotes=(),
+    )
+
+    evidence = _v21_narrative_evidence(extraction, source_type="narrative")
+
+    assert evidence[0]["category"] == "physical"
+    assert evidence[0]["value"] == ["chest_tightness"]
