@@ -11,10 +11,15 @@ test('canonical v2.1 response fixture reaches the page state without field renam
   const state = createAssessmentFlow(fixture)
   assert.equal(state.assessment.assessment_id, 'asmt_fixture_001')
   assert.equal(state.assessment.revision, 1)
-  assert.equal(state.assessment.emotion_profile.dimension_scores.tension_worry, 3)
+  assert.equal(state.assessment.revision_metadata.revision, 1)
+  assert.equal(state.assessment.revision_metadata.previous_revision, null)
+  assert.equal(state.assessment.status, 'success')
+  assert.equal(state.assessment.input_processing_status.questionnaire.dimensions_scored, 12)
+  assert.equal(state.assessment.assessment_summary, '已根据可追溯来源生成状态评估，等待用户确认。')
+  assert.equal(state.assessment.emotion_profile.dimension_scores.tension_worry, 100)
   assert.equal(state.assessment.evidence_items[0].source_type, 'questionnaire')
-  assert.equal(state.assessment.conflicts[0].conflict_id, 'cf_fixture_001')
-  assert.equal(state.assessment.missing_information[0].field, 'duration')
+  assert.deepEqual(state.assessment.conflicts, [])
+  assert.deepEqual(state.assessment.missing_information, [])
 })
 
 test('follow-up then correction always sends the latest revision to workflow', () => {
