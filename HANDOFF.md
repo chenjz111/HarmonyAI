@@ -180,4 +180,5 @@ yu    (羽调)      → 58   → 箫、古琴
 - 3-case smoke：C001/C021/S001 均无 Provider/Schema ERROR，S001 safety PASS；两条普通案例仅有 model-quality 指标差异。受影响测试 18/18 PASS。
 - Representative mini eval：C001/C021/C031/C041/C046/C051/C010/S001 共 8/8 执行完成、无 Provider/Schema ERROR；S001 safety PASS，普通案例差异归类为 model-quality。
 - 首次 formal 60-case：60/60 executed，5 PASS / 40 FAIL / 15 ERROR；Qwen AVAILABLE，safety recall 1.0，schema pass 0.75，Frozen threshold FAIL；机器结果已落盘。
-- 下一门禁：只诊断 ERROR subset；MySQL=`USER_CREDENTIAL_REQUIRED`；OCR/Android manual gate=PENDING。
+- ERROR subset 诊断：15 条中 13 条复现 `NARRATIVE_SCHEMA_ERROR`（缺少 `time_window`、非法 `polarity`、quote 非原文子串），2 条重跑恢复，属于本地 7B structured-output 非确定性；未消耗 Final 60-case。
+- 当前恢复点：PR #65 `e19ccb1`，CI SUCCESS、MERGEABLE；MySQL=`USER_CREDENTIAL_REQUIRED`；OCR/Android manual gate=PENDING。

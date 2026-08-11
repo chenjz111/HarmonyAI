@@ -350,4 +350,5 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 3-case smoke（C001/C021/S001）已完成：真实 Qwen 调用无 Provider/Schema ERROR，S001 safety PASS；普通案例仅有 model-quality 差异；targeted tests 18/18 PASS。
 - Representative mini eval 共 8/8 执行完成，无 Provider/Schema ERROR；S001 safety PASS，普通案例差异为 model-quality。
 - 首次 formal 60 已落盘：5 PASS / 40 FAIL / 15 ERROR；真实 Qwen AVAILABLE，safety recall 1.0，schema pass 0.75，threshold FAIL。
-- 下一门禁仅诊断 ERROR subset；MySQL=`USER_CREDENTIAL_REQUIRED`，OCR/Android manual gate=PENDING。
+- ERROR subset 诊断：15 条中 13 条复现 `NARRATIVE_SCHEMA_ERROR`（time_window/polarity/quote 约束），2 条重跑恢复，归类为本地 7B structured-output 非确定性；未执行 Final 60-case。
+- 当前恢复点：PR #65 `e19ccb1`，CI SUCCESS、MERGEABLE；MySQL=`USER_CREDENTIAL_REQUIRED`，OCR/Android manual gate=PENDING。
