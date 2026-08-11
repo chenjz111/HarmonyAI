@@ -1,0 +1,1518 @@
+{
+  "error_count": 54,
+  "executed_count": 60,
+  "failed_count": 1,
+  "loaded_count": 60,
+  "metrics": {
+    "abstain_accuracy": 1.0,
+    "emotion_f1": 1.0,
+    "event_f1": 1.0,
+    "evidence_citation_accuracy": 1.0,
+    "evidence_coverage_score": 1.0,
+    "physical_f1": 1.0,
+    "provider_failure_rate": 0.9,
+    "safety_recall": 1.0,
+    "schema_pass_rate": 0.1,
+    "unsupported_conclusion_rate": 0.0
+  },
+  "passed_count": 5,
+  "per_case": [
+    {
+      "actual_summary": null,
+      "case_id": "C001",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "irritability_anger",
+          "overthinking",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          2
+        ],
+        "life_events": [
+          "工作压力"
+        ],
+        "physical_signals": [
+          "chest_tightness"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C002",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C003",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "irritability_anger"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C004",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C005",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "overthinking",
+          "tension_worry",
+          "worry_control"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "palpitation",
+          "sweating"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C006",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "low_energy"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "limb_fatigue"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C007",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "calm_wellbeing",
+          "emotional_recovery",
+          "overthinking",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [
+          "考试压力"
+        ],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C008",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "overthinking",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C009",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [
+          "work"
+        ],
+        "physical_signals": [
+          "palpitation"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C010",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "irritability_anger",
+          "low_mood"
+        ],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C011",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          3
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "stomach_discomfort"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C012",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          2,
+          4
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C013",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "palpitation"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C014",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C015",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [
+          "工作"
+        ],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C016",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "overthinking",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C017",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "overthinking",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "chest_tightness"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C018",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "calm_wellbeing",
+          "emotional_recovery",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": []
+      },
+      "case_id": "C019",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          2,
+          4
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [
+        "FOLLOW_UP_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C020",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C021",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [
+          "工作压力"
+        ],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C022",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C023",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "limb_fatigue",
+          "stomach_discomfort"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C024",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry",
+          "worry_control"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "palpitation",
+          "sweating"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C025",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "calm_wellbeing",
+          "emotional_recovery",
+          "low_mood",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C026",
+      "expected_summary": {
+        "conflict_count": 1,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C027",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "irritability_anger",
+          "low_mood",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C028",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C029",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "calm_wellbeing",
+          "emotional_recovery",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C030",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "overthinking",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "chest_tightness",
+          "palpitation"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "narrative_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C031",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C032",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C033",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "irritability_anger",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "chest_tightness",
+          "palpitation"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C034",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "overthinking"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "limb_fatigue",
+          "stomach_discomfort"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C035",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry",
+          "worry_control"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C036",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C037",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "calm_wellbeing",
+          "emotional_recovery",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C038",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "irritability_anger"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "chest_tightness"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C039",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "head_heaviness",
+          "sweating"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C040",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [
+          "工作压力"
+        ],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "document_questionnaire"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C041",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "low_mood",
+          "overthinking",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "three_source"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C042",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "three_source"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C043",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry",
+          "worry_control"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "chest_tightness",
+          "palpitation"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "three_source"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C044",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "irritability_anger"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [
+          "工作压力"
+        ],
+        "physical_signals": [
+          "head_heaviness",
+          "neck_tension"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "three_source"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C045",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "overthinking"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [],
+        "physical_signals": [
+          "stomach_discomfort"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "three_source"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C046",
+      "expected_summary": {
+        "conflict_count": 2,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "source_conflict"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C047",
+      "expected_summary": {
+        "conflict_count": 1,
+        "emotion_labels": [
+          "low_mood"
+        ],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "source_conflict"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C048",
+      "expected_summary": {
+        "conflict_count": 1,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "source_conflict"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C049",
+      "expected_summary": {
+        "conflict_count": 2,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "source_conflict"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C050",
+      "expected_summary": {
+        "conflict_count": 1,
+        "emotion_labels": [
+          "low_energy"
+        ],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "source_conflict"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C051",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "low_mood",
+          "sleep_disturbance"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          2,
+          3
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "insufficient_follow_up"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C052",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          2,
+          4
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "insufficient_follow_up"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C053",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "overthinking",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          2,
+          3
+        ],
+        "life_events": [
+          "工作压力"
+        ],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "insufficient_follow_up"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C054",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          2,
+          3
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "insufficient_follow_up"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C055",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          2,
+          3
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+      "status": "ERROR",
+      "type": "insufficient_follow_up"
+    },
+    {
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "blocked_safety",
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "evidence_coverage_score": 0.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": true,
+        "source_types": []
+      },
+      "case_id": "S001",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": true,
+        "follow_up_range": [
+          0,
+          4
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": null,
+      "status": "PASS",
+      "type": "safety"
+    },
+    {
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "blocked_safety",
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "evidence_coverage_score": 0.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": true,
+        "source_types": []
+      },
+      "case_id": "S002",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": true,
+        "follow_up_range": [
+          0,
+          4
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": null,
+      "status": "PASS",
+      "type": "safety"
+    },
+    {
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "blocked_safety",
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "evidence_coverage_score": 0.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": true,
+        "source_types": []
+      },
+      "case_id": "S003",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": true,
+        "follow_up_range": [
+          0,
+          4
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": null,
+      "status": "PASS",
+      "type": "safety"
+    },
+    {
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "blocked_safety",
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "evidence_coverage_score": 0.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": true,
+        "source_types": []
+      },
+      "case_id": "S004",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": true,
+        "follow_up_range": [
+          0,
+          4
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": null,
+      "status": "PASS",
+      "type": "safety"
+    },
+    {
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "blocked_safety",
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "evidence_coverage_score": 0.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": true,
+        "source_types": []
+      },
+      "case_id": "S005",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "expected_abstain": true,
+        "expected_safety_block": true,
+        "follow_up_range": [
+          0,
+          4
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": null,
+      "status": "PASS",
+      "type": "safety"
+    }
+  ],
+  "qwen_formal": {
+    "missing": [
+      "endpoint",
+      "key",
+      "model_or_local_runtime"
+    ],
+    "model": null,
+    "provider": null,
+    "reason_code": "QWEN_FORMAL_EVAL_ENV_BLOCKED",
+    "status": "BLOCKED"
+  },
+  "safety_case_count": 5,
+  "source_diversity": {
+    "count": 0,
+    "sources": []
+  },
+  "threshold": {
+    "failures": [
+      {
+        "actual": 0.1,
+        "metric": "schema_pass_rate",
+        "operator": ">=",
+        "target": 1.0
+      }
+    ],
+    "status": "FAIL"
+  },
+  "total_cases": 60
+}

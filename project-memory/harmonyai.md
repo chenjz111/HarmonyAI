@@ -334,11 +334,11 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 
 - 四条功能线 #53～#56 已会师于 `integration/sprint4-real-input@ecd3596f40cc11205c5af28612e647070d5b0cd2`。
 - S4-06 修复集中在 `fix/s4-06-integration`，未直接提交 integration。
-- 当前自动化证据：Contract 30/30、Full 499/499、Frontend 37/37、H5 PASS。
+- 当前自动化证据：Contract 30/30、Full 511/511、Frontend 37/37、H5 PASS、Evaluation runner tests 14/14。
 - Safety 5/5、10 个验收场景 10/10、完整产品链路、SQLite、Provider failure、Privacy、Sprint 3 compatibility 均 PASS。
 - Assessment V2.1 API 已接入 async Qwen Provider 环境工厂；Provider input/prompt 已纳入普通日志脱敏。
-- 正式 60-case 仍 FAIL：现有 runner 只读取 `predicted/gold`，数据集却是 `input/expected`，不会真实运行 Assessment/Diagnosis；55 个 normal cases 没有有效预测，禁止把空集合指标写成成绩。
+- Formal Runner 已修复并调用 production workflow：60/60 loaded、60/60 executed、5 PASS、1 FAIL、54 ERROR；Safety 5/5 PASS。Formal Qwen 缺少 endpoint/key/model，Frozen threshold 仍 FAIL。
 - MySQL 真实环境验收、OCR 真实脱敏材料 POC、Android 真机验收均 PENDING。
 - 当前唯一允许的总状态：`AUTOMATED_ACCEPTANCE_FAILED`。
-- 发布阻塞：修复并真实重跑 60-case runner；之后完成 MySQL/OCR/Android Gate。
+- 发布阻塞：配置真实 Qwen 并重跑 60 cases 达到 Frozen threshold；审核 `C051.q18_daily_impact=null`；之后完成 MySQL/OCR/Android Gate。
 - 详细报告：`docs/sprint4/s4-06-acceptance-report.md`。
