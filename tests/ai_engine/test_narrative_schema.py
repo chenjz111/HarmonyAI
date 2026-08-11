@@ -204,3 +204,19 @@ async def test_extraction_keeps_quote_time_window_and_negation():
     assert result.status == "processed"
     assert result.evidence_quotes[0].quote in "最近两周晚上睡不好，但没有胸痛。"
     assert any(item.negated for item in result.items)
+@pytest.mark.asyncio
+async def test_extraction_prompt_requests_all_grounded_facts_as_separate_items():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    provider = CapturingProvider()
+    await extract_narrative(
+        "????????????????????",
+        source_type="narrative",
+        provider=provider,
+    )
+
+    prompt = provider.request.system_prompt
+    assert "????" in prompt
+    assert "????????" in prompt
+    assert "????" in prompt
+    assert "??" in prompt

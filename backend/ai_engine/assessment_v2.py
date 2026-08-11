@@ -1259,9 +1259,8 @@ def _v21_conflicts(evidence: list[EvidenceItem]) -> list[dict[str, object]]:
         by_label.setdefault(item["label"], []).append(item)
     conflicts: list[dict[str, object]] = []
     for label, items in by_label.items():
-        values = {str(item.get("value")) for item in items}
         sources = {item["source_type"] for item in items}
-        if len(values) > 1 and len(sources) > 1:
+        if len(sources) > 1 and _v21_has_material_conflict(items):
             conflicts.append(
                 {
                     "conflict_id": f"cf-{label}",
@@ -1277,6 +1276,24 @@ def _v21_conflicts(evidence: list[EvidenceItem]) -> list[dict[str, object]]:
                 }
             )
     return conflicts
+
+def _v21_has_material_conflict(items: list[EvidenceItem]) -> bool:
+    polarities = {str(item.get("polarity")) for item in items}
+    positive_polarities = {"present", "increased", "reduced"}
+    if "absent" in polarities and polarities.intersection(positive_polarities):
+        return True
+    if {"increased", "reduced"}.issubset(polarities):
+        return True
+
+    numeric_values = [
+        float(value)
+        for item in items
+        if type(value := item.get("value")) in (int, float)
+    ]
+    if numeric_values:
+        return min(numeric_values) <= 1 and max(numeric_values) >= 3
+    return False
+
 
 
 def _v21_follow_up_questions(

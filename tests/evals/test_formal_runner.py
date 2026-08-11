@@ -224,3 +224,43 @@ def test_official_sprint4_dataset_loads_all_sixty_cases():
     assert len({case["case_id"] for case in cases}) == 60
     assert all(isinstance(case.get("input"), dict) for case in cases)
     assert all(isinstance(case.get("expected"), dict) for case in cases)
+def test_formal_metrics_ignore_neutral_questionnaire_emotions_but_keep_narrative():
+    from evals.run_sprint4_eval import _is_active_evidence
+
+    assert _is_active_evidence({
+        "category": "emotion",
+        "source_type": "questionnaire",
+        "value": 2,
+        "polarity": "present",
+    }) is False
+    assert _is_active_evidence({
+        "category": "emotion",
+        "source_type": "questionnaire",
+        "value": 3,
+        "polarity": "present",
+    }) is True
+    assert _is_active_evidence({
+        "category": "emotion",
+        "source_type": "narrative",
+        "value": 2,
+        "polarity": "present",
+    }) is True
+
+
+def test_formal_actual_emotions_exclude_noncanonical_context_labels():
+    from evals.run_sprint4_eval import _actual_fields
+
+    evidence = [{
+        "category": "emotion",
+        "label": "daily_impact",
+        "value": 3,
+        "source_type": "narrative",
+    }]
+    actual = _actual_fields(
+        {"status": "success", "conflicts": [], "follow_up_questions": []},
+        {"abstained": False, "candidate_tendencies": []},
+        evidence,
+        {"diagnosis": {}, "prescription": None, "music": None},
+    )
+
+    assert actual["emotion_labels"] == set()
