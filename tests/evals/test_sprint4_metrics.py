@@ -1,12 +1,11 @@
 import pytest
 
 
-def test_evidence_coverage_uses_source_diversity_factor():
-    from evals.metrics import evidence_coverage
+def test_coverage_is_not_multiplied_by_source_diversity():
+    from evals.metrics import evidence_coverage, source_diversity
 
-    assert evidence_coverage(3, 6, {"questionnaire"}) == pytest.approx(1 / 6)
-    assert evidence_coverage(
-        6,
-        6,
-        {"questionnaire", "narrative", "document"},
-    ) == pytest.approx(1.0)
+    assert evidence_coverage(3, 6) == pytest.approx(0.5)
+    assert source_diversity({"questionnaire"}) == {
+        "count": 1,
+        "sources": ["questionnaire"],
+    }
