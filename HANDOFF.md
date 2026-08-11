@@ -172,3 +172,9 @@ yu    (羽调)      → 58   → 箫、古琴
 - 详细证据：`docs/sprint4/s4-06-acceptance-report.md`。
 
 禁止在上述阻塞消除前执行 integration → dev、dev → main、tag v0.4.0、Release 或关闭 #53～#56。
+
+### S4-06 可恢复检查点（2026-08-12）
+
+- PR #65 分支 `fix/s4-06-integration@499a905aca4ead914b3296958a5a9a70b18aed35`：C051/C052/C053 已修复，正式数据 60/60 VALID，`tests/evals/` 16/16 PASS。
+- Ollama 0.32.8 与 `qwen2.5:7b-instruct-q4_K_M`（digest `845dbda0ea48`）已安装到 `D:\OllamaModels`；本地健康、同步 Provider、异步 Provider smoke 均 PASS。
+- 下一门禁：3-case → representative mini eval → formal 60-case。MySQL=`USER_CREDENTIAL_REQUIRED`；OCR/Android manual gate=PENDING。
