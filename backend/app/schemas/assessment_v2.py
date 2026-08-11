@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AnalysisMode(str, Enum):
@@ -21,9 +21,12 @@ class QuestionnaireAnswer(BaseModel):
     question_id: str = Field(min_length=1)
     value: str | int | list[str]
     type: Literal[
+        "single_choice",
         "visual_single",
         "frequency_0_4",
         "visual_multi",
+        "multi_choice",
+        "duration_choice",
     ] | None = None
     score: int | None = None
 
@@ -38,8 +41,8 @@ class QuestionnaireContext(BaseModel):
 class QuestionnaireV2Submission(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    schema_version: Literal["questionnaire_v2.0"]
-    time_window_days: Literal[7]
+    schema_version: Literal["questionnaire_v2.0", "questionnaire_v2.1"]
+    time_window_days: Literal[7, 14]
     answers: list[QuestionnaireAnswer] = Field(min_length=12)
     started_at: str | None = None
     completed_at: str | None = None
@@ -47,6 +50,18 @@ class QuestionnaireV2Submission(BaseModel):
     context: QuestionnaireContext | None = None
     safety_flags: list[str] | None = None
     completion_seconds: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_version_shape(self):
+        if self.schema_version == "questionnaire_v2.0":
+            if self.time_window_days != 7:
+                raise ValueError("questionnaire_v2.0 uses a 7-day window")
+        else:
+            if self.time_window_days != 14:
+                raise ValueError("questionnaire_v2.1 uses a 14-day window")
+            if len(self.answers) != 20:
+                raise ValueError("questionnaire_v2.1 requires exactly 20 answers")
+        return self
 
 
 class AssessmentV2Request(BaseModel):

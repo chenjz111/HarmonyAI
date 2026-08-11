@@ -2,7 +2,7 @@
 
 Sprint 3 Issue #36: file metadata only, not the file content.
 """
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
+from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, Text
 from sqlalchemy.sql import func
 
 from backend.app.core.database import Base
@@ -29,6 +29,10 @@ class Document(Base):
     status = Column(String(16), default="uploaded", comment="uploaded/confirmed/skipped/deleted/ocr_failed")
     ocr_text = Column(Text, nullable=True, comment="OCR识别文本(未确认前不可靠)")
     ocr_confidence = Column(String(16), nullable=True, comment="OCR置信度: high/medium/low (always string, never float)")
+    ocr_provider = Column(String(32), nullable=True)
+    ocr_error_code = Column(String(64), nullable=True)
+    ocr_result_json = Column(JSON, nullable=True)
+    ocr_processing_time_ms = Column(Integer, nullable=True)
     ocr_confirmed = Column(Boolean, default=False, comment="用户是否确认OCR文本")
 
     created_at = Column(DateTime, server_default=func.now())
