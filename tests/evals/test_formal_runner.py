@@ -264,3 +264,25 @@ def test_formal_actual_emotions_exclude_noncanonical_context_labels():
     )
 
     assert actual["emotion_labels"] == set()
+def test_formal_actual_emotions_exclude_unresolved_conflict_topics():
+    from evals.run_sprint4_eval import _actual_fields
+
+    evidence = [{
+        "category": "emotion",
+        "label": "low_mood",
+        "value": 4,
+        "polarity": "present",
+        "source_type": "questionnaire",
+    }]
+    actual = _actual_fields(
+        {
+            "status": "needs_follow_up",
+            "conflicts": [{"topic": "low_mood", "resolution": "awaiting_user"}],
+            "follow_up_questions": [{}],
+        },
+        {"abstained": True, "candidate_tendencies": []},
+        evidence,
+        {"diagnosis": {"abstained": True}, "prescription": None, "music": None},
+    )
+
+    assert actual["emotion_labels"] == set()

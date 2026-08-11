@@ -322,12 +322,20 @@ def _actual_fields(
     workflow: Mapping[str, object],
 ) -> dict[str, object]:
     active = [item for item in evidence if _is_active_evidence(item)]
+    unresolved_topics = {
+        str(item["topic"])
+        for item in assessment.get("conflicts", [])
+        if isinstance(item, Mapping)
+        and isinstance(item.get("topic"), str)
+        and item.get("resolution") in {"awaiting_user", "unresolved"}
+    }
     emotions = {
         str(item["label"])
         for item in active
         if item.get("category") == "emotion"
         and isinstance(item.get("label"), str)
         and item["label"] in _EMOTION_LABELS
+        and item["label"] not in unresolved_topics
     }
     events: set[str] = set()
     physical: set[str] = set()

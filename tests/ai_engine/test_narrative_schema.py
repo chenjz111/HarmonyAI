@@ -309,3 +309,29 @@ async def test_grounded_lexical_supplement_preserves_explicit_good_state_as_abse
     assert low_mood.polarity == "absent"
     assert low_mood.negated is True
     assert low_mood.value == 0
+@pytest.mark.asyncio
+async def test_grounded_lexical_supplement_upgrades_weak_explicit_signal():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    provider = MockProvider({
+        "items": [{
+            "category": "sleep",
+            "label": "sleep_disturbance",
+            "value": 1,
+            "polarity": "present",
+            "time_window": None,
+            "quote": "sleep poorly",
+            "source_ref": "narrative:sentence_1",
+            "extraction_confidence": 0.7,
+            "negated": False,
+        }]
+    })
+    result = await extract_narrative(
+        "I sleep poorly.",
+        source_type="narrative",
+        provider=provider,
+    )
+
+    sleep = next(item for item in result.items if item.label == "sleep_disturbance")
+    assert sleep.value == 3
+    assert sleep.quote == "sleep poorly"
