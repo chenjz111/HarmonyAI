@@ -15,7 +15,11 @@ from .validate_release import validate_release
 
 
 DEFAULT_COMMANDS: tuple[dict[str, object], ...] = (
-    {"name": "python_tests", "command": "py -m pytest tests/ -q", "cwd": "."},
+    {
+        "name": "python_tests",
+        "command": "py -m pytest -p no:cacheprovider --basetemp artifacts/sprint4/pytest-tmp tests/ -q",
+        "cwd": ".",
+    },
     {
         "name": "frontend_contract_tests",
         "command": "node --test tests/*.test.mjs",
@@ -41,6 +45,8 @@ def _command_summary(
                 cwd=cwd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 shell=True,
                 check=False,
             )
