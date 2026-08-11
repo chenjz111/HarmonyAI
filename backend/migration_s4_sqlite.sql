@@ -53,12 +53,17 @@ CREATE TABLE IF NOT EXISTS assessment_evidences (
 CREATE TABLE IF NOT EXISTS assessment_followups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id VARCHAR(64) NOT NULL,
+    assessment_id VARCHAR(64),
     followup_id VARCHAR(64) UNIQUE NOT NULL,
+    question_id VARCHAR(64),
     question TEXT NOT NULL,
     category VARCHAR(32) NOT NULL,
     priority INTEGER DEFAULT 1,
     status VARCHAR(16) DEFAULT 'pending',
     answer TEXT,
+    answer_value JSON,
+    source_type VARCHAR(32),
+    revision_submitted INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -66,9 +71,17 @@ CREATE TABLE IF NOT EXISTS assessment_revisions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id VARCHAR(64) NOT NULL,
     revision_id VARCHAR(64) UNIQUE NOT NULL,
+    assessment_id VARCHAR(64),
     field_changed VARCHAR(64) NOT NULL,
+    revision INTEGER,
+    previous_revision INTEGER,
+    change_summary TEXT,
+    changes JSON,
+    assessment_snapshot JSON,
+    confirmation_level VARCHAR(32),
     old_value TEXT,
     new_value TEXT NOT NULL,
     source VARCHAR(32) NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (assessment_id, revision)
 );

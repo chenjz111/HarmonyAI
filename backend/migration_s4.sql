@@ -59,12 +59,17 @@ CREATE TABLE IF NOT EXISTS assessment_evidences (
 CREATE TABLE IF NOT EXISTS assessment_followups (
     id INT AUTO_INCREMENT PRIMARY KEY,
     session_id VARCHAR(64) NOT NULL,
+    assessment_id VARCHAR(64) NULL,
     followup_id VARCHAR(64) UNIQUE NOT NULL,
+    question_id VARCHAR(64) NULL,
     question TEXT NOT NULL,
     category VARCHAR(32) NOT NULL,
     priority INT DEFAULT 1,
     status VARCHAR(16) DEFAULT 'pending',
     answer TEXT NULL,
+    answer_value JSON NULL,
+    source_type VARCHAR(32) NULL,
+    revision_submitted INT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_af_session (session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -73,11 +78,19 @@ CREATE TABLE IF NOT EXISTS assessment_revisions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     session_id VARCHAR(64) NOT NULL,
     revision_id VARCHAR(64) UNIQUE NOT NULL,
+    assessment_id VARCHAR(64) NULL,
     field_changed VARCHAR(64) NOT NULL,
+    revision INT NULL,
+    previous_revision INT NULL,
+    change_summary TEXT NULL,
+    changes JSON NULL,
+    assessment_snapshot JSON NULL,
+    confirmation_level VARCHAR(32) NULL,
     old_value TEXT NULL,
     new_value TEXT NOT NULL,
     source VARCHAR(32) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_assessment_revision (assessment_id, revision),
     INDEX idx_ar_session (session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
