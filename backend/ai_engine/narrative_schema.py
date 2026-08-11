@@ -224,6 +224,12 @@ def _normalize_items(
             raise ValueError(f"items[{index}].label is required")
         if not isinstance(quote, str) or not quote.strip() or quote not in source_text:
             raise ValueError(f"items[{index}].quote must be a source substring")
+        value = raw_item.get("value")
+        if category == "life_event" and (
+            not isinstance(value, str) or not value.strip() or value not in quote
+        ):
+            raise ValueError(
+                f"items[{index}].value must be an exact source span for life_event")
         if not isinstance(source_ref, str) or not source_ref.startswith(f"{source_type}:"):
             raise ValueError(f"items[{index}].source_ref must identify the source")
         if time_window is not None and (not isinstance(time_window, str) or not time_window.strip()):
@@ -238,7 +244,7 @@ def _normalize_items(
             NarrativeEvidence(
                 category=category,
                 label=label.strip(),
-                value=raw_item.get("value"),
+                value=value,
                 polarity=polarity,
                 time_window=time_window.strip() if isinstance(time_window, str) else None,
                 quote=quote.strip(),

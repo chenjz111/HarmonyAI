@@ -1141,7 +1141,10 @@ def _v21_narrative_evidence(
             "category": _v21_narrative_category(item.category),
             "label": item.label,
             "display_name": item.label,
-            "value": _v21_evidence_value(_v21_narrative_category(item.category), item.value),
+            "value": _v21_evidence_value(
+                _v21_narrative_category(item.category),
+                item.label if item.category == "physical_signal" else item.value,
+            ),
             "polarity": item.polarity,
             "severity": "moderate" if item.value else "none",
             "severity_display": "有一定表现" if item.value else "当前不明显",
@@ -1280,7 +1283,15 @@ def _v21_conflicts(evidence: list[EvidenceItem]) -> list[dict[str, object]]:
 def _v21_has_material_conflict(items: list[EvidenceItem]) -> bool:
     polarities = {str(item.get("polarity")) for item in items}
     positive_polarities = {"present", "increased", "reduced"}
-    if "absent" in polarities and polarities.intersection(positive_polarities):
+    strong_positive = any(
+        item.get("polarity") in positive_polarities
+        and (
+            type(item.get("value")) not in (int, float)
+            or float(item["value"]) >= 3
+        )
+        for item in items
+    )
+    if "absent" in polarities and strong_positive:
         return True
     if {"increased", "reduced"}.issubset(polarities):
         return True
