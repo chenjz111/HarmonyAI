@@ -1,0 +1,43 @@
+{
+  "agent_id": "assessment_agent",
+  "assessment_id": "asmt_fixture_001",
+  "session_id": "sess_fixture_001",
+  "user_id": "demo_user_001",
+  "status": "awaiting_confirmation",
+  "revision": 1,
+  "previous_revision": null,
+  "analysis_mode": "narrative_questionnaire",
+  "confidence": 0.76,
+  "confidence_semantics": "evidence_coverage",
+  "input_processing_status": {
+    "questionnaire": { "version": "questionnaire_v2.1", "status": "processed", "questions_answered": 20, "scored_dimension_count": 13, "safety_flags": [] },
+    "narrative": { "status": "processed", "text_length": 32, "extraction_confidence_avg": 0.87, "evidence_items_extracted": 1, "warnings": [] },
+    "document": { "status": "skipped", "ocr_engine": null, "ocr_confidence_avg": null, "evidence_items_extracted": 0, "warnings": [] }
+  },
+  "emotion_profile": {
+    "primary_states": ["tension_worry"],
+    "secondary_states": ["overthinking"],
+    "dimension_scores": { "tension_worry": 3, "overthinking": 2 },
+    "tcm_emotion_candidates": [{ "emotion": "思", "confidence": 0.78 }]
+  },
+  "physical_profile": { "sleep_disturbance": 60, "low_energy": 50, "appetite_change": 25, "physical_signals": ["neck_tension"] },
+  "life_events": { "triggers": ["exam_pressure"] },
+  "user_goal": "relaxation",
+  "assessment_summary": "当前主要表现为紧张担忧和反复思虑。",
+  "evidence_items": [{
+    "evidence_id": "ev_fixture_001", "category": "emotion", "label": "tension_worry", "display_name": "紧张担忧",
+    "value": 3, "polarity": "present", "severity": "moderate", "severity_display": "中等", "time_window": "过去两周",
+    "source_type": "questionnaire", "source_ref": "q03", "quote": null, "extraction_confidence": null, "confirmed": false, "dimension_score": 75
+  }],
+  "evidence_coverage_score": 0.76,
+  "source_diversity": { "count": 2, "sources": ["questionnaire", "narrative"] },
+  "conflicts": [{ "conflict_id": "cf_fixture_001", "display_topic": "睡眠", "severity": "mild", "summary": "问卷与描述略有差异", "sources": [] }],
+  "missing_information": [{ "field": "duration", "display_name": "持续时间", "severity": "important", "reason": "尚未明确持续天数" }],
+  "follow_up_questions": [],
+  "requires_user_confirmation": true,
+  "safety_flags": [],
+  "degradation": { "triggered": false, "reason_code": null, "fallback": null },
+  "warnings": [],
+  "model_metadata": { "provider": "qwen", "model": "qwen-plus", "prompt_version": "assessment_v2.1", "latency_ms": 100, "tokens_input": 100, "tokens_output": 100 },
+  "disclaimer": "本结果仅用于状态评估与音乐调养参考，不构成医学诊断或治疗建议。"
+}

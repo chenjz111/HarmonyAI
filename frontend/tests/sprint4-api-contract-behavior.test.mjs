@@ -183,7 +183,7 @@ test("assessment page wires latest assessment id and revision and restores retry
   assert.match(source,/workflowPayload\(/)
   assert.match(source,/assessment: this\.assessment/)
   assert.match(source,/confirmationFailed\(/)
-  assert.match(source,/confirmationFailed\(/)
+  assert.match(source,/confirmationLevel = ""/)
 })
 
 test("player page has no generic prescription fallback", () => {
