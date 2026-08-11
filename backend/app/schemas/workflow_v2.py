@@ -9,6 +9,8 @@ from backend.app.schemas.assessment_v2 import AssessmentV2Request
 
 class WorkflowV2Request(AssessmentV2Request):
     assessment_confirmed: bool = False
+    assessment_id: str | None = None
+    assessment_revision: int | None = Field(default=None, ge=1)
     feedback_payload: dict[str, object] | None = None
 
 

@@ -63,7 +63,7 @@
       <text class="ocr-loading-desc">正在用 PaddleOCR 识别材料文字...</text>
     </view>
 
-    <view v-if="extractedText" class="file-card ocr-confirm-card">
+    <view v-if="documentId && (ocrMode === 'success' || ocrMode === 'degraded' || ocrMode === 'manual')" class="file-card ocr-confirm-card">
       <view class="ocr-confirm-header">
         <text class="upload-title">请确认识别文字</text>
         <view v-if="ocrInfo" class="ocr-confidence-tag">
@@ -119,7 +119,8 @@ export default {
       status: 'idle',
       errorMsg: '',
       uploading: false,
-      ocrInfo: null
+      ocrInfo: null,
+      ocrMode: 'idle'
     }
   },
   computed: {
@@ -193,6 +194,7 @@ export default {
           })
           this.uploading = false
           this.documentId = uploaded.document_id
+          this.ocrMode = uploaded.ocr_status === 'failed' ? 'failed' : (uploaded.ocr_status === 'degraded' || !uploaded.extracted_text ? 'degraded' : 'success')
 
           // 降级处理
           if (uploaded.ocr_status === 'degraded' || !uploaded.extracted_text) {
@@ -206,6 +208,7 @@ export default {
               success: (res) => {
                 if (res.confirm) {
                   this.extractedText = ''
+                  this.ocrMode = 'manual'
                   this.ocrInfo = { confidence: 0, degraded: true }
                 } else {
                   this.skip()
