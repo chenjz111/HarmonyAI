@@ -6,16 +6,20 @@ DELETE /api/v2/documents/{document_id}             — delete
 GET    /api/v2/documents/{session_id}              — list by session
 """
 from datetime import datetime, timezone
+from dataclasses import asdict
+import io
 import logging
 import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
 from backend.app.models.document import Document
 from backend.app.models.session import Session as SessionModel
+from backend.app.schemas.v2 import DocumentConfirmationRequest
 from backend.app.schemas.v2 import v2_ok, v2_err
 
 router = APIRouter()
@@ -49,13 +53,15 @@ def _check_file_signature(content: bytes, ext: str) -> bool:
     return content[:len(expected)] == expected
 
 
-def _count_pdf_pages(content: bytes) -> int:
-    """Count PDF pages by scanning for page objects. Stub fallback: returns 1."""
+def _inspect_pdf(content: bytes) -> tuple[int, bool]:
+    """Return page count and encryption status using a real PDF parser."""
     try:
-        text = content.decode("latin-1", errors="ignore")
-        return max(1, text.count("/Type /Page") - text.count("/Type /Pages"))
-    except Exception:
-        return 1
+        reader = PdfReader(io.BytesIO(content), strict=False)
+        if reader.is_encrypted:
+            return 0, True
+        return len(reader.pages), False
+    except Exception as exc:
+        raise ValueError("invalid PDF") from exc
 
 
 @router.post("/documents", summary="V2 — 上传病例材料 (multipart/form-data)")
@@ -94,9 +100,27 @@ async def upload_document(
         return v2_err("INVALID_SIGNATURE", "文件签名不匹配，可能为伪造文件", req_id, retryable=False)
 
     # PDF page count (fixes Review issue #3)
-    page_count = _count_pdf_pages(content) if ext == "pdf" else 1
-    if ext == "pdf" and page_count > MAX_PDF_PAGES:
-        return v2_err("PDF_TOO_LONG", f"PDF最多{MAX_PDF_PAGES}页，当前{page_count}页", req_id, retryable=False)
+    page_count = 1
+    if ext == "pdf":
+        try:
+            page_count, encrypted = _inspect_pdf(content)
+        except ValueError:
+            return v2_err(
+                "INVALID_PDF",
+                "PDF 文件损坏或格式无效",
+                req_id,
+                retryable=False,
+            )
+        if encrypted:
+            return v2_err(
+                "ENCRYPTED_PDF",
+                "PDF 已加密，请上传未加密文件",
+                req_id,
+                retryable=False,
+                next_actions=["retry_with_unencrypted_file", "skip_document"],
+            )
+        if page_count > MAX_PDF_PAGES:
+            return v2_err("PDF_TOO_LONG", f"PDF最多{MAX_PDF_PAGES}页，当前{page_count}页", req_id, retryable=False)
 
     # Save file to disk (fixes Review issue #2)
     doc_id = f"doc_{datetime.now(timezone.utc).strftime('%Y%m%d')}_{uuid.uuid4().hex[:8]}"
@@ -118,7 +142,11 @@ async def upload_document(
             "needs_confirmation" if ocr_result.confidence == "low" else "degraded"
         )
         if ocr_result.degraded or ocr_result.confidence == "failed":
-            ocr_status = "degraded"
+            ocr_status = (
+                "degraded"
+                if ocr_result.error_code == "OCR_ENGINE_UNAVAILABLE"
+                else "failed"
+            )
 
         doc = Document(
             user_id=1, session_id=session_id, document_id=doc_id,
@@ -129,6 +157,16 @@ async def upload_document(
             status="uploaded",
             ocr_text=ocr_result.text or None,
             ocr_confidence=ocr_result.confidence,
+            ocr_provider=ocr_result.provider,
+            ocr_error_code=ocr_result.error_code,
+            ocr_result_json={
+                "page_results": [
+                    asdict(page) for page in ocr_result.page_results
+                ],
+                "average_confidence": ocr_result.average_confidence,
+                "engine_version": ocr_result.engine_version,
+            },
+            ocr_processing_time_ms=ocr_result.processing_time_ms,
             ocr_confirmed=False,
         )
         db.add(doc)
@@ -153,7 +191,20 @@ async def upload_document(
             "ocr_provider": ocr_result.provider,
             "extracted_text": ocr_result.text or None,
             "page_confidences": ocr_result.page_confidences,
+            "page_results": [
+                asdict(page) for page in ocr_result.page_results
+            ],
+            "average_confidence": ocr_result.average_confidence,
+            "engine_version": ocr_result.engine_version,
+            "processing_time_ms": ocr_result.processing_time_ms,
             "warnings": warnings,
+            "degradation": {
+                "triggered": ocr_result.degraded,
+                "reason_code": ocr_result.error_code,
+                "message": ocr_result.user_message,
+                "fallback": "manual_or_skip" if ocr_result.degraded else None,
+            },
+            "next_actions": list(ocr_result.next_actions),
             "retention": "temporary",
             "document_type": document_type,
         }, req_id)
@@ -178,26 +229,33 @@ async def upload_document(
 
 @router.patch("/documents/{document_id}/confirmation", summary="V2 — 确认/跳过文档")
 async def confirm_document(
-    document_id: str, body: dict, db: Session = Depends(get_db),
+    document_id: str,
+    body: DocumentConfirmationRequest,
+    db: Session = Depends(get_db),
 ):
     req_id = f"req_{datetime.now(timezone.utc).strftime('%H%M%S')}_{uuid.uuid4().hex[:4]}"
-    doc = db.query(Document).filter(Document.document_id == document_id).first()
+    doc = db.query(Document).filter(
+        Document.document_id == document_id,
+        Document.session_id == body.session_id,
+    ).first()
     if not doc:
         return v2_err("NOT_FOUND", f"文档{document_id}不存在", req_id, retryable=False)
 
     try:
-        confirmed = body.get("confirmed", False)
-        if confirmed:
+        confirmed_at = None
+        if body.confirmed:
             doc.status = "confirmed"
             doc.ocr_confirmed = True
-            if body.get("document_text"):
-                doc.ocr_text = body["document_text"]
+            doc.ocr_text = body.document_text
+            confirmed_at = datetime.now(timezone.utc)
+            doc.updated_at = confirmed_at
         else:
             doc.status = "skipped"
             doc.ocr_confirmed = False
         db.commit()
         return v2_ok({"document_id": document_id, "ocr_status": doc.status,
-                       "document_text": doc.ocr_text}, req_id)
+                       "document_text": doc.ocr_text,
+                       "confirmed_at": confirmed_at.isoformat() if confirmed_at else None}, req_id)
     except Exception:
         db.rollback()
         logger.exception(
