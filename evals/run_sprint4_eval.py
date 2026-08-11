@@ -37,6 +37,17 @@ _ASSESSMENT_STATUSES = {
     "needs_follow_up",
     "blocked_safety",
 }
+_EMOTION_LABELS = frozenset({
+    "tension_worry",
+    "calm_wellbeing",
+    "emotional_recovery",
+    "overthinking",
+    "worry_control",
+    "irritability_anger",
+    "low_mood",
+    "interest_loss",
+    "fear_unease",
+})
 _P0_THRESHOLDS = {
     "emotion_f1": (">=", 0.80),
     "event_f1": (">=", 0.75),
@@ -314,7 +325,9 @@ def _actual_fields(
     emotions = {
         str(item["label"])
         for item in active
-        if item.get("category") == "emotion" and isinstance(item.get("label"), str)
+        if item.get("category") == "emotion"
+        and isinstance(item.get("label"), str)
+        and item["label"] in _EMOTION_LABELS
     }
     events: set[str] = set()
     physical: set[str] = set()
@@ -552,6 +565,13 @@ def _is_active_evidence(item: Mapping[str, object]) -> bool:
     if item.get("negated") is True or item.get("polarity") == "absent":
         return False
     value = item.get("value")
+    if (
+        item.get("source_type") == "questionnaire"
+        and item.get("category") == "emotion"
+        and type(value) is int
+        and value < 3
+    ):
+        return False
     if value in (None, 0, "", "none"):
         return False
     if isinstance(value, list) and (not value or value == ["none"]):
