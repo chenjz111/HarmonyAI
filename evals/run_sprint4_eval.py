@@ -10,6 +10,10 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+from backend.ai_engine.questionnaire_v2 import (
+    QuestionnaireValidationError,
+    score_questionnaire_v21,
+)
 from backend.ai_engine.providers import async_qwen_provider_from_env
 from backend.ai_engine.real_workflow import run_real_workflow_v21
 
@@ -63,6 +67,12 @@ def load_cases(
         if not isinstance(case.get("expected"), Mapping):
             raise ValueError(f"{case_id} must contain expected")
         identifiers.add(case_id)
+        try:
+            score_questionnaire_v21(_questionnaire_envelope(case["input"]))
+        except QuestionnaireValidationError as exc:
+            raise ValueError(
+                f"{case_id} has invalid questionnaire_v2.1 data: {exc}"
+            ) from exc
     return records
 
 
