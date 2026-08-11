@@ -337,10 +337,10 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 当前自动化证据：Contract 30/30、Full 511/511、Frontend 37/37、H5 PASS、Evaluation runner tests 14/14。
 - Safety 5/5、10 个验收场景 10/10、完整产品链路、SQLite、Provider failure、Privacy、Sprint 3 compatibility 均 PASS。
 - Assessment V2.1 API 已接入 async Qwen Provider 环境工厂；Provider input/prompt 已纳入普通日志脱敏。
-- Formal Runner 已修复并调用 production workflow：60/60 loaded、60/60 executed、5 PASS、1 FAIL、54 ERROR；Safety 5/5 PASS。Formal Qwen 缺少 endpoint/key/model，Frozen threshold 仍 FAIL。
+- Formal Runner 已调用 production workflow；首次真实本地 Qwen 正式结果为 60/60 executed、5 PASS、40 FAIL、15 ERROR；Safety 5/5 PASS，Frozen threshold FAIL。
 - MySQL 真实环境验收、OCR 真实脱敏材料 POC、Android 真机验收均 PENDING。
 - 当前唯一允许的总状态：`AUTOMATED_ACCEPTANCE_FAILED`。
-- 发布阻塞：配置真实 Qwen 并重跑 60 cases 达到 Frozen threshold；审核 `C051.q18_daily_impact=null`；之后完成 MySQL/OCR/Android Gate。
+- 发布阻塞：定位 15 个 `PROVIDER_ERROR` subset、必要时执行唯一一次 Final 60-case并达到 Frozen threshold；MySQL/OCR/Android Gate 尚未完成。
 - 详细报告：`docs/sprint4/s4-06-acceptance-report.md`。
 
 ### 2026-08-12 可恢复检查点
@@ -349,4 +349,5 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - Ollama 0.32.8 与本地 `qwen2.5:7b-instruct-q4_K_M`（digest `845dbda0ea48`）已就绪；模型健康检查及 sync/async Provider smoke 均 PASS。
 - 3-case smoke（C001/C021/S001）已完成：真实 Qwen 调用无 Provider/Schema ERROR，S001 safety PASS；普通案例仅有 model-quality 差异；targeted tests 18/18 PASS。
 - Representative mini eval 共 8/8 执行完成，无 Provider/Schema ERROR；S001 safety PASS，普通案例差异为 model-quality。
-- 下一门禁为唯一一次 formal 60；MySQL=`USER_CREDENTIAL_REQUIRED`，OCR/Android manual gate=PENDING。
+- 首次 formal 60 已落盘：5 PASS / 40 FAIL / 15 ERROR；真实 Qwen AVAILABLE，safety recall 1.0，schema pass 0.75，threshold FAIL。
+- 下一门禁仅诊断 ERROR subset；MySQL=`USER_CREDENTIAL_REQUIRED`，OCR/Android manual gate=PENDING。

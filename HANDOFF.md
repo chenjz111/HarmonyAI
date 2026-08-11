@@ -166,9 +166,9 @@ yu    (羽调)      → 58   → 箫、古琴
 - Safety Gate：5/5 PASS；10 个正式验收场景：10/10 PASS；完整产品链路：PASS。
 - SQLite、Provider failure、Privacy、Sprint 3 compatibility：PASS。
 - S4-06 小型修复：Assessment V2.1 API 接入 async Qwen Provider factory；普通日志新增 provider/prompt 输入脱敏；均有回归测试。
-- Formal Runner 已读取 `input/expected` 并调用 production workflow：loaded 60/60、executed 60/60、5 PASS、1 FAIL、54 ERROR；Safety 5/5 PASS。正式 Qwen 缺少 endpoint/key/model，threshold 仍 FAIL。
+- Formal Runner 已调用 production workflow；首次真实本地 Qwen 正式结果：60/60 executed、5 PASS、40 FAIL、15 ERROR；Safety 5/5 PASS，threshold FAIL。
 - 严格状态：`AUTOMATED_ACCEPTANCE_FAILED`。
-- 下一步：安全配置真实 Qwen 后用同一 runner 重跑 60 cases；由数据/Contract owner 审核 `C051.q18_daily_impact=null`；随后完成 MySQL、OCR POC、Android 手工 Gate。
+- 下一步：只定位 15 个 `PROVIDER_ERROR` subset；确认实现/基础设施修复后最多允许一次 Final 60-case。MySQL 等正确凭证；OCR/Android 保持人工 PENDING。
 - 详细证据：`docs/sprint4/s4-06-acceptance-report.md`。
 
 禁止在上述阻塞消除前执行 integration → dev、dev → main、tag v0.4.0、Release 或关闭 #53～#56。
@@ -179,4 +179,5 @@ yu    (羽调)      → 58   → 箫、古琴
 - Ollama 0.32.8 与 `qwen2.5:7b-instruct-q4_K_M`（digest `845dbda0ea48`）已安装到 `D:\OllamaModels`；本地健康、同步 Provider、异步 Provider smoke 均 PASS。
 - 3-case smoke：C001/C021/S001 均无 Provider/Schema ERROR，S001 safety PASS；两条普通案例仅有 model-quality 指标差异。受影响测试 18/18 PASS。
 - Representative mini eval：C001/C021/C031/C041/C046/C051/C010/S001 共 8/8 执行完成、无 Provider/Schema ERROR；S001 safety PASS，普通案例差异归类为 model-quality。
-- 下一门禁：唯一一次 formal 60-case。MySQL=`USER_CREDENTIAL_REQUIRED`；OCR/Android manual gate=PENDING。
+- 首次 formal 60-case：60/60 executed，5 PASS / 40 FAIL / 15 ERROR；Qwen AVAILABLE，safety recall 1.0，schema pass 0.75，Frozen threshold FAIL；机器结果已落盘。
+- 下一门禁：只诊断 ERROR subset；MySQL=`USER_CREDENTIAL_REQUIRED`；OCR/Android manual gate=PENDING。
