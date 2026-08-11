@@ -303,7 +303,7 @@ def _supplement_grounded_items(
             "\u7f13\u8fc7\u6765", "\u6062\u590d", "\u597d\u8f6c", "recovering",
         )),
         ("worry_thought", "worry_control", 3, (
-            "\u63a7\u5236\u4e0d\u4f4f", "\u505c\u4e0d\u4e0b\u6765", "cannot control",
+            "\u63a7\u5236\u4e0d\u4f4f", "cannot control",
         )),
         ("sleep", "unrefreshing_sleep", 3, (
             "\u7761\u591a\u4e45\u90fd\u7f13\u4e0d\u8fc7\u6765", "\u7761\u9192\u4e5f\u7d2f", "unrefreshing sleep",
