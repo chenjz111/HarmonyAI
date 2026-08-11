@@ -158,7 +158,9 @@
 
 <script>
 import { questionnaireV21 } from "@/common/questionnaire-data.js"
-import { submitQuestionnaire, saveQuestionnaireProgress, loadQuestionnaireProgress, clearQuestionnaireProgress, loadSession, saveSession, createSession } from "@/common/api-v2.js"
+import { submitAssessment, saveQuestionnaireProgress, loadQuestionnaireProgress, clearQuestionnaireProgress, createSession } from "@/common/api-v2.js"
+import { getSprint3Session, updateSprint3Session } from "@/common/sprint3-session.js"
+import { applyExclusiveChoice, safetyFlowForAnswer } from "@/common/questionnaire-rules.js"
 
 export default {
   data() {
@@ -254,7 +256,7 @@ export default {
       const q = this.currentQuestion
       const ans = this.answers[q.question_id]
       if (!Array.isArray(ans) || ans.length === 0) return false
-      const mutex = q.ui?.mutually_exclusive_value
+      const mutex = ["q16_physical_signals", "q20_emergency"].includes(q.question_id) ? "none" : null
       if (!mutex) return false
       // 如果选了 mutex 项，其他禁用；如果选了其他项， mutex 禁用
       if (value === mutex) return ans.some((v) => v !== mutex)
@@ -263,7 +265,7 @@ export default {
 
     onSelect(value) {
       const q = this.currentQuestion
-      this.$set(this.answers, q.question_id, value)
+      this.answers[q.question_id] = value
       this.autoSave()
       // 安全题检查
       this.checkSafety(value)
@@ -271,46 +273,23 @@ export default {
 
     onSelectVisual(opt) {
       const q = this.currentQuestion
-      this.$set(this.answers, q.question_id, { value: opt.value, score: opt.score })
+      this.answers[q.question_id] = { value: opt.value, score: opt.score }
       this.autoSave()
     },
 
     onToggleMulti(value) {
       const q = this.currentQuestion
-      let arr = Array.isArray(this.answers[q.question_id]) ? [...this.answers[q.question_id]] : []
-      const mutex = q.ui?.mutually_exclusive_value
-
-      if (arr.includes(value)) {
-        arr = arr.filter((v) => v !== value)
-      } else {
-        // 互斥处理
-        if (mutex && value === mutex) {
-          arr = [mutex]
-        } else if (mutex && arr.includes(mutex)) {
-          arr = [value]
-        } else {
-          arr.push(value)
-        }
-      }
-
-      this.$set(this.answers, q.question_id, arr)
+      const current = Array.isArray(this.answers[q.question_id]) ? this.answers[q.question_id] : []
+      const next = applyExclusiveChoice(q.question_id, current, value)
+      this.answers[q.question_id] = next
       this.autoSave()
-
-      // 安全题检查 (Q20 emergency)
-      if (q.safety_only && q.ui?.safety_flow === "SAFETY_EMERGENCY_PHYSICAL") {
-        const hasEmergency = arr.some((v) => v !== "none")
-        if (hasEmergency) {
-          this.triggerSafety("SAFETY_EMERGENCY_PHYSICAL")
-        }
-      }
+      const flow = safetyFlowForAnswer(q.question_id, next)
+      if (flow) this.triggerSafety(flow)
     },
 
     checkSafety(value) {
-      const q = this.currentQuestion
-      if (!q.safety_only) return
-      if (q.ui?.safety_flow === "SAFETY_SELF_HARM" && value !== q.ui.safety_pass_value) {
-        this.triggerSafety("SAFETY_SELF_HARM")
-      }
+      const flow = safetyFlowForAnswer(this.currentQuestion.question_id, value)
+      if (flow) this.triggerSafety(flow)
     },
 
     triggerSafety(flow) {
@@ -354,52 +333,50 @@ export default {
     async handleSubmit() {
       if (this.submitting) return
       this.submitting = true
-
-      uni.showLoading({ title: "正在提交..." })
-
+      uni.showLoading({ title: "正在评估..." })
       try {
-        // 构建 answers 数组
         const answersArray = this.questions.map((q) => {
           const raw = this.answers[q.question_id]
-          if (q.type === "visual_single" && raw && typeof raw === "object") {
-            return { question_id: q.question_id, value: raw.value, score: raw.score }
+          const value = q.type === "visual_single" && raw && typeof raw === "object" ? raw.value : raw
+          const score = q.type === "visual_single" && raw && typeof raw === "object" ? raw.score : undefined
+          return {
+            question_id: q.question_id,
+            value,
+            type: q.type,
+            ...(score === undefined ? {} : { score }),
           }
-          if (q.type === "single_choice" && q.question_id === "q15_appetite_change") {
-            const opt = q.options.find((o) => o.value === raw)
-            if (opt) {
-              return { question_id: q.question_id, value: { direction: opt.direction, severity: opt.severity } }
-            }
-          }
-          return { question_id: q.question_id, value: raw }
         })
-
-        // 获取或创建 session
-        let session = loadSession()
-        if (!session) {
-          session = await createSession({ entry_mode: "full" })
-          saveSession(session)
+        let session = getSprint3Session()
+        if (!session.session_id) {
+          const created = await createSession({ entry_mode: "full" })
+          session = updateSprint3Session({ session_id: created.session_id, user_id: "demo_user_001" })
         }
-
-        // 检查安全流程
-        const hasSafetyFlag = this.safetyFlow !== null
-
-        // 提交问卷
-        const result = await submitQuestionnaire({
-          sessionId: session.session_id,
-          schemaVersion: "questionnaire_v2.1",
+        const questionnaireAnswers = {
+          schema_version: "questionnaire_v2.1",
+          time_window_days: 14,
           answers: answersArray,
-        })
-
-        // 如果有安全标记，跳转安全流程页
-        if (hasSafetyFlag) {
-          uni.redirectTo({ url: "/pages/assessment-result/assessment-result?assessment_id=" + (result.assessment_id || "") + "&safety=true" })
-          return
+          safety_flags: this.safetyFlow ? [this.safetyFlow] : [],
         }
-
+        const assessment = await submitAssessment({
+          session_id: session.session_id,
+          user_id: session.user_id || "demo_user_001",
+          document_id: session.document_id || null,
+          document_text: session.document_text || null,
+          narrative_text: session.narrative_text || null,
+          questionnaire_answers: questionnaireAnswers,
+        })
+        updateSprint3Session({
+          questionnaire_answers: questionnaireAnswers,
+          assessment,
+          assessment_id: assessment.assessment_id,
+          assessment_revision: assessment.revision || 1,
+        })
         clearQuestionnaireProgress()
-        uni.redirectTo({ url: "/pages/assessment-result/assessment-result?assessment_id=" + (result.assessment_id || "") })
+        const safety = (assessment.safety_flags || []).length ? "&safety=true" : ""
+        uni.redirectTo({ url: "/pages/assessment-result/assessment-result?assessment_id=" +
+          encodeURIComponent(assessment.assessment_id) + safety })
       } catch (err) {
-        uni.showToast({ title: err.message || "提交失败", icon: "none", duration: 3000 })
+        uni.showToast({ title: err.message || "评估失败", icon: "none", duration: 3000 })
       } finally {
         this.submitting = false
         uni.hideLoading()

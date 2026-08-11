@@ -244,8 +244,8 @@
 </template>
 
 <script>
-import { getAssessment, getFollowUpQuestions, submitFollowUpAnswers, confirmAssessment } from "@/common/api-v2.js"
-import { updateSprint3Session } from "@/common/sprint3-session.js"
+import { submitFollowUpAnswers, confirmAssessment, runWorkflow } from "@/common/api-v2.js"
+import { getSprint3Session, updateSprint3Session } from "@/common/sprint3-session.js"
 
 export default {
   data() {
@@ -341,45 +341,20 @@ export default {
     async loadData() {
       this.loading = true
       this.loadError = ""
-      // 模拟分析步骤动画
-      const steps = [1, 2, 3, 4]
-      for (const s of steps) {
-        this.step = s
-        await new Promise((r) => setTimeout(r, 600))
-      }
-
       try {
-        if (this.assessmentId) {
-          this.assessment = await getAssessment(this.assessmentId)
-        } else {
-          // mock 模式下无 assessmentId，用 mock 接口获取
-          const { submitAssessment, loadSession } = await import("@/common/api-v2.js")
-          let session = loadSession()
-          this.assessment = await submitAssessment({ session_id: session?.session_id || "sess_demo", answers: [] })
+        const session = getSprint3Session()
+        const assessment = session.assessment
+        if (!assessment || assessment.assessment_id !== this.assessmentId) {
+          throw new Error("未找到本次评估结果，请重新完成问卷")
         }
-
-        if (!this.assessment || !this.assessment.assessment_id) {
-          throw new Error("未找到评估结果，请重新完成问卷")
-        }
-
-        // 根据后端返回的 safety_flags 动态更新安全流程标记
-        if ((this.assessment.safety_flags || []).length > 0) {
+        this.assessment = assessment
+        this.followUpQuestions = (assessment.follow_up_questions || []).slice(0, 4)
+        if ((assessment.safety_flags || []).length > 0 || assessment.status === "blocked_safety") {
           this.isSafetyFlow = true
         }
-
-        // 获取追问
-        if (this.assessment.follow_up_questions && this.assessment.follow_up_questions.length) {
-          this.followUpQuestions = this.assessment.follow_up_questions
-        } else if (this.assessmentId) {
-          try {
-            this.followUpQuestions = await getFollowUpQuestions(this.assessmentId)
-          } catch (e) {
-            this.followUpQuestions = []
-          }
-        }
+        this.step = 4
       } catch (err) {
         this.loadError = err.message || "加载失败"
-        uni.showToast({ title: this.loadError, icon: "none" })
       } finally {
         this.loading = false
       }
@@ -415,7 +390,7 @@ export default {
     },
 
     onAnswerFollowUp(fuId, value) {
-      this.$set(this.followUpAnswers, fuId, value)
+      this.followUpAnswers[fuId] = value
     },
 
     async onSubmitFollowUp() {
@@ -431,8 +406,9 @@ export default {
           follow_up_id: q.follow_up_id,
           answer: this.followUpAnswers[q.follow_up_id],
         }))
-        const result = await submitFollowUpAnswers(this.assessmentId, answers)
-        this.assessment = result
+        const result = await submitFollowUpAnswers(this.assessmentId, this.assessment.revision || 1, answers)
+        this.assessment = result.assessment
+        updateSprint3Session({ assessment: result.assessment, assessment_revision: result.revision.revision })
         this.followUpSubmitted = true
         this.followUpQuestions = []
         uni.showToast({ title: "评估已更新", icon: "success" })
@@ -443,36 +419,19 @@ export default {
       }
     },
 
-    buildPrescription() {
-      const a = this.assessment || {}
-      const hasSafety = (a.safety_flags || []).length > 0
-      const emotion = a.emotion_profile || {}
-      const physical = a.physical_profile || {}
-      // 简单辨证：紧张/担忧分值高 → 角调；情绪低落 → 徵调；睡眠问题 → 羽调
-      let tone = "角调"
-      const tension = emotion.tension_worry?.score || 0
-      const lowMood = emotion.low_mood?.score || 0
-      const sleep = physical.sleep_disturbance?.score || 0
-      if (sleep >= tension && sleep >= lowMood) tone = "羽调"
-      else if (lowMood >= tension && lowMood >= sleep) tone = "徵调"
-      return {
-        status: hasSafety ? "blocked_safety" : "ready",
-        recommended_tone: tone,
-        music_feature: { tone_name: tone, bpm: tone === "羽调" ? 60 : 68, instruments: ["古琴", "箫"] },
-        explanation: a.assessment_summary || "根据评估结果匹配调养音乐",
-        music_reason: a.assessment_summary || "根据评估结果匹配调养音乐",
-      }
-    },
-    savePrescriptionToSession() {
-      const prescription = this.buildPrescription()
-      updateSprint3Session({
-        workflow: {
-          ...(this.assessment?.session_id ? { session_id: this.assessment.session_id } : {}),
-          prescription,
-          prescription_id: this.assessmentId,
-          result_id: this.assessmentId,
-        },
+    async continueWorkflow() {
+      const session = getSprint3Session()
+      const workflow = await runWorkflow({
+        session_id: session.session_id,
+        user_id: session.user_id || "demo_user_001",
+        document_id: session.document_id || null,
+        document_text: session.document_text || null,
+        narrative_text: session.narrative_text || null,
+        questionnaire_answers: session.questionnaire_answers,
+        assessment_confirmed: true,
       })
+      updateSprint3Session({ workflow })
+      return workflow
     },
 
     async onConfirm(level) {
@@ -483,9 +442,13 @@ export default {
         this.confirming = true
         uni.showLoading({ title: "确认中..." })
         try {
-          const result = await confirmAssessment(this.assessmentId, { confirmationLevel: level })
-          this.assessment = result
-          this.savePrescriptionToSession()
+          const result = await confirmAssessment(this.assessmentId, {
+            revision: this.assessment.revision || 1,
+            confirmationLevel: level,
+          })
+          this.assessment = result.assessment
+          updateSprint3Session({ assessment: result.assessment, assessment_revision: result.revision.revision })
+          await this.continueWorkflow()
           uni.showToast({ title: "已确认，进入下一步", icon: "success" })
           setTimeout(() => {
             uni.redirectTo({ url: "/pages/player-v2/player-v2" })
@@ -507,24 +470,29 @@ export default {
 
     async submitCorrection() {
       if (!this.correctionText.trim()) {
-        uni.showToast({ title: "请描述修正内容", icon: "none" })
+        uni.showToast({ title: "请描述需要修正的内容", icon: "none" })
         return
       }
       this.confirming = true
       uni.showLoading({ title: "提交修正..." })
       try {
         const result = await confirmAssessment(this.assessmentId, {
+          revision: this.assessment.revision || 1,
           confirmationLevel: this.confirmationLevel,
-          corrections: { user_correction: this.correctionText.trim() },
+          corrections: [{
+            field: "user_correction_note",
+            from: null,
+            to: this.correctionText.trim(),
+          }],
         })
-        this.assessment = result
-        this.savePrescriptionToSession()
+        this.assessment = result.assessment
+        updateSprint3Session({
+          assessment: result.assessment,
+          assessment_revision: result.revision.revision,
+        })
         this.confirmationLevel = ""
         this.correctionText = ""
-        uni.showToast({ title: "已更新评估", icon: "success" })
-        setTimeout(() => {
-          uni.redirectTo({ url: "/pages/player-v2/player-v2" })
-        }, 1500)
+        uni.showToast({ title: "评估已更新，请再次确认", icon: "none" })
       } catch (err) {
         uni.showToast({ title: err.message || "修正失败", icon: "none" })
       } finally {

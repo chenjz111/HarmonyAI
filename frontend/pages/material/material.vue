@@ -217,8 +217,8 @@ export default {
 
           this.extractedText = uploaded.extracted_text || ''
           this.ocrInfo = {
-            confidence: uploaded.ocr_confidence_avg || 0,
-            engine: uploaded.ocr_engine || 'paddleocr',
+            confidence: uploaded.average_confidence || 0,
+            engine: uploaded.ocr_provider || 'paddleocr',
             evidenceCount: uploaded.evidence_items_extracted || 0,
           }
           updateSprint3Session({ document_id: uploaded.document_id })
@@ -226,6 +226,7 @@ export default {
           return
         }
         const confirmed = await confirmDocument(this.documentId, {
+          sessionId: session.session_id,
           confirmed: true,
           documentText: this.extractedText
         })
