@@ -222,10 +222,12 @@ async def test_extraction_prompt_requests_all_grounded_facts_as_separate_items()
     assert "Emit different facts as separate items" in prompt
     assert "work or exam pressure" in prompt.lower()
     assert "chest tightness" in prompt.lower()
+    assert "\u5de5\u4f5c\u538b\u529b\u7279\u522b\u5927" in prompt
+    assert "\u6ca1\u6709" in prompt
 
 
 @pytest.mark.asyncio
-async def test_life_event_translation_falls_back_to_grounded_quote():
+async def test_life_event_translation_normalizes_to_grounded_trigger_span():
     from backend.ai_engine.narrative_schema import extract_narrative
 
     provider = MockProvider(
@@ -253,7 +255,7 @@ async def test_life_event_translation_falls_back_to_grounded_quote():
     )
 
     assert result.status == "processed"
-    assert result.items[0].value == "work pressure is intense"
+    assert result.items[0].value == "work pressure"
 
 
 @pytest.mark.asyncio
@@ -271,3 +273,39 @@ async def test_extraction_prompt_requires_grounded_negated_items():
     assert "negated statements" in prompt
     assert "polarity=absent" in prompt
     assert "negated=true" in prompt
+@pytest.mark.asyncio
+async def test_grounded_lexical_supplement_fills_clear_canonical_signals():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    text = (
+        "\u6700\u8fd1\u4e24\u5468\u5de5\u4f5c\u538b\u529b\u5f88\u5927\uff0c"
+        "\u8111\u5b50\u505c\u4e0d\u4e0b\u6765\uff0c\u80f8\u53e3\u53d1\u95f7\u3002"
+    )
+    result = await extract_narrative(
+        text,
+        source_type="narrative",
+        provider=MockProvider({"items": []}),
+    )
+
+    labels = {item.label for item in result.items}
+    assert {"tension_worry", "overthinking", "chest_tightness", "life_event", "duration"} <= labels
+    life_event = next(item for item in result.items if item.label == "life_event")
+    assert life_event.value == "\u5de5\u4f5c\u538b\u529b"
+    assert life_event.quote in text
+
+
+@pytest.mark.asyncio
+async def test_grounded_lexical_supplement_preserves_explicit_good_state_as_absence():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    text = "\u8fd9\u6bb5\u65f6\u95f4\u72b6\u6001\u8fd8\u884c\uff0c\u6ca1\u4ec0\u4e48\u7279\u522b\u4e0d\u8212\u670d\u7684\u3002"
+    result = await extract_narrative(
+        text,
+        source_type="narrative",
+        provider=MockProvider({"items": []}),
+    )
+
+    low_mood = next(item for item in result.items if item.label == "low_mood")
+    assert low_mood.polarity == "absent"
+    assert low_mood.negated is True
+    assert low_mood.value == 0
