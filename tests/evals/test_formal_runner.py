@@ -224,28 +224,42 @@ def test_official_sprint4_dataset_loads_all_sixty_cases():
     assert len({case["case_id"] for case in cases}) == 60
     assert all(isinstance(case.get("input"), dict) for case in cases)
     assert all(isinstance(case.get("expected"), dict) for case in cases)
-def test_formal_questionnaire_emotion_presence_follows_value_not_severity():
-    from evals.run_sprint4_eval import _is_active_evidence
+def test_formal_questionnaire_emotion_salience_threshold():
+    from evals.run_sprint4_eval import _actual_emotion_present
 
     # value=0 → ABSENT (production polarity would be "absent")
-    assert _is_active_evidence({
+    assert _actual_emotion_present({
         "category": "emotion",
+        "label": "low_mood",
         "source_type": "questionnaire",
         "value": 0,
         "polarity": "absent",
     }) is False
-    # value 1/2/3/4 are PRESENT (Owner decision: presence != severity;
-    # 1/2 mean "occurred less often" but still occurred)
-    for value in (1, 2, 3, 4):
-        assert _is_active_evidence({
+    # value 1/2 ("偶尔/有时") are mild/background — the expected emotion_states
+    # are narrative-derived ("只标明确出现"), so questionnaire value 1/2 must not
+    # enter the emotion_f1 label set on the actual side.
+    for value in (1, 2):
+        assert _actual_emotion_present({
             "category": "emotion",
+            "label": "low_mood",
+            "source_type": "questionnaire",
+            "value": value,
+            "polarity": "present",
+        }) is False
+    # value 3/4 ("经常/几乎每天") are clearly-appearing and are present.
+    for value in (3, 4):
+        assert _actual_emotion_present({
+            "category": "emotion",
+            "label": "low_mood",
             "source_type": "questionnaire",
             "value": value,
             "polarity": "present",
         }) is True
-    # narrative emotion value=2 is active (never subject to the old value<3 rule)
-    assert _is_active_evidence({
+    # narrative emotion value=2 is present (Qwen extraction is salient by
+    # construction; never subject to the questionnaire salience threshold)
+    assert _actual_emotion_present({
         "category": "emotion",
+        "label": "low_mood",
         "source_type": "narrative",
         "value": 2,
         "polarity": "present",
