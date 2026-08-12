@@ -334,7 +334,8 @@ def _supplement_grounded_items(
         )),
         ("mood_interest", "low_mood", 3, (
             "\u4f4e\u843d", "\u96be\u8fc7", "\u60f3\u54ed", "\u5f00\u5fc3\u4e0d\u8d77\u6765",
-            "\u6ca1\u610f\u601d", "feeling low",
+            "\u6ca1\u610f\u601d", "\u90c1\u95f7", "\u6d88\u6c89", "\u5fc3\u60c5\u4e0d\u597d", "\u6cae\u4e27",
+            "\u4f4e\u6c89", "\u4e0d\u5f00\u5fc3", "feeling low",
         )),
         ("mood_interest", "interest_loss", 3, (
             "\u6ca1\u5174\u8da3", "\u63d0\u4e0d\u8d77\u5174\u8da3",
@@ -383,27 +384,26 @@ def _supplement_grounded_items(
     terms_by_label: dict[str, tuple[str, ...]] = {}
     for _category, label, _value, terms in specs:
         terms_by_label[label] = (*terms_by_label.get(label, ()), *terms)
+    # Only validate keywords on lexically-added fallback items, not Qwen extractions.
+    # Qwen items (source_ref like "narrative:sentence_2") are trusted after schema validation.
     result = [
         item
         for item in result
-        if item.label not in terms_by_label
+        if "lexical_" in item.source_ref
+        or item.label not in terms_by_label
         or any(term.casefold() in item.quote.casefold() for term in terms_by_label[item.label])
     ]
-    result = [
-        item
-        for item in result
-        if not (item.label == "calm_wellbeing" and "\u6709\u65f6\u5019" in item.quote)
-        and not (item.label == "fear_unease" and "\u70e6\u8e81\u4e0d\u5b89" in item.quote)
-    ]
+    # Removed over-aggressive quote filters that deleted valid Qwen extractions.
+    # calm_wellbeing with hedging ("\u6709\u65f6\u5019") and fear_unease co-occurring with
+    # irritability ("\u70e6\u8e81\u4e0d\u5b89") are legitimate evidence that the assessment fusion
+    # layer should handle, not silently dropped at extraction time.
     labels = {item.label for item in result}
     for category, label, value, terms in specs:
         quote = next((term for term in terms if term.casefold() in lowered), None)
         if quote is None:
             continue
-        if label == "calm_wellbeing" and "\u6709\u65f6\u5019" in lowered:
-            continue
-        if label == "fear_unease" and "\u70e6\u8e81\u4e0d\u5b89" in lowered:
-            continue
+        # Removed over-aggressive skip for calm_wellbeing/fear_unease.
+        # Let the lexical fallback add these labels when keywords are present.
         existing = [item for item in result if item.label == label]
         if existing:
             should_upgrade = all(
@@ -434,17 +434,23 @@ def _supplement_grounded_items(
     )
     good_state = next((term for term in good_state_terms if term.casefold() in lowered), None)
     if good_state is not None:
-        result = [item for item in result if item.label != "low_mood"]
-        result.append(_lexical_item(
-            category="mood_interest",
-            label="low_mood",
-            value=0,
-            quote=good_state,
-            source_type=source_type,
-            index=len(result) + 1,
-            polarity="absent",
-            negated=True,
-        ))
+        # Add negated low_mood evidence WITHOUT removing existing low_mood items.
+        # The assessment fusion layer resolves conflicts; extraction should preserve
+        # all grounded evidence. Only skip if a negated low_mood item already exists.
+        has_negated_low_mood = any(
+            item.label == "low_mood" and item.negated for item in result
+        )
+        if not has_negated_low_mood:
+            result.append(_lexical_item(
+                category="mood_interest",
+                label="low_mood",
+                value=0,
+                quote=good_state,
+                source_type=source_type,
+                index=len(result) + 1,
+                polarity="absent",
+                negated=True,
+            ))
     absence_specs = (
         ("emotion_state", "tension_worry", "\u6ca1\u4ec0\u4e48\u538b\u529b"),
         ("sleep", "sleep_disturbance", "\u7761\u5f97\u9999"),
