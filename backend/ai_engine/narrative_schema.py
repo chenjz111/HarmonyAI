@@ -205,6 +205,8 @@ def _normalize_items(
     source_text: str,
     source_type: Literal["narrative", "document"],
 ) -> list[NarrativeEvidence]:
+    if raw_items is None and isinstance(raw_items, type(None)):
+        raw_items = []
     if isinstance(raw_items, (str, bytes)) or not isinstance(raw_items, list):
         raise ValueError("items must be a JSON array")
 
@@ -229,6 +231,20 @@ def _normalize_items(
         negated = raw_item.get("negated")
         if not isinstance(label, str) or not label.strip():
             raise ValueError(f"items[{index}].label is required")
+        if not isinstance(quote, str) or not quote.strip():
+            ref_text = source_ref.split(":", 1)[1].strip() if isinstance(source_ref, str) and ":" in source_ref else ""
+            if ref_text and ref_text in source_text:
+                quote = ref_text
+
+        if isinstance(quote, str) and quote.strip() and quote not in source_text:
+            ref_text = source_ref.split(":", 1)[1].strip() if isinstance(source_ref, str) and ":" in source_ref else ""
+        if isinstance(quote, str) and quote.strip() and quote not in source_text:
+            trimmed_quote = quote.rstrip(".,;:!??????")
+            if trimmed_quote and trimmed_quote in source_text:
+                quote = trimmed_quote
+            if ref_text and ref_text in source_text:
+                quote = ref_text
+
         if not isinstance(quote, str) or not quote.strip() or quote not in source_text:
             raise ValueError(f"items[{index}].quote must be a source substring")
         value = raw_item.get("value")

@@ -424,3 +424,78 @@ async def test_grounded_lexical_supplement_records_explicit_no_pressure_and_good
     assert by_label["sleep_disturbance"].polarity == "absent"
     assert by_label["tension_worry"].value == 0
     assert by_label["sleep_disturbance"].value == 0
+
+@pytest.mark.asyncio
+async def test_extraction_uses_grounded_source_ref_text_when_quote_was_translated():
+    from backend.ai_engine.narrative_schema import extract_narrative
+
+    text = "I have been feeling anxious lately."
+    translated = {
+        "items": [{
+            "category": "emotion_state",
+            "label": "tension_worry",
+            "value": 3,
+            "polarity": "present",
+            "time_window": None,
+            "quote": "????",
+            "source_ref": "narrative:I have been feeling anxious lately.",
+            "extraction_confidence": 0.9,
+            "negated": False,
+        }]
+    }
+    result = await extract_narrative(
+        text,
+        source_type="narrative",
+        provider=SequenceProvider(translated, translated),
+    )
+
+    assert result.status == "processed"
+    assert result.reason_code is None
+    assert result.items[0].quote == text
+    assert result.items[0].source_ref == "narrative:I have been feeling anxious lately."
+
+@pytest.mark.asyncio
+async def test_extraction_treats_empty_provider_object_as_no_evidence():
+    from backend.ai_engine.narrative_schema import extract_narrative
+    result = await extract_narrative(
+        "?", source_type="narrative", provider=MockProvider({})
+    )
+    assert result.status == "processed"
+    assert result.items == ()
+
+@pytest.mark.asyncio
+async def test_extraction_recovers_missing_quote_from_grounded_source_ref():
+    from backend.ai_engine.narrative_schema import extract_narrative
+    text = "?????"
+    item = {
+        "category": "mood_interest",
+        "label": "low_mood",
+        "value": 0,
+        "polarity": "absent",
+        "time_window": None,
+        "quote": None,
+        "source_ref": "narrative:?????",
+        "extraction_confidence": 0.8,
+        "negated": True,
+    }
+    result = await extract_narrative(
+        text, source_type="narrative", provider=MockProvider({"items": [item]})
+    )
+    assert result.status == "processed"
+
+@pytest.mark.asyncio
+async def test_extraction_trims_only_ungrounded_trailing_punctuation():
+    from backend.ai_engine.narrative_schema import extract_narrative
+    text = "Sometimes my chest feels tight and I worry it's serious, though I am healthy."
+    item = {
+        "category": "physical_signal", "label": "chest_tightness",
+        "value": "chest_tightness", "polarity": "present",
+        "time_window": None,
+        "quote": "Sometimes my chest feels tight and I worry it's serious.",
+        "source_ref": "narrative:sentence_1",
+        "extraction_confidence": 0.8, "negated": False,
+    }
+    result = await extract_narrative(
+        text, source_type="narrative", provider=MockProvider({"items": [item]})
+    )
+    assert result.status == "processed"
