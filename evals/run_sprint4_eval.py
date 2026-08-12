@@ -337,8 +337,6 @@ def _actual_fields(
         and item["label"] in _EMOTION_LABELS
         and item["label"] not in unresolved_topics
     }
-    if unresolved_topics:
-        emotions = set()
     events: set[str] = set()
     physical: set[str] = set()
     for item in active:
