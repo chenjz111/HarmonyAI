@@ -224,21 +224,26 @@ def test_official_sprint4_dataset_loads_all_sixty_cases():
     assert len({case["case_id"] for case in cases}) == 60
     assert all(isinstance(case.get("input"), dict) for case in cases)
     assert all(isinstance(case.get("expected"), dict) for case in cases)
-def test_formal_metrics_ignore_neutral_questionnaire_emotions_but_keep_narrative():
+def test_formal_questionnaire_emotion_presence_follows_value_not_severity():
     from evals.run_sprint4_eval import _is_active_evidence
 
+    # value=0 → ABSENT (production polarity would be "absent")
     assert _is_active_evidence({
         "category": "emotion",
         "source_type": "questionnaire",
-        "value": 2,
-        "polarity": "present",
+        "value": 0,
+        "polarity": "absent",
     }) is False
-    assert _is_active_evidence({
-        "category": "emotion",
-        "source_type": "questionnaire",
-        "value": 3,
-        "polarity": "present",
-    }) is True
+    # value 1/2/3/4 are PRESENT (Owner decision: presence != severity;
+    # 1/2 mean "occurred less often" but still occurred)
+    for value in (1, 2, 3, 4):
+        assert _is_active_evidence({
+            "category": "emotion",
+            "source_type": "questionnaire",
+            "value": value,
+            "polarity": "present",
+        }) is True
+    # narrative emotion value=2 is active (never subject to the old value<3 rule)
     assert _is_active_evidence({
         "category": "emotion",
         "source_type": "narrative",
