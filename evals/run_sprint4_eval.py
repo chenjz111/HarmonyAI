@@ -332,11 +332,10 @@ def _actual_fields(
     }
     emotions = {
         str(item["label"])
-        for item in active
+        for item in evidence
         if item.get("category") == "emotion"
-        and isinstance(item.get("label"), str)
-        and item["label"] in _EMOTION_LABELS
-        and item["label"] not in unresolved_topics
+        and _emotion_present(item)
+        and str(item["label"]) not in unresolved_topics
     }
     events: set[str] = set()
     physical: set[str] = set()
@@ -393,8 +392,7 @@ def _expected_fields(expected: Mapping[str, object]) -> dict[str, object]:
     emotions = {
         str(item["label"])
         for item in expected.get("emotion_states", [])
-        if isinstance(item, Mapping) and isinstance(item.get("label"), str)
-        and item["label"] in _EMOTION_LABELS
+        if isinstance(item, Mapping) and _emotion_present(item)
     }
     events = {
         str(item["trigger"])
@@ -571,17 +569,46 @@ def _case_evidence(
 
 
 
+def _emotion_present(item: Mapping[str, object]) -> bool:
+    """Canonical emotion presence semantics, shared by expected and actual sides.
+
+    Frozen Sprint 4 contract (Owner decision 2026-08-13):
+
+    - Negative ``frequency_0_4`` emotions (``tension_worry``, ``overthinking``,
+      ``irritability_anger``, ``fear_unease``, ``low_mood``, ``interest_loss``):
+      ``value=0`` → ABSENT, ``value∈{1,2,3,4}`` → PRESENT.
+    - ``emotional_recovery`` (single_choice, "分值越高表示恢复越困难"): ``value=0``
+      → ABSENT, ``value≥1`` → PRESENT.
+    - ``calm_wellbeing`` (reverse_scored=true): the *evidence* value is already
+      reversed to ``4 - raw``, so evidence ``value=0`` → ABSENT ("fully calm"),
+      ``value≥1`` → PRESENT.
+    - ``worry_control`` is scored=false/weight=0 and excluded from
+      ``_EMOTION_LABELS``.
+
+    Presence and severity/frequency are distinct concepts: ``value=1/2`` means the
+    symptom occurred less often but still occurred, so it is PRESENT — it must not
+    be dropped merely because ``value < 3``. Severity/frequency is preserved in
+    ``value`` and is never raised here.
+    """
+    label = item.get("label")
+    if not isinstance(label, str) or label not in _EMOTION_LABELS:
+        return False
+    if item.get("negated") is True or item.get("polarity") == "absent":
+        return False
+    value = item.get("value")
+    # A missing ``value`` (bare ``{"label": ...}``) means "listed as present".
+    # An explicit zero/empty/neutral marker means ABSENT.
+    if value == 0 or value in ("", "none"):
+        return False
+    if isinstance(value, list) and (not value or value == ["none"]):
+        return False
+    return True
+
+
 def _is_active_evidence(item: Mapping[str, object]) -> bool:
     if item.get("negated") is True or item.get("polarity") == "absent":
         return False
     value = item.get("value")
-    if (
-        item.get("source_type") == "questionnaire"
-        and item.get("category") == "emotion"
-        and type(value) is int
-        and value < 3
-    ):
-        return False
     if value in (None, 0, "", "none"):
         return False
     if isinstance(value, list) and (not value or value == ["none"]):
