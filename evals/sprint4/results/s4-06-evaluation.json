@@ -1,18 +1,18 @@
 {
-  "error_count": 5,
+  "error_count": 0,
   "executed_count": 60,
-  "failed_count": 40,
+  "failed_count": 45,
   "loaded_count": 60,
   "metrics": {
-    "abstain_accuracy": 0.68,
-    "emotion_f1": 0.676056338028169,
-    "event_f1": 0.8,
+    "abstain_accuracy": 0.6727272727272727,
+    "emotion_f1": 0.7044025157232704,
+    "event_f1": 0.75,
     "evidence_citation_accuracy": 1.0,
     "evidence_coverage_score": 1.0,
     "physical_f1": 0.8,
-    "provider_failure_rate": 0.08333333333333333,
+    "provider_failure_rate": 0.0,
     "safety_recall": 1.0,
-    "schema_pass_rate": 0.9166666666666666,
+    "schema_pass_rate": 1.0,
     "unsupported_conclusion_rate": 0.0
   },
   "passed_count": 15,
@@ -151,7 +151,9 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 1,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "low_mood"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 2,
         "life_events": [],
@@ -256,9 +258,7 @@
       "case_id": "C006",
       "expected_summary": {
         "conflict_count": 0,
-        "emotion_labels": [
-          "low_energy"
-        ],
+        "emotion_labels": [],
         "expected_abstain": false,
         "expected_safety_block": false,
         "follow_up_range": [
@@ -271,7 +271,6 @@
         ]
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
         "PHYSICAL_SIGNALS_MISMATCH",
         "FOLLOW_UP_MISMATCH"
       ],
@@ -368,7 +367,24 @@
       "type": "narrative_only"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "tension_worry"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [
+          "palpitation"
+        ],
+        "safety_blocked": false,
+        "source_types": [
+          "narrative"
+        ]
+      },
       "case_id": "C009",
       "expected_summary": {
         "conflict_count": 0,
@@ -389,9 +405,13 @@
           "palpitation"
         ]
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "LIFE_EVENTS_MISMATCH",
+        "FOLLOW_UP_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "narrative_only"
     },
     {
@@ -482,7 +502,18 @@
       "type": "narrative_only"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "needs_follow_up",
+        "conflict_count": 0,
+        "emotion_labels": [],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 1,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": []
+      },
       "case_id": "C012",
       "expected_summary": {
         "conflict_count": 0,
@@ -496,9 +527,11 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "FOLLOW_UP_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "narrative_only"
     },
     {
@@ -547,7 +580,9 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 1,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "interest_loss"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 2,
         "life_events": [],
@@ -588,7 +623,9 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 1,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "tension_worry"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [
@@ -667,7 +704,22 @@
       "type": "narrative_only"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": true,
+        "assessment_status": "needs_follow_up",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "tension_worry"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 1,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "narrative"
+        ]
+      },
       "case_id": "C017",
       "expected_summary": {
         "conflict_count": 0,
@@ -687,9 +739,13 @@
           "chest_tightness"
         ]
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "PHYSICAL_SIGNALS_MISMATCH",
+        "ABSTAIN_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "narrative_only"
     },
     {
@@ -773,7 +829,9 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 1,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "interest_loss"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -1032,7 +1090,9 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 1,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "interest_loss"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -1056,9 +1116,11 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [],
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH"
+      ],
       "reason_code": null,
-      "status": "PASS",
+      "status": "FAIL",
       "type": "narrative_questionnaire"
     },
     {
@@ -1148,8 +1210,10 @@
       "actual_summary": {
         "abstained": true,
         "assessment_status": "needs_follow_up",
-        "conflict_count": 1,
-        "emotion_labels": [],
+        "conflict_count": 2,
+        "emotion_labels": [
+          "calm_wellbeing"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -1530,7 +1594,25 @@
       "type": "document_questionnaire"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "irritability_anger"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [
+          "chest_tightness"
+        ],
+        "safety_blocked": false,
+        "source_types": [
+          "document",
+          "questionnaire"
+        ]
+      },
       "case_id": "C038",
       "expected_summary": {
         "conflict_count": 0,
@@ -1549,8 +1631,8 @@
         ]
       },
       "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "reason_code": null,
+      "status": "PASS",
       "type": "document_questionnaire"
     },
     {
@@ -1789,7 +1871,9 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 1,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "tension_worry"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [
@@ -1884,7 +1968,9 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 3,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "fear_unease"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -1909,6 +1995,7 @@
         "physical_signals": []
       },
       "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
         "CONFLICT_MISMATCH"
       ],
       "reason_code": null,
@@ -1920,7 +2007,9 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 1,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "calm_wellbeing"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -1992,7 +2081,24 @@
       "type": "source_conflict"
     },
     {
-      "actual_summary": null,
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "narrative",
+          "questionnaire"
+        ]
+      },
       "case_id": "C049",
       "expected_summary": {
         "conflict_count": 2,
@@ -2006,9 +2112,14 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [],
-      "reason_code": "PROVIDER_ERROR",
-      "status": "ERROR",
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "CONFLICT_MISMATCH",
+        "FOLLOW_UP_MISMATCH",
+        "ABSTAIN_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
       "type": "source_conflict"
     },
     {
@@ -2033,9 +2144,7 @@
       "case_id": "C050",
       "expected_summary": {
         "conflict_count": 1,
-        "emotion_labels": [
-          "low_energy"
-        ],
+        "emotion_labels": [],
         "expected_abstain": true,
         "expected_safety_block": false,
         "follow_up_range": [
@@ -2075,8 +2184,7 @@
       "expected_summary": {
         "conflict_count": 0,
         "emotion_labels": [
-          "low_mood",
-          "sleep_disturbance"
+          "low_mood"
         ],
         "expected_abstain": false,
         "expected_safety_block": false,
@@ -2088,7 +2196,6 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
         "FOLLOW_UP_MISMATCH"
       ],
       "reason_code": null,
@@ -2430,16 +2537,10 @@
   "threshold": {
     "failures": [
       {
-        "actual": 0.676056338028169,
+        "actual": 0.7044025157232704,
         "metric": "emotion_f1",
         "operator": ">=",
         "target": 0.8
-      },
-      {
-        "actual": 0.9166666666666666,
-        "metric": "schema_pass_rate",
-        "operator": ">=",
-        "target": 1.0
       }
     ],
     "status": "FAIL"
