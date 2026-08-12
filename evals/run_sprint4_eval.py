@@ -42,12 +42,13 @@ _EMOTION_LABELS = frozenset({
     "calm_wellbeing",
     "emotional_recovery",
     "overthinking",
-    "worry_control",
     "irritability_anger",
     "low_mood",
     "interest_loss",
     "fear_unease",
 })
+# NOTE: worry_control is intentionally excluded — scored=false, weight=0 per frozen contract.
+# It is a qualitative dimension (Q04), not an emotion label for evaluation purposes.
 _P0_THRESHOLDS = {
     "emotion_f1": (">=", 0.80),
     "event_f1": (">=", 0.75),
