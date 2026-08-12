@@ -366,7 +366,17 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - PR HEAD：`fix/s4-06-integration@dd92f09`（emotion 提取 keyword-grounding gate 恢复修正 + 报告更新）。
 - **emotion_f1 0.7044 → 0.7362**（仍 < 0.80，唯一未达标项）；event_f1 0.7500、physical_f1 0.8000、safety_recall 1.0、schema_pass_rate 1.0、provider_failure_rate 0.0（15 个 PROVIDER_ERROR 已归零）。
 - 全量回归：Full 540/540、Contract 30/30、Frontend 37/37、H5 build PASS。
-- 根因分类：残余缺口 = **H 模型质量**（low_mood FN=10、fear_unease FN=5、emotional_recovery FN=4、overthinking FN=4）；已修 E（adapter 过激过滤）、B（normalization 幻觉门）、C（taxonomy 移除 worry_control）。
+- 根因重分类（不是纯模型质量）：**A/B evaluator/normalization 不对称** —— actual 侧 `_is_active_evidence` 丢弃问卷 emotion value<3，expected 侧 `_expected_fields` 不过滤 value，导致 value=0/1/2 的缺席/轻微情绪被 expected 当成「必须有」→ 系统性 FN（C023/C039/C025/C029/C037；low_mood FN 约 5 个、emotional_recovery FN 约 3 个是这类）；**H 模型质量**（成语/隐晦表达：提不起劲/开了很多窗口/活着没意思/缓过来）；**C taxonomy 边界**（tension vs fear vs overthinking 重叠）。已修 E（adapter 过激过滤）、B（normalization 幻觉门）、C（taxonomy 移除 worry_control）。
+- **Provider 冻结的是接口不是模型**：`QwenCompatibleProvider` 接口冻结，`model`/`QWEN_MODEL` 是运行时参数 → Sprint 4 内可换更强 Qwen（14B/72B/非量化），不违约；唯一红线禁止 Mock 代替 Qwen、禁止 DeepSeek 代替 Formal Qwen。
 - 中间陷阱：一次"保护 Qwen 项"的过滤修正实际移除了幻觉门，导致 emotion_f1 0.7362→0.6590（FP 14→27），已回退。**结论：Qwen emotion 抽取必须过 keyword-grounding gate，词法回退项天然通过。**
 - MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
-- 总状态：**`AUTOMATED_ACCEPTANCE_FAILED`**；残余 blocker 为模型质量，需更强模型或受控 Prompt/数据改进，不做大规模 Prompt tuning、不改 expected、不 Mock。
+- 总状态：**`AUTOMATED_ACCEPTANCE_FAILED`**。下一步最高杠杆 = 先解决 evaluator value 阈值不对称（需 Contract Owner 拍板 value=0/1/2 语义）+ 问卷情绪证据融合；换更强 Qwen 救成语类 FN（合法）；再厘清 taxonomy 边界。不做大规模 Prompt tuning、不改 expected、不 Mock、不降阈值。
+
+### S4-06 夜间收口（2026-08-13，Claude 自主执行）
+
+- 新增 commit `4b36f90`（Checkpoint B）+ `5988b27`（Checkpoint A）。**emotion_f1 0.7362 → 0.7407**（value=0 不对称修复），仍未达 0.80。
+- 关键修正：分离 **presence**（`_emotion_present`：value≥1=present，用于 expected 侧）与 **salience**（`_actual_emotion_present`：问卷 value≥3 才计入 emotion_f1 标签集）。把「value≥1=present」直接套到标签集会塌缩 F1 到 0.346（问卷每 case 报 ~6 个 value=2 背景情绪，gold 是叙事派生 2-3 个 salient）。
+- 结论（被进一步确认）：**value 语义是红鲱鱼**。value=0 修复只 +0.0045；离 0.80 差 ~12 个错误。真正阻塞 = ① ~15 个叙事漏报 FN（成语/英文/隐含表达，需更强 Qwen 14B+/云端）② ~8 FN + ~9 FP 的问卷-叙事优先级歧义（gold 对问卷情绪的纳入非 value 确定性函数，需 Owner 重标/澄清语义）。
+- 需要 Owner 拍板两项：D1 问卷情绪在 gold 的纳入规则；D2 是否换更强 Qwen（14B 量化需更大显存 / 云端 API 需预算）。
+- 手工 Gate 不变：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- 全量回归 610/610 passed。权威报告：`docs/sprint4/s4-06-morning-report.md`、`docs/sprint4/s4-06-evaluation-report.md`。

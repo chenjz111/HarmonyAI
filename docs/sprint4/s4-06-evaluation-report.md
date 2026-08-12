@@ -6,6 +6,35 @@
 > Formal Qwen：`AVAILABLE`（Ollama / qwen2.5:7b-instruct-q4_K_M）
 > 本文件为最终权威结果，取代此前所有初跑/中间 checkpoint 数字。
 
+---
+
+## S4-06 补充（2026-08-13 夜间收口）：emotion value=0 不对称修复
+
+> 在 0.7362 基线之上完成，commit `4b36f90`（PR #65，分支 `fix/s4-06-integration`）。
+
+### 修复内容
+
+1. **value=0 不对称修复（合法，保留）**：expected 侧原先把 `value=0` / `polarity=absent` 的 `emotion_states` 也当作「必须有」，而 actual 侧正确地把 value=0 视为缺席，造成系统性 FN 不对称。修复后 expected 侧经 `_emotion_present` 丢弃 value=0 / absent 标签。
+2. **问卷 salience 阈值（value≥3）还原**：把 `_emotion_present`（presence：value≥1=present，供 expected 侧）与 `_actual_emotion_present`（label-set salience：问卷 value≥3 才计入 emotion_f1 标签集）分离。关键证据：把「value≥1=present」直接套到 emotion_f1 标签集会把 F1 从 0.7362 **塌缩到 0.346**（问卷每个 case 报 ~6 个 value=2 背景情绪，而 gold 是叙事派生的 2-3 个 salient 情绪）。
+
+### 结果
+
+| 版本 | emotion_f1 | 说明 |
+|---|---:|---|
+| 0.7362 | 保存的正式 60（2026-08-12） | 唯一未达标项 |
+| **0.7407** | 确定性离线重算（value=0 修复） | 合法修正，**仍未达 0.80** |
+
+### 结论（被进一步确认，未变）
+
+value 语义是**红鲱鱼**：value=0 修复只带来 +0.0045（0.7362→0.7407）。真正阻止达到 0.80 的缺口是：
+
+- **~15 个叙事漏报 FN**（Qwen2.5-7B-q4 对成语/英文/隐含表达的提取失败：提不起劲 / 开了很多窗口 / 活着没意思 / 缓过来 / anxious 等）——需要更强模型（14B+ 或云端），受限于 8GB VRAM 无法本机执行。
+- **~8 FN + ~9 FP 的问卷-叙事优先级歧义**（gold 有时把 value 1/2 问卷情绪计入、有时又把 value 3/4 问卷情绪排除，非 value 的确定性函数）——需要 Contract Owner 拍板问卷情绪在 gold 中的纳入语义。
+
+二者均非本夜可在不违反约束（不降阈值、不改 expected、不 Mock、不换 DeepSeek）前提下自主达成的项。
+
+---
+
 ## 执行摘要
 
 | 项目 | 结果 |
