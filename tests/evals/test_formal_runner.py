@@ -295,3 +295,16 @@ def test_formal_actual_emotions_exclude_only_the_unresolved_conflict_topic():
     )
 
     assert actual["emotion_labels"] == {"fear_unease"}
+
+def test_formal_expected_emotions_use_only_the_frozen_emotion_taxonomy():
+    from evals.run_sprint4_eval import _expected_fields
+    expected = _expected_fields({
+        "emotion_states": [
+            {"label": "low_mood"},
+            {"label": "low_energy"},
+            {"label": "sleep_disturbance"},
+        ],
+        "life_events": [], "physical_signals": [],
+        "expected_conflicts": [],
+    })
+    assert expected["emotion_labels"] == {"low_mood"}

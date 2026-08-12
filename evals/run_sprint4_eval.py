@@ -393,6 +393,7 @@ def _expected_fields(expected: Mapping[str, object]) -> dict[str, object]:
         str(item["label"])
         for item in expected.get("emotion_states", [])
         if isinstance(item, Mapping) and isinstance(item.get("label"), str)
+        and item["label"] in _EMOTION_LABELS
     }
     events = {
         str(item["trigger"])
