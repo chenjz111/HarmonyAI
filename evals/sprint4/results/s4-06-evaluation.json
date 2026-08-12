@@ -5,7 +5,7 @@
   "loaded_count": 60,
   "metrics": {
     "abstain_accuracy": 0.6727272727272727,
-    "emotion_f1": 0.7044025157232704,
+    "emotion_f1": 0.7361963190184049,
     "event_f1": 0.75,
     "evidence_citation_accuracy": 1.0,
     "evidence_coverage_score": 1.0,
@@ -113,7 +113,8 @@
         "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
-          "irritability_anger"
+          "irritability_anger",
+          "overthinking"
         ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 0,
@@ -140,6 +141,7 @@
         "physical_signals": []
       },
       "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
         "FOLLOW_UP_MISMATCH"
       ],
       "reason_code": null,
@@ -196,8 +198,7 @@
         "conflict_count": 0,
         "emotion_labels": [
           "fear_unease",
-          "tension_worry",
-          "worry_control"
+          "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
@@ -217,8 +218,7 @@
         "emotion_labels": [
           "fear_unease",
           "overthinking",
-          "tension_worry",
-          "worry_control"
+          "tension_worry"
         ],
         "expected_abstain": false,
         "expected_safety_block": false,
@@ -284,6 +284,7 @@
         "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
+          "overthinking",
           "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
@@ -420,6 +421,7 @@
         "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
+          "calm_wellbeing",
           "irritability_anger",
           "low_mood"
         ],
@@ -449,6 +451,7 @@
         "physical_signals": []
       },
       "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
         "FOLLOW_UP_MISMATCH",
         "ABSTAIN_MISMATCH"
       ],
@@ -754,6 +757,8 @@
         "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
+          "calm_wellbeing",
+          "emotional_recovery",
           "tension_worry"
         ],
         "evidence_coverage_score": 1.0,
@@ -783,7 +788,6 @@
         "physical_signals": []
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
         "FOLLOW_UP_MISMATCH"
       ],
       "reason_code": null,
@@ -1022,8 +1026,7 @@
         "conflict_count": 0,
         "emotion_labels": [
           "fear_unease",
-          "tension_worry",
-          "worry_control"
+          "tension_worry"
         ],
         "expected_abstain": false,
         "expected_safety_block": false,
@@ -1049,7 +1052,9 @@
         "abstained": false,
         "assessment_status": "success",
         "conflict_count": 0,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "calm_wellbeing"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 0,
         "life_events": [],
@@ -1492,8 +1497,7 @@
         "conflict_count": 0,
         "emotion_labels": [
           "fear_unease",
-          "tension_worry",
-          "worry_control"
+          "tension_worry"
         ],
         "expected_abstain": false,
         "expected_safety_block": false,
@@ -1504,11 +1508,9 @@
         "life_events": [],
         "physical_signals": []
       },
-      "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH"
-      ],
+      "failure_reasons": [],
       "reason_code": null,
-      "status": "FAIL",
+      "status": "PASS",
       "type": "document_questionnaire"
     },
     {
@@ -1556,7 +1558,9 @@
         "abstained": true,
         "assessment_status": "needs_follow_up",
         "conflict_count": 1,
-        "emotion_labels": [],
+        "emotion_labels": [
+          "calm_wellbeing"
+        ],
         "evidence_coverage_score": 1.0,
         "follow_up_count": 1,
         "life_events": [],
@@ -1599,6 +1603,7 @@
         "assessment_status": "success",
         "conflict_count": 0,
         "emotion_labels": [
+          "fear_unease",
           "irritability_anger"
         ],
         "evidence_coverage_score": 1.0,
@@ -1630,9 +1635,11 @@
           "chest_tightness"
         ]
       },
-      "failure_reasons": [],
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH"
+      ],
       "reason_code": null,
-      "status": "PASS",
+      "status": "FAIL",
       "type": "document_questionnaire"
     },
     {
@@ -1843,8 +1850,7 @@
         "conflict_count": 0,
         "emotion_labels": [
           "fear_unease",
-          "tension_worry",
-          "worry_control"
+          "tension_worry"
         ],
         "expected_abstain": false,
         "expected_safety_block": false,
@@ -1859,7 +1865,6 @@
         ]
       },
       "failure_reasons": [
-        "EMOTION_LABELS_MISMATCH",
         "PHYSICAL_SIGNALS_MISMATCH"
       ],
       "reason_code": null,
@@ -2128,6 +2133,7 @@
         "assessment_status": "needs_follow_up",
         "conflict_count": 0,
         "emotion_labels": [
+          "calm_wellbeing",
           "fear_unease",
           "tension_worry"
         ],
@@ -2537,7 +2543,7 @@
   "threshold": {
     "failures": [
       {
-        "actual": 0.7044025157232704,
+        "actual": 0.7361963190184049,
         "metric": "emotion_f1",
         "operator": ">=",
         "target": 0.8
