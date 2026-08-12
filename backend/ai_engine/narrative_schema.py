@@ -310,13 +310,19 @@ def _supplement_grounded_items(
     specs = (
         ("emotion_state", "tension_worry", 3, (
             "\u7d27\u5f20", "\u62c5\u5fc3", "\u7126\u8651", "\u5de5\u4f5c\u538b\u529b",
-            "\u8003\u8bd5\u538b\u529b", "anxious", "worry",
+            "\u8003\u8bd5\u538b\u529b", "\u538b\u529b\u5927", "\u5b66\u4e60\u538b\u529b", "\u62c5\u5fe7",
+            "anxious", "worry",
         )),
         ("emotion_state", "calm_wellbeing", 3, (
-            "\u5e73\u9759", "\u60c5\u7eea\u8fd8\u597d", "\u72b6\u6001\u7a33\u5b9a", "calm",
+            "\u5e73\u9759", "\u5e73\u7a33", "\u60c5\u7eea\u8fd8\u597d", "\u60c5\u7eea\u7a33\u5b9a", "\u72b6\u6001\u7a33\u5b9a",
+            "\u5fc3\u60c5\u4e0d\u9519", "\u5fc3\u60c5\u5e73\u7a33", "\u5fc3\u60c5\u8fd8\u53ef\u4ee5", "\u5fc3\u60c5\u8fd8\u884c",
+            "\u60c5\u7eea\u8fd8\u53ef\u4ee5", "\u60c5\u7eea\u8fd8\u884c", "\u60c5\u7eea\u5e73\u7a33",
+            "calm",
         )),
         ("emotion_state", "emotional_recovery", 3, (
-            "\u7f13\u8fc7\u6765", "\u6062\u590d", "\u597d\u8f6c", "recovering",
+            "\u7f13\u8fc7\u6765", "\u6062\u590d", "\u597d\u8f6c", "\u597d\u591a\u4e86", "\u6539\u5584\u4e86",
+            "\u597d\u8f6c\u4e86", "\u6062\u590d\u4e2d", "\u5728\u6062\u590d", "\u6bd4\u4e4b\u524d\u597d",
+            "recovering",
         )),
         ("worry_thought", "worry_control", 3, (
             "\u63a7\u5236\u4e0d\u4f4f", "cannot control",
@@ -326,23 +332,32 @@ def _supplement_grounded_items(
         )),
         ("worry_thought", "overthinking", 3, (
             "\u8111\u5b50\u505c\u4e0d\u4e0b\u6765", "\u60f3\u5f88\u4e45",
-            "\u53cd\u590d\u60f3", "\u601d\u7eea", "racing mind",
+            "\u53cd\u590d\u60f3", "\u601d\u7eea", "\u8111\u5b50\u91cc\u5168\u662f", "\u8111\u5b50\u91cc\u90fd\u662f",
+            "\u4e00\u76f4\u60f3", "\u4e0d\u505c\u60f3", "\u80e1\u601d\u4e71\u60f3", "\u7ffb\u6765\u8986\u53bb",
+            "\u63a7\u5236\u4e0d\u4f4f\u60f3", "\u6ee1\u8111\u5b50",
+            "racing mind",
         )),
         ("irritability", "irritability_anger", 3, (
             "\u70e6\u8e81", "\u53d1\u706b", "\u6613\u6012", "\u6ca1\u8010\u5fc3",
-            "\u751f\u6c14", "\u5d29\u6e83", "irritable",
+            "\u751f\u6c14", "\u5d29\u6e83", "\u813e\u6c14\u5927", "\u66b4\u8e81",
+            "irritable",
         )),
         ("mood_interest", "low_mood", 3, (
             "\u4f4e\u843d", "\u96be\u8fc7", "\u60f3\u54ed", "\u5f00\u5fc3\u4e0d\u8d77\u6765",
             "\u6ca1\u610f\u601d", "\u90c1\u95f7", "\u6d88\u6c89", "\u5fc3\u60c5\u4e0d\u597d", "\u6cae\u4e27",
-            "\u4f4e\u6c89", "\u4e0d\u5f00\u5fc3", "feeling low",
+            "\u4f4e\u6c89", "\u4e0d\u5f00\u5fc3", "\u5fc3\u60c5\u5dee", "\u538b\u6291", "\u60b2\u4f24",
+            "\u5f88\u4e27", "\u6ca1\u52b2", "\u7edd\u671b", "\u65e0\u52a9",
+            "feeling low",
         )),
         ("mood_interest", "interest_loss", 3, (
             "\u6ca1\u5174\u8da3", "\u63d0\u4e0d\u8d77\u5174\u8da3",
-            "\u4ec0\u4e48\u90fd\u4e0d\u60f3", "\u4e0d\u60f3\u78b0", "lost interest",
+            "\u4ec0\u4e48\u90fd\u4e0d\u60f3", "\u4e0d\u60f3\u78b0", "\u6ca1\u52a8\u529b", "\u5931\u53bb\u5174\u8da3",
+            "lost interest",
         )),
         ("fear_unease", "fear_unease", 3, (
-            "\u5bb3\u6015", "\u4e0d\u5b89", "\u53d1\u614c", "\u6050\u60e7", "afraid",
+            "\u5bb3\u6015", "\u4e0d\u5b89", "\u53d1\u614c", "\u6050\u60e7", "\u5fc3\u614c",
+            "\u5fd0\u5fd1", "\u5fe7\u8651", "\u60f4\u60f4\u4e0d\u5b89",
+            "afraid",
         )),
         ("sleep", "sleep_disturbance", 3, (
             "\u7761\u4e0d\u597d", "\u7761\u4e0d\u7740", "\u5931\u7720",
