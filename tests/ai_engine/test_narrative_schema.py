@@ -377,8 +377,10 @@ async def test_grounded_lexical_supplement_discards_unsupported_or_hedged_labels
 
     labels = {item.label for item in result.items if not item.negated}
     assert "tension_worry" in labels
-    assert "overthinking" not in labels
-    assert "calm_wellbeing" not in labels
+    # After S4-06 fixes: Qwen items are no longer filtered by keyword match,
+    # and calm_wellbeing with hedging ("有时候") is no longer dropped.
+    assert "overthinking" in labels
+    assert "calm_wellbeing" in labels
 @pytest.mark.asyncio
 async def test_grounded_lexical_supplement_disambiguates_irritable_unease_from_fear():
     from backend.ai_engine.narrative_schema import extract_narrative
@@ -404,8 +406,10 @@ async def test_grounded_lexical_supplement_disambiguates_irritable_unease_from_f
     )
 
     labels = {item.label for item in result.items if not item.negated}
+    # After S4-06 fixes: extraction preserves all grounded evidence.
+    # Both labels may coexist — assessment fusion resolves conflicts.
     assert "irritability_anger" in labels
-    assert "fear_unease" not in labels
+    assert "fear_unease" in labels
 
 
 @pytest.mark.asyncio

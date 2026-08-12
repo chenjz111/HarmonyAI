@@ -400,11 +400,13 @@ def _supplement_grounded_items(
     for _category, label, _value, terms in specs:
         terms_by_label[label] = (*terms_by_label.get(label, ()), *terms)
     # Only validate keywords on lexically-added fallback items, not Qwen extractions.
-    # Qwen items (source_ref like "narrative:sentence_2") are trusted after schema validation.
+    # Lexical items have source_ref containing "lexical_" — their quotes must contain
+    # expected keywords. Qwen items (source_ref like "narrative:sentence_N") are
+    # trusted after schema validation and pass through regardless of keyword match.
     result = [
         item
         for item in result
-        if "lexical_" in item.source_ref
+        if "lexical_" not in item.source_ref
         or item.label not in terms_by_label
         or any(term.casefold() in item.quote.casefold() for term in terms_by_label[item.label])
     ]
