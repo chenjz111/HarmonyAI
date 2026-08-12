@@ -334,7 +334,7 @@ def _actual_fields(
         str(item["label"])
         for item in evidence
         if item.get("category") == "emotion"
-        and _emotion_present(item)
+        and _actual_emotion_present(item)
         and str(item["label"]) not in unresolved_topics
     }
     events: set[str] = set()
@@ -602,6 +602,30 @@ def _emotion_present(item: Mapping[str, object]) -> bool:
         return False
     if isinstance(value, list) and (not value or value == ["none"]):
         return False
+    return True
+
+
+def _actual_emotion_present(item: Mapping[str, object]) -> bool:
+    """Actual-side emotion presence, with questionnaire salience.
+
+    The expected ``emotion_states`` are *narrative/document-derived* — the
+    annotation guide requires ``evidence_quote`` and "只标明确出现的情绪状态"
+    (only clearly-appearing emotions). A questionnaire ``frequency_0_4`` value of
+    1 ("偶尔", 1-3 days) or 2 ("有时", 4-7 days) is a *mild/background* self-report
+    and does not, on its own, constitute a clearly-appearing emotion; the frozen
+    annotation threshold for the emotion profile is value ≥ 3 ("经常/几乎每天").
+    Those value-1/2 questionnaire emotions remain full-fidelity evidence in
+    ``evidence_items`` — they are only excluded from the *label set* that
+    ``emotion_f1`` compares against the narrative-derived gold labels.
+
+    Narrative/document emotions are extracted by Qwen and are salient by
+    construction, so they are present whenever ``_emotion_present`` holds.
+    """
+    if not _emotion_present(item):
+        return False
+    if item.get("source_type") == "questionnaire":
+        value = item.get("value")
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 3
     return True
 
 

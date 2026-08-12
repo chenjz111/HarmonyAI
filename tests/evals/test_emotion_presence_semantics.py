@@ -20,6 +20,7 @@ import pytest
 
 from evals.run_sprint4_eval import (
     _EMOTION_LABELS,
+    _actual_emotion_present,
     _emotion_present,
     _expected_fields,
     _is_active_evidence,
@@ -144,7 +145,9 @@ def test_expected_fields_drops_absent_polarity_emotion():
     assert fields["emotion_labels"] == {"tension_worry"}
 
 
-def test_questionnaire_emotion_value_one_is_active():
+def test_questionnaire_emotion_value_one_is_background_not_salient():
+    # value=1 "偶尔" (1-3 days) is a mild/background self-report, not a
+    # clearly-appearing emotion — excluded from the emotion_f1 label set.
     item = {
         "source_type": "questionnaire",
         "category": "emotion",
@@ -152,10 +155,10 @@ def test_questionnaire_emotion_value_one_is_active():
         "value": 1,
         "polarity": "present",
     }
-    assert _is_active_evidence(item) is True
+    assert _actual_emotion_present(item) is False
 
 
-def test_questionnaire_emotion_value_two_is_active():
+def test_questionnaire_emotion_value_two_is_background_not_salient():
     item = {
         "source_type": "questionnaire",
         "category": "emotion",
@@ -163,7 +166,44 @@ def test_questionnaire_emotion_value_two_is_active():
         "value": 2,
         "polarity": "present",
     }
-    assert _is_active_evidence(item) is True
+    assert _actual_emotion_present(item) is False
+
+
+@pytest.mark.parametrize("value", [3, 4])
+def test_questionnaire_emotion_value_three_plus_is_salient(value):
+    item = {
+        "source_type": "questionnaire",
+        "category": "emotion",
+        "label": "low_mood",
+        "value": value,
+        "polarity": "present",
+    }
+    assert _actual_emotion_present(item) is True
+
+
+@pytest.mark.parametrize("value", [1, 2, 3, 4])
+def test_narrative_emotion_is_present_regardless_of_value(value):
+    # Qwen narrative extraction is salient by construction; any non-zero value
+    # is present (never subject to the questionnaire salience threshold).
+    item = {
+        "source_type": "narrative",
+        "category": "emotion",
+        "label": "low_mood",
+        "value": value,
+        "polarity": "present",
+    }
+    assert _actual_emotion_present(item) is True
+
+
+def test_questionnaire_emotion_value_zero_is_not_present_on_actual_side():
+    item = {
+        "source_type": "questionnaire",
+        "category": "emotion",
+        "label": "low_mood",
+        "value": 0,
+        "polarity": "absent",
+    }
+    assert _actual_emotion_present(item) is False
 
 
 def test_expected_and_actual_share_presence_rule():
