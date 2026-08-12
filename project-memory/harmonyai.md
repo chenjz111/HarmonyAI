@@ -360,3 +360,13 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - Formal blockers: emotion F1 0.6760563380 and schema pass 0.9166666667 remain below Frozen P0 thresholds.
 - Environment/manual gates: MySQL `USER_CREDENTIAL_REQUIRED`; OCR `MANUAL_OCR_POC_PENDING`; Android `MANUAL_ANDROID_TEST_PENDING`.
 - Resume from PR #65 `fix/s4-06-integration`; do not run a third full 60-case and do not claim S4-06 acceptance or release readiness.
+
+### S4-06 最终权威结论（2026-08-12，Claude 收尾）
+
+- PR HEAD：`fix/s4-06-integration@dd92f09`（emotion 提取 keyword-grounding gate 恢复修正 + 报告更新）。
+- **emotion_f1 0.7044 → 0.7362**（仍 < 0.80，唯一未达标项）；event_f1 0.7500、physical_f1 0.8000、safety_recall 1.0、schema_pass_rate 1.0、provider_failure_rate 0.0（15 个 PROVIDER_ERROR 已归零）。
+- 全量回归：Full 540/540、Contract 30/30、Frontend 37/37、H5 build PASS。
+- 根因分类：残余缺口 = **H 模型质量**（low_mood FN=10、fear_unease FN=5、emotional_recovery FN=4、overthinking FN=4）；已修 E（adapter 过激过滤）、B（normalization 幻觉门）、C（taxonomy 移除 worry_control）。
+- 中间陷阱：一次"保护 Qwen 项"的过滤修正实际移除了幻觉门，导致 emotion_f1 0.7362→0.6590（FP 14→27），已回退。**结论：Qwen emotion 抽取必须过 keyword-grounding gate，词法回退项天然通过。**
+- MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- 总状态：**`AUTOMATED_ACCEPTANCE_FAILED`**；残余 blocker 为模型质量，需更强模型或受控 Prompt/数据改进，不做大规模 Prompt tuning、不改 expected、不 Mock。
