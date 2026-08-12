@@ -377,9 +377,10 @@ async def test_grounded_lexical_supplement_discards_unsupported_or_hedged_labels
 
     labels = {item.label for item in result.items if not item.negated}
     assert "tension_worry" in labels
-    # After S4-06 fixes: Qwen items are no longer filtered by keyword match,
-    # and calm_wellbeing with hedging ("有时候") is no longer dropped.
-    assert "overthinking" in labels
+    # overthinking with an ungrounded quote ("担心做不完") is dropped by the
+    # keyword-grounding gate; calm_wellbeing with hedging ("有时候很平静") is kept
+    # because its quote is grounded ("平静") and hedging alone is not grounds to drop.
+    assert "overthinking" not in labels
     assert "calm_wellbeing" in labels
 @pytest.mark.asyncio
 async def test_grounded_lexical_supplement_disambiguates_irritable_unease_from_fear():
