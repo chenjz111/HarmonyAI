@@ -190,3 +190,14 @@ yu    (羽调)      → 58   → 箫、古琴
 - Final automated regression: Full 535/535, Contract 30/30, Frontend 37/37, H5 PASS.
 - Remaining gates: emotion F1 0.6760563380 (<0.80), schema pass 0.9166666667 (<1.00), MySQL `USER_CREDENTIAL_REQUIRED`, OCR manual POC pending, Android manual pending.
 - Current status remains `AUTOMATED_ACCEPTANCE_FAILED`; do not run another full 60-case or proceed to release from this checkpoint.
+
+### S4-06 最终权威结论（2026-08-12，Claude 收尾）
+
+- PR HEAD：`fix/s4-06-integration@dd92f09`。
+- **emotion_f1 0.7044 → 0.7362**（仍 < 0.80，唯一未达标项）；event_f1 0.7500、physical_f1 0.8000、safety_recall 1.0、schema_pass_rate 1.0、provider_failure_rate 0.0（15 个 PROVIDER_ERROR 归零，ERROR 15→0）。
+- 全量回归：Full 540/540、Contract 30/30、Frontend 37/37、H5 build PASS。
+- 根因：残余缺口 = H 模型质量（low_mood FN=10 / fear_unease FN=5 / emotional_recovery FN=4 / overthinking FN=4）；已修 E adapter、B normalization、C taxonomy。
+- 关键陷阱（务必继承）：Qwen emotion 抽取必须过 keyword-grounding gate（quote 含支撑关键词），词法回退项天然通过。曾有一次误改把 gate 移除导致 FP 14→27、emotion_f1 0.7362→0.6590，已回退。
+- 环境/手工 Gate：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- 总状态：**`AUTOMATED_ACCEPTANCE_FAILED`**。残余 blocker 为模型质量，需更强模型或受控改进；不做大规模 Prompt tuning、不改 expected、不 Mock、不降阈值。
+- 权威报告：`docs/sprint4/s4-06-evaluation-report.md`、`docs/sprint4/s4-06-acceptance-report.md`。
