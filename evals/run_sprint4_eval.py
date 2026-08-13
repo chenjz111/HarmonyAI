@@ -96,8 +96,19 @@ def run_evaluation(
     provider: object | None = _AUTO_PROVIDER,
     pipeline: Pipeline = run_real_workflow_v21,
     case_id: str | None = None,
+    case_ids: Sequence[str] | None = None,
 ) -> dict[str, object]:
     cases = load_cases(cases_path, safety_cases_path)
+    if case_id is not None and case_ids is not None:
+        raise ValueError("case_id and case_ids are mutually exclusive")
+    if case_ids is not None:
+        by_id = {str(case["case_id"]): case for case in cases}
+        requested = tuple(dict.fromkeys(value.strip() for value in case_ids if value.strip()))
+        missing = [value for value in requested if value not in by_id]
+        if missing:
+            raise ValueError(f"unknown case_id: {missing[0]}")
+        cases = [by_id[value] for value in requested]
+
     if case_id is not None:
         cases = [case for case in cases if case.get("case_id") == case_id]
         if not cases:
