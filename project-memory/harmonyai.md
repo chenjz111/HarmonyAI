@@ -305,6 +305,17 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - **Level A**: PubMed 逐字核验（4 篇）
 - **Level B**: 《素问》ctext 原文核验（5 篇）
 - **Level C**: 万方/SinoMed 多源交叉验证（3 篇）
+
+### 2026-08-13 Owner 决策：关闭 Sprint 4 emotion 优化
+
+- 权威 Formal 60 保持 Qwen2.5-7B Q4：60/60 executed，0 ERROR，`emotion_f1=0.7407`；Frozen target `0.80` 未达到。
+- Disposition：`ACCEPTED_KNOWN_MODEL_LIMITATION`，不是 Formal Evaluation PASS。
+- Engineering Implementation=`COMPLETE`；Automated Engineering Gates=`PASS`；Formal Model Quality Target=`NOT_MET`。
+- **Sprint 4 emotion_f1 optimization is CLOSED.**
+- Future model-quality improvement=`DEFERRED_TO_SPRINT_5_OR_LATER`。禁止后续 Agent 自动恢复 0.80 优化，除非 Owner 明确重新开启。
+- 观察性模型对比：固定 15-case、同 Prompt/RAG/pipeline/scorer、同 240s timeout/0 retry；7B F1=0.6552、0 error、132.40s；14B F1=0.6471（9 个可比较输出）、6 errors、1096.55s。14B 当前为 38% GPU/62% CPU，不适合作为本机默认模型。
+- Manual gates 仍为 MySQL=`USER_CREDENTIAL_REQUIRED`、OCR=`MANUAL_OCR_POC_PENDING`、Android=`MANUAL_ANDROID_TEST_PENDING`。
+- Sprint 5 方向：Cloud Qwen、Assessment/Diagnosis cloud provider、MusicGenerationProvider、云/本地明确 fallback；Sprint 4 PR 不实现 Sprint 5 业务代码。
 - **Level D**: 待补充（预留）
 - **Level E**: 用户反馈数据（规划中）
 - 发现：焦虑证据人群分歧（癌症阴性 vs 老年阳性）；王丽娜 2022 被验证否决

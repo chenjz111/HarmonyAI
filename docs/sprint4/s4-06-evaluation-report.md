@@ -93,6 +93,21 @@ Micro：TP=60，FP=14，FN=29，Precision=0.8108，Recall=0.6742，F1=0.7362
 - `low_mood` FN=10 —— 最大缺口，模型对隐含低落（非字面"低落/难过"）提取不足；
 - `fear_unease` FN=5、`emotional_recovery` FN=4、`overthinking` FN=4 —— 细腻情绪维度召回不足。
 
+## Owner Acceptance Decision（2026-08-13）
+
+Sprint 4 最终权威 Formal 60 结果保持不变：
+
+- Model：`qwen2.5:7b-instruct-q4_K_M`
+- 60/60 executed，0 ERROR
+- `emotion_f1 = 0.7407`
+- Frozen target：`>= 0.80`
+- Formal model quality：`NOT_MET`
+- Owner disposition：`ACCEPTED_KNOWN_MODEL_LIMITATION`
+
+Engineering Implementation 为 `COMPLETE`，自动化工程 Gate 为 `PASS`；不得把以上 Owner 接受决定写成 `Frozen Evaluation PASS`。Sprint 4 emotion F1 optimization is `CLOSED`，后续模型质量改进延期到 Sprint 5 或更后续，除非 Owner 明确重新开启。
+
+观察性 7B/14B hard-case 对比见 `docs/sprint4/s4-06-qwen-model-bakeoff.md`。该实验不改变权威 Formal 60 成绩，不触发新的 60-case。
+
 这些是**模型质量（H）**问题：Qwen2.5-7B 量化版对中文临床叙述中的细腻情绪维度（calm_wellbeing、emotional_recovery、低动机性 low_mood）语义提取能力有限，词法回退只能命中字面关键词。
 
 ## 根因分类（A-I）

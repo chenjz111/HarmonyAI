@@ -213,3 +213,15 @@ yu    (羽调)      → 58   → 箫、古琴
 - 全量回归 610/610 passed；Contract 30/30；Frontend 37/37；H5 build PASS。
 - 手工 Gate 不变：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
 - 权威报告：`docs/sprint4/s4-06-morning-report.md`、`docs/sprint4/s4-06-evaluation-report.md`（含 value=0 addendum）、`docs/sprint4/s4-06-acceptance-report.md`。
+
+### S4-06 Owner acceptance checkpoint（2026-08-13）
+
+- PR #65 branch：`fix/s4-06-integration`；bake-off checkpoint：`815e093`。
+- Sprint 4 权威 Formal 60：Qwen2.5-7B Q4，60/60 executed，0 ERROR，`emotion_f1=0.7407`，Frozen target `>=0.80`，状态 `NOT_MET`。
+- Owner disposition：`ACCEPTED_KNOWN_MODEL_LIMITATION`。
+- **Sprint 4 emotion_f1 optimization is CLOSED.**
+- Future model-quality improvement：`DEFERRED_TO_SPRINT_5_OR_LATER`。除非 Owner 明确重新开启，后续 Agent 不得继续把 0.7407 调到 0.80、修改 gold/expected/threshold、继续下载模型或重跑 Formal 60。
+- 观察性 15-case：7B F1 0.6552 / 0 errors / 132.40s；14B F1 0.6471（仅 9 个可比较输出）/ 6 errors / 1096.55s。当前硬件保留 7B。
+- Engineering Implementation：`COMPLETE`；Automated Engineering Gates：`PASS`；Formal Model Quality：`NOT_MET`。不得写成 `Frozen Evaluation PASS`。
+- Manual gates：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- NEXT_ACTION：完成 PR #65 文档/CI 收口并标记 `ENGINEERING_READY_TO_MERGE`；随后按 `docs/sprint5/` 规划进入下一 Sprint，不在 PR #65 实现 Sprint 5 功能。

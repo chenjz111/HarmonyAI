@@ -90,6 +90,23 @@
 ## 十个正式验收场景
 
 | # | Scenario | Actual | 状态 |
+
+## Owner 收口决定（2026-08-13）
+
+| 维度 | 最终状态 |
+|---|---|
+| Engineering Implementation | COMPLETE |
+| Automated Engineering Gates | PASS |
+| Formal Model Quality Target | NOT_MET |
+| Emotion F1 | 0.7407 / target 0.80 |
+| Owner Decision | ACCEPTED_KNOWN_MODEL_LIMITATION |
+| Emotion optimization | CLOSED |
+
+Owner 接受当前 Qwen2.5-7B Q4 对细腻、隐含情绪表达召回不足这一已知模型限制，但不降低 Frozen threshold、不修改 gold/expected，也不把 0.7407 记为 Formal Evaluation PASS。
+
+7B/14B 观察性对比显示：14B 在当前 8 GB 显存机器上出现 40% Provider error，总耗时约为 7B 的 8.3 倍，未形成可部署提升。详细证据见 `docs/sprint4/s4-06-qwen-model-bakeoff.md`。
+
+PR #65 可在 CI、Contract、Backend、Frontend、H5、diff hygiene 全部维持通过且无工程 blocker 时标记为 `ENGINEERING_READY_TO_MERGE`；该状态与 `FROZEN_MODEL_QUALITY_GATE_PASS` 必须严格区分。MySQL、OCR、Android 仍为人工 Gate，见 `docs/sprint4/s4-06-manual-gates.md`。
 |---|---|---|---|
 | 1 | 20 题完整问卷 | success，20 answers，15 evidence | PASS |
 | 2 | 6 题 Quick State | 5 个数值字段 + 1 个 goal | PASS |
