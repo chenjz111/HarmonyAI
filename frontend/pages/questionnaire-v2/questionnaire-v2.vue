@@ -160,7 +160,7 @@
 import { questionnaireV21 } from "@/common/questionnaire-data.js"
 import { submitAssessment, saveQuestionnaireProgress, loadQuestionnaireProgress, clearQuestionnaireProgress, createSession } from "@/common/api-v2.js"
 import { getSprint3Session, updateSprint3Session } from "@/common/sprint3-session.js"
-import { applyExclusiveChoice, safetyFlowForAnswer } from "@/common/questionnaire-rules.js"
+import { applyExclusiveChoice, safetyFlowForAnswer, rendererModeFor } from "@/common/questionnaire-rules.js"
 
 export default {
   data() {
@@ -185,22 +185,14 @@ export default {
       const q = this.currentQuestion
       return this.modules.find((m) => m.code === q.module) || {}
     },
-    isButtonRow() {
-      return ["frequency_0_4"].includes(this.currentQuestion.type) ||
-        (this.currentQuestion.type === "single_choice" && this.currentQuestion.ui?.layout === "button-row")
+    rendererMode() {
+      return rendererModeFor(this.currentQuestion)
     },
-    isVisualRow() {
-      return this.currentQuestion.type === "visual_single"
-    },
-    isButtonGrid() {
-      return this.currentQuestion.ui?.layout === "button-grid"
-    },
-    isButtonList() {
-      return this.currentQuestion.ui?.layout === "button-list"
-    },
-    isCheckboxGrid() {
-      return this.currentQuestion.type === "multi_choice"
-    },
+    isButtonRow() { return this.rendererMode === "button-row" },
+    isVisualRow() { return this.rendererMode === "visual" },
+    isButtonGrid() { return this.rendererMode === "button-grid" },
+    isButtonList() { return this.rendererMode === "button-list" },
+    isCheckboxGrid() { return this.rendererMode === "multi" },
     canProceed() {
       const q = this.currentQuestion
       const ans = this.answers[q.question_id]

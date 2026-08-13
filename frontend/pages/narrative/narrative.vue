@@ -9,69 +9,20 @@
 
     <progress-bar :progress="50" label="评估进度" />
 
-    <!-- 处理状态卡 -->
-    <view v-if="phase === 'processing'" class="processing-card">
-      <view class="processing-orb">
-        <view class="orb-ring orb-ring-1"></view>
-        <view class="orb-ring orb-ring-2"></view>
-        <view class="orb-core"></view>
-      </view>
-      <text class="processing-title">AI 正在理解你的描述</text>
-      <text class="processing-desc">{{ processingMessage }}</text>
-      <view class="processing-steps">
-        <view class="proc-step" :class="{ done: procStep >= 1 }">
-          <text class="proc-step-icon">{{ procStep >= 1 ? '✓' : '○' }}</text>
-          <text class="proc-step-text">文本预处理</text>
-        </view>
-        <view class="proc-step" :class="{ done: procStep >= 2 }">
-          <text class="proc-step-icon">{{ procStep >= 2 ? '✓' : '○' }}</text>
-          <text class="proc-step-text">情绪与事件提取</text>
-        </view>
-        <view class="proc-step" :class="{ done: procStep >= 3 }">
-          <text class="proc-step-icon">{{ procStep >= 3 ? '✓' : '○' }}</text>
-          <text class="proc-step-text">证据结构化</text>
-        </view>
-      </view>
-    </view>
-
-    <!-- 处理完成卡 -->
-    <view v-else-if="phase === 'done'" class="done-card">
+    <!-- 描述已记录卡 -->
+    <view v-if="phase === 'done'" class="done-card">
       <view class="done-icon-wrap">
         <text class="done-icon">✓</text>
       </view>
-      <text class="done-title">描述已处理完成</text>
-      <view class="done-stats">
-        <view class="done-stat">
-          <text class="stat-num">{{ narrativeResult.evidence_count || 0 }}</text>
-          <text class="stat-label">条证据</text>
-        </view>
-        <view class="done-divider"></view>
-        <view class="done-stat">
-          <text class="stat-num">{{ narrativeResult.confidence ? Math.round(narrativeResult.confidence * 100) : 0 }}%</text>
-          <text class="stat-label">提取置信度</text>
-        </view>
-      </view>
-      <text class="done-hint">这些信息将和问卷一起用于综合评估</text>
+      <text class="done-title">描述已记录</text>
+      <text class="done-hint">我们会结合接下来的问卷一起完成状态分析</text>
       <view class="btn btn-primary done-btn" @click="goNext">
         <text class="btn-text">继续填写问卷</text>
         <text class="btn-arrow">→</text>
       </view>
     </view>
 
-    <!-- 降级提示卡 -->
-    <view v-else-if="phase === 'degraded'" class="done-card">
-      <view class="done-icon-wrap warn">
-        <text class="done-icon">!</text>
-      </view>
-      <text class="done-title">文本分析暂不可用</text>
-      <text class="done-desc">已保存你的描述，但 AI 提取暂时不可用。问卷评估不受影响，后续可恢复处理。</text>
-      <view class="btn btn-primary done-btn" @click="goNext">
-        <text class="btn-text">继续填写问卷</text>
-        <text class="btn-arrow">→</text>
-      </view>
-    </view>
-
-    <!-- 输入区（idle / error） -->
+    <!-- 输入区 -->
     <template v-else>
       <!-- 输入卡 -->
       <view class="narrative-card">
@@ -119,23 +70,13 @@
         </view>
       </view>
 
-      <error-state
-        v-if="phase === 'error'"
-        title="提交失败"
-        :message="errorMsg"
-        :showFallback="true"
-        fallbackText="跳过此步"
-        @retry="submitNarrative"
-        @fallback="skip"
-      />
-
       <!-- 底部按钮 -->
       <view class="btn-group">
         <view class="btn btn-secondary" @click="skip">
           <text class="btn-text">跳过</text>
         </view>
         <view class="btn btn-primary" @click="submitNarrative">
-          <text class="btn-text">{{ narrativeText.trim() ? '提交并分析' : '跳过' }}</text>
+          <text class="btn-text">{{ narrativeText.trim() ? '提交并继续' : '跳过' }}</text>
           <text class="btn-arrow" v-if="narrativeText.trim()">→</text>
         </view>
       </view>
@@ -145,19 +86,14 @@
 
 <script>
 import ProgressBar from '@/components/sprint3/progress-bar.vue'
-import ErrorState from '@/components/sprint3/error-state.vue'
-import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
+import { updateSprint3Session } from '@/common/sprint3-session.js'
 
 export default {
-  components: { ProgressBar, ErrorState },
+  components: { ProgressBar },
   data() {
     return {
       narrativeText: '',
-      phase: 'idle', // idle | processing | done | degraded | error
-      procStep: 0,
-      processingMessage: '正在预处理文本...',
-      narrativeResult: { evidence_count: 0, confidence: 0 },
-      errorMsg: '',
+      phase: 'idle', // idle | done
       prompts: [
         '最近失眠多梦',
         '工作压力大、容易紧张',
@@ -179,19 +115,11 @@ export default {
       uni.navigateTo({ url: '/pages/questionnaire-v2/questionnaire-v2' })
     },
 
-    async submitNarrative() {
+    submitNarrative() {
       const text = this.narrativeText.trim()
       if (!text) return this.skip()
-      this.phase = 'processing'
-      this.processingMessage = '正在保存你的描述...'
-      try {
-        updateSprint3Session({ narrative_text: text, narrative_skipped: false })
-        this.narrativeResult = { evidence_count: 0, confidence: null }
-        this.phase = 'done'
-      } catch (err) {
-        this.phase = 'error'
-        this.errorMsg = '描述保存失败，可跳过此步继续'
-      }
+      updateSprint3Session({ narrative_text: text, narrative_skipped: false })
+      this.phase = 'done'
     },
 
     goNext() {
