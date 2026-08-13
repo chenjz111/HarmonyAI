@@ -201,3 +201,15 @@ yu    (羽调)      → 58   → 箫、古琴
 - 环境/手工 Gate：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
 - 总状态：**`AUTOMATED_ACCEPTANCE_FAILED`**。残余 blocker 为模型质量，需更强模型或受控改进；不做大规模 Prompt tuning、不改 expected、不 Mock、不降阈值。
 - 权威报告：`docs/sprint4/s4-06-evaluation-report.md`、`docs/sprint4/s4-06-acceptance-report.md`。
+
+### S4-06 夜间收口（2026-08-13，Claude 自主执行，已 commit+push）
+
+- PR HEAD：`fix/s4-06-integration@4c6c5ed`（已 push，与 origin 同步）。CI `test` SUCCESS、PR #65 MERGEABLE/CLEAN。
+- 新增 3 commit：`5988b27`（canonical emotion presence semantics）、`4b36f90`（restore questionnaire emotion salience，presence ≠ salience）、`4c6c5ed`（收口记录 + morning report + final JSON）。
+- **emotion_f1 0.7362 → 0.7407**（value=0 不对称修复，FN 29→28，TP=60 / FP=14 / FN=28）。仍未达 0.80。其余 P0 全 PASS（event 0.7500 / physical 0.8000 / safety 1.0 / schema 1.0 / provider_failure 0.0）。
+- 关键陷阱（务必继承）：**presence ≠ salience**。`_emotion_present`（value≥1=present）只用于 expected 侧与证据 existence；`_actual_emotion_present`（问卷 value≥3）用于 emotion_f1 标签集。把「value≥1=present」套到标签集会把 F1 塌缩到 0.346。
+- 结论：value 语义是**红鲱鱼**。真正阻塞 = ① ~15 叙事漏报 FN（成语/英文/隐含表达，需更强 Qwen）② ~8 FN + ~9 FP 问卷-叙事优先级歧义（gold 对问卷情绪的纳入非 value 确定性函数）。
+- **需 Owner 拍板两项（阻塞上 0.80）**：D1 问卷情绪在 gold 的纳入规则；D2 是否换更强 Qwen（14B 量化 / 云端 API）。Provider 冻结的是**接口**不是模型，换更强 Qwen 合法；红线 = 禁止 Mock 代 Qwen、禁止 DeepSeek 代 Formal Qwen。
+- 全量回归 610/610 passed；Contract 30/30；Frontend 37/37；H5 build PASS。
+- 手工 Gate 不变：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- 权威报告：`docs/sprint4/s4-06-morning-report.md`、`docs/sprint4/s4-06-evaluation-report.md`（含 value=0 addendum）、`docs/sprint4/s4-06-acceptance-report.md`。
