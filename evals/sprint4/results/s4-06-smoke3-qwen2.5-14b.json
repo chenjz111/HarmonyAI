@@ -1,0 +1,148 @@
+{
+  "error_count": 2,
+  "executed_count": 3,
+  "failed_count": 1,
+  "loaded_count": 3,
+  "metrics": {
+    "abstain_accuracy": 1.0,
+    "emotion_f1": 0.6666666666666666,
+    "event_f1": 1.0,
+    "evidence_citation_accuracy": 1.0,
+    "evidence_coverage_score": 1.0,
+    "physical_f1": 1.0,
+    "provider_failure_rate": 0.6666666666666666,
+    "safety_recall": 1.0,
+    "schema_pass_rate": 0.3333333333333333,
+    "unsupported_conclusion_rate": 0.0
+  },
+  "passed_count": 0,
+  "per_case": [
+    {
+      "actual_summary": {
+        "abstained": false,
+        "assessment_status": "success",
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss"
+        ],
+        "evidence_coverage_score": 1.0,
+        "follow_up_count": 0,
+        "life_events": [],
+        "physical_signals": [],
+        "safety_blocked": false,
+        "source_types": [
+          "narrative"
+        ]
+      },
+      "case_id": "C002",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "interest_loss",
+          "low_mood"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [],
+        "physical_signals": []
+      },
+      "failure_reasons": [
+        "EMOTION_LABELS_MISMATCH",
+        "FOLLOW_UP_MISMATCH"
+      ],
+      "reason_code": null,
+      "status": "FAIL",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C007",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "calm_wellbeing",
+          "emotional_recovery",
+          "overthinking",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          0,
+          1
+        ],
+        "life_events": [
+          "考试压力"
+        ],
+        "physical_signals": []
+      },
+      "failure_reasons": [],
+      "reason_code": "PROVIDER_ERROR",
+      "status": "ERROR",
+      "type": "narrative_only"
+    },
+    {
+      "actual_summary": null,
+      "case_id": "C009",
+      "expected_summary": {
+        "conflict_count": 0,
+        "emotion_labels": [
+          "fear_unease",
+          "tension_worry"
+        ],
+        "expected_abstain": false,
+        "expected_safety_block": false,
+        "follow_up_range": [
+          1,
+          2
+        ],
+        "life_events": [
+          "work"
+        ],
+        "physical_signals": [
+          "palpitation"
+        ]
+      },
+      "failure_reasons": [],
+      "reason_code": "PROVIDER_ERROR",
+      "status": "ERROR",
+      "type": "narrative_only"
+    }
+  ],
+  "qwen_formal": {
+    "missing": [],
+    "model": "qwen2.5:14b-instruct-q4_K_M",
+    "provider": "AsyncQwenCompatibleProvider",
+    "reason_code": null,
+    "status": "AVAILABLE"
+  },
+  "safety_case_count": 0,
+  "source_diversity": {
+    "count": 1,
+    "sources": [
+      "narrative"
+    ]
+  },
+  "threshold": {
+    "failures": [
+      {
+        "actual": 0.6666666666666666,
+        "metric": "emotion_f1",
+        "operator": ">=",
+        "target": 0.8
+      },
+      {
+        "actual": 0.3333333333333333,
+        "metric": "schema_pass_rate",
+        "operator": ">=",
+        "target": 1.0
+      }
+    ],
+    "status": "FAIL"
+  },
+  "total_cases": 3
+}
