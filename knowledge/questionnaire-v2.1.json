@@ -753,25 +753,27 @@
       "module": "D_sleep_energy_body",
       "order": 15,
       "text": "与平时相比，你最近的食欲是否发生了明显变化？",
-      "type": "single_choice",
+      "type": "directional",
       "time_window": "past_14_days",
       "options": [
         {
           "value": "decrease",
-          "label": "食欲下降",
-          "scored": true
+          "label": "食欲下降"
         },
         {
           "value": "increase",
-          "label": "食欲增加",
-          "scored": true
+          "label": "食欲增加"
         },
         {
           "value": "none",
-          "label": "没有明显变化",
-          "scored": true
+          "label": "没有明显变化"
         }
       ],
+      "severity_scale": {
+        "min": 1,
+        "max": 4,
+        "labels": ["轻微", "中等", "明显", "严重"]
+      },
       "dimension": "appetite_change",
       "scored": true,
       "reverse_scored": false,
