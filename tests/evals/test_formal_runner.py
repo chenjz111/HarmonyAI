@@ -224,6 +224,48 @@ def test_official_sprint4_dataset_loads_all_sixty_cases():
     assert len({case["case_id"] for case in cases}) == 60
     assert all(isinstance(case.get("input"), dict) for case in cases)
     assert all(isinstance(case.get("expected"), dict) for case in cases)
+
+
+def test_runner_filters_a_fixed_case_id_subset(tmp_path):
+    from evals.run_sprint4_eval import run_evaluation
+
+    cases = tmp_path / "cases.jsonl"
+    first = _normal_case(expected_label="low_mood")
+    second = _normal_case(expected_label="low_mood")
+    second["case_id"] = "C002"
+    _write_cases(cases, [first, second])
+
+    report = run_evaluation(
+        cases_path=cases,
+        safety_cases_path=None,
+        provider=object(),
+        pipeline=lambda **_kwargs: _workflow_result(label="low_mood"),
+        case_ids=("C002",),
+    )
+
+    assert report["loaded_count"] == 1
+    assert report["executed_count"] == 1
+    assert [case["case_id"] for case in report["per_case"]] == ["C002"]
+
+
+def test_runner_rejects_unknown_case_ids(tmp_path):
+    import pytest
+
+    from evals.run_sprint4_eval import run_evaluation
+
+    cases = tmp_path / "cases.jsonl"
+    _write_cases(cases, [_normal_case()])
+
+    with pytest.raises(ValueError, match="unknown case_id: C999"):
+        run_evaluation(
+            cases_path=cases,
+            safety_cases_path=None,
+            provider=object(),
+            pipeline=lambda **_kwargs: _workflow_result(label="low_mood"),
+            case_ids=("C999",),
+        )
+
+
 def test_formal_questionnaire_emotion_salience_threshold():
     from evals.run_sprint4_eval import _actual_emotion_present
 

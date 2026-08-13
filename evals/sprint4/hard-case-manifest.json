@@ -1,0 +1,50 @@
+{
+  "schema_version": "s4-06-model-bakeoff-v1",
+  "selection_frozen_at_head": "fe7a510ff67720b82188eb879f64157b15337fbd",
+  "source_files": [
+    "evals/sprint4/cases.jsonl"
+  ],
+  "case_ids": [
+    "C002",
+    "C003",
+    "C005",
+    "C007",
+    "C008",
+    "C009",
+    "C010",
+    "C014",
+    "C016",
+    "C017",
+    "C020",
+    "C024",
+    "C025",
+    "C029",
+    "C053"
+  ],
+  "coverage": {
+    "low_mood": ["C002", "C010", "C014", "C020", "C029"],
+    "fear_unease": ["C005", "C008", "C009", "C017", "C024"],
+    "overthinking": ["C005", "C007", "C008", "C016", "C017", "C053"],
+    "emotional_recovery": ["C007", "C024", "C025", "C029"],
+    "chinese_implicit": ["C002", "C007", "C008", "C014", "C016", "C020", "C029"],
+    "idiom_or_colloquial": ["C003", "C010", "C014", "C016", "C020"],
+    "english": ["C009", "C017"],
+    "false_positive_guards": ["C003", "C010", "C024"]
+  },
+  "notes": [
+    "The scored subset is copied by ID from frozen formal data; no expected label is changed.",
+    "The formal corpus has no true Chinese-English code-switching narrative, so the fixed mixed-language probe below is observational and excluded from threshold scoring."
+  ],
+  "non_scored_probes": [
+    {
+      "probe_id": "P001",
+      "category": "mixed_language",
+      "narrative_text": "?? work pressure ????????????I keep worrying that I will fail?????????",
+      "observation_targets": [
+        "tension_worry",
+        "overthinking",
+        "fear_unease"
+      ]
+    }
+  ]
+}
