@@ -400,3 +400,11 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 自动化工程 Gate 已完成；三项真实环境 Gate 仍为 PENDING，不得伪造 PASS。
 - 人工验收准备在 `fix/s4-06-manual-acceptance-prep`：MySQL 隔离探针、动态 LAN/后端启动脚本、OCR/Android 清单和结果模板。
 - `NEXT_ACTION`：用本机安全环境变量提供隔离 MySQL 凭据并运行探针；之后执行真实脱敏 OCR POC 与 Android 真机链路。
+
+### S4-06 MySQL 人工验收完成（2026-08-13）
+
+- MySQL 人工验收 **PASS**（分支 `docs/s4-06-mysql-manual-pass`）。MySQL 8.0.44；隔离库 `harmonyai_s4_acceptance`（utf8mb4）。
+- 探针 pass=true：connection / migration（首次+幂等）/ reconnect persistence / Session·Revision·Evidence·FollowUp·Feedback·AICallLog 持久化 / AI log privacy / cleanup safety 全通过。
+- 真实 API→MySQL 链路：评估创建 → 确认 partially_accurate → revision 1→2 + `confirmation_level` 落库 → 清理 0 残留。
+- OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`（HBuilderX 已安装，待真机）。
+- 未记录任何凭据/敏感路径；未改 production code；未重跑 emotion_f1/Formal 60；未进入 Sprint 5。
