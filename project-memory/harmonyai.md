@@ -391,3 +391,12 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 需要 Owner 拍板两项：D1 问卷情绪在 gold 的纳入规则；D2 是否换更强 Qwen（14B 量化需更大显存 / 云端 API 需预算）。
 - 手工 Gate 不变：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
 - 全量回归 610/610 passed。权威报告：`docs/sprint4/s4-06-morning-report.md`、`docs/sprint4/s4-06-evaluation-report.md`。
+
+### S4-06 post-merge checkpoint（2026-08-13）
+
+- PR #65 已合并；`integration/sprint4-real-input@39b0597c8f6c1f0c4993638e6dc00ef9e0feb9f9`。
+- Post-merge smoke：Backend import PASS；30 个 Contract tests 可发现；无冲突标记或 diff hygiene 问题。
+- `emotion_f1=0.7407` 处置保持 `ACCEPTED_KNOWN_MODEL_LIMITATION`，emotion optimization `CLOSED`；不得再运行 14B 或 Formal 60。
+- 自动化工程 Gate 已完成；三项真实环境 Gate 仍为 PENDING，不得伪造 PASS。
+- 人工验收准备在 `fix/s4-06-manual-acceptance-prep`：MySQL 隔离探针、动态 LAN/后端启动脚本、OCR/Android 清单和结果模板。
+- `NEXT_ACTION`：用本机安全环境变量提供隔离 MySQL 凭据并运行探针；之后执行真实脱敏 OCR POC 与 Android 真机链路。

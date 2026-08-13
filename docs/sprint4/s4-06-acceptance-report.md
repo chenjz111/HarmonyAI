@@ -136,3 +136,17 @@ PR #65 可在 CI、Contract、Backend、Frontend、H5、diff hygiene 全部维�
 残余 blocker 为模型质量（H）：需要更强的模型（如非量化 / 更大参数 / 专为情绪细分的微调）或受控 Prompt/数据改进才能召回 low_mood、fear_unease、emotional_recovery、overthinking 等细腻维度。不进行大规模无边界 Prompt tuning，不修改 expected 只为过线，不 Mock 代替 Qwen。
 
 MySQL 等待正确凭证；OCR POC 与 Android 真机 Gate 保持人工 PENDING。
+
+## Owner 最终处置与合并后状态（2026-08-13，覆盖旧的优化 NEXT_ACTION）
+
+- 权威 Formal 60 结果仍为 `emotion_f1=0.7407 / target>=0.80`，模型质量项为 `NOT_MET`，不得改写为 PASS。
+- Owner disposition：`ACCEPTED_KNOWN_MODEL_LIMITATION`；emotion_f1 optimization：`CLOSED`。
+- 不再运行 14B、不再 Prompt tuning、不再重跑 Formal 60；相关改进推迟到 Sprint 5 或以后，且本轮不实现 Sprint 5。
+- PR #65 已以普通 Merge Commit 合并到 `integration/sprint4-real-input`，merge commit 为 `39b0597c8f6c1f0c4993638e6dc00ef9e0feb9f9`。
+- 工程结论：`ENGINEERING_COMPLETE / AUTOMATED_ENGINEERING_GATES_PASS`；这与 Frozen model-quality target `NOT_MET` 同时成立。
+- 合并后轻量检查：Backend import PASS、30 个 Contract tests 可发现、diff hygiene/冲突标记 PASS。
+- MySQL：`USER_CREDENTIAL_REQUIRED`；已准备只允许 `harmonyai_s4_acceptance` 的非破坏性探针。
+- OCR：`MANUAL_OCR_POC_PENDING`；必须使用合法、授权、脱敏的真实材料。
+- Android：`MANUAL_ANDROID_TEST_PENDING`；H5 PASS 不等于真机 PASS。
+- 人工步骤与结果记录分别见 `docs/sprint4/s4-06-manual-gates.md` 和 `docs/sprint4/s4-06-manual-acceptance-result.md`。
+- 当前不得进入 `integration -> dev`、`dev -> main`、tag 或 release。
