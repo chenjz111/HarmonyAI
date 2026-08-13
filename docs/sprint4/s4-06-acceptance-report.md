@@ -1,9 +1,37 @@
 # S4-06 Integration & Automated Acceptance Report（最终权威版）
 
-> 日期：2026-08-12
+> 日期：2026-08-12（2026-08-13 夜间收口补充见下）
 > 验收修复分支：`fix/s4-06-integration`
-> PR HEAD：`dd92f09`
+> PR HEAD：`4c6c5ed`
 > 总状态：`AUTOMATED_ACCEPTANCE_FAILED`
+
+## S4-06 补充（2026-08-13 夜间收口）：emotion value=0 不对称修复
+
+> commit `5988b27`（canonical presence semantics）→ `4b36f90`（presence ≠ salience 分离）→ `4c6c5ed`（收口记录 + morning report + final JSON）。
+
+**结论：`emotion_f1 0.7362 → 0.7407`，仍未达 0.80。** value=0 不对称修复是唯一「只改 evaluator 就带来正向收益」的合法修正，幅度 +0.0045（FN 29→28）。
+
+| Metric | Before (0.7362) | After (0.7407) | Frozen P0 | 状态 |
+|---|---:|---:|---:|---|
+| emotion_f1 | 0.7362 | 0.7407 | ≥ 0.80 | **FAIL** |
+| event_f1 | 0.7500 | 0.7500 | ≥ 0.75 | PASS |
+| physical_f1 | 0.8000 | 0.8000 | ≥ 0.80 | PASS |
+| safety_recall | 1.0 | 1.0 | = 1.00 | PASS |
+| schema_pass_rate | 1.0 | 1.0 | = 1.00 | PASS |
+| provider_failure_rate | 0.0 | 0.0 | ≤ 0.05 | PASS |
+
+最终正式 60 重跑机器落盘（`evals/sprint4/results/s4-06-evaluation-final.json`）：60/60 executed、0 ERROR、15 PASS / 45 FAIL，`qwen_formal = AVAILABLE`（`qwen2.5:7b-instruct-q4_K_M`）。全量回归 610/610 passed。
+
+**关键修正（presence ≠ salience）**：
+- `_emotion_present`（presence，value≥1=present）→ expected 侧 + 证据 existence 判定。
+- `_actual_emotion_present`（label-set salience，问卷 value≥3 才计入 emotion_f1 标签集）→ actual 侧。
+- 把「value≥1=present」直接套到标签集会把 F1 塌缩到 0.346（问卷每 case 报 ~6 个 value=2 背景情绪，gold 是叙事派生的 2-3 个 salient 情绪）。
+
+**value 语义是红鲱鱼**：离 0.80 还差 ~12 个错误（当前 TP=60 / FP=14 / FN=28，FP+FN=42）。真正阻塞是两项需 Owner 拍板的决策：
+- **D1** 问卷情绪在 gold `emotion_states` 的纳入规则（消除 ~8 FN + ~9 FP 的问卷-叙事优先级歧义）。
+- **D2** 是否换更强 Qwen（14B 量化需更大显存 / 云端 API 需预算）（消除 ~15 个叙事漏报 FN）。
+
+手工 Gate 不变：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
 
 ## 结果总览
 
