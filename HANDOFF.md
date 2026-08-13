@@ -225,3 +225,14 @@ yu    (羽调)      → 58   → 箫、古琴
 - Engineering Implementation：`COMPLETE`；Automated Engineering Gates：`PASS`；Formal Model Quality：`NOT_MET`。不得写成 `Frozen Evaluation PASS`。
 - Manual gates：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
 - NEXT_ACTION：完成 PR #65 文档/CI 收口并标记 `ENGINEERING_READY_TO_MERGE`；随后按 `docs/sprint5/` 规划进入下一 Sprint，不在 PR #65 实现 Sprint 5 功能。
+
+### S4-06 merge 与人工验收准备（2026-08-13）
+
+- PR #65 已以普通 Merge Commit 合并到 `integration/sprint4-real-input`；merge commit：`39b0597c8f6c1f0c4993638e6dc00ef9e0feb9f9`。
+- 合并后轻量检查：Backend import PASS；Contract 30 tests 可发现；diff hygiene 与冲突标记检查 PASS。
+- Owner 最终决定不变：`emotion_f1=0.7407` 为 `ACCEPTED_KNOWN_MODEL_LIMITATION`，优化 `CLOSED`；不得继续 14B、Prompt tuning 或 Formal 60。
+- 工程自动化状态：`ENGINEERING_COMPLETE / AUTOMATED_GATES_PASS`；不得写成 Frozen model-quality PASS。
+- 人工 Gate：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- 新准备分支：`fix/s4-06-manual-acceptance-prep`，只包含安全的人工验收工具、清单与结果模板。
+- `NEXT_ACTION`：用户先在本机创建/确认隔离库 `harmonyai_s4_acceptance` 并本地设置 `DATABASE_URL`，运行 `python -m tools.s4_mysql_acceptance`；随后准备脱敏 OCR 材料与 HBuilderX Android 真机。
+- 禁止：在聊天/Git 中提供数据库密码、固定提交 LAN IP、伪造 OCR/Android PASS、进入 Sprint 5 实现。
