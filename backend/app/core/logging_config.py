@@ -12,6 +12,7 @@ SENSITIVE_FIELDS = [
     "questionnaire", "comment", "text_feedback",
     "original_diagnosis", "medical_history",
     "free_text", "answer",
+    "provider_input", "user_prompt", "system_prompt",
 ]
 
 

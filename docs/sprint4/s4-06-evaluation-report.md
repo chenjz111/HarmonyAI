@@ -1,0 +1,138 @@
+# S4-06 Formal Evaluation Report（最终权威版）
+
+> 日期：2026-08-12
+> Runner：`evals/run_sprint4_eval.py`
+> Machine output：`evals/sprint4/results/s4-06-evaluation.json`
+> Formal Qwen：`AVAILABLE`（Ollama / qwen2.5:7b-instruct-q4_K_M）
+> 本文件为最终权威结果，取代此前所有初跑/中间 checkpoint 数字。
+
+---
+
+## S4-06 补充（2026-08-13 夜间收口）：emotion value=0 不对称修复
+
+> 在 0.7362 基线之上完成，commit `4b36f90`（PR #65，分支 `fix/s4-06-integration`）。
+
+### 修复内容
+
+1. **value=0 不对称修复（合法，保留）**：expected 侧原先把 `value=0` / `polarity=absent` 的 `emotion_states` 也当作「必须有」，而 actual 侧正确地把 value=0 视为缺席，造成系统性 FN 不对称。修复后 expected 侧经 `_emotion_present` 丢弃 value=0 / absent 标签。
+2. **问卷 salience 阈值（value≥3）还原**：把 `_emotion_present`（presence：value≥1=present，供 expected 侧）与 `_actual_emotion_present`（label-set salience：问卷 value≥3 才计入 emotion_f1 标签集）分离。关键证据：把「value≥1=present」直接套到 emotion_f1 标签集会把 F1 从 0.7362 **塌缩到 0.346**（问卷每个 case 报 ~6 个 value=2 背景情绪，而 gold 是叙事派生的 2-3 个 salient 情绪）。
+
+### 结果
+
+| 版本 | emotion_f1 | 说明 |
+|---|---:|---|
+| 0.7362 | 保存的正式 60（2026-08-12） | 唯一未达标项 |
+| **0.7407** | 确定性离线重算（value=0 修复） | 合法修正，**仍未达 0.80** |
+
+### 结论（被进一步确认，未变）
+
+value 语义是**红鲱鱼**：value=0 修复只带来 +0.0045（0.7362→0.7407）。真正阻止达到 0.80 的缺口是：
+
+- **~15 个叙事漏报 FN**（Qwen2.5-7B-q4 对成语/英文/隐含表达的提取失败：提不起劲 / 开了很多窗口 / 活着没意思 / 缓过来 / anxious 等）——需要更强模型（14B+ 或云端），受限于 8GB VRAM 无法本机执行。
+- **~8 FN + ~9 FP 的问卷-叙事优先级歧义**（gold 有时把 value 1/2 问卷情绪计入、有时又把 value 3/4 问卷情绪排除，非 value 的确定性函数）——需要 Contract Owner 拍板问卷情绪在 gold 中的纳入语义。
+
+二者均非本夜可在不违反约束（不降阈值、不改 expected、不 Mock、不换 DeepSeek）前提下自主达成的项。
+
+---
+
+## 执行摘要
+
+| 项目 | 结果 |
+|---|---|
+| 60 Cases Loaded | 60/60 |
+| 60 Cases Executed | 60/60 |
+| PASS | 15 |
+| FAIL | 45 |
+| ERROR | 0 |
+| Safety | 5/5 PASS |
+| Silent Skip | 0 |
+
+60/60 均通过 production runner 执行，0 ERROR。5 个 safety case 全部在 Diagnosis/Prescription/Music 前阻断。45 个普通 FAIL 中，绝大多数为 emotion 标签的 model-quality 差异（详见 per-label 分析）。
+
+## Qwen 运行环境
+
+- `QWEN_BASE_URL`：本地 OpenAI-compatible endpoint（`http://localhost:11434/v1`，仅进程环境，未提交）；
+- `QWEN_API_KEY`：本地非敏感占位值 `ollama`（未提交）；
+- `QWEN_MODEL`：`qwen2.5:7b-instruct-q4_K_M`；
+- Runtime：Ollama 本地推理；未使用 Mock Provider、expected labels 或伪结果。
+
+## Metrics（最终）
+
+| Metric | Actual | Frozen P0 threshold | 状态 |
+|---|---:|---:|---|
+| emotion_f1 | 0.7362 | ≥ 0.80 | **FAIL** |
+| event_f1 | 0.7500 | ≥ 0.75 | PASS |
+| physical_f1 | 0.8000 | ≥ 0.80 | PASS |
+| evidence_citation_accuracy | 1.0000 | ≥ 0.95 | PASS |
+| unsupported_conclusion_rate | 0.0000 | ≤ 0.05 | PASS |
+| safety_recall | 1.0000 | = 1.00 | PASS |
+| schema_pass_rate | 1.0000 | = 1.00 | PASS |
+| abstain_accuracy | 0.6727 | P1 | 记录 |
+| evidence_coverage_score | 1.0000 | descriptive | 记录 |
+| provider_failure_rate | 0.0000 | ≤ 0.05 | PASS |
+
+**唯一未达标项：`emotion_f1 = 0.7362`（阈值 ≥ 0.80）。**
+
+## Emotion per-label 混淆分析（55 normal cases）
+
+Micro：TP=60，FP=14，FN=29，Precision=0.8108，Recall=0.6742，F1=0.7362
+
+| Label | TP | FP | FN | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|---:|---:|
+| tension_worry | 18 | 2 | 3 | 0.9000 | 0.8571 | 0.8780 |
+| low_mood | 10 | 1 | 10 | 0.9091 | 0.5000 | 0.6452 |
+| fear_unease | 7 | 3 | 5 | 0.7000 | 0.5833 | 0.6364 |
+| overthinking | 7 | 1 | 4 | 0.8750 | 0.6364 | 0.7368 |
+| interest_loss | 7 | 3 | 1 | 0.7000 | 0.8750 | 0.7778 |
+| irritability_anger | 6 | 0 | 1 | 1.0000 | 0.8571 | 0.9231 |
+| calm_wellbeing | 4 | 3 | 1 | 0.5714 | 0.8000 | 0.6667 |
+| emotional_recovery | 1 | 1 | 4 | 0.5000 | 0.2000 | 0.2857 |
+
+残余缺口集中在 FN（漏报）：
+
+- `low_mood` FN=10 —— 最大缺口，模型对隐含低落（非字面"低落/难过"）提取不足；
+- `fear_unease` FN=5、`emotional_recovery` FN=4、`overthinking` FN=4 —— 细腻情绪维度召回不足。
+
+## Owner Acceptance Decision（2026-08-13）
+
+Sprint 4 最终权威 Formal 60 结果保持不变：
+
+- Model：`qwen2.5:7b-instruct-q4_K_M`
+- 60/60 executed，0 ERROR
+- `emotion_f1 = 0.7407`
+- Frozen target：`>= 0.80`
+- Formal model quality：`NOT_MET`
+- Owner disposition：`ACCEPTED_KNOWN_MODEL_LIMITATION`
+
+Engineering Implementation 为 `COMPLETE`，自动化工程 Gate 为 `PASS`；不得把以上 Owner 接受决定写成 `Frozen Evaluation PASS`。Sprint 4 emotion F1 optimization is `CLOSED`，后续模型质量改进延期到 Sprint 5 或更后续，除非 Owner 明确重新开启。
+
+观察性 7B/14B hard-case 对比见 `docs/sprint4/s4-06-qwen-model-bakeoff.md`。该实验不改变权威 Formal 60 成绩，不触发新的 60-case。
+
+这些是**模型质量（H）**问题：Qwen2.5-7B 量化版对中文临床叙述中的细腻情绪维度（calm_wellbeing、emotional_recovery、低动机性 low_mood）语义提取能力有限，词法回退只能命中字面关键词。
+
+## 根因分类（A-I）
+
+| 分类 | 说明 | 状态 |
+|---|---|---|
+| **H — 模型质量** | 残余 emotion_f1 < 0.80 的主因：Qwen2.5-7B 量化版细腻情绪维度召回不足 | **未解决（剩余 blocker）** |
+| E — Adapter | `_supplement_grounded_items` 后处理过滤过激进（keyword gate 语义、calm/fear quote 过滤、good_state handler） | 已修复 |
+| B — Normalization | keyword-grounding gate 对 Qwen 幻觉标签的过滤（precision 门） | 已修复（恢复并修正） |
+| C — Taxonomy | evaluator `_EMOTION_LABELS` 错误包含 `worry_control`（frozen contract 规定 scored=false） | 已修复 |
+
+## 本轮工程修复（对照基线 0.7044）
+
+1. **恢复并修正 keyword-grounding gate**：Qwen emotion 抽取必须携带含支撑关键词的 quote，否则视为幻觉删除；词法回退项因 quote 即命中关键词天然通过。（中间一次"保护 Qwen 项"的修正错误移除了该门，导致 FP 14→27、emotion_f1 0.7362→0.6590，已回退。）
+2. **删除过激 quote 过滤**：`calm_wellbeing` 含"有时候"、`fear_unease` 含"烦躁不安"不再整条丢弃（"有时候很平静"仍是 grounded 证据）。
+3. **good_state handler 不再删除既有 low_mood**，只补充 negated 证据，冲突交由 assessment fusion 层解决。
+4. **放开 calm_wellbeing/fear_unease 的词法回退**（关键词命中时补标签）。
+5. **拓宽词法回退关键词**（tension_worry/calm_wellbeing/emotional_recovery/overthinking/irritability_anger/low_mood/interest_loss/fear_unease 的中文表达）。
+6. **修正 evaluator taxonomy**：从 `_EMOTION_LABELS` 移除 `worry_control`（frozen contract：scored=false，weight=0）。
+7. **配置修复**：显式注入 `QWEN_BASE_URL/API_KEY/MODEL`，15 个 PROVIDER_ERROR 归零（provider_failure_rate 0.25→0.0，schema_pass_rate 0.75→1.0）。
+
+未修改 Frozen Contract、expected labels、核心 Agent 架构或产品流程。
+
+## 结论
+
+Formal Runner 与真实 Qwen 环境均已运行，60/60 无 ERROR。`emotion_f1 = 0.7362` 未达 Frozen P0 阈值 0.80，其余 P0 指标（event/physical/safety/schema/evidence citation）全部通过。
+
+S4-06 总状态：**`AUTOMATED_ACCEPTANCE_FAILED`**（唯一未达标项为 emotion_f1，根因为模型质量 H）。
