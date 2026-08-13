@@ -1,28 +1,42 @@
 # S4-06 Manual Acceptance Result
 
-> 当前状态：`NOT_RUN / PENDING`。本文件只记录真实人工执行结果，禁止预填 PASS。
+> MySQL 已人工验收通过（2026-08-13）。OCR / Android 仍为人工 PENDING，禁止预填 PASS。
 
 ## Environment
 
 | Field | Actual |
 |---|---|
-| Date | NOT_RUN |
-| Integration commit | `39b0597c8f6c1f0c4993638e6dc00ef9e0feb9f9` |
-| Tester | NOT_RUN |
-| Windows / network | NOT_RUN |
+| Date | 2026-08-13 |
+| Integration commit | `ed7c325a55c34fc292e61bd15fa907372c5ceaf5` |
+| Tester | 陈家智（人工验收执行） |
+| Windows / network | Windows 11；本机 MySQL 8.0.44 运行中 |
 
 ## MySQL 8
 
 | Field | Result |
 |---|---|
-| Status | `USER_CREDENTIAL_REQUIRED` |
-| Database | `harmonyai_s4_acceptance` |
-| Steps | Set `DATABASE_URL` locally; run `python -m tools.s4_mysql_acceptance`; then exercise the real API chain |
-| Expected | Migration and idempotency, reconnect persistence, scoped CRUD, privacy hook and cleanup all pass |
-| Actual | NOT_RUN |
-| Evidence | NOT_RUN |
-| Pass/Fail | PENDING |
-| Notes | Never record credentials or the complete connection URL |
+| Status | `PASS` |
+| Database | `harmonyai_s4_acceptance`（utf8mb4） |
+| Steps | 本机安全设置 `DATABASE_URL` → `python -m tools.s4_mysql_acceptance` → 真实 API 链路（创建评估 → 确认） |
+| Expected | Migration、幂等、重连持久化、范围 CRUD、隐私钩子、清理全部通过 |
+| Actual | 全部通过（见下表） |
+| Evidence | 探针输出 `pass=true`；真实 API 链路 revision 1→2、`confirmation_level` 落库；验收行已清理 |
+| Pass/Fail | **PASS** |
+| Notes | 未记录用户名 / 密码 / DATABASE_URL / 敏感路径；探针只允许 `harmonyai_s4_acceptance` 库 |
+
+### MySQL 8 checks（2026-08-13）
+
+| Check | Result |
+|---|---|
+| MySQL version | 8.0.44 |
+| connection | PASS |
+| migration（首次 apply） | PASS |
+| idempotency（二次 apply） | PASS |
+| reconnect persistence | PASS |
+| Session / Revision / Evidence / FollowUp / Feedback / AICallLog 持久化 | PASS |
+| AI log privacy（input/output/error 均为空） | PASS |
+| cleanup safety（按唯一 session_id 范围删除，0 残留） | PASS |
+| real API → MySQL chain（Assessment → Confirmation） | PASS |
 
 ## OCR Manual POC
 
