@@ -57,6 +57,13 @@ def test_mysql_acceptance_cli_refuses_sqlite_without_echoing_url():
 
 def test_manual_start_check_does_not_echo_database_credentials():
     script = ROOT / "tools" / "start-s4-manual-acceptance.ps1"
+    if os.name != "nt":
+        source = script.read_text(encoding="utf-8")
+        assert 'Write-Output "DATABASE_URL: $databaseState"' in source
+        assert "Write-Output $env:DATABASE_URL" not in source
+        assert '$phoneApiUrl = "http://${resolvedLanIp}:8000"' in source
+        return
+
     env = os.environ.copy()
     secret_marker = "S4_SECRET_MUST_NOT_APPEAR"
     env["DATABASE_URL"] = (
