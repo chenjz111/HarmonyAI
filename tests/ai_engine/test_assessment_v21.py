@@ -158,3 +158,101 @@ def test_frozen_safety_answers_stop_assessment_before_normal_evidence_flow():
     assert "confusion" in emergency["safety_flags"]
     assert self_harm["follow_up_questions"] == []
     assert emergency["follow_up_questions"] == []
+
+def _conflict_evidence(source_type, value, *, evidence_id):
+    return {
+        "evidence_id": evidence_id,
+        "category": "emotion",
+        "label": "tension_worry",
+        "display_name": "tension_worry",
+        "value": value,
+        "polarity": "present",
+        "severity": "moderate",
+        "severity_display": "moderate",
+        "time_window": "past_14_days",
+        "source_type": source_type,
+        "source_ref": "Q03" if source_type == "questionnaire" else "narrative:sentence_1",
+        "confirmed": False,
+    }
+
+
+def test_conflict_detection_ignores_ordinary_cross_source_severity_variation():
+    from backend.ai_engine.assessment_v2 import _v21_conflicts
+
+    evidence = [
+        _conflict_evidence("questionnaire", 2, evidence_id="q-tension"),
+        _conflict_evidence("narrative", 3, evidence_id="n-tension"),
+    ]
+
+    assert _v21_conflicts(evidence) == []
+
+
+def test_conflict_detection_flags_material_cross_source_contradiction():
+    from backend.ai_engine.assessment_v2 import _v21_conflicts
+
+    evidence = [
+        _conflict_evidence("questionnaire", 1, evidence_id="q-tension"),
+        _conflict_evidence("narrative", 4, evidence_id="n-tension"),
+    ]
+
+    conflicts = _v21_conflicts(evidence)
+
+    assert len(conflicts) == 1
+    assert conflicts[0]["topic"] == "tension_worry"
+
+
+def test_conflict_detection_flags_present_versus_absent_polarity():
+    from backend.ai_engine.assessment_v2 import _v21_conflicts
+
+    present = _conflict_evidence("questionnaire", 3, evidence_id="q-tension")
+    absent = _conflict_evidence("narrative", 0, evidence_id="n-tension")
+    absent["polarity"] = "absent"
+
+    conflicts = _v21_conflicts([present, absent])
+
+    assert len(conflicts) == 1
+    assert conflicts[0]["topic"] == "tension_worry"
+def test_physical_narrative_evidence_uses_canonical_label_as_value():
+    from backend.ai_engine.assessment_v2 import _v21_narrative_evidence
+    from backend.ai_engine.sprint4_contracts import (
+        NarrativeEvidence,
+        NarrativeExtractionResult,
+    )
+
+    extraction = NarrativeExtractionResult(
+        status="processed",
+        items=(
+            NarrativeEvidence(
+                category="physical_signal",
+                label="chest_tightness",
+                value="tight chest",
+                polarity="present",
+                time_window=None,
+                quote="tight chest",
+                source_ref="narrative:sentence_1",
+                extraction_confidence=0.9,
+                negated=False,
+            ),
+        ),
+        evidence_quotes=(),
+    )
+
+    evidence = _v21_narrative_evidence(extraction, source_type="narrative")
+
+    assert evidence[0]["category"] == "physical"
+    assert evidence[0]["value"] == ["chest_tightness"]
+def test_questionnaire_evidence_preserves_original_positive_q10_direction():
+    from backend.ai_engine.assessment_v2 import _v21_questionnaire_evidence
+    from backend.ai_engine.questionnaire_v2 import score_questionnaire_v21
+
+    envelope = frozen_v21_envelope()
+    for answer in envelope["answers"]:
+        if answer["question_id"] == "q10_calm_wellbeing":
+            answer["value"] = 1
+    questionnaire = score_questionnaire_v21(envelope)
+
+    evidence = _v21_questionnaire_evidence(questionnaire)
+    calm = next(item for item in evidence if item["label"] == "calm_wellbeing")
+
+    assert questionnaire.dimension_scores["calm_wellbeing"].raw_score == 3
+    assert calm["value"] == 1

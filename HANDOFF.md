@@ -157,3 +157,71 @@ yu    (羽调)      → 58   → 箫、古琴
 ---
 
 *由 Claude Code 于 2026-08-09 创建。每次换工具前更新此文件。*
+
+## 11. Sprint 4 S4-06 当前状态（2026-08-11）
+
+- integration baseline：`ecd3596f40cc11205c5af28612e647070d5b0cd2`，已包含 #53～#56。
+- 当前验收修复分支：`fix/s4-06-integration`。
+- Contract：30/30 passed；Full：511/511 passed；Frontend：37/37 passed；H5：PASS；Evaluation runner tests：14/14 passed。
+- Safety Gate：5/5 PASS；10 个正式验收场景：10/10 PASS；完整产品链路：PASS。
+- SQLite、Provider failure、Privacy、Sprint 3 compatibility：PASS。
+- S4-06 小型修复：Assessment V2.1 API 接入 async Qwen Provider factory；普通日志新增 provider/prompt 输入脱敏；均有回归测试。
+- Formal Runner 已调用 production workflow；首次真实本地 Qwen 正式结果：60/60 executed、5 PASS、40 FAIL、15 ERROR；Safety 5/5 PASS，threshold FAIL。
+- 严格状态：`AUTOMATED_ACCEPTANCE_FAILED`。
+- 下一步：只定位 15 个 `PROVIDER_ERROR` subset；确认实现/基础设施修复后最多允许一次 Final 60-case。MySQL 等正确凭证；OCR/Android 保持人工 PENDING。
+- 详细证据：`docs/sprint4/s4-06-acceptance-report.md`。
+
+禁止在上述阻塞消除前执行 integration → dev、dev → main、tag v0.4.0、Release 或关闭 #53～#56。
+
+### S4-06 可恢复检查点（2026-08-12）
+
+- PR #65 分支 `fix/s4-06-integration@499a905aca4ead914b3296958a5a9a70b18aed35`：C051/C052/C053 已修复，正式数据 60/60 VALID，`tests/evals/` 16/16 PASS。
+- Ollama 0.32.8 与 `qwen2.5:7b-instruct-q4_K_M`（digest `845dbda0ea48`）已安装到 `D:\OllamaModels`；本地健康、同步 Provider、异步 Provider smoke 均 PASS。
+- 3-case smoke：C001/C021/S001 均无 Provider/Schema ERROR，S001 safety PASS；两条普通案例仅有 model-quality 指标差异。受影响测试 18/18 PASS。
+- Representative mini eval：C001/C021/C031/C041/C046/C051/C010/S001 共 8/8 执行完成、无 Provider/Schema ERROR；S001 safety PASS，普通案例差异归类为 model-quality。
+- 首次 formal 60-case：60/60 executed，5 PASS / 40 FAIL / 15 ERROR；Qwen AVAILABLE，safety recall 1.0，schema pass 0.75，Frozen threshold FAIL；机器结果已落盘。
+- ERROR subset 诊断：15 条中 13 条复现 `NARRATIVE_SCHEMA_ERROR`（缺少 `time_window`、非法 `polarity`、quote 非原文子串），2 条重跑恢复，属于本地 7B structured-output 非确定性；未消耗 Final 60-case。
+- 当前恢复点：PR #65 `e19ccb1`，CI SUCCESS、MERGEABLE；MySQL=`USER_CREDENTIAL_REQUIRED`；OCR/Android manual gate=PENDING。
+
+### S4-06 final recovery checkpoint (2026-08-12)
+
+- PR #65 branch: `fix/s4-06-integration`; latest saved evaluation commit before this status update: `7216a1d`.
+- Final real-Qwen 60-case run is complete and saved: 60/60 executed, 15 PASS / 40 FAIL / 5 ERROR; threshold FAIL.
+- Final automated regression: Full 535/535, Contract 30/30, Frontend 37/37, H5 PASS.
+- Remaining gates: emotion F1 0.6760563380 (<0.80), schema pass 0.9166666667 (<1.00), MySQL `USER_CREDENTIAL_REQUIRED`, OCR manual POC pending, Android manual pending.
+- Current status remains `AUTOMATED_ACCEPTANCE_FAILED`; do not run another full 60-case or proceed to release from this checkpoint.
+
+### S4-06 最终权威结论（2026-08-12，Claude 收尾）
+
+- PR HEAD：`fix/s4-06-integration@dd92f09`。
+- **emotion_f1 0.7044 → 0.7362**（仍 < 0.80，唯一未达标项）；event_f1 0.7500、physical_f1 0.8000、safety_recall 1.0、schema_pass_rate 1.0、provider_failure_rate 0.0（15 个 PROVIDER_ERROR 归零，ERROR 15→0）。
+- 全量回归：Full 540/540、Contract 30/30、Frontend 37/37、H5 build PASS。
+- 根因：残余缺口 = H 模型质量（low_mood FN=10 / fear_unease FN=5 / emotional_recovery FN=4 / overthinking FN=4）；已修 E adapter、B normalization、C taxonomy。
+- 关键陷阱（务必继承）：Qwen emotion 抽取必须过 keyword-grounding gate（quote 含支撑关键词），词法回退项天然通过。曾有一次误改把 gate 移除导致 FP 14→27、emotion_f1 0.7362→0.6590，已回退。
+- 环境/手工 Gate：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- 总状态：**`AUTOMATED_ACCEPTANCE_FAILED`**。残余 blocker 为模型质量，需更强模型或受控改进；不做大规模 Prompt tuning、不改 expected、不 Mock、不降阈值。
+- 权威报告：`docs/sprint4/s4-06-evaluation-report.md`、`docs/sprint4/s4-06-acceptance-report.md`。
+
+### S4-06 夜间收口（2026-08-13，Claude 自主执行，已 commit+push）
+
+- PR HEAD：`fix/s4-06-integration@4c6c5ed`（已 push，与 origin 同步）。CI `test` SUCCESS、PR #65 MERGEABLE/CLEAN。
+- 新增 3 commit：`5988b27`（canonical emotion presence semantics）、`4b36f90`（restore questionnaire emotion salience，presence ≠ salience）、`4c6c5ed`（收口记录 + morning report + final JSON）。
+- **emotion_f1 0.7362 → 0.7407**（value=0 不对称修复，FN 29→28，TP=60 / FP=14 / FN=28）。仍未达 0.80。其余 P0 全 PASS（event 0.7500 / physical 0.8000 / safety 1.0 / schema 1.0 / provider_failure 0.0）。
+- 关键陷阱（务必继承）：**presence ≠ salience**。`_emotion_present`（value≥1=present）只用于 expected 侧与证据 existence；`_actual_emotion_present`（问卷 value≥3）用于 emotion_f1 标签集。把「value≥1=present」套到标签集会把 F1 塌缩到 0.346。
+- 结论：value 语义是**红鲱鱼**。真正阻塞 = ① ~15 叙事漏报 FN（成语/英文/隐含表达，需更强 Qwen）② ~8 FN + ~9 FP 问卷-叙事优先级歧义（gold 对问卷情绪的纳入非 value 确定性函数）。
+- **需 Owner 拍板两项（阻塞上 0.80）**：D1 问卷情绪在 gold 的纳入规则；D2 是否换更强 Qwen（14B 量化 / 云端 API）。Provider 冻结的是**接口**不是模型，换更强 Qwen 合法；红线 = 禁止 Mock 代 Qwen、禁止 DeepSeek 代 Formal Qwen。
+- 全量回归 610/610 passed；Contract 30/30；Frontend 37/37；H5 build PASS。
+- 手工 Gate 不变：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- 权威报告：`docs/sprint4/s4-06-morning-report.md`、`docs/sprint4/s4-06-evaluation-report.md`（含 value=0 addendum）、`docs/sprint4/s4-06-acceptance-report.md`。
+
+### S4-06 Owner acceptance checkpoint（2026-08-13）
+
+- PR #65 branch：`fix/s4-06-integration`；bake-off checkpoint：`815e093`。
+- Sprint 4 权威 Formal 60：Qwen2.5-7B Q4，60/60 executed，0 ERROR，`emotion_f1=0.7407`，Frozen target `>=0.80`，状态 `NOT_MET`。
+- Owner disposition：`ACCEPTED_KNOWN_MODEL_LIMITATION`。
+- **Sprint 4 emotion_f1 optimization is CLOSED.**
+- Future model-quality improvement：`DEFERRED_TO_SPRINT_5_OR_LATER`。除非 Owner 明确重新开启，后续 Agent 不得继续把 0.7407 调到 0.80、修改 gold/expected/threshold、继续下载模型或重跑 Formal 60。
+- 观察性 15-case：7B F1 0.6552 / 0 errors / 132.40s；14B F1 0.6471（仅 9 个可比较输出）/ 6 errors / 1096.55s。当前硬件保留 7B。
+- Engineering Implementation：`COMPLETE`；Automated Engineering Gates：`PASS`；Formal Model Quality：`NOT_MET`。不得写成 `Frozen Evaluation PASS`。
+- Manual gates：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- NEXT_ACTION：完成 PR #65 文档/CI 收口并标记 `ENGINEERING_READY_TO_MERGE`；随后按 `docs/sprint5/` 规划进入下一 Sprint，不在 PR #65 实现 Sprint 5 功能。

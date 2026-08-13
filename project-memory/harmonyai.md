@@ -305,6 +305,17 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - **Level A**: PubMed 逐字核验（4 篇）
 - **Level B**: 《素问》ctext 原文核验（5 篇）
 - **Level C**: 万方/SinoMed 多源交叉验证（3 篇）
+
+### 2026-08-13 Owner 决策：关闭 Sprint 4 emotion 优化
+
+- 权威 Formal 60 保持 Qwen2.5-7B Q4：60/60 executed，0 ERROR，`emotion_f1=0.7407`；Frozen target `0.80` 未达到。
+- Disposition：`ACCEPTED_KNOWN_MODEL_LIMITATION`，不是 Formal Evaluation PASS。
+- Engineering Implementation=`COMPLETE`；Automated Engineering Gates=`PASS`；Formal Model Quality Target=`NOT_MET`。
+- **Sprint 4 emotion_f1 optimization is CLOSED.**
+- Future model-quality improvement=`DEFERRED_TO_SPRINT_5_OR_LATER`。禁止后续 Agent 自动恢复 0.80 优化，除非 Owner 明确重新开启。
+- 观察性模型对比：固定 15-case、同 Prompt/RAG/pipeline/scorer、同 240s timeout/0 retry；7B F1=0.6552、0 error、132.40s；14B F1=0.6471（9 个可比较输出）、6 errors、1096.55s。14B 当前为 38% GPU/62% CPU，不适合作为本机默认模型。
+- Manual gates 仍为 MySQL=`USER_CREDENTIAL_REQUIRED`、OCR=`MANUAL_OCR_POC_PENDING`、Android=`MANUAL_ANDROID_TEST_PENDING`。
+- Sprint 5 方向：Cloud Qwen、Assessment/Diagnosis cloud provider、MusicGenerationProvider、云/本地明确 fallback；Sprint 4 PR 不实现 Sprint 5 业务代码。
 - **Level D**: 待补充（预留）
 - **Level E**: 用户反馈数据（规划中）
 - 发现：焦虑证据人群分歧（癌症阴性 vs 老年阳性）；王丽娜 2022 被验证否决
@@ -329,3 +340,54 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 ---
 
 *由 Claude Code 维护。每次重大进展后更新此文件。*
+
+## Sprint 4 S4-06 集成验收状态（2026-08-11）
+
+- 四条功能线 #53～#56 已会师于 `integration/sprint4-real-input@ecd3596f40cc11205c5af28612e647070d5b0cd2`。
+- S4-06 修复集中在 `fix/s4-06-integration`，未直接提交 integration。
+- 当前自动化证据：Contract 30/30、Full 511/511、Frontend 37/37、H5 PASS、Evaluation runner tests 14/14。
+- Safety 5/5、10 个验收场景 10/10、完整产品链路、SQLite、Provider failure、Privacy、Sprint 3 compatibility 均 PASS。
+- Assessment V2.1 API 已接入 async Qwen Provider 环境工厂；Provider input/prompt 已纳入普通日志脱敏。
+- Formal Runner 已调用 production workflow；首次真实本地 Qwen 正式结果为 60/60 executed、5 PASS、40 FAIL、15 ERROR；Safety 5/5 PASS，Frozen threshold FAIL。
+- MySQL 真实环境验收、OCR 真实脱敏材料 POC、Android 真机验收均 PENDING。
+- 当前唯一允许的总状态：`AUTOMATED_ACCEPTANCE_FAILED`。
+- 发布阻塞：定位 15 个 `PROVIDER_ERROR` subset、必要时执行唯一一次 Final 60-case并达到 Frozen threshold；MySQL/OCR/Android Gate 尚未完成。
+- 详细报告：`docs/sprint4/s4-06-acceptance-report.md`。
+
+### 2026-08-12 可恢复检查点
+
+- PR #65 分支 `fix/s4-06-integration@499a905aca4ead914b3296958a5a9a70b18aed35`：C051/C052/C053 已修复，eval tests 16/16，正式数据 60/60 VALID。
+- Ollama 0.32.8 与本地 `qwen2.5:7b-instruct-q4_K_M`（digest `845dbda0ea48`）已就绪；模型健康检查及 sync/async Provider smoke 均 PASS。
+- 3-case smoke（C001/C021/S001）已完成：真实 Qwen 调用无 Provider/Schema ERROR，S001 safety PASS；普通案例仅有 model-quality 差异；targeted tests 18/18 PASS。
+- Representative mini eval 共 8/8 执行完成，无 Provider/Schema ERROR；S001 safety PASS，普通案例差异为 model-quality。
+- 首次 formal 60 已落盘：5 PASS / 40 FAIL / 15 ERROR；真实 Qwen AVAILABLE，safety recall 1.0，schema pass 0.75，threshold FAIL。
+- ERROR subset 诊断：15 条中 13 条复现 `NARRATIVE_SCHEMA_ERROR`（time_window/polarity/quote 约束），2 条重跑恢复，归类为本地 7B structured-output 非确定性；未执行 Final 60-case。
+- 当前恢复点：PR #65 `e19ccb1`，CI SUCCESS、MERGEABLE；MySQL=`USER_CREDENTIAL_REQUIRED`，OCR/Android manual gate=PENDING。
+
+### S4-06 final recovery checkpoint (2026-08-12)
+
+- Final real-Qwen evaluation is persisted at commit `7216a1d`: 60/60 executed, 15 PASS / 40 FAIL / 5 ERROR; Frozen threshold FAIL.
+- Final automated regression on the follow-up duration compatibility fix: Full 535/535, Contract 30/30, Frontend 37/37, H5 PASS.
+- Formal blockers: emotion F1 0.6760563380 and schema pass 0.9166666667 remain below Frozen P0 thresholds.
+- Environment/manual gates: MySQL `USER_CREDENTIAL_REQUIRED`; OCR `MANUAL_OCR_POC_PENDING`; Android `MANUAL_ANDROID_TEST_PENDING`.
+- Resume from PR #65 `fix/s4-06-integration`; do not run a third full 60-case and do not claim S4-06 acceptance or release readiness.
+
+### S4-06 最终权威结论（2026-08-12，Claude 收尾）
+
+- PR HEAD：`fix/s4-06-integration@dd92f09`（emotion 提取 keyword-grounding gate 恢复修正 + 报告更新）。
+- **emotion_f1 0.7044 → 0.7362**（仍 < 0.80，唯一未达标项）；event_f1 0.7500、physical_f1 0.8000、safety_recall 1.0、schema_pass_rate 1.0、provider_failure_rate 0.0（15 个 PROVIDER_ERROR 已归零）。
+- 全量回归：Full 540/540、Contract 30/30、Frontend 37/37、H5 build PASS。
+- 根因重分类（不是纯模型质量）：**A/B evaluator/normalization 不对称** —— actual 侧 `_is_active_evidence` 丢弃问卷 emotion value<3，expected 侧 `_expected_fields` 不过滤 value，导致 value=0/1/2 的缺席/轻微情绪被 expected 当成「必须有」→ 系统性 FN（C023/C039/C025/C029/C037；low_mood FN 约 5 个、emotional_recovery FN 约 3 个是这类）；**H 模型质量**（成语/隐晦表达：提不起劲/开了很多窗口/活着没意思/缓过来）；**C taxonomy 边界**（tension vs fear vs overthinking 重叠）。已修 E（adapter 过激过滤）、B（normalization 幻觉门）、C（taxonomy 移除 worry_control）。
+- **Provider 冻结的是接口不是模型**：`QwenCompatibleProvider` 接口冻结，`model`/`QWEN_MODEL` 是运行时参数 → Sprint 4 内可换更强 Qwen（14B/72B/非量化），不违约；唯一红线禁止 Mock 代替 Qwen、禁止 DeepSeek 代替 Formal Qwen。
+- 中间陷阱：一次"保护 Qwen 项"的过滤修正实际移除了幻觉门，导致 emotion_f1 0.7362→0.6590（FP 14→27），已回退。**结论：Qwen emotion 抽取必须过 keyword-grounding gate，词法回退项天然通过。**
+- MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- 总状态：**`AUTOMATED_ACCEPTANCE_FAILED`**。下一步最高杠杆 = 先解决 evaluator value 阈值不对称（需 Contract Owner 拍板 value=0/1/2 语义）+ 问卷情绪证据融合；换更强 Qwen 救成语类 FN（合法）；再厘清 taxonomy 边界。不做大规模 Prompt tuning、不改 expected、不 Mock、不降阈值。
+
+### S4-06 夜间收口（2026-08-13，Claude 自主执行）
+
+- 新增 commit `4b36f90`（Checkpoint B）+ `5988b27`（Checkpoint A）。**emotion_f1 0.7362 → 0.7407**（value=0 不对称修复），仍未达 0.80。
+- 关键修正：分离 **presence**（`_emotion_present`：value≥1=present，用于 expected 侧）与 **salience**（`_actual_emotion_present`：问卷 value≥3 才计入 emotion_f1 标签集）。把「value≥1=present」直接套到标签集会塌缩 F1 到 0.346（问卷每 case 报 ~6 个 value=2 背景情绪，gold 是叙事派生 2-3 个 salient）。
+- 结论（被进一步确认）：**value 语义是红鲱鱼**。value=0 修复只 +0.0045；离 0.80 差 ~12 个错误。真正阻塞 = ① ~15 个叙事漏报 FN（成语/英文/隐含表达，需更强 Qwen 14B+/云端）② ~8 FN + ~9 FP 的问卷-叙事优先级歧义（gold 对问卷情绪的纳入非 value 确定性函数，需 Owner 重标/澄清语义）。
+- 需要 Owner 拍板两项：D1 问卷情绪在 gold 的纳入规则；D2 是否换更强 Qwen（14B 量化需更大显存 / 云端 API 需预算）。
+- 手工 Gate 不变：MySQL=`USER_CREDENTIAL_REQUIRED`；OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`。
+- 全量回归 610/610 passed。权威报告：`docs/sprint4/s4-06-morning-report.md`、`docs/sprint4/s4-06-evaluation-report.md`。

@@ -34,6 +34,37 @@ def citation_accuracy(
     return correct / len(predictions)
 
 
+def grounding_accuracy(
+    evidence: Sequence[Mapping[str, object]],
+    case_input: Mapping[str, object],
+) -> float:
+    """Measure whether each EvidenceItem can be traced to its declared input."""
+    if not evidence:
+        return 1.0
+    grounded = 0
+    for item in evidence:
+        source_type = item.get("source_type")
+        source_ref = item.get("source_ref")
+        if not isinstance(source_ref, str) or not source_ref.startswith(f"{source_type}:"):
+            continue
+        if source_type == "questionnaire":
+            if isinstance(case_input.get("questionnaire_answers"), Mapping):
+                grounded += 1
+            continue
+        if source_type not in {"narrative", "document"}:
+            continue
+        source_text = case_input.get(f"{source_type}_text")
+        quote = item.get("quote")
+        if (
+            isinstance(source_text, str)
+            and isinstance(quote, str)
+            and bool(quote)
+            and quote in source_text
+        ):
+            grounded += 1
+    return grounded / len(evidence)
+
+
 def unsupported_conclusion_rate(
     conclusions: Sequence[Mapping[str, object]],
 ) -> float:
@@ -59,6 +90,29 @@ def f1_score(predicted: set[str], gold: set[str]) -> float:
     if precision + recall == 0:
         return 0.0
     return 2 * precision * recall / (precision + recall)
+
+
+def _micro_f1(pairs: Sequence[tuple[set[str], set[str]]]) -> float:
+    true_positive = sum(len(predicted & gold) for predicted, gold in pairs)
+    predicted_count = sum(len(predicted) for predicted, _gold in pairs)
+    gold_count = sum(len(gold) for _predicted, gold in pairs)
+    if predicted_count == 0 and gold_count == 0:
+        return 1.0
+    if predicted_count == 0 or gold_count == 0:
+        return 0.0
+    return 2 * true_positive / (predicted_count + gold_count)
+
+
+def emotion_f1(pairs: Sequence[tuple[set[str], set[str]]]) -> float:
+    return _micro_f1(pairs)
+
+
+def event_f1(pairs: Sequence[tuple[set[str], set[str]]]) -> float:
+    return _micro_f1(pairs)
+
+
+def physical_f1(pairs: Sequence[tuple[set[str], set[str]]]) -> float:
+    return _micro_f1(pairs)
 
 
 def safety_recall(predicted_blocked: Sequence[bool], gold_blocked: Sequence[bool]) -> float:

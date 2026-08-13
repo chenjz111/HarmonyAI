@@ -1061,8 +1061,11 @@ def _v21_questionnaire_evidence(questionnaire: object) -> list[EvidenceItem]:
     for dimension, score in questionnaire.dimension_scores.items():
         category = _v21_category_for_dimension(dimension)
         value: object = score.raw_score
+        if dimension == "calm_wellbeing":
+            value = 4 - score.raw_score
         if dimension == "appetite_change":
             value = questionnaire.qualitative.get("appetite_change", score.raw_score)
+        evidence_score = value if type(value) is int else score.raw_score
         result.append(
             {
                 "evidence_id": f"ev-questionnaire-{dimension}",
@@ -1070,9 +1073,9 @@ def _v21_questionnaire_evidence(questionnaire: object) -> list[EvidenceItem]:
                 "label": dimension,
                 "display_name": dimension,
                 "value": value,
-                "polarity": "present" if score.raw_score else "absent",
-                "severity": _v21_severity(score.raw_score),
-                "severity_display": _v21_severity(score.raw_score),
+                "polarity": "present" if evidence_score else "absent",
+                "severity": _v21_severity(evidence_score),
+                "severity_display": _v21_severity(evidence_score),
                 "time_window": "过去两周",
                 "source_type": "questionnaire",
                 "source_ref": f"questionnaire:{score.source_questions[0]}",
@@ -1141,7 +1144,10 @@ def _v21_narrative_evidence(
             "category": _v21_narrative_category(item.category),
             "label": item.label,
             "display_name": item.label,
-            "value": _v21_evidence_value(_v21_narrative_category(item.category), item.value),
+            "value": _v21_evidence_value(
+                _v21_narrative_category(item.category),
+                item.label if item.category == "physical_signal" else item.value,
+            ),
             "polarity": item.polarity,
             "severity": "moderate" if item.value else "none",
             "severity_display": "有一定表现" if item.value else "当前不明显",
@@ -1259,9 +1265,8 @@ def _v21_conflicts(evidence: list[EvidenceItem]) -> list[dict[str, object]]:
         by_label.setdefault(item["label"], []).append(item)
     conflicts: list[dict[str, object]] = []
     for label, items in by_label.items():
-        values = {str(item.get("value")) for item in items}
         sources = {item["source_type"] for item in items}
-        if len(values) > 1 and len(sources) > 1:
+        if len(sources) > 1 and _v21_has_material_conflict(items):
             conflicts.append(
                 {
                     "conflict_id": f"cf-{label}",
@@ -1277,6 +1282,32 @@ def _v21_conflicts(evidence: list[EvidenceItem]) -> list[dict[str, object]]:
                 }
             )
     return conflicts
+
+def _v21_has_material_conflict(items: list[EvidenceItem]) -> bool:
+    polarities = {str(item.get("polarity")) for item in items}
+    positive_polarities = {"present", "increased", "reduced"}
+    strong_positive = any(
+        item.get("polarity") in positive_polarities
+        and (
+            type(item.get("value")) not in (int, float)
+            or float(item["value"]) >= 3
+        )
+        for item in items
+    )
+    if "absent" in polarities and strong_positive:
+        return True
+    if {"increased", "reduced"}.issubset(polarities):
+        return True
+
+    numeric_values = [
+        float(value)
+        for item in items
+        if type(value := item.get("value")) in (int, float)
+    ]
+    if numeric_values:
+        return min(numeric_values) <= 1 and max(numeric_values) >= 3
+    return False
+
 
 
 def _v21_follow_up_questions(
