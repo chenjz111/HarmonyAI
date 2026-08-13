@@ -236,3 +236,12 @@ yu    (羽调)      → 58   → 箫、古琴
 - 新准备分支：`fix/s4-06-manual-acceptance-prep`，只包含安全的人工验收工具、清单与结果模板。
 - `NEXT_ACTION`：用户先在本机创建/确认隔离库 `harmonyai_s4_acceptance` 并本地设置 `DATABASE_URL`，运行 `python -m tools.s4_mysql_acceptance`；随后准备脱敏 OCR 材料与 HBuilderX Android 真机。
 - 禁止：在聊天/Git 中提供数据库密码、固定提交 LAN IP、伪造 OCR/Android PASS、进入 Sprint 5 实现。
+
+### S4-06 MySQL 人工验收完成（2026-08-13）
+
+- 在 `docs/s4-06-mysql-manual-pass` 分支完成 MySQL 人工验收，状态由 `USER_CREDENTIAL_REQUIRED` → **`PASS`**。
+- MySQL 8.0.44；隔离库 `harmonyai_s4_acceptance`（utf8mb4）。
+- 探针 `python -m tools.s4_mysql_acceptance` 输出 `pass=true`：connection / migration（首次+幂等）/ reconnect persistence / Session·Revision·Evidence·FollowUp·Feedback·AICallLog 持久化 / AI log privacy / cleanup safety 全部通过。
+- 真实 API→MySQL 链路：创建评估(200) → 确认 partially_accurate(200) → revision 1→2、`confirmation_level` 落库 → 验收行已清理（0 残留）。
+- OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`（HBuilderX 已在本机安装，待真机）。
+- 未记录用户名/密码/DATABASE_URL/敏感路径；未改 production code；未重跑 emotion_f1/Formal 60；未进入 Sprint 5。

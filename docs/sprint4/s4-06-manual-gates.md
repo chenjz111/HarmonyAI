@@ -2,9 +2,11 @@
 
 > 自动化测试不能替代真实环境验收。未执行时必须保持 `PENDING`，不得写成 PASS。
 
-## 1. MySQL：USER_CREDENTIAL_REQUIRED
+## 1. MySQL：PASS（2026-08-13 完成）
 
-本机已检测到运行中的 MySQL 8 服务；CLI 未加入 PATH。仓库不会保存、打印或提交本机安装路径和密码。
+本机 MySQL 8.0.44 已通过人工验收。仓库不会保存、打印或提交本机安装路径和密码。
+
+> ✅ 已完成（详见 `s4-06-manual-acceptance-result.md`）：connection / migration（首次+幂等）/ reconnect persistence / Session·Revision·Evidence·FollowUp·Feedback·AICallLog 持久化 / AI log privacy / cleanup safety / real API→MySQL chain 全部 PASS。
 
 ### MYSQL_NEXT_USER_ACTION
 
