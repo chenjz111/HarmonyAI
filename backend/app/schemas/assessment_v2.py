@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from backend.app.schemas.evidence_v21 import AppetiteValue
+
 
 class AnalysisMode(str, Enum):
     DOCUMENT_NARRATIVE_QUESTIONNAIRE = (
@@ -19,7 +21,7 @@ class QuestionnaireAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     question_id: str = Field(min_length=1)
-    value: str | int | list[str]
+    value: str | int | list[str] | AppetiteValue
     type: Literal[
         "single_choice",
         "visual_single",

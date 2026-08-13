@@ -5,6 +5,7 @@ import backend.ai_engine.assessment_v2 as assessment_v2
 from backend.app.schemas.assessment_v2 import (
     AssessmentV2Request,
     AssessmentV2Response,
+    QuestionnaireAnswer,
 )
 
 
@@ -64,6 +65,43 @@ def test_request_rejects_flat_questionnaire_answers():
 
     with pytest.raises(ValidationError):
         AssessmentV2Request.model_validate(payload)
+
+
+def test_questionnaire_answer_accepts_appetite_direction_value():
+    answer = QuestionnaireAnswer.model_validate(
+        {
+            "question_id": "q15_appetite_change",
+            "type": "single_choice",
+            "value": {"direction": "decrease", "severity": 3},
+        }
+    )
+
+    assert answer.value.direction == "decrease"
+    assert answer.value.severity == 3
+
+
+def test_questionnaire_answer_accepts_appetite_none_direction_with_zero_severity():
+    answer = QuestionnaireAnswer.model_validate(
+        {
+            "question_id": "q15_appetite_change",
+            "type": "single_choice",
+            "value": {"direction": "none", "severity": 0},
+        }
+    )
+
+    assert answer.value.direction == "none"
+    assert answer.value.severity == 0
+
+
+def test_questionnaire_answer_rejects_none_direction_with_nonzero_severity():
+    with pytest.raises(ValidationError):
+        QuestionnaireAnswer.model_validate(
+            {
+                "question_id": "q15_appetite_change",
+                "type": "single_choice",
+                "value": {"direction": "none", "severity": 3},
+            }
+        )
 
 
 @pytest.mark.parametrize(

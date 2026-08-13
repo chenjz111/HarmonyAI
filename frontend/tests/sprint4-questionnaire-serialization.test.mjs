@@ -43,7 +43,7 @@ function fullRawAnswers() {
       answers[q.question_id] = { value: first, score: q.options[0].score }
     } else if (q.type === 'multi_choice') {
       answers[q.question_id] = [first]
-    } else if (q.type === 'directional') {
+    } else if (q.severity_scale) {
       answers[q.question_id] = { direction: 'decrease', severity: 3 }
     } else {
       answers[q.question_id] = first
@@ -52,8 +52,9 @@ function fullRawAnswers() {
   return answers
 }
 
-test('q15 renders as directional and exposes a 1-4 severity scale', () => {
-  assert.equal(q15.type, 'directional')
+test('q15 renders as directional (single_choice + severity_scale) and exposes a 1-4 severity scale', () => {
+  assert.equal(q15.type, 'single_choice')
+  assert.ok(q15.severity_scale)
   assert.equal(rendererModeFor(q15), 'directional')
   assert.deepEqual(severityScaleFor(q15).map((s) => s.value), [1, 2, 3, 4])
   assert.deepEqual(q15.options.map((o) => o.value), ['decrease', 'increase', 'none'])

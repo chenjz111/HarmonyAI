@@ -5,9 +5,11 @@ const NONE_EXCLUSIVE = new Set(["q16_physical_signals", "q20_emergency"])
 export function rendererModeFor(question) {
   const type = question && question.type
   const layout = question && question.ui && question.ui.layout
+  // single_choice + severity_scale = directional（q15 食欲变化：方向 + 程度）。
+  // 用 severity_scale 而非新 type 驱动，保持 API type 仍为 frozen 的 single_choice。
+  if (question && question.severity_scale) return "directional"
   if (type === "visual_single") return "visual"
   if (type === "multi_choice") return "multi"
-  if (type === "directional") return "directional"
   if (layout === "button-grid") return "button-grid"
   if (layout === "button-list") return "button-list"
   // 其余单选类型（frequency_0_4 / single_choice / duration_choice / scale_0_10）统一渲染为按钮行。
@@ -68,13 +70,14 @@ export function serializeDirectional(direction, severity) {
 
 // 通用答案序列化：canonical 题型 → 后端期望的 value 结构。
 // visual_single → {value, score} 展开为 value=语义值 + 独立 score 字段；
-// directional → {direction, severity}；其余类型原样传递（含 0 等 falsy 合法值）。
+// directional（single_choice + severity_scale）→ {direction, severity}；
+// 其余类型原样传递（含 0 等 falsy 合法值）。
 export function serializeAnswer(question, raw) {
   const type = question && question.type
   if (type === "visual_single" && raw && typeof raw === "object") {
     return { value: raw.value, score: raw.score }
   }
-  if (type === "directional" && raw && typeof raw === "object") {
+  if (question && question.severity_scale && raw && typeof raw === "object") {
     return { value: serializeDirectional(raw.direction, raw.severity) }
   }
   return { value: raw }
@@ -85,6 +88,6 @@ export function serializeAnswer(question, raw) {
 export function isAnswerComplete(question, answer) {
   if (answer === undefined || answer === null) return false
   if (Array.isArray(answer)) return answer.length > 0
-  if (question && question.type === "directional") return isDirectionalComplete(answer)
+  if (question && question.severity_scale) return isDirectionalComplete(answer)
   return true
 }

@@ -753,7 +753,7 @@
       "module": "D_sleep_energy_body",
       "order": 15,
       "text": "与平时相比，你最近的食欲是否发生了明显变化？",
-      "type": "directional",
+      "type": "single_choice",
       "time_window": "past_14_days",
       "options": [
         {
