@@ -21,6 +21,7 @@ def select_comfort_audio(
         "personalized": False,
         "is_medical_prescription": False,
         "autoplay": False,
+        "safety_notice_required": True,
         "safety_notice": (
             "这段音频仅用于短时安抚，不能替代专业帮助，也不会改变当前安全状态。"
         ),

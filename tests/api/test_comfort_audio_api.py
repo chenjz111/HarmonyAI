@@ -52,6 +52,7 @@ def test_confirmed_mental_health_risk_can_request_curated_non_prescription_audio
     assert audio["personalized"] is False
     assert audio["is_medical_prescription"] is False
     assert audio["autoplay"] is False
+    assert audio["safety_notice_required"] is True
     assert audio["stream_url"].startswith("/static/music/")
 
 
