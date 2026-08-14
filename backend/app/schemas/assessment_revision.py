@@ -77,6 +77,13 @@ class SafetyVerificationRequest(BaseModel):
     ]
 
 
+class ComfortAudioRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    revision: int = Field(ge=1)
+    user_initiated: bool
+
+
 class AssessmentRevisionContract(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
