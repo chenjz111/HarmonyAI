@@ -221,6 +221,101 @@ def confirm_assessment_revision(
     return {"assessment": snapshot, "revision": revision_contract(row)}
 
 
+def resolve_safety_verification(
+    db: Session,
+    *,
+    assessment_id: str,
+    revision: int,
+    resolution: str,
+) -> dict[str, Any]:
+    """Apply a dedicated Safety Verification transition to pending signals."""
+    current = require_current_revision(db, assessment_id, revision)
+    snapshot = snapshot_of(current)
+    if snapshot.get("safety_status") != "needs_verification":
+        raise AssessmentContractError(
+            "SAFETY_VERIFICATION_NOT_REQUIRED",
+            "Assessment does not have pending safety verification",
+        )
+    signals = [
+        dict(signal)
+        for signal in snapshot.get("safety_signals", [])
+        if isinstance(signal, dict)
+    ]
+    pending = [
+        signal
+        for signal in signals
+        if signal.get("verification_status") == "pending"
+    ]
+    if not pending:
+        raise AssessmentContractError(
+            "SAFETY_VERIFICATION_NOT_REQUIRED",
+            "Assessment does not have pending safety signals",
+        )
+
+    if resolution == "uncertain":
+        next_status = "needs_verification"
+        verification_status = "pending"
+    elif resolution == "current":
+        next_status = _confirmed_safety_status(pending)
+        verification_status = "confirmed"
+    else:
+        next_status = "resolved"
+        verification_status = "resolved"
+
+    for signal in pending:
+        signal["verification_status"] = verification_status
+        signal["resolution"] = resolution
+
+    next_revision = revision + 1
+    snapshot["revision"] = next_revision
+    snapshot["previous_revision"] = revision
+    snapshot["safety_signals"] = signals
+    snapshot["safety_status"] = next_status
+    snapshot["requires_safety_verification"] = next_status == "needs_verification"
+    snapshot["personalized_prescription_allowed"] = next_status == "resolved"
+    snapshot["comfort_audio_allowed"] = (
+        next_status == "confirmed_mental_health_risk"
+    )
+    if next_status == "resolved":
+        snapshot["status"] = "awaiting_confirmation"
+        snapshot["confirmation_status"] = "pending"
+        snapshot["confirmation_level"] = None
+        snapshot["requires_user_confirmation"] = True
+    else:
+        snapshot["status"] = "blocked_safety"
+        snapshot["requires_user_confirmation"] = False
+
+    changes = [
+        {
+            "field": "safety_status",
+            "from": "needs_verification",
+            "to": next_status,
+        }
+    ]
+    row = append_revision(
+        db,
+        current=current,
+        snapshot=snapshot,
+        change_summary=f"Safety verification: {resolution}",
+        changes=changes,
+        source="safety_verification",
+    )
+    return {"assessment": snapshot, "revision": revision_contract(row)}
+
+
+def _confirmed_safety_status(signals: list[dict[str, Any]]) -> str:
+    acute_flags = {
+        "severe_chest_pain",
+        "severe_breathing_difficulty",
+        "confusion",
+        "near_fainting",
+        "rapid_worsening",
+    }
+    if any(signal.get("type") in acute_flags for signal in signals):
+        return "confirmed_acute_physical_risk"
+    return "confirmed_mental_health_risk"
+
+
 def revision_history(db: Session, assessment_id: str) -> list[dict[str, Any]]:
     rows = db.query(AssessmentRevision).filter(
         AssessmentRevision.assessment_id == assessment_id,
