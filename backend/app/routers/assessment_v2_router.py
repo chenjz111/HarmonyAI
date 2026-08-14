@@ -10,6 +10,7 @@ from backend.app.core.database import get_db
 from backend.app.schemas.assessment_revision import (
     AssessmentConfirmationRequest,
     FollowUpSubmitRequest,
+    SafetyVerificationRequest,
 )
 from backend.app.schemas.v2 import v2_err, v2_ok
 from backend.app.services.assessment_revision_service import (
@@ -17,6 +18,7 @@ from backend.app.services.assessment_revision_service import (
     MAX_FOLLOWUPS,
     confirm_assessment_revision,
     revision_history,
+    resolve_safety_verification,
     submit_follow_up_answers,
 )
 
@@ -109,6 +111,40 @@ async def confirm_assessment(
         return v2_err(
             "CONFIRM_FAILED",
             "Assessment confirmation failed",
+            request_id,
+        )
+
+
+@router.patch(
+    "/assessments/{assessment_id}/safety-verification",
+    summary="Sprint 4 - resolve a pending Safety Signal",
+)
+async def verify_assessment_safety(
+    assessment_id: str,
+    body: SafetyVerificationRequest,
+    db: Session = Depends(get_db),
+):
+    request_id = _request_id()
+    try:
+        result = resolve_safety_verification(
+            db,
+            assessment_id=assessment_id,
+            revision=body.revision,
+            resolution=body.resolution,
+        )
+        return v2_ok(result, request_id)
+    except AssessmentContractError as error:
+        db.rollback()
+        return _contract_error(error, request_id)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "assessment safety verification failed",
+            extra={"assessment_id": assessment_id},
+        )
+        return v2_err(
+            "SAFETY_VERIFICATION_FAILED",
+            "Safety verification failed",
             request_id,
         )
 
