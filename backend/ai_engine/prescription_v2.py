@@ -164,12 +164,17 @@ def select_prescription_mode(
 ) -> str:
     """Deterministically pick the prescription granularity for a V2.1 diagnosis.
 
-    Uses the Diagnosis agent's own conclusion (``abstained`` + the candidate
-    list) rather than re-deriving "how clear is the syndrome" with a score
-    threshold:
+    Agent② decides whether the syndrome is clear; Agent③ only decides how to turn
+    that conclusion into a music prescription.
 
-    * Diagnosis gave a primary (``abstained == False``) → ``syndrome_based`` for
-      a single valid candidate, ``candidate_blend`` for multiple valid ones.
+    * Diagnosis gave an explicit, valid ``primary_tendency`` → ``syndrome_based``.
+      A secondary ``candidate_tendencies`` list must NOT downgrade an explicit
+      primary: the primary is Agent②'s authoritative conclusion.
+    * Diagnosis is not abstained but offers no primary yet multiple valid
+      candidates → ``candidate_blend``. This is a defensive compatibility path
+      only — the current Diagnosis V2.1 contract never emits "not abstained but
+      no primary" (when ``abstained == False``, ``primary_tendency`` is always
+      ``candidate_tendencies[0]``).
     * Diagnosis abstained with no candidate but the assessment still carries
       meaningful state data → ``wellness`` (uniformly low) or ``emotion_based``
       (some elevated dimension).
@@ -179,13 +184,12 @@ def select_prescription_mode(
     should already have been withheld by the caller; the ``emotion_based`` branch
     below is only a defensive default for direct callers.
     """
-    candidates = _valid_candidates(diagnosis.get("candidate_tendencies"))
     if not diagnosis.get("abstained"):
         primary = diagnosis.get("primary_tendency")
         if isinstance(primary, Mapping) and primary.get("id") in MVP_SYNDROMES:
-            if len(candidates) >= 2:
-                return "candidate_blend"
             return "syndrome_based"
+        if len(_valid_candidates(diagnosis.get("candidate_tendencies"))) >= 2:
+            return "candidate_blend"
 
     dimensions = _dimension_scores(assessment)
     if _is_stable_state(dimensions):
@@ -223,16 +227,26 @@ def _prescribe_v21(
     if mode == "candidate_blend":
         candidates = _valid_candidates(diagnosis.get("candidate_tendencies"))
         weights = _candidate_tone_weights(candidates)
-        top_tone_id = next(iter(weights))
-        return _build_prescription(
-            tone_id=top_tone_id,
-            query_text=_TONE_CONFIG[top_tone_id]["tone_name"],
-            first_reason="存在多个相近的辅助辨证倾向，按权重融合五音参数。",
-            knowledge_store=knowledge_store,
-            mode="candidate_blend",
-            source_basis="存在多个相近的辅助辨证倾向，按权重融合五音。",
-            evidence_coverage=evidence_coverage,
-            extra={"tone_weights": weights},
+        if weights:
+            top_tone_id = next(iter(weights))
+            return _build_prescription(
+                tone_id=top_tone_id,
+                query_text=_TONE_CONFIG[top_tone_id]["tone_name"],
+                first_reason="存在多个相近的辅助辨证倾向，按权重融合五音参数。",
+                knowledge_store=knowledge_store,
+                mode="candidate_blend",
+                source_basis="存在多个相近的辅助辨证倾向，按权重融合五音。",
+                evidence_coverage=evidence_coverage,
+                extra={"tone_weights": weights},
+            )
+        # Defensive: empty weights means there were no usable candidates. This
+        # must not happen via select_prescription_mode (which requires at least
+        # two positive-score candidates), but degrade safely to the same
+        # emotion/wellness heuristic rather than crashing on next(iter({})).
+        mode = (
+            "wellness"
+            if _is_stable_state(_dimension_scores(assessment))
+            else "emotion_based"
         )
 
     if mode == "wellness":
@@ -501,11 +515,31 @@ def _candidate_tone_weights(candidates: list[dict[str, object]]) -> dict[str, fl
 
 
 def _valid_candidates(value: object) -> list[dict[str, object]]:
-    return [
-        candidate
-        for candidate in _mapping_list(value)
-        if candidate.get("id") in MVP_SYNDROMES
-    ]
+    """Return only candidates that carry a real, usable tendency.
+
+    A candidate is usable for blending only when all of:
+
+    * its ``id`` is a recognised syndrome,
+    * its ``score`` is a genuine number (a ``bool`` is not a score),
+    * its ``score`` is strictly positive.
+
+    This excludes zero scores, missing/invalid scores, and fabricated candidates.
+    It does NOT impose any medical "how high is enough" threshold — that decision
+    belongs to Agent②, whose output we reuse as-is (including any
+    ``supporting_evidence_ids`` fields, which are preserved untouched and never
+    invented here).
+    """
+    valid: list[dict[str, object]] = []
+    for candidate in _mapping_list(value):
+        if candidate.get("id") not in MVP_SYNDROMES:
+            continue
+        score = candidate.get("score")
+        if isinstance(score, bool) or not isinstance(score, (int, float)):
+            continue
+        if float(score) <= 0:
+            continue
+        valid.append(candidate)
+    return valid
 
 
 def _mapping_list(value: object) -> list[dict[str, object]]:

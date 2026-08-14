@@ -42,16 +42,22 @@
 
 | 优先级 | 模式 | 触发条件（复用 Agent② 既有结论，不发明阈值） | 选调依据 | 示例输出 |
 |--------|------|---------------------------------------------|----------|----------|
-| 1 | `syndrome_based` | `abstained == False` 且仅有 1 个有效候选 | 证型 → 五行 → 五音 | 角调 / 68 BPM |
-| 2 | `candidate_blend` | `abstained == False` 且 ≥2 个有效候选 | 归一化 tone 权重、top-K | 角调(0.54)+徵调(0.46) |
+| 1 | `syndrome_based` | `abstained == False` 且有合法 `primary_tendency`（候选数量不覆盖主倾向） | 证型 → 五行 → 五音 | 角调 / 68 BPM |
+| 2 | `candidate_blend` | 无明确 `primary_tendency` 但存在 ≥2 个有效正分候选（兼容路径） | 归一化 tone 权重、top-K | 角调(0.54)+徵调(0.46) |
 | 3 | `wellness` | abstain 且状态整体平稳（无中度、至多 1 个轻度维度） | 平和安神宫调 | 宫调 / 62 BPM |
 | 4 | `emotion_based` | abstain 且状态非平稳、但评估充分 | 主导情绪维度 → 五音 | 主导「紧张担忧」→ 角调 |
 
-### 模式选择不使用「候选分差阈值」
+### 模式选择不使用「候选分差阈值」，也不覆盖明确 primary
 
 早期版本曾用 `top1 - top2 >= 30%` 判定「证型是否明确」。该规则被删除：它是在 Agent③ 里
-重新发明医学/诊断阈值，违背原则 6。现在的选择完全复用 Agent② 已给出的结论
-（`abstained` + `candidate_tendencies` 的有效候选数量），不再自行判定「辨证是否完成」。
+重新发明医学/诊断阈值，违背原则 6。现在的选择完全复用 Agent② 已给出的结论，不再自行判定
+「辨证是否完成」：
+
+- `abstained == False` 且 `primary_tendency` 合法 → `syndrome_based`。**主倾向是 Agent② 的权威
+  结论，`candidate_tendencies` 中还存在其它候选时，Agent③ 不得据此重新判断「主证型不明确」。**
+- `candidate_blend` 仅用于「无明确 primary 但存在 ≥2 个有效候选」。当前 Diagnosis V2.1 contract
+  **不存在**「未 abstain 但无 primary」的状态（`abstained == False` 时 `primary_tendency` 恒等于
+  `candidate_tendencies[0]`），因此该路径仅为防御性兼容路径，不覆盖明确 primary。
 
 ### 阻断条件（仅此两类）
 
@@ -93,11 +99,15 @@
 - `tone_weights`（仅 `candidate_blend`）：归一化 tone 权重。
 - `dominant_dimension`（仅 `emotion_based`）：主导情绪维度。
 
-### candidate_blend 无有效候选
+### candidate_blend 无有效候选 / 空权重安全
 
-`candidate_blend` 的定义是「存在 ≥2 个有效候选并融合」。若无有效候选，`_candidate_tone_weights`
-返回空 `{}`（**不回退 `{gong: 1.0}`**），模式选择器不会进入 `candidate_blend`。空候选由上层
-降级到 `emotion_based` / `wellness` 或 withhold。
+有效候选必须同时满足：`id` 合法、`score` 是真实数值（非 bool）、`score > 0`。这只排除
+0 分、缺失/非法 score 与伪造候选，**不发明「多高才算医学意义」的阈值**（`supporting_evidence_ids`
+等证据字段原样保留、不伪造）。
+
+若权重为空，`_candidate_tone_weights` 返回空 `{}`（**不回退 `{gong: 1.0}`**），模式选择器不会
+进入 `candidate_blend`；`_prescribe_v21` 内还有 defensive guard——即使空权重到达 blend 分支也
+降级到 `emotion_based` / `wellness`，**绝不 `next(iter({}))`**，不崩溃、不伪造宫调。
 
 ### 工作流硬停止
 
