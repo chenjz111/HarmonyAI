@@ -158,12 +158,12 @@ test("Sprint 4 Vue 3 pages do not call removed this.$set", () => {
 })
 import { resolveAuthoritativeMusic, workflowGate } from "../common/workflow-gate.js"
 
-test("player blocks safety, follow-up, unconfirmed, abstained and missing prescription", async () => {
+test("player blocks safety, follow-up, unconfirmed, withheld and missing prescription", async () => {
   for (const [workflow, code] of [
     [{ confirmation:{status:"blocked_safety"} }, "SAFETY_BLOCKED"],
     [{ confirmation:{status:"needs_follow_up"} }, "NEEDS_FOLLOW_UP"],
     [{ confirmation:{status:"needs_confirmation"} }, "NOT_CONFIRMED"],
-    [{ confirmation:{status:"confirmed"}, diagnosis:{abstained:true} }, "DIAGNOSIS_ABSTAINED"],
+    [{ confirmation:{status:"confirmed"}, prescription:{generation_mode:"withheld",withheld_reason:"INSUFFICIENT_EVIDENCE"} }, "PRESCRIPTION_WITHHELD"],
     [{ confirmation:{status:"confirmed"}, diagnosis:{abstained:false} }, "PRESCRIPTION_MISSING"],
   ]) assert.equal(workflowGate(workflow).code, code)
   let calls=0
