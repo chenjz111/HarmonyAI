@@ -40,7 +40,7 @@ test('20 questions walk in order 1..20 and every required question has options',
 })
 
 test('every question maps to a concrete renderer mode (no blank deadlock)', () => {
-  const MODES = new Set(['visual', 'multi', 'button-row', 'button-grid', 'button-list'])
+  const MODES = new Set(['visual', 'multi', 'directional', 'button-row', 'button-grid', 'button-list'])
   for (const q of questionnaire.questions) {
     const mode = rendererModeFor(q)
     assert.ok(MODES.has(mode), `${q.question_id} (type=${q.type}) must render; got ${mode}`)
