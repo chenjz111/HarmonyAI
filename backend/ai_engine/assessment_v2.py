@@ -22,7 +22,7 @@ from .questionnaire_v2 import (
     score_questionnaire_v21,
 )
 from .sprint4_contracts import EvidenceItem, NarrativeExtractionResult
-from .safety_rules import evaluate_safety
+from .safety_rules import evaluate_safety, evaluate_safety_state
 
 
 _DISCLAIMER = (
@@ -916,7 +916,7 @@ async def _run_assessment_v21_async(
     if document_text is not None and not document_confirmed:
         document_text = None
 
-    safety = evaluate_safety(
+    safety = evaluate_safety_state(
         narrative_text=narrative_text,
         confirmed_ocr_text=document_text,
         questionnaire_safety_flags=list(questionnaire.safety_flags),
@@ -944,13 +944,18 @@ async def _run_assessment_v21_async(
     }
     degradation_reasons: list[str] = []
 
-    if safety["status"] == "blocked_safety":
+    if safety["safety_status"] != "clear":
+        coverage = _v21_evidence_coverage(
+            evidence,
+            len(questionnaire.dimension_scores),
+            dimension_labels=set(questionnaire.dimension_scores),
+        )
         return _v21_result(
             assessment_id=assessment_id,
             session_id=session_id,
             user_id=user_id,
             status="blocked_safety",
-            evidence=[],
+            evidence=evidence,
             conflicts=[],
             missing_information=[],
             follow_up_questions=[],
@@ -959,6 +964,8 @@ async def _run_assessment_v21_async(
             safety_flags=list(safety["flags"]),
             degradation={"active": True, "reason_codes": ["SAFETY_BLOCKED"]},
             requires_confirmation=False,
+            coverage=coverage,
+            safety=safety,
         )
 
     if provider is not None and narrative_text is not None:
@@ -1046,6 +1053,7 @@ async def _run_assessment_v21_async(
         revision=revision,
         previous_revision=previous_revision or None,
         revision_changes=revision_changes,
+        safety=safety,
     )
 
 
@@ -1385,14 +1393,19 @@ def _v21_result(
     revision: int = 1,
     previous_revision: int | None = None,
     revision_changes: list[dict[str, object]] | None = None,
+    safety: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     now = datetime.now(timezone.utc).isoformat()
+    safety_data = dict(safety or {})
     return {
         "agent_id": "assessment_agent",
         "assessment_id": assessment_id,
         "session_id": session_id,
         "user_id": user_id,
         "status": status,
+        "assessment_status": "completed",
+        "confirmation_status": "pending",
+        "safety_status": safety_data.get("safety_status", "clear"),
         "revision": revision,
         "analysis_mode": _v21_analysis_mode(input_status),
         "confidence": coverage,
@@ -1418,6 +1431,14 @@ def _v21_result(
         "follow_up_questions": follow_up_questions,
         "requires_user_confirmation": requires_confirmation,
         "safety_flags": safety_flags,
+        "safety_signals": list(safety_data.get("signals", [])),
+        "requires_safety_verification": bool(
+            safety_data.get("requires_safety_verification", False)
+        ),
+        "personalized_prescription_allowed": bool(
+            safety_data.get("personalized_prescription_allowed", True)
+        ),
+        "comfort_audio_allowed": bool(safety_data.get("comfort_audio_allowed", False)),
         "degradation": degradation,
         "warnings": [],
         "revision_metadata": {

@@ -16,6 +16,14 @@ from backend.app.schemas.assessment_revision import AssessmentRevisionContract
 
 MAX_FOLLOWUPS = 4
 
+_SAFETY_BLOCKING_STATES = frozenset(
+    {
+        "needs_verification",
+        "confirmed_mental_health_risk",
+        "confirmed_acute_physical_risk",
+    }
+)
+
 
 class AssessmentContractError(RuntimeError):
     def __init__(self, code: str, message: str):
@@ -189,10 +197,18 @@ def confirm_assessment_revision(
     snapshot["revision"] = next_revision
     snapshot["previous_revision"] = revision
     snapshot["confirmation_level"] = confirmation_level
-    snapshot["requires_user_confirmation"] = confirmation_level != "fully_accurate"
-    snapshot["status"] = (
-        "confirmed" if confirmation_level == "fully_accurate" else "awaiting_confirmation"
-    )
+    snapshot["confirmation_status"] = confirmation_level
+    safety_blocks = snapshot.get("safety_status") in _SAFETY_BLOCKING_STATES
+    if safety_blocks:
+        snapshot["status"] = "blocked_safety"
+        snapshot["requires_user_confirmation"] = False
+    else:
+        snapshot["requires_user_confirmation"] = confirmation_level != "fully_accurate"
+        snapshot["status"] = (
+            "confirmed"
+            if confirmation_level == "fully_accurate"
+            else "awaiting_confirmation"
+        )
     row = append_revision(
         db,
         current=current,
@@ -240,6 +256,10 @@ def require_current_revision(
 def current_confirmed_snapshot(db: Session, assessment_id: str, revision: int) -> dict[str, Any]:
     current = require_current_revision(db, assessment_id, revision)
     snapshot = snapshot_of(current)
+    if snapshot.get("safety_status") in _SAFETY_BLOCKING_STATES:
+        raise AssessmentContractError(
+            "SAFETY_REQUIRES_ACTION", "Safety state must be handled before workflow"
+        )
     if snapshot.get("status") != "confirmed" or snapshot.get("confirmation_level") != "fully_accurate":
         raise AssessmentContractError("ASSESSMENT_NOT_CONFIRMED", "Latest assessment revision is not confirmed")
     return snapshot
