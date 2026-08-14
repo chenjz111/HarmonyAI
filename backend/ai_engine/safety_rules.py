@@ -207,6 +207,149 @@ def evaluate_safety(
     }
 
 
+_MENTAL_HEALTH_FLAGS = frozenset({"self_harm_thoughts"})
+_ACUTE_PHYSICAL_FLAGS = frozenset(
+    {
+        "severe_chest_pain",
+        "severe_breathing_difficulty",
+        "confusion",
+        "near_fainting",
+        "rapid_worsening",
+    }
+)
+
+
+def detect_safety_signals(
+    narrative_text: str | None = None,
+    confirmed_ocr_text: str | None = None,
+    questionnaire_safety_flags: list[str] | tuple[str, ...] | None = None,
+) -> list[dict[str, object]]:
+    """Detect source-labelled safety signals without logging source text."""
+    selected_flags = _validate_questionnaire_safety_flags(
+        questionnaire_safety_flags
+    )
+    sources = (
+        (
+            "questionnaire",
+            tuple(
+                flag
+                for flag, _ in _RULES
+                if flag in selected_flags
+            ),
+            1.0,
+            "current",
+            "user",
+            "confirmed",
+        ),
+        (
+            "user_narrative",
+            tuple(
+                flag
+                for flag, _ in _RULES
+                if _text_matches_rule(_normalize_text(narrative_text), flag)
+            ),
+            0.95,
+            "current",
+            "user",
+            "confirmed",
+        ),
+        (
+            "ocr_document",
+            tuple(
+                flag
+                for flag, _ in _RULES
+                if _text_matches_rule(_normalize_text(confirmed_ocr_text), flag)
+            ),
+            0.8,
+            "unknown",
+            "unknown",
+            "pending",
+        ),
+    )
+    return [
+        {
+            "signal_id": f"safety-{source}-{flag}",
+            "type": flag,
+            "source": source,
+            "confidence": confidence,
+            "temporal_context": temporal_context,
+            "subject_context": subject_context,
+            "verification_status": verification_status,
+        }
+        for (
+            source,
+            flags,
+            confidence,
+            temporal_context,
+            subject_context,
+            verification_status,
+        ) in sources
+        for flag in flags
+    ]
+
+
+def decide_safety_state(
+    signals: Sequence[dict[str, object]],
+) -> dict[str, object]:
+    """Turn detected signals into an explicit workflow state."""
+    confirmed_flags = {
+        str(signal.get("type"))
+        for signal in signals
+        if signal.get("verification_status") == "confirmed"
+    }
+    pending = any(
+        signal.get("verification_status") == "pending"
+        for signal in signals
+    )
+    if confirmed_flags.intersection(_ACUTE_PHYSICAL_FLAGS):
+        safety_status = "confirmed_acute_physical_risk"
+    elif confirmed_flags.intersection(_MENTAL_HEALTH_FLAGS):
+        safety_status = "confirmed_mental_health_risk"
+    elif pending:
+        safety_status = "needs_verification"
+    else:
+        safety_status = "clear"
+
+    blocked = safety_status != "clear"
+    return {
+        "safety_status": safety_status,
+        "requires_safety_verification": safety_status == "needs_verification",
+        "personalized_prescription_allowed": not blocked,
+        "comfort_audio_allowed": safety_status
+        == "confirmed_mental_health_risk",
+    }
+
+
+def evaluate_safety_state(
+    narrative_text: str | None = None,
+    confirmed_ocr_text: str | None = None,
+    questionnaire_safety_flags: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, object]:
+    """Separate source-aware detection from the workflow safety decision."""
+    signals = detect_safety_signals(
+        narrative_text=narrative_text,
+        confirmed_ocr_text=confirmed_ocr_text,
+        questionnaire_safety_flags=questionnaire_safety_flags,
+    )
+    decision = decide_safety_state(signals)
+    flags = [
+        flag
+        for flag, _ in _RULES
+        if any(signal.get("type") == flag for signal in signals)
+    ]
+    reason_by_flag = dict(_RULES)
+    blocked = decision["safety_status"] != "clear"
+    return {
+        "status": "blocked_safety" if blocked else "success",
+        "level": "high" if blocked else "none",
+        "flags": flags,
+        "reason_codes": [reason_by_flag[flag] for flag in flags],
+        "block_standard_prescription": blocked,
+        "signals": signals,
+        **decision,
+    }
+
+
 def build_safety_log_fields(reason_codes: Sequence[str]) -> dict[str, object]:
     """Build non-sensitive log fields from fixed reason codes only."""
     supplied_codes = set(reason_codes)
