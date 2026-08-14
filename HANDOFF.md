@@ -245,3 +245,17 @@ yu    (羽调)      → 58   → 箫、古琴
 - 真实 API→MySQL 链路：创建评估(200) → 确认 partially_accurate(200) → revision 1→2、`confirmation_level` 落库 → 验收行已清理（0 残留）。
 - OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`（HBuilderX 已在本机安装，待真机）。
 - 未记录用户名/密码/DATABASE_URL/敏感路径；未改 production code；未重跑 emotion_f1/Formal 60；未进入 Sprint 5。
+
+### Sprint 4 双轨 Safety 状态机修正（2026-08-15）
+
+- 工作分支：`fix/s4-safety-state-machine`；基线：`integration/sprint4-real-input@eab241f5df6befbd88d0908e1900f359a5cee195`。
+- 五 Agent 架构未变；Safety 仍为 Assessment 内部确定性模块。
+- 新状态分离：`assessment_status` / `confirmation_status` / `safety_status`。OCR 风险默认 `needs_verification`；Q19/Q20 当前风险保持 confirmed safety。
+- 新增专用 Safety Verification revision/API；普通评估确认不能清除 Safety；Safety 分支保留问卷 Evidence 与 coverage。
+- 新增 Safety Verification 与 Safety Support 前端页面。心理风险支持用户主动获取人工审核、非个性化、非处方、非自动播放的安抚音频；急性身体风险不提供该入口。
+- Safety clear/resolved 时，低 evidence 或 Diagnosis abstain 改为 `emotion_based` / `wellness` 保守降级，不再形成普通用户死路。
+- 验证：Safety/Prescription/HTTP 针对性回归 186 passed；新增端到端 5/5；Contract 30/30；Frontend 66/66；H5 PASS。
+- 当前机器一次 Full：684 passed / 5 failed。5 个失败均为既有环境/顺序问题：已安装 PaddleOCR 使 3 个旧“引擎不可用”测试返回真实 `failed`，其余 2 个由 Paddle 导入的顶层 `tools` 包污染导致本地 `tools.s4_mysql_acceptance` 顺序性导入失败；本次 Safety 受影响测试全部通过。
+- Formal60：未运行；MySQL：PASS；OCR POC：`MANUAL_OCR_POC_PENDING`；Android：`MANUAL_ANDROID_TEST_PENDING`。
+- ADR：`docs/adr/ADR-0008-dual-track-safety-service-model.md`。
+- NEXT_ACTION：Review 本分支 PR 与 CI；不要合并前开始 Sprint 5；不要重跑 emotion_f1/Formal60。

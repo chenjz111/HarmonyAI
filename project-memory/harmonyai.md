@@ -408,3 +408,16 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 真实 API→MySQL 链路：评估创建 → 确认 partially_accurate → revision 1→2 + `confirmation_level` 落库 → 清理 0 残留。
 - OCR=`MANUAL_OCR_POC_PENDING`；Android=`MANUAL_ANDROID_TEST_PENDING`（HBuilderX 已安装，待真机）。
 - 未记录任何凭据/敏感路径；未改 production code；未重跑 emotion_f1/Formal 60；未进入 Sprint 5。
+
+### Sprint 4 双轨 Safety 服务模型（2026-08-15）
+
+- 分支 `fix/s4-safety-state-machine` 从 `integration/sprint4-real-input@eab241f` 创建。
+- 五 Agent 不变；Safety Detection 与 Safety Decision 已分离。
+- `safety_status`：`clear / needs_verification / resolved / confirmed_mental_health_risk / confirmed_acute_physical_risk`。普通 confirmation 不得改变 Safety。
+- OCR 模糊命中先核验；历史/他人/OCR 误报可 resolve 后回正常轨；Q19/Q20 当前风险直接进入安全支持轨。
+- confirmed safety 阻止个性化 Diagnosis/Prescription/Music；心理风险可由用户主动选择 curated comfort audio，急性身体风险 emergency-first 且 comfort audio 禁止。
+- `evidence_coverage_score` 不再决定全部服务可用性：Safety clear/resolved + 低证据或 Diagnosis abstain 使用低特异性 `emotion_based` / `wellness`。
+- 自动验证：Safety/Prescription/API 受影响回归 186 passed；E2E 5/5；Contract 30/30；Frontend 66/66；H5 PASS。
+- 本机 Full 684/689；5 个非本次 Safety 失败来自已安装 PaddleOCR 与其顶层 `tools` 包导入污染，已明确记录，待 CI 的干净环境验证。
+- Formal60 `NOT_RUN`；MySQL `PASS`；OCR/Android 人工 Gate 仍 PENDING。
+- NEXT_ACTION：PR Review + CI，保持未合并；不得开始 Sprint 5 或重新优化 emotion_f1。
