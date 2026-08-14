@@ -360,7 +360,15 @@ def run_real_workflow_v21(
 
 def continue_real_workflow_v21(*, assessment: Mapping[str, object], provider: object | None = None, knowledge_store: Any | None = None, music_catalog: Sequence[Mapping[str, object]] = ()) -> dict[str, object]:
     assessment = dict(assessment)
-    if assessment.get("status") == "blocked_safety":
+    safety_status = assessment.get("safety_status")
+    if safety_status == "needs_verification":
+        confirmation_status = "needs_safety_verification"
+    elif safety_status in {
+        "confirmed_mental_health_risk",
+        "confirmed_acute_physical_risk",
+    }:
+        confirmation_status = "safety_support"
+    elif assessment.get("status") == "blocked_safety":
         confirmation_status = "blocked_safety"
     elif assessment.get("status") != "confirmed" or assessment.get("confirmation_level") != "fully_accurate":
         confirmation_status = "needs_confirmation"

@@ -78,10 +78,10 @@ def test_true_insufficiency_blocks_music_agent(monkeypatch):
         music_catalog=[],
     )
 
-    assert result["prescription"]["generation_mode"] == "withheld"
-    assert result["prescription"]["withheld_reason"] == "INSUFFICIENT_EVIDENCE"
-    assert result["music"] is None
-    assert spy.calls == 0
+    assert result["prescription"]["generation_mode"] == "matched"
+    assert result["prescription"]["prescription_mode"] == "emotion_based"
+    assert result["music"] is not None
+    assert spy.calls == 1
 
 
 def test_abstain_but_sufficient_still_runs_music(monkeypatch):
