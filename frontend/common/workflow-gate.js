@@ -3,8 +3,11 @@ export function workflowGate(workflow) {
   if (workflow?.assessment?.status === 'blocked_safety' || confirmation === 'blocked_safety') return { ok: false, code: 'SAFETY_BLOCKED', message: '当前状态需要优先寻求专业帮助，暂不提供音乐。' }
   if (confirmation === 'needs_follow_up') return { ok: false, code: 'NEEDS_FOLLOW_UP', message: '请先完成补充问题。' }
   if (confirmation !== 'confirmed') return { ok: false, code: 'NOT_CONFIRMED', message: '请先确认最新评估结果。' }
-  if (workflow?.diagnosis?.abstained === true) return { ok: false, code: 'DIAGNOSIS_ABSTAINED', message: '当前信息不足，暂不提供音乐。' }
   if (!workflow?.prescription) return { ok: false, code: 'PRESCRIPTION_MISSING', message: '后端未返回有效音乐处方。' }
+  if (workflow.prescription.generation_mode === 'withheld') {
+    if (workflow.prescription.withheld_reason === 'SAFETY_BLOCKED') return { ok: false, code: 'SAFETY_BLOCKED', message: '当前状态需要优先寻求专业帮助，暂不提供音乐。' }
+    return { ok: false, code: 'PRESCRIPTION_WITHHELD', message: '当前信息不足以提供音乐处方。' }
+  }
   return { ok: true }
 }
 

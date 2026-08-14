@@ -179,7 +179,7 @@ export default {
         this.initAudio()
         this.status = 'success'
       } catch (error) {
-        const business = { SAFETY_BLOCKED: '请优先关注当前安全状态', DIAGNOSIS_ABSTAINED: '当前信息不足', NEEDS_FOLLOW_UP: '请先完成补充问题', NOT_CONFIRMED: '请先确认最新评估', PRESCRIPTION_MISSING: '暂未形成权威音乐处方' }
+        const business = { SAFETY_BLOCKED: '请优先关注当前安全状态', PRESCRIPTION_WITHHELD: '当前信息不足', NEEDS_FOLLOW_UP: '请先完成补充问题', NOT_CONFIRMED: '请先确认最新评估', PRESCRIPTION_MISSING: '暂未形成权威音乐处方' }
         if (business[error.code]) { this.status = 'business'; this.businessTitle = business[error.code]; this.errorMsg = error.message }
         else { this.status = 'error'; this.errorMsg = safeUiError(error, error.code === 'NO_MUSIC' ? 'NO_MUSIC' : 'MUSIC_MATCH_FAILED').message }
       }
