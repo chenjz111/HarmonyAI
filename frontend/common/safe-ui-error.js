@@ -9,6 +9,8 @@ const SAFE_MESSAGES = {
   WORKFLOW_FAILED: 'AI 分析暂时不可用，请稍后重试。',
   MUSIC_MATCH_FAILED: '暂时没有匹配到可播放音乐，请稍后重试。',
   NO_MUSIC: '暂时没有匹配到可播放音乐，请返回补充信息。',
+  SAFETY_VERIFICATION_FAILED: '安全信息核验未完成，请重试。',
+  COMFORT_AUDIO_FAILED: '安抚音频暂时不可用，请稍后重试。',
 }
 
 export function safeUiError(error, fallbackCode = 'BACKEND_UNAVAILABLE') {
