@@ -14,6 +14,7 @@ from backend.ai_engine.prescription_v2 import (
     run_prescription_v2,
     select_prescription_mode,
     _candidate_tone_weights,
+    _valid_candidates,
 )
 
 
@@ -104,7 +105,9 @@ def test_case_a_clear_syndrome_maps_to_syndrome_based():
     assert prescription["recommendation_confidence"]["score"] == 1.0
 
 
-def test_case_b_multiple_close_candidates_blend_tone_weights():
+def test_case_b_explicit_primary_wins_over_secondary_candidates():
+    # When Diagnosis has produced an explicit primary_tendency, a secondary
+    # candidate list must NOT downgrade it to candidate_blend.
     diagnosis, prescription = _prescribe(
         v21_assessment(
             dimensions={
@@ -117,9 +120,10 @@ def test_case_b_multiple_close_candidates_blend_tone_weights():
 
     assert diagnosis["abstained"] is False
     assert len(diagnosis["candidate_tendencies"]) == 2
-    assert prescription["prescription_mode"] == "candidate_blend"
-    assert set(prescription["tone_weights"]) == {"jiao", "zhi"}
+    assert diagnosis["primary_tendency"]["id"] in ("syd_001", "syd_002")
+    assert prescription["prescription_mode"] == "syndrome_based"
     assert prescription["music_feature"]["tone_id"] == "jiao"
+    assert "tone_weights" not in prescription
     assert prescription["generation_mode"] == "matched"
 
 
@@ -277,6 +281,22 @@ def _empty_dims_assessment(*, coverage):
     }
 
 
+def _blend_diagnosis():
+    """Synthetic Diagnosis: not abstained, no explicit primary, multiple valid
+    candidates. This state does not occur in the real V2.1 contract but exercises
+    the candidate_blend compatibility path."""
+    return {
+        "status": "success",
+        "abstained": False,
+        "abstain_reason": None,
+        "primary_tendency": None,
+        "candidate_tendencies": [
+            {"id": "syd_001", "score": 85.0},
+            {"id": "syd_003", "score": 80.0},
+        ],
+    }
+
+
 # --- Blocker 2: wellness 判定 ---
 
 def test_multiple_near_moderate_dimensions_are_not_wellness():
@@ -354,12 +374,10 @@ def test_select_prescription_mode_ignores_invalid_candidates():
 
 def test_all_four_modes_reach_music_matching():
     catalog = _catalog()
+
+    # The three modes reachable from a real Diagnosis output.
     cases = [
         ({"tension_worry": 100, "irritability_anger": 75}, "syndrome_based"),
-        (
-            {"tension_worry": 100, "irritability_anger": 70, "sleep_disturbance": 75},
-            "candidate_blend",
-        ),
         ({"tension_worry": 75}, "emotion_based"),
         ({"tension_worry": 25}, "wellness"),
     ]
@@ -372,3 +390,145 @@ def test_all_four_modes_reach_music_matching():
         music = match_music_v2(prescription, catalog)
         assert music["status"] == "success", expected_mode
         assert music["stream_url"], expected_mode
+
+    # candidate_blend is a compatibility path only (no explicit primary + multiple
+    # valid candidates); it must still reach Music with a unified music_feature.
+    blend = run_prescription_v2(
+        _blend_diagnosis(),
+        assessment=v21_assessment(dimensions={"tension_worry": 100}),
+    )
+    assert blend["prescription_mode"] == "candidate_blend"
+    assert blend["music_feature"]["tone_id"]
+    assert blend["music_feature"]["bpm"]
+    assert blend["music_feature"]["instruments"]
+    music = match_music_v2(blend, catalog)
+    assert music["status"] == "success"
+    assert music["stream_url"]
+
+
+# --- PR #70 review (1): primary_tendency precedence ---
+
+def test_explicit_primary_wins_over_multiple_candidates():
+    diagnosis = {
+        "status": "success",
+        "abstained": False,
+        "abstain_reason": None,
+        "primary_tendency": {"id": "syd_001", "score": 85.0},
+        "candidate_tendencies": [
+            {"id": "syd_001", "score": 85.0},
+            {"id": "syd_003", "score": 80.0},
+        ],
+    }
+    assessment = v21_assessment(
+        dimensions={"tension_worry": 100, "irritability_anger": 75}
+    )
+
+    assert select_prescription_mode(diagnosis, assessment) == "syndrome_based"
+    prescription = run_prescription_v2(diagnosis, assessment=assessment)
+    assert prescription["prescription_mode"] == "syndrome_based"
+
+
+def test_candidate_blend_compat_path_without_primary():
+    # candidate_blend is preserved for the (non-real) "no explicit primary but
+    # multiple valid candidates" state, but never overrides an explicit primary.
+    diagnosis = _blend_diagnosis()
+    assessment = v21_assessment(dimensions={"tension_worry": 100})
+
+    assert select_prescription_mode(diagnosis, assessment) == "candidate_blend"
+    prescription = run_prescription_v2(diagnosis, assessment=assessment)
+    assert prescription["prescription_mode"] == "candidate_blend"
+
+
+# --- PR #70 review (2): candidate_blend safety ---
+
+def test_two_valid_syndromes_zero_score_do_not_blend():
+    diagnosis = {
+        "status": "success",
+        "abstained": False,
+        "abstain_reason": None,
+        "primary_tendency": None,
+        "candidate_tendencies": [
+            {"id": "syd_001", "score": 0},
+            {"id": "syd_003", "score": 0},
+        ],
+    }
+    assessment = v21_assessment(dimensions={"tension_worry": 75})
+
+    assert select_prescription_mode(diagnosis, assessment) != "candidate_blend"
+    prescription = run_prescription_v2(diagnosis, assessment=assessment)
+    assert prescription["prescription_mode"] != "candidate_blend"
+    assert prescription["generation_mode"] == "matched"
+
+
+def test_candidate_missing_score_does_not_blend():
+    diagnosis = {
+        "status": "success",
+        "abstained": False,
+        "abstain_reason": None,
+        "primary_tendency": None,
+        "candidate_tendencies": [
+            {"id": "syd_001"},
+            {"id": "syd_003"},
+        ],
+    }
+    assessment = v21_assessment(dimensions={"tension_worry": 75})
+
+    assert select_prescription_mode(diagnosis, assessment) != "candidate_blend"
+    assert (
+        run_prescription_v2(diagnosis, assessment=assessment)["prescription_mode"]
+        != "candidate_blend"
+    )
+
+
+def test_candidate_invalid_score_does_not_blend():
+    diagnosis = {
+        "status": "success",
+        "abstained": False,
+        "abstain_reason": None,
+        "primary_tendency": None,
+        "candidate_tendencies": [
+            {"id": "syd_001", "score": "high"},
+            {"id": "syd_003", "score": None},
+        ],
+    }
+    assessment = v21_assessment(dimensions={"tension_worry": 75})
+
+    assert select_prescription_mode(diagnosis, assessment) != "candidate_blend"
+    assert (
+        run_prescription_v2(diagnosis, assessment=assessment)["prescription_mode"]
+        != "candidate_blend"
+    )
+
+
+def test_empty_weights_do_not_raise_stop_iteration():
+    # Zero-score candidates produce empty tone weights; the prescription path
+    # must degrade gracefully instead of crashing on next(iter({})).
+    diagnosis = {
+        "status": "success",
+        "abstained": False,
+        "abstain_reason": None,
+        "primary_tendency": None,
+        "candidate_tendencies": [
+            {"id": "syd_001", "score": 0},
+            {"id": "syd_003", "score": 0},
+        ],
+    }
+
+    assert _candidate_tone_weights(_valid_candidates(diagnosis["candidate_tendencies"])) == {}
+    prescription = run_prescription_v2(
+        diagnosis, assessment=v21_assessment(dimensions={"tension_worry": 75})
+    )
+    assert prescription["generation_mode"] == "matched"
+    assert prescription["prescription_mode"] == "emotion_based"
+
+
+def test_multiple_positive_score_candidates_blend_pass():
+    # Normal case: multiple positive-score candidates still reach candidate_blend.
+    prescription = run_prescription_v2(
+        _blend_diagnosis(),
+        assessment=v21_assessment(dimensions={"tension_worry": 100}),
+    )
+    assert prescription["prescription_mode"] == "candidate_blend"
+    assert set(prescription["tone_weights"]) == {"jiao", "zhi"}
+    assert prescription["music_feature"]["tone_id"] == "jiao"
+    assert prescription["generation_mode"] == "matched"
