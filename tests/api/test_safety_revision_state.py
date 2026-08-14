@@ -63,4 +63,3 @@ def test_generic_correction_cannot_clear_pending_safety():
     assert updated["status"] == "blocked_safety"
     assert updated["safety_status"] == "needs_verification"
     assert updated["requires_safety_verification"] is True
-

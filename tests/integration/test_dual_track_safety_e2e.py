@@ -133,4 +133,3 @@ def test_direct_q20_acute_risk_is_emergency_first_without_comfort_audio(client):
     assert assessment["comfort_audio_allowed"] is False
     assert comfort["success"] is False
     assert comfort["error"]["code"] == "COMFORT_AUDIO_NOT_ALLOWED"
-

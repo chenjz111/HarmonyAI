@@ -107,4 +107,3 @@ def test_safety_verification_rejects_assessment_without_pending_signal():
 
     assert result["success"] is False
     assert result["error"]["code"] == "SAFETY_VERIFICATION_NOT_REQUIRED"
-
