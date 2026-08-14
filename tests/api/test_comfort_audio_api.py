@@ -85,4 +85,3 @@ def test_pending_or_resolved_safety_does_not_offer_support_track_audio():
     assert pending_body["error"]["code"] == "SAFETY_VERIFICATION_REQUIRED"
     assert resolved_body["success"] is False
     assert resolved_body["error"]["code"] == "COMFORT_AUDIO_NOT_ALLOWED"
-

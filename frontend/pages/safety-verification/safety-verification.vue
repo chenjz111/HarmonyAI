@@ -73,4 +73,3 @@ export default {
 .option { margin: 18rpx 0; border: 1rpx solid #b9c8bf; border-radius: 22rpx; color: #355849; background: #f6faf7; font-size: 28rpx; }
 .error { color: #b54838; display: block; margin-top: 24rpx; }
 </style>
-

@@ -107,4 +107,3 @@ def test_no_meaningful_dimensions_gets_generic_wellness_fallback(monkeypatch):
     assert result["prescription"]["prescription_mode"] == "wellness"
     assert result["prescription"]["recommendation_specificity"] == "wellness"
     assert len(calls) == 1
-

@@ -39,4 +39,3 @@ test('real pages wire dedicated API and never autoplay comfort audio', () => {
   assert.match(pages, /pages\/safety-verification\/safety-verification/)
   assert.match(pages, /pages\/safety-support\/safety-support/)
 })
-

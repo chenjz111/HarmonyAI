@@ -81,4 +81,3 @@ export default {
 .chip.active { color: #fff; background: #496b5c; }
 .error { color: #b54838; display: block; margin-top: 20rpx; }
 </style>
-

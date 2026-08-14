@@ -27,4 +27,3 @@ export function safetySupportState(assessment = {}) {
     personalizedPrescriptionAllowed: false,
   }
 }
-

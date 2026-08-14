@@ -98,4 +98,3 @@ def test_ocr_safety_assessment_requires_dedicated_verification():
     assert result["requires_safety_verification"] is True
     assert result["requires_user_confirmation"] is False
     assert result["evidence_items"]
-

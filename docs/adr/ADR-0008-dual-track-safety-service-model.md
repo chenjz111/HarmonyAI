@@ -199,4 +199,3 @@ Safety clear / resolved 时：
 - **正面：** 明确心理风险用户获得帮助优先、用户主动的非处方安抚支持。
 - **负面：** 增加 Safety Verification、Safety Support 和 comfort audio 的状态与测试矩阵。
 - **风险：** 安抚音频可能被误解为专业干预，因此必须使用人工审核曲库、显式免责声明和非自动播放。
-
