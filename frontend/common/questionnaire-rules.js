@@ -5,6 +5,7 @@ const NONE_EXCLUSIVE = new Set(["q16_physical_signals", "q20_emergency"])
 export function rendererModeFor(question) {
   const type = question && question.type
   const layout = question && question.ui && question.ui.layout
+  if (question && question.severity_scale) return "directional"
   if (type === "visual_single") return "visual"
   if (type === "multi_choice") return "multi"
   if (layout === "button-grid") return "button-grid"
@@ -29,4 +30,50 @@ export function safetyFlowForAnswer(questionId, answer) {
     return "SAFETY_EMERGENCY_PHYSICAL"
   }
   return null
+}
+
+export function severityScaleFor(question) {
+  const scale = question && question.severity_scale
+  if (!scale) return []
+  const min = Number.isInteger(scale.min) ? scale.min : 1
+  const max = Number.isInteger(scale.max) ? scale.max : 4
+  const labels = Array.isArray(scale.labels) ? scale.labels : []
+  const steps = []
+  for (let value = min; value <= max; value++) {
+    steps.push({ value, label: labels[value - min] ?? String(value) })
+  }
+  return steps
+}
+
+export function isDirectionalComplete(answer) {
+  if (!answer || typeof answer !== "object") return false
+  const { direction, severity } = answer
+  if (direction === "none") return severity === 0
+  if (direction === "decrease" || direction === "increase") {
+    return Number.isInteger(severity) && severity >= 1 && severity <= 4
+  }
+  return false
+}
+
+export function serializeDirectional(direction, severity) {
+  if (direction === "none") return { direction: "none", severity: 0 }
+  return { direction, severity }
+}
+
+export function serializeAnswer(question, raw) {
+  const type = question && question.type
+  if (type === "visual_single" && raw && typeof raw === "object") {
+    return { value: raw.value, score: raw.score }
+  }
+  if (question && question.severity_scale && raw && typeof raw === "object") {
+    return { value: serializeDirectional(raw.direction, raw.severity) }
+  }
+  return { value: raw }
+}
+
+export function isAnswerComplete(question, answer) {
+  if (answer === undefined || answer === null) return false
+  if (Array.isArray(answer)) return answer.length > 0
+  if (question && question.severity_scale) return isDirectionalComplete(answer)
+  return true
 }

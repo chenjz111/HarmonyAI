@@ -772,6 +772,11 @@
           "scored": true
         }
       ],
+      "severity_scale": {
+        "min": 1,
+        "max": 4,
+        "labels": ["轻微", "中等", "明显", "严重"]
+      },
       "dimension": "appetite_change",
       "scored": true,
       "reverse_scored": false,

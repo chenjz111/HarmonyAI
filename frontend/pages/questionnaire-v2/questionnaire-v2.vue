@@ -88,6 +88,35 @@
             </view>
           </view>
 
+          <!-- directional (direction + conditional severity) -->
+          <view v-else-if="isDirectional" class="opt-directional">
+            <view class="opt-row">
+              <view
+                v-for="opt in currentQuestion.options"
+                :key="String(opt.value)"
+                class="opt-btn"
+                :class="{ 'opt-selected': isDirectionSelected(opt.value) }"
+                @tap="onSelectDirection(opt.value)"
+              >
+                <text class="opt-label">{{ opt.label }}</text>
+              </view>
+            </view>
+            <template v-if="currentDirection === 'decrease' || currentDirection === 'increase'">
+              <text class="opt-group-label">变化程度</text>
+              <view class="opt-row" :class="'cols-' + directionalSteps.length">
+                <view
+                  v-for="step in directionalSteps"
+                  :key="step.value"
+                  class="opt-btn"
+                  :class="{ 'opt-selected': isSeveritySelected(step.value) }"
+                  @tap="onSelectSeverity(step.value)"
+                >
+                  <text class="opt-label">{{ step.label }}</text>
+                </view>
+              </view>
+            </template>
+          </view>
+
           <!-- button-grid -->
           <view v-else-if="isButtonGrid" class="opt-grid" :class="'cols-' + currentQuestion.ui.columns">
             <view
@@ -160,7 +189,14 @@
 import { questionnaireV21 } from "@/common/questionnaire-data.js"
 import { submitAssessment, saveQuestionnaireProgress, loadQuestionnaireProgress, clearQuestionnaireProgress, createSession } from "@/common/api-v2.js"
 import { getSprint3Session, updateSprint3Session } from "@/common/sprint3-session.js"
-import { applyExclusiveChoice, safetyFlowForAnswer, rendererModeFor } from "@/common/questionnaire-rules.js"
+import {
+  applyExclusiveChoice,
+  safetyFlowForAnswer,
+  rendererModeFor,
+  severityScaleFor,
+  serializeAnswer,
+  isAnswerComplete,
+} from "@/common/questionnaire-rules.js"
 
 export default {
   data() {
@@ -193,12 +229,14 @@ export default {
     isButtonGrid() { return this.rendererMode === "button-grid" },
     isButtonList() { return this.rendererMode === "button-list" },
     isCheckboxGrid() { return this.rendererMode === "multi" },
+    isDirectional() { return this.rendererMode === "directional" },
+    directionalSteps() { return severityScaleFor(this.currentQuestion) },
+    currentDirection() {
+      const ans = this.answers[this.currentQuestion.question_id]
+      return ans && typeof ans === "object" ? ans.direction : undefined
+    },
     canProceed() {
-      const q = this.currentQuestion
-      const ans = this.answers[q.question_id]
-      if (ans === undefined || ans === null) return false
-      if (Array.isArray(ans)) return ans.length > 0
-      return true
+      return isAnswerComplete(this.currentQuestion, this.answers[this.currentQuestion.question_id])
     },
   },
 
@@ -261,6 +299,35 @@ export default {
       this.autoSave()
       // 安全题检查
       this.checkSafety(value)
+    },
+
+    isDirectionSelected(value) {
+      const ans = this.answers[this.currentQuestion.question_id]
+      return ans && typeof ans === "object" && ans.direction === value
+    },
+
+    isSeveritySelected(value) {
+      const ans = this.answers[this.currentQuestion.question_id]
+      return ans && typeof ans === "object" && ans.severity === value
+    },
+
+    onSelectDirection(value) {
+      const q = this.currentQuestion
+      const prev = this.answers[q.question_id]
+      const prevSeverity =
+        prev && typeof prev === "object" && Number.isInteger(prev.severity) && prev.severity >= 1 && prev.severity <= 4
+          ? prev.severity
+          : undefined
+      this.answers[q.question_id] = { direction: value, severity: value === "none" ? 0 : prevSeverity }
+      this.autoSave()
+    },
+
+    onSelectSeverity(value) {
+      const q = this.currentQuestion
+      const prev = this.answers[q.question_id]
+      const direction = prev && typeof prev === "object" ? prev.direction : undefined
+      this.answers[q.question_id] = { direction, severity: value }
+      this.autoSave()
     },
 
     onSelectVisual(opt) {
@@ -328,9 +395,7 @@ export default {
       uni.showLoading({ title: "正在评估..." })
       try {
         const answersArray = this.questions.map((q) => {
-          const raw = this.answers[q.question_id]
-          const value = q.type === "visual_single" && raw && typeof raw === "object" ? raw.value : raw
-          const score = q.type === "visual_single" && raw && typeof raw === "object" ? raw.score : undefined
+          const { value, score } = serializeAnswer(q, this.answers[q.question_id])
           return {
             question_id: q.question_id,
             value,
@@ -537,6 +602,21 @@ export default {
 }
 .opt-row.cols-5 .opt-btn {
   flex: 1;
+}
+.opt-directional {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+.opt-directional .opt-row .opt-btn {
+  flex: 1;
+}
+.opt-group-label {
+  font-size: 24rpx;
+  color: #9C9585;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  margin-top: 8rpx;
 }
 .opt-btn {
   display: flex;
