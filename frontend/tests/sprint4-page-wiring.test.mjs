@@ -47,7 +47,7 @@ test('confirmation failure preserves input and restores retry', () => {
 
 for (const [name, workflow, code] of [
   ['safety blocked',{confirmation:{status:'blocked_safety'}},'SAFETY_BLOCKED'],
-  ['diagnosis abstained',{confirmation:{status:'confirmed'},diagnosis:{abstained:true}},'DIAGNOSIS_ABSTAINED'],
+  ['prescription withheld',{confirmation:{status:'confirmed'},prescription:{generation_mode:'withheld',withheld_reason:'INSUFFICIENT_EVIDENCE'}},'PRESCRIPTION_WITHHELD'],
   ['needs follow-up',{confirmation:{status:'needs_follow_up'}},'NEEDS_FOLLOW_UP'],
 ]) test(name+' blocks music API', async () => {
   let calls=0; assert.equal(workflowGate(workflow).code,code)
