@@ -3,6 +3,21 @@ export const SAFETY_DESTINATIONS = Object.freeze({
   SUPPORT: '/pages/safety-support/safety-support',
 })
 
+export const COMFORT_FEEDBACK_OPTIONS = Object.freeze([
+  { value: 'slightly_stable', label: '稍微稳定一些' },
+  { value: 'no_change', label: '没有变化' },
+  { value: 'feeling_worse', label: '感觉更糟' },
+  { value: 'need_help_now', label: '我现在需要帮助' },
+])
+
+export function comfortFeedbackState(feedback) {
+  return {
+    destination: SAFETY_DESTINATIONS.SUPPORT,
+    clearsSafety: false,
+    prominentHelp: ['feeling_worse', 'need_help_now'].includes(feedback),
+  }
+}
+
 export function safetyDestination(assessment = {}) {
   if (assessment.safety_status === 'needs_verification') {
     return SAFETY_DESTINATIONS.VERIFICATION
