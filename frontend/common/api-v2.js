@@ -188,6 +188,20 @@ export function confirmAssessment(assessmentId, { revision, confirmationLevel, c
   })
 }
 
+export function verifyAssessmentSafety(assessmentId, payload) {
+  return request(`/api/v2/assessments/${encodeURIComponent(assessmentId)}/safety-verification`, {
+    method: "PATCH",
+    data: payload,
+  })
+}
+
+export function requestComfortAudio(assessmentId, payload) {
+  return request(`/api/v2/assessments/${encodeURIComponent(assessmentId)}/comfort-audio`, {
+    method: "POST",
+    data: payload,
+  })
+}
+
 // ===== Workflow / Music / Feedback =====
 
 export function runWorkflow(payload) {

@@ -172,16 +172,17 @@ def test_case_e_safety_still_withholds():
     assert prescription["status"] == "blocked_safety"
 
 
-def test_case_f_low_evidence_coverage_withholds():
+def test_case_f_low_evidence_coverage_uses_conservative_emotion_mode():
     _, prescription = _prescribe(
         v21_assessment(dimensions={"tension_worry": 100}, coverage=0.2)
     )
 
-    assert prescription["generation_mode"] == "withheld"
-    assert prescription["withheld_reason"] == "INSUFFICIENT_EVIDENCE"
+    assert prescription["generation_mode"] == "matched"
+    assert prescription["prescription_mode"] == "emotion_based"
+    assert prescription["recommendation_specificity"] == "conservative"
 
 
-def test_case_g_important_missing_information_withholds():
+def test_case_g_important_missing_information_lowers_specificity_not_service():
     _, prescription = _prescribe(
         v21_assessment(
             dimensions={"tension_worry": 100},
@@ -189,8 +190,9 @@ def test_case_g_important_missing_information_withholds():
         )
     )
 
-    assert prescription["generation_mode"] == "withheld"
-    assert prescription["withheld_reason"] == "INSUFFICIENT_EVIDENCE"
+    assert prescription["generation_mode"] == "matched"
+    assert prescription["prescription_mode"] == "emotion_based"
+    assert prescription["recommendation_specificity"] == "conservative"
 
 
 def test_case_h_unconfirmed_assessment_withholds():
@@ -313,17 +315,18 @@ def test_multiple_near_moderate_dimensions_are_not_wellness():
     assert prescription["prescription_mode"] == "emotion_based"
 
 
-def test_empty_dimensions_with_insufficient_evidence_withholds():
+def test_empty_dimensions_with_low_coverage_use_generic_wellness():
     _, prescription = _prescribe(_empty_dims_assessment(coverage=0.2))
-    assert prescription["generation_mode"] == "withheld"
-    assert prescription["withheld_reason"] == "INSUFFICIENT_EVIDENCE"
+    assert prescription["generation_mode"] == "matched"
+    assert prescription["prescription_mode"] == "wellness"
+    assert prescription["recommendation_specificity"] == "wellness"
 
 
-def test_empty_dimensions_are_not_wellness():
-    # dimensions 为空（即便 coverage 充足）也不能自动 wellness → 真实信息不足。
+def test_empty_dimensions_never_claim_personalized_or_syndrome_basis():
     _, prescription = _prescribe(_empty_dims_assessment(coverage=1.0))
-    assert prescription["generation_mode"] == "withheld"
-    assert prescription["withheld_reason"] == "INSUFFICIENT_EVIDENCE"
+    assert prescription["generation_mode"] == "matched"
+    assert prescription["prescription_mode"] == "wellness"
+    assert prescription["recommendation_specificity"] == "wellness"
 
 
 # --- Blocker 3: recommendation confidence 数据驱动、不伪精确 ---

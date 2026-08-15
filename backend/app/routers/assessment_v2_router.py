@@ -6,17 +6,24 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from backend.ai_engine.comfort_audio import select_comfort_audio
 from backend.app.core.database import get_db
+from backend.app.core.music_catalog import load_music_catalog
 from backend.app.schemas.assessment_revision import (
     AssessmentConfirmationRequest,
+    ComfortAudioRequest,
     FollowUpSubmitRequest,
+    SafetyVerificationRequest,
 )
 from backend.app.schemas.v2 import v2_err, v2_ok
 from backend.app.services.assessment_revision_service import (
     AssessmentContractError,
     MAX_FOLLOWUPS,
     confirm_assessment_revision,
+    require_current_revision,
     revision_history,
+    resolve_safety_verification,
+    snapshot_of,
     submit_follow_up_answers,
 )
 
@@ -109,6 +116,88 @@ async def confirm_assessment(
         return v2_err(
             "CONFIRM_FAILED",
             "Assessment confirmation failed",
+            request_id,
+        )
+
+
+@router.patch(
+    "/assessments/{assessment_id}/safety-verification",
+    summary="Sprint 4 - resolve a pending Safety Signal",
+)
+async def verify_assessment_safety(
+    assessment_id: str,
+    body: SafetyVerificationRequest,
+    db: Session = Depends(get_db),
+):
+    request_id = _request_id()
+    try:
+        result = resolve_safety_verification(
+            db,
+            assessment_id=assessment_id,
+            revision=body.revision,
+            resolution=body.resolution,
+        )
+        return v2_ok(result, request_id)
+    except AssessmentContractError as error:
+        db.rollback()
+        return _contract_error(error, request_id)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "assessment safety verification failed",
+            extra={"assessment_id": assessment_id},
+        )
+        return v2_err(
+            "SAFETY_VERIFICATION_FAILED",
+            "Safety verification failed",
+            request_id,
+        )
+
+
+@router.post(
+    "/assessments/{assessment_id}/comfort-audio",
+    summary="Sprint 4 - user-initiated non-prescription comfort audio",
+)
+async def request_comfort_audio(
+    assessment_id: str,
+    body: ComfortAudioRequest,
+    db: Session = Depends(get_db),
+):
+    request_id = _request_id()
+    try:
+        snapshot = snapshot_of(
+            require_current_revision(db, assessment_id, body.revision)
+        )
+        safety_status = snapshot.get("safety_status")
+        if safety_status == "needs_verification":
+            raise AssessmentContractError(
+                "SAFETY_VERIFICATION_REQUIRED",
+                "Safety verification must be completed first",
+            )
+        if (
+            safety_status != "confirmed_mental_health_risk"
+            or not snapshot.get("comfort_audio_allowed")
+        ):
+            raise AssessmentContractError(
+                "COMFORT_AUDIO_NOT_ALLOWED",
+                "Comfort audio is not available for this safety state",
+            )
+        if not body.user_initiated:
+            raise AssessmentContractError(
+                "COMFORT_AUDIO_CONSENT_REQUIRED",
+                "Comfort audio requires explicit user initiation",
+            )
+        return v2_ok(select_comfort_audio(load_music_catalog()), request_id)
+    except AssessmentContractError as error:
+        return _contract_error(error, request_id)
+    except Exception:
+        logger.exception(
+            "comfort audio request failed",
+            extra={"assessment_id": assessment_id},
+        )
+        return v2_err(
+            "COMFORT_AUDIO_FAILED",
+            "Comfort audio is temporarily unavailable",
             request_id,
         )
 
