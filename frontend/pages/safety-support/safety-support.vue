@@ -4,20 +4,24 @@
       <text class="eyebrow">安全支持</text>
       <text class="title">{{ support.title }}</text>
       <text v-if="support.mode === 'acute'" class="body">你提供的信息包含可能需要立即处理的身体风险。请优先拨打 120 或尽快前往急诊，不要等待音乐缓解。</text>
-      <text v-else class="body">现在最重要的是联系可信任的人、专业心理援助或当地紧急服务。HarmonyAI 不会在这个状态下生成个性化音乐处方。</text>
+      <text v-else class="body">当前不会提供个性化音乐服务。现在最重要的是联系可信任的人、专业心理援助或当地紧急服务。</text>
       <button v-if="support.mode === 'acute'" class="primary emergency" @tap="callEmergency">拨打 120</button>
       <button v-else class="primary" @tap="callSupport">联系心理援助热线</button>
     </view>
 
     <view v-if="support.comfortAudioVisible" class="comfort-card">
       <text class="comfort-title">可选：短时安抚音频</text>
-      <text class="body">它来自人工审核的固定曲库，不是个性化处方，不能替代专业帮助，也不会改变当前安全状态。</text>
+      <text class="body">它来自人工审核的固定曲库，仅用于暂时放松。安抚音频不能替代专业帮助，也不会改变当前安全状态。</text>
       <button v-if="!audio" class="secondary" @tap="requestAudio">我已了解，获取安抚音频</button>
       <button v-else class="secondary" @tap="toggleAudio">{{ playing ? '暂停' : '开始播放' }}</button>
-      <view v-if="audio" class="feedback">
+      <view v-if="audio && showFeedback" class="feedback">
         <text>听后感受（仅记录体验，不会解除安全状态）</text>
         <view class="chips">
-          <text v-for="item in feedbackOptions" :key="item" class="chip" :class="{ active: feedback === item }" @tap="feedback = item">{{ item }}</text>
+          <text v-for="item in feedbackOptions" :key="item.value" class="chip" :class="{ active: feedback === item.value }" @tap="selectFeedback(item.value)">{{ item.label }}</text>
+        </view>
+        <view v-if="feedbackState.prominentHelp" class="urgent-help">
+          <text>请立即联系身边可信任的人或专业支持；如有立即危险，请拨打 110 或 120。</text>
+          <button class="primary" @tap="callSupport">立即获取帮助</button>
         </view>
       </view>
       <text v-if="error" class="error">{{ error }}</text>
@@ -28,12 +32,12 @@
 <script>
 import { requestComfortAudio, resolveMediaUrl } from '@/common/api-v2.js'
 import { getSprint3Session } from '@/common/sprint3-session.js'
-import { safetySupportState } from '@/common/safety-flow.js'
+import { COMFORT_FEEDBACK_OPTIONS, comfortFeedbackState, safetySupportState } from '@/common/safety-flow.js'
 import { safeUiError } from '@/common/safe-ui-error.js'
 
 export default {
   data() {
-    return { assessment: {}, audio: null, audioContext: null, playing: false, error: '', feedback: '', feedbackOptions: ['稍有缓解', '没有变化', '感觉更不舒服'] }
+    return { assessment: {}, audio: null, audioContext: null, playing: false, showFeedback: false, error: '', feedback: '', feedbackState: comfortFeedbackState(''), feedbackOptions: COMFORT_FEEDBACK_OPTIONS }
   },
   computed: { support() { return safetySupportState(this.assessment) } },
   onLoad() { this.assessment = getSprint3Session().assessment || {} },
@@ -43,17 +47,24 @@ export default {
     callSupport() { uni.showModal({ title: '请联系当地心理援助服务', content: '如有立即危险，请拨打 110 或 120，并联系身边可信任的人。', showCancel: false }) },
     async requestAudio() {
       this.error = ''
+      this.showFeedback = false
+      this.feedback = ''
+      this.feedbackState = comfortFeedbackState('')
       try {
         this.audio = await requestComfortAudio(this.assessment.assessment_id, { revision: this.assessment.revision, user_initiated: true })
         const context = uni.createInnerAudioContext()
         context.src = resolveMediaUrl(this.audio.stream_url)
         context.onPlay(() => { this.playing = true })
         context.onPause(() => { this.playing = false })
-        context.onEnded(() => { this.playing = false })
+        context.onEnded(() => { this.playing = false; this.showFeedback = true })
         this.audioContext = context
       } catch (error) {
         this.error = safeUiError(error, 'COMFORT_AUDIO_FAILED').message
       }
+    },
+    selectFeedback(value) {
+      this.feedback = value
+      this.feedbackState = comfortFeedbackState(value)
     },
     toggleAudio() {
       if (!this.audioContext) return
@@ -79,5 +90,6 @@ export default {
 .chips { display: flex; flex-wrap: wrap; gap: 14rpx; margin-top: 18rpx; }
 .chip { padding: 12rpx 18rpx; border: 1rpx solid #d6cec1; border-radius: 24rpx; }
 .chip.active { color: #fff; background: #496b5c; }
+.urgent-help { margin-top: 24rpx; padding: 22rpx; border-radius: 20rpx; color: #8e3127; background: #fff0ed; line-height: 1.6; }
 .error { color: #b54838; display: block; margin-top: 20rpx; }
 </style>
