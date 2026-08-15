@@ -16,6 +16,14 @@ from backend.app.schemas.assessment_revision import AssessmentRevisionContract
 
 MAX_FOLLOWUPS = 4
 
+_SAFETY_BLOCKING_STATES = frozenset(
+    {
+        "needs_verification",
+        "confirmed_mental_health_risk",
+        "confirmed_acute_physical_risk",
+    }
+)
+
 
 class AssessmentContractError(RuntimeError):
     def __init__(self, code: str, message: str):
@@ -189,10 +197,18 @@ def confirm_assessment_revision(
     snapshot["revision"] = next_revision
     snapshot["previous_revision"] = revision
     snapshot["confirmation_level"] = confirmation_level
-    snapshot["requires_user_confirmation"] = confirmation_level != "fully_accurate"
-    snapshot["status"] = (
-        "confirmed" if confirmation_level == "fully_accurate" else "awaiting_confirmation"
-    )
+    snapshot["confirmation_status"] = confirmation_level
+    safety_blocks = snapshot.get("safety_status") in _SAFETY_BLOCKING_STATES
+    if safety_blocks:
+        snapshot["status"] = "blocked_safety"
+        snapshot["requires_user_confirmation"] = False
+    else:
+        snapshot["requires_user_confirmation"] = confirmation_level != "fully_accurate"
+        snapshot["status"] = (
+            "confirmed"
+            if confirmation_level == "fully_accurate"
+            else "awaiting_confirmation"
+        )
     row = append_revision(
         db,
         current=current,
@@ -203,6 +219,101 @@ def confirm_assessment_revision(
         confirmation_level=confirmation_level,
     )
     return {"assessment": snapshot, "revision": revision_contract(row)}
+
+
+def resolve_safety_verification(
+    db: Session,
+    *,
+    assessment_id: str,
+    revision: int,
+    resolution: str,
+) -> dict[str, Any]:
+    """Apply a dedicated Safety Verification transition to pending signals."""
+    current = require_current_revision(db, assessment_id, revision)
+    snapshot = snapshot_of(current)
+    if snapshot.get("safety_status") != "needs_verification":
+        raise AssessmentContractError(
+            "SAFETY_VERIFICATION_NOT_REQUIRED",
+            "Assessment does not have pending safety verification",
+        )
+    signals = [
+        dict(signal)
+        for signal in snapshot.get("safety_signals", [])
+        if isinstance(signal, dict)
+    ]
+    pending = [
+        signal
+        for signal in signals
+        if signal.get("verification_status") == "pending"
+    ]
+    if not pending:
+        raise AssessmentContractError(
+            "SAFETY_VERIFICATION_NOT_REQUIRED",
+            "Assessment does not have pending safety signals",
+        )
+
+    if resolution == "uncertain":
+        next_status = "needs_verification"
+        verification_status = "pending"
+    elif resolution == "current":
+        next_status = _confirmed_safety_status(pending)
+        verification_status = "confirmed"
+    else:
+        next_status = "resolved"
+        verification_status = "resolved"
+
+    for signal in pending:
+        signal["verification_status"] = verification_status
+        signal["resolution"] = resolution
+
+    next_revision = revision + 1
+    snapshot["revision"] = next_revision
+    snapshot["previous_revision"] = revision
+    snapshot["safety_signals"] = signals
+    snapshot["safety_status"] = next_status
+    snapshot["requires_safety_verification"] = next_status == "needs_verification"
+    snapshot["personalized_prescription_allowed"] = next_status == "resolved"
+    snapshot["comfort_audio_allowed"] = (
+        next_status == "confirmed_mental_health_risk"
+    )
+    if next_status == "resolved":
+        snapshot["status"] = "awaiting_confirmation"
+        snapshot["confirmation_status"] = "pending"
+        snapshot["confirmation_level"] = None
+        snapshot["requires_user_confirmation"] = True
+    else:
+        snapshot["status"] = "blocked_safety"
+        snapshot["requires_user_confirmation"] = False
+
+    changes = [
+        {
+            "field": "safety_status",
+            "from": "needs_verification",
+            "to": next_status,
+        }
+    ]
+    row = append_revision(
+        db,
+        current=current,
+        snapshot=snapshot,
+        change_summary=f"Safety verification: {resolution}",
+        changes=changes,
+        source="safety_verification",
+    )
+    return {"assessment": snapshot, "revision": revision_contract(row)}
+
+
+def _confirmed_safety_status(signals: list[dict[str, Any]]) -> str:
+    acute_flags = {
+        "severe_chest_pain",
+        "severe_breathing_difficulty",
+        "confusion",
+        "near_fainting",
+        "rapid_worsening",
+    }
+    if any(signal.get("type") in acute_flags for signal in signals):
+        return "confirmed_acute_physical_risk"
+    return "confirmed_mental_health_risk"
 
 
 def revision_history(db: Session, assessment_id: str) -> list[dict[str, Any]]:
@@ -240,6 +351,10 @@ def require_current_revision(
 def current_confirmed_snapshot(db: Session, assessment_id: str, revision: int) -> dict[str, Any]:
     current = require_current_revision(db, assessment_id, revision)
     snapshot = snapshot_of(current)
+    if snapshot.get("safety_status") in _SAFETY_BLOCKING_STATES:
+        raise AssessmentContractError(
+            "SAFETY_REQUIRES_ACTION", "Safety state must be handled before workflow"
+        )
     if snapshot.get("status") != "confirmed" or snapshot.get("confirmation_level") != "fully_accurate":
         raise AssessmentContractError("ASSESSMENT_NOT_CONFIRMED", "Latest assessment revision is not confirmed")
     return snapshot

@@ -64,6 +64,26 @@ class AssessmentConfirmationRequest(BaseModel):
         return self
 
 
+class SafetyVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    revision: int = Field(ge=1)
+    resolution: Literal[
+        "current",
+        "past_resolved",
+        "other_person",
+        "ocr_error",
+        "uncertain",
+    ]
+
+
+class ComfortAudioRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    revision: int = Field(ge=1)
+    user_initiated: bool
+
+
 class AssessmentRevisionContract(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 

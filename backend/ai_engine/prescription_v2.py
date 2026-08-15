@@ -192,7 +192,7 @@ def select_prescription_mode(
             return "candidate_blend"
 
     dimensions = _dimension_scores(assessment)
-    if _is_stable_state(dimensions):
+    if not dimensions or _is_stable_state(dimensions):
         return "wellness"
     return "emotion_based"
 
@@ -281,9 +281,18 @@ def _v21_withhold_reason(
     diagnosis: Mapping[str, object],
     assessment: Mapping[str, object],
 ) -> str | None:
+    safety_status = assessment.get("safety_status")
     if (
         diagnosis.get("status") == "blocked_safety"
-        or assessment.get("status") == "blocked_safety"
+        or safety_status in {
+            "needs_verification",
+            "confirmed_mental_health_risk",
+            "confirmed_acute_physical_risk",
+        }
+        or (
+            assessment.get("status") == "blocked_safety"
+            and safety_status not in {"clear", "resolved"}
+        )
     ):
         return "SAFETY_BLOCKED"
     abstain_reason = diagnosis.get("abstain_reason")
@@ -293,11 +302,18 @@ def _v21_withhold_reason(
         return "ASSESSMENT_NOT_CONFIRMED"
     if abstain_reason == "UNRESOLVED_MAJOR_CONFLICT":
         return "UNRESOLVED_MAJOR_CONFLICT"
-    if _is_truly_insufficient(assessment):
+    if (
+        assessment.get("assessment_status") == "input_invalid"
+        and _is_truly_insufficient(assessment)
+    ):
         return "INSUFFICIENT_EVIDENCE"
     # Abstained with no state data at all → "no data" is not a stable state;
     # treat it as genuine insufficiency rather than fabricating a wellness tone.
-    if diagnosis.get("abstained") and not _dimension_scores(assessment):
+    if (
+        assessment.get("assessment_status") == "input_invalid"
+        and diagnosis.get("abstained")
+        and not _dimension_scores(assessment)
+    ):
         return "INSUFFICIENT_EVIDENCE"
     return None
 

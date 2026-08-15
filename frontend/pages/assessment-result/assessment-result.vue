@@ -257,6 +257,7 @@ import { getSprint3Session, updateSprint3Session } from "@/common/sprint3-sessio
 import { safeUiError } from "@/common/safe-ui-error.js"
 import { createAssessmentFlow, applyFollowUpRevision, applyCorrectionRevision, workflowPayload, confirmationFailed } from "@/common/assessment-page-flow.js"
 
+import { safetyDestination } from "@/common/safety-flow.js"
 export default {
   data() {
     return {
@@ -364,6 +365,11 @@ export default {
           this.isSafetyFlow = true
         }
         this.step = 4
+        const destination = safetyDestination(this.assessment)
+        if (destination) {
+          uni.redirectTo({ url: destination })
+          return
+        }
       } catch (err) {
         this.loadError = err.message || "加载失败"
       } finally {
