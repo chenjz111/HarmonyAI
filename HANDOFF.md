@@ -1,7 +1,7 @@
-﻿## CURRENT ACTIVE HANDOFF
+## CURRENT ACTIVE HANDOFF
 
 STATUS:
-IN_PROGRESS
+READY_FOR_REVIEW
 
 ### Repo / worktree
 - Repository: C:\Users\ASUS\HarmonyAI
@@ -13,89 +13,53 @@ feat/questionnaire-v2.2-ux-flow
 ### Base
 origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
 
-### Current checkpoint
-e4fcc1c — checkpoint(wip): implement questionnaire v2.2 UX flow
+### Latest verified code checkpoint
+0f2a3e1 — test: finalize questionnaire v2.2 presentation guards
 
 ### Owner Decision
 实现 questionnaire_v2.2 + Assessment UX simplification，保持 Five-Agent / Safety architecture 不变。
 
 ### Completed
-- 新增 questionnaire_v2.2 canonical/scoring/contract artifacts；v2.1 保持兼容。
-- Q1 结构化主目标 + 可选次目标；选择“其他”时保留自定义文字。
-- Q14 五档电量，低精力反向计分为 0/1/2/3/4。
-- Q16 结构化多选 + 自定义身体感受；自定义文字进入 Assessment evidence，不硬编码到证型/调式。
-- Q19/Q20 Frozen Safety 语义未改，前端作为最后独立安全确认区。
-- 真实 v2.2 前端 payload 已通过 FastAPI/Pydantic/Assessment route；v2.2 正确分派到 frozen real Assessment runner。
-- Assessment 结果简化为唯一确认页；去掉可见可信度百分比、内部证据/冲突/缺失/追问；Safety needs_verification 嵌入本页。
-- 独立 safety-verification route 已从 pages.json 取消注册；confirmed risk 仍进入 Safety Support。
-- Feedback 改为 2×2 必填变化卡片；其余评分/状态/收藏/继续使用/偏好/文字均选填且不制造默认分。
-- Feedback 正向偏好和调整偏好只更新 personal preference；global_rule_update=false。
-- H5 build PASS。
-- Frontend tests 在增加最后一个 OCR 百分比清理断言之前为 82/82 PASS。
-- Backend full run: 710 passed，只有下述 5 个既有环境型失败。
+- questionnaire_v2.2 canonical/scoring/contract artifacts；questionnaire_v2.1 保持兼容。
+- Q1 结构化主目标 + 可选次目标；Q14 五档电量；Q16 结构化多选 + 自定义身体感受。
+- Q19/Q20 Frozen Safety 语义未改，并保留为最后独立安全确认区。
+- v2.2 前端 payload 已通过 FastAPI/Pydantic/Assessment route，并进入 frozen real Assessment runner。
+- Assessment 结果简化为唯一确认页；needs_verification 嵌入本页；confirmed risk 仍进入 Safety Support。
+- 材料页不再向用户显示 OCR 置信度百分比；内部 confidence 仍用于质量与降级判断。
+- Feedback 使用必填 2×2 变化卡片，其余字段选填，不制造默认分；只更新个人偏好。
+- canonical questionnaire_v2.2 与 contract fixture 已增加严格等值守卫。
 
-### In Progress
-- UX presentation cleanup：移除当前 material.vue 模板中对 OCR 置信度百分比的显示；测试已写入 checkpoint，但实现尚未完成。
+### Verification on current code
+- Frontend: 82/82 PASS
+- H5: PASS (DONE Build complete)
+- Contract: 32/32 PASS
+- Safety / Assessment / Feedback targeted backend: 163/163 PASS
+- Earlier backend full baseline on this branch: 710 PASS / 5 known environment-only failures
+
+### Tests currently failing
+NONE in the final targeted acceptance set.
+
+### Known environment-only failures
+- tests/api/test_document_v2.py: 3 failures。当前机器安装 PaddleOCR 后返回 failed，旧断言期望 degraded。
+- tests/tools/test_manual_acceptance_tools.py: 2 failures。全量测试 import 顺序导致 tools.s4_mysql_acceptance 不可见。
+- 上述 5 项是既有环境问题，不是本分支引入的回归。
 
 ### Remaining
-- 完成 material OCR 百分比展示清理并运行对应前端测试。
-- 让 v2.2 contract test 显式校验 canonical artifact 与 contract fixture 一致。
-- 跑最终 frontend tests、H5 build、v2.1/v2.2 contract + Safety targeted regression。
-- 最终 diff/scope/secret hygiene。
-- 更新本节为完成状态，提交 final integration checkpoint，push 当前 feature branch，创建单一 PR（base integration/sprint4-real-input），不要 merge。
+- push feat/questionnaire-v2.2-ux-flow。
+- 创建唯一 PR，base=integration/sprint4-real-input；等待 CI；不要 merge。
 
-### Important architectural constraints
+### Important constraints
 - Five-Agent architecture unchanged
 - questionnaire_v2.1 backward compatible
 - Q19/Q20 Frozen Safety semantics unchanged
 - generic confirmation cannot clear Safety
-- SafetySignal aggregation preserved
-- evidence coverage not shown as confidence
-- no Formal60
-- no emotion_f1 tuning
-- no Sprint5
-- no real AI music generation
-
-### Tests already passed
-- node --test tests/*.test.mjs: 82/82 PASS（在最后一个 material 百分比断言加入前）
-- npm run build:h5: PASS (DONE Build complete)
-- Feedback targeted backend: 56 PASS
-- Questionnaire/Assessment targeted: 26 PASS；真实 v2.2 route + v2.1/workflow 回归 12 PASS；真实 Q1 type 修复后 22 PASS
-- Backend full: 710 PASS / 5 known environment-only failures
-
-### Tests currently failing
-- frontend/tests/sprint4-assessment-flow-simplification.test.mjs 新增断言预期失败：material.vue 模板仍显示 OCR 置信度 xx%。这是当前准确下一动作，不得删除或放宽测试。
-
-### Known environment-only failures
-- tests/api/test_document_v2.py: 3 failures。当前机器安装了 PaddleOCR，测试夹具实际返回 failed，旧断言期望 degraded。
-- tests/tools/test_manual_acceptance_tools.py: 2 failures。全量测试 import 顺序导致 tools.s4_mysql_acceptance 不可见。
-- 上述 5 项在本任务开始前已经记录于 HANDOFF，非本分支新增回归。
-
-### Current blocker
-NONE。当前只有一个明确的未完成 presentation cleanup。
+- no Formal60 / emotion_f1 tuning / Sprint5 / real AI music generation
 
 ### Exact next action
-1. 运行 node --test frontend/tests/sprint4-assessment-flow-simplification.test.mjs，确认只因 material OCR 百分比显示失败。
-2. 只移除 frontend/pages/material/material.vue 模板中的置信度百分比标签；保留后端 confidence 数据用于内部质量/降级判断。
-3. 运行 Assessment simplification + Safety targeted frontend tests。
-4. 给 tests/contract/test_questionnaire_v22_schema.py 增加 canonical/fixture equality 检查。
-5. 完成最终测试、HANDOFF、commit、push、PR；不要 merge。
-
-### Files currently relevant
-- knowledge/questionnaire-v2.2.json
-- knowledge/questionnaire-scoring-v2.2.json
-- backend/app/schemas/assessment_v2.py
-- backend/ai_engine/questionnaire_v2.py
-- backend/ai_engine/assessment_v2.py
-- backend/app/routers/workflow_v2_router.py
-- frontend/pages/questionnaire-v2/questionnaire-v2.vue
-- frontend/pages/assessment-result/assessment-result.vue
-- frontend/pages/material/material.vue
-- frontend/pages/feedback-v2/feedback-v2.vue
-- frontend/common/safety-flow.js
-- backend/app/schemas/feedback_v2.py
-- backend/ai_engine/feedback_v2.py
-- backend/app/routers/feedback_router.py
+1. Commit this final HANDOFF state.
+2. Push current branch.
+3. Create one PR against integration/sprint4-real-input and inspect CI.
+4. Do not merge.
 
 ### Do NOT touch
 - unrelated stash@{0}
@@ -104,6 +68,7 @@ NONE。当前只有一个明确的未完成 presentation cleanup。
 - unrelated Sprint4 code
 - Frozen Safety backend semantics
 
+HANDOFF_READY=YES
 ---
 # AI 工具交接文档
 
@@ -366,4 +331,3 @@ yu    (羽调)      → 58   → 箫、古琴
 - Formal60：未运行；MySQL：PASS；OCR POC：`MANUAL_OCR_POC_PENDING`；Android：`MANUAL_ANDROID_TEST_PENDING`。
 - ADR：`docs/adr/ADR-0008-dual-track-safety-service-model.md`。
 - NEXT_ACTION：Review 本分支 PR 与 CI；不要合并前开始 Sprint 5；不要重跑 emotion_f1/Formal60。
-

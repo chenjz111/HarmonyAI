@@ -48,4 +48,3 @@ def test_v22_artifact_changes_only_approved_question_shapes_and_keeps_safety():
     q20 = _question(artifact, "q20_emergency")
     assert q19["safety_only"] is True and q19["scored"] is False and q19["weight"] == 0
     assert q20["safety_only"] is True and q20["scored"] is False and q20["weight"] == 0
-
