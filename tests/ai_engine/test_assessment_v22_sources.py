@@ -41,4 +41,3 @@ def test_v22_custom_physical_safety_text_enters_existing_safety_engine():
     result = run_assessment_v21(submission(questionnaire))
     assert result["status"] == "blocked_safety"
     assert result["safety_status"] == "confirmed_acute_physical_risk"
-

@@ -110,4 +110,3 @@ def test_v22_preserves_frozen_q19_safety(self_harm):
         _set_answer(valid_v22_envelope(), "q19_self_harm", self_harm)
     )
     assert "self_harm_thoughts" in result.safety_flags
-
