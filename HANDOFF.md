@@ -13,6 +13,9 @@ feat/questionnaire-v2.2-ux-flow
 ### Base
 origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
 
+### Current checkpoint
+3a16c5b — docs: finalize questionnaire v2.2 handoff
+
 ### Latest verified code checkpoint
 0f2a3e1 — test: finalize questionnaire v2.2 presentation guards
 
@@ -28,13 +31,34 @@ origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
 - 材料页不再向用户显示 OCR 置信度百分比；内部 confidence 仍用于质量与降级判断。
 - Feedback 使用必填 2×2 变化卡片，其余字段选填，不制造默认分；只更新个人偏好。
 - canonical questionnaire_v2.2 与 contract fixture 已增加严格等值守卫。
+- 分支已推送；唯一 PR #73 已创建，base=integration/sprint4-real-input。
 
-### Verification on current code
+### In Progress
+- PR #73 等待 Owner review；禁止自动 merge。
+
+### Remaining
+- Owner review PR #73。
+- Android/manual acceptance 如仍需要，由后续人工门禁执行。
+
+### Important architectural constraints
+- Five-Agent architecture unchanged
+- questionnaire_v2.1 backward compatible
+- Q19/Q20 Frozen Safety semantics unchanged
+- generic confirmation cannot clear Safety
+- SafetySignal aggregation preserved
+- evidence coverage not shown as confidence
+- no Formal60
+- no emotion_f1 tuning
+- no Sprint5
+- no real AI music generation
+
+### Tests already passed
 - Frontend: 82/82 PASS
 - H5: PASS (DONE Build complete)
 - Contract: 32/32 PASS
 - Safety / Assessment / Feedback targeted backend: 163/163 PASS
 - Earlier backend full baseline on this branch: 710 PASS / 5 known environment-only failures
+- PR #73 CI at reviewed HEAD 3a16c5b: SUCCESS
 
 ### Tests currently failing
 NONE in the final targeted acceptance set.
@@ -44,22 +68,25 @@ NONE in the final targeted acceptance set.
 - tests/tools/test_manual_acceptance_tools.py: 2 failures。全量测试 import 顺序导致 tools.s4_mysql_acceptance 不可见。
 - 上述 5 项是既有环境问题，不是本分支引入的回归。
 
-### Remaining
-- push feat/questionnaire-v2.2-ux-flow。
-- 创建唯一 PR，base=integration/sprint4-real-input；等待 CI；不要 merge。
-
-### Important constraints
-- Five-Agent architecture unchanged
-- questionnaire_v2.1 backward compatible
-- Q19/Q20 Frozen Safety semantics unchanged
-- generic confirmation cannot clear Safety
-- no Formal60 / emotion_f1 tuning / Sprint5 / real AI music generation
+### Current blocker
+NONE。
 
 ### Exact next action
-1. Commit this final HANDOFF state.
-2. Push current branch.
-3. Create one PR against integration/sprint4-real-input and inspect CI.
-4. Do not merge.
+1. 查看 PR #73 最新 CI 与 changed files。
+2. Owner 决定是否批准；不要自动 merge。
+3. 不开始 Sprint5。
+
+### Files currently relevant
+- knowledge/questionnaire-v2.2.json
+- knowledge/questionnaire-scoring-v2.2.json
+- backend/app/schemas/assessment_v2.py
+- backend/ai_engine/questionnaire_v2.py
+- backend/ai_engine/assessment_v2.py
+- frontend/pages/questionnaire-v2/questionnaire-v2.vue
+- frontend/pages/assessment-result/assessment-result.vue
+- frontend/pages/material/material.vue
+- frontend/pages/feedback-v2/feedback-v2.vue
+- tests/contract/test_questionnaire_v22_schema.py
 
 ### Do NOT touch
 - unrelated stash@{0}
