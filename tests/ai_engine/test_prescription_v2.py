@@ -269,6 +269,22 @@ def test_select_prescription_mode_is_deterministic():
     assert select_prescription_mode(diagnosis, assessment) == "emotion_based"
 
 
+
+def test_structured_user_goal_adjusts_music_preferences_without_changing_tone():
+    assessment = v21_assessment(dimensions={"tension_worry": 100})
+    assessment["user_goal"] = {
+        "primary_goal": "sleep",
+        "secondary_goal": "relaxation",
+        "custom_goal_text": None,
+    }
+
+    _, prescription = _prescribe(assessment)
+
+    assert prescription["music_feature"]["tone_id"] == "jiao"
+    assert prescription["music_feature"]["bpm"] == 58
+    assert prescription["music_feature"]["duration_minutes"] == 20
+    assert prescription["goal_preference"] == assessment["user_goal"]
+    assert prescription["parameter_sources"]["bpm"] == "user_goal_preference"
 def _empty_dims_assessment(*, coverage):
     return {
         "assessment_id": "asmt-empty",

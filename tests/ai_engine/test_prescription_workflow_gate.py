@@ -115,3 +115,38 @@ def test_clear_syndrome_runs_music(monkeypatch):
     assert result["prescription"]["prescription_mode"] == "syndrome_based"
     assert result["music"] is not None
     assert spy.calls == 1
+
+def test_v22_ordinary_follow_up_does_not_add_a_second_confirmation_gate(monkeypatch):
+    spy = MusicSpy()
+    monkeypatch.setattr("backend.ai_engine.real_workflow.match_music_v2", spy)
+    assessment = _assessment(dimensions={"tension_worry": 75}, coverage=0.8)
+    assessment["input_processing_status"] = {
+        "questionnaire": {"version": "questionnaire_v2.2"}
+    }
+    assessment["follow_up_questions"] = [
+        {"follow_up_id": "fu-conflict", "reason": "ordinary_conflict"}
+    ]
+
+    result = continue_real_workflow_v21(assessment=assessment, music_catalog=[])
+
+    assert result["confirmation"]["status"] == "confirmed"
+    assert result["music"] is not None
+    assert spy.calls == 1
+
+
+def test_v21_follow_up_gate_remains_compatible(monkeypatch):
+    spy = MusicSpy()
+    monkeypatch.setattr("backend.ai_engine.real_workflow.match_music_v2", spy)
+    assessment = _assessment(dimensions={"tension_worry": 75}, coverage=0.8)
+    assessment["input_processing_status"] = {
+        "questionnaire": {"version": "questionnaire_v2.1"}
+    }
+    assessment["follow_up_questions"] = [
+        {"follow_up_id": "fu-duration", "reason": "missing_duration"}
+    ]
+
+    result = continue_real_workflow_v21(assessment=assessment, music_catalog=[])
+
+    assert result["confirmation"]["status"] == "needs_follow_up"
+    assert result["music"] is None
+    assert spy.calls == 0

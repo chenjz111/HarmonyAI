@@ -59,7 +59,7 @@
 
         <view v-if="currentQuestion.order === 19" class="safety-section-intro">
           <text class="safety-section-title">最后两题用于安全确认</text>
-          <text class="safety-section-copy">这些选择不参与普通状态评分，只用于在必要时优先提供安全支持。</text>
+          <text class="safety-section-copy">这些选择不参与普通状态或音乐评分，只用于安全确认，并在必要时优先提供安全支持。</text>
         </view>
 
         <!-- 题型渲染区 -->

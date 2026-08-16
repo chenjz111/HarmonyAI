@@ -40,8 +40,9 @@
       <template v-else>
         <view class="ar-card ink-card ar-summary-card">
           <text class="ar-eyebrow">AI 状态理解</text>
-          <text class="ar-main-title">我们目前这样理解你的状态</text>
+          <text class="ar-main-title">确认一下我们对你当前状态的理解</text>
           <text class="ar-summary-text">{{ assessment.assessment_summary || "已根据你提供的信息形成初步状态理解。" }}</text>
+          <text v-if="usesQuestionnaireRuleFallback" class="ar-body-copy">当前已使用问卷规则完成基础分析。</text>
         </view>
 
         <view v-if="sourceList.length" class="ar-section">
@@ -79,10 +80,10 @@
             </view>
             <view v-if="!confirmationLevel" class="ar-confirm-btns">
               <view class="ar-confirm-btn ar-confirm-full" @tap="onConfirm('fully_accurate')">
-                <text>这与我现在的情况基本相符</text>
+                <text>基本符合，继续</text>
               </view>
               <view class="ar-confirm-btn ar-confirm-partial" @tap="onConfirm('partially_accurate')">
-                <text>我想补充或修改</text>
+                <text>有些地方不对，我要修改</text>
               </view>
             </view>
             <view v-else-if="confirmationLevel !== 'fully_accurate'" class="ar-correction">
@@ -146,6 +147,10 @@ export default {
   computed: {
     needsSafetyVerification() {
       return this.assessment.safety_status === "needs_verification"
+    },
+    usesQuestionnaireRuleFallback() {
+      const narrative = this.assessment.input_processing_status?.narrative
+      return narrative?.status === "unavailable"
     },
     sourceList() {
       const ips = this.assessment.input_processing_status || {}

@@ -207,6 +207,7 @@ def _prescribe_v21(
         return _withheld(withhold_reason)
 
     evidence_coverage = _coverage_score(assessment)
+    goal_preference = _structured_goal_preference(assessment)
     mode = select_prescription_mode(diagnosis, assessment)
     if mode == "syndrome_based":
         primary = diagnosis["primary_tendency"]
@@ -222,6 +223,7 @@ def _prescribe_v21(
             mode="syndrome_based",
             source_basis="辨证倾向明确，按证型映射五音。",
             evidence_coverage=evidence_coverage,
+            goal_preference=goal_preference,
         )
 
     if mode == "candidate_blend":
@@ -237,6 +239,7 @@ def _prescribe_v21(
                 mode="candidate_blend",
                 source_basis="存在多个相近的辅助辨证倾向，按权重融合五音。",
                 evidence_coverage=evidence_coverage,
+                goal_preference=goal_preference,
                 extra={"tone_weights": weights},
             )
         # Defensive: empty weights means there were no usable candidates. This
@@ -258,6 +261,7 @@ def _prescribe_v21(
             mode="wellness",
             source_basis="状态整体平稳，选用平和安神的宫调。",
             evidence_coverage=evidence_coverage,
+            goal_preference=goal_preference,
         )
 
     # emotion_based
@@ -273,6 +277,7 @@ def _prescribe_v21(
         mode="emotion_based",
         source_basis="辨证倾向尚不明确，按主导情绪维度映射五音。",
         evidence_coverage=evidence_coverage,
+        goal_preference=goal_preference,
         extra={"dominant_dimension": dimension} if dimension else None,
     )
 
@@ -370,6 +375,32 @@ def _withheld(reason: str) -> dict:
     }
 
 
+_GOAL_MUSIC_PREFERENCES = {
+    "relaxation": {"bpm": 60, "duration_minutes": 15},
+    "sleep": {"bpm": 58, "duration_minutes": 20},
+    "calm_irritability": {"bpm": 60, "duration_minutes": 15},
+    "improve_low_mood": {"bpm": 66, "duration_minutes": 15},
+    "focus": {"bpm": 68, "duration_minutes": 20},
+    "restore_energy": {"bpm": 72, "duration_minutes": 15},
+    "release_emotion": {"bpm": 64, "duration_minutes": 15},
+}
+
+
+def _structured_goal_preference(
+    assessment: Mapping[str, object],
+) -> dict[str, object] | None:
+    raw_goal = assessment.get("user_goal")
+    if not isinstance(raw_goal, Mapping):
+        return None
+    primary_goal = raw_goal.get("primary_goal")
+    if not isinstance(primary_goal, str):
+        return None
+    return {
+        "primary_goal": primary_goal,
+        "secondary_goal": raw_goal.get("secondary_goal"),
+        "custom_goal_text": raw_goal.get("custom_goal_text"),
+    }
+
 def _build_prescription(
     *,
     tone_id: str,
@@ -379,10 +410,18 @@ def _build_prescription(
     mode: str,
     source_basis: str,
     evidence_coverage: float | None = None,
+    goal_preference: dict[str, object] | None = None,
     extra: dict[str, object] | None = None,
 ) -> dict:
     tone = _TONE_CONFIG[tone_id]
-    prompt = _render_prompt(tone)
+    preference = _GOAL_MUSIC_PREFERENCES.get(
+        str(goal_preference.get("primary_goal"))
+    ) if goal_preference else None
+    bpm = int(preference["bpm"]) if preference else int(tone["bpm"])
+    duration_minutes = (
+        int(preference["duration_minutes"]) if preference else 15
+    )
+    prompt = _render_prompt(tone, bpm=bpm, duration_minutes=duration_minutes)
     evidence, knowledge_degradation, warnings = _knowledge_evidence(
         knowledge_store,
         query_text,
@@ -401,8 +440,8 @@ def _build_prescription(
         "music_feature": {
             "tone_id": tone_id,
             "tone_name": tone["tone_name"],
-            "bpm": tone["bpm"],
-            "duration_minutes": 15,
+            "bpm": bpm,
+            "duration_minutes": duration_minutes,
             "instruments": tone["instruments"],
         },
         "prompt_template": {
@@ -416,8 +455,12 @@ def _build_prescription(
         ],
         "parameter_sources": {
             "tone_id": "reviewed_local_rule",
-            "bpm": "reviewed_local_rule",
-            "duration_minutes": "reviewed_local_rule",
+            "bpm": (
+                "user_goal_preference" if preference else "reviewed_local_rule"
+            ),
+            "duration_minutes": (
+                "user_goal_preference" if preference else "reviewed_local_rule"
+            ),
             "instruments": "reviewed_local_rule",
             "prompt": "reviewed_local_rule",
         },
@@ -426,17 +469,21 @@ def _build_prescription(
         "knowledge_degradation": knowledge_degradation,
         "disclaimer": _DISCLAIMER,
     }
+    if goal_preference:
+        result["goal_preference"] = goal_preference
     if extra:
         result.update(extra)
     return result
 
 
-def _render_prompt(tone: Mapping[str, object]) -> Any:
+def _render_prompt(
+    tone: Mapping[str, object], *, bpm: int, duration_minutes: int
+) -> Any:
     return PromptEngine(Path(__file__).resolve().parents[2] / "prompt" / "v1").render(
         "CN_V1",
         {
-            "duration": 15,
-            "bpm": tone["bpm"],
+            "duration": duration_minutes,
+            "bpm": bpm,
             "tone": tone["tone_name"],
             "style": "传统五声音阶疗愈音乐",
         },
