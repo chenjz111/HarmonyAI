@@ -6,6 +6,7 @@ export function rendererModeFor(question) {
   const type = question && question.type
   const layout = question && question.ui && question.ui.layout
   if (question && question.severity_scale) return "directional"
+  if (type === "goal_selection") return "goal"
   if (type === "visual_single") return "visual"
   if (type === "multi_choice") return "multi"
   if (layout === "button-grid") return "button-grid"
@@ -24,6 +25,38 @@ export function applyExclusiveChoice(questionId, selected, value) {
   return [...current.filter((item) => item !== "none"), value]
 }
 
+export function applyGoalChoice(answer, value) {
+  const current = answer && typeof answer === "object"
+    ? { ...answer }
+    : { primary_goal: null, secondary_goal: null, custom_goal_text: null }
+  if (!current.primary_goal) return { ...current, primary_goal: value }
+  if (current.primary_goal === value) {
+    return {
+      primary_goal: current.secondary_goal || null,
+      secondary_goal: null,
+      custom_goal_text: value === "other" ? null : current.custom_goal_text,
+    }
+  }
+  if (current.secondary_goal === value) {
+    return {
+      ...current,
+      secondary_goal: null,
+      custom_goal_text: value === "other" ? null : current.custom_goal_text,
+    }
+  }
+  return { ...current, secondary_goal: value }
+}
+
+export function applyPhysicalChoice(answer, value) {
+  const current = answer && typeof answer === "object" && Array.isArray(answer.selected)
+    ? answer
+    : { selected: [], custom_text: null }
+  const selected = applyExclusiveChoice("q16_physical_signals", current.selected, value)
+  return {
+    selected,
+    custom_text: selected.includes("other") ? current.custom_text : null,
+  }
+}
 export function safetyFlowForAnswer(questionId, answer) {
   if (questionId === "q19_self_harm" && answer !== "never") return "SAFETY_SELF_HARM"
   if (questionId === "q20_emergency" && Array.isArray(answer) && answer.some((value) => value !== "none")) {
@@ -68,11 +101,24 @@ export function serializeAnswer(question, raw) {
   if (question && question.severity_scale && raw && typeof raw === "object") {
     return { value: serializeDirectional(raw.direction, raw.severity) }
   }
+  if (type === "goal_selection" && raw && typeof raw === "object") return { value: raw }
+  if (question && question.question_id === "q16_physical_signals" && raw && typeof raw === "object") {
+    return { value: raw }
+  }
   return { value: raw }
 }
 
 export function isAnswerComplete(question, answer) {
   if (answer === undefined || answer === null) return false
+  if (question && question.type === "goal_selection") {
+    if (!answer || typeof answer !== "object" || !answer.primary_goal) return false
+    const usesOther = answer.primary_goal === "other" || answer.secondary_goal === "other"
+    return !usesOther || (typeof answer.custom_goal_text === "string" && answer.custom_goal_text.trim().length > 0)
+  }
+  if (question && question.question_id === "q16_physical_signals" && !Array.isArray(answer)) {
+    if (!answer || typeof answer !== "object" || !Array.isArray(answer.selected) || answer.selected.length === 0) return false
+    return !answer.selected.includes("other") || (typeof answer.custom_text === "string" && answer.custom_text.trim().length > 0)
+  }
   if (Array.isArray(answer)) return answer.length > 0
   if (question && question.severity_scale) return isDirectionalComplete(answer)
   return true

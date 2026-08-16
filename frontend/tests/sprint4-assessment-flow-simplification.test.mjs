@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import test from 'node:test'
+
+const assessmentPage = readFileSync(
+  new URL('../pages/assessment-result/assessment-result.vue', import.meta.url),
+  'utf8',
+)
+const safetyFlow = readFileSync(new URL('../common/safety-flow.js', import.meta.url), 'utf8')
+const materialPage = readFileSync(new URL('../pages/material/material.vue', import.meta.url), 'utf8')
+const assessmentTemplate = assessmentPage.split('<script>')[0]
+
+test('assessment result is one plain-language confirmation page without internal metrics', () => {
+  assert.match(assessmentPage, /这与我现在的情况基本相符/)
+  assert.match(assessmentPage, /我想补充或修改/)
+  for (const internalCopy of ['可信度', '证据来源', '冲突信息', '缺失信息', '补充追问']) {
+    assert.equal(assessmentTemplate.includes(internalCopy), false, `internal copy leaked: ${internalCopy}`)
+  }
+  assert.doesNotMatch(assessmentTemplate, /assessment\.confidence\s*\*\s*100/)
+  assert.doesNotMatch(materialPage.split('<script>')[0], /置信度|confidence/)
+})
+
+test('needs_verification is embedded in the final confirmation page', () => {
+  assert.match(assessmentPage, /verifyAssessmentSafety/)
+  assert.match(assessmentPage, /safetyVerificationPayload/)
+  assert.match(assessmentPage, /这条材料信息描述的是现在的你吗/)
+  assert.match(assessmentPage, /暂时无法确认/)
+  assert.match(safetyFlow, /needs_verification[\s\S]*return ''/)
+  assert.doesNotMatch(assessmentPage, /pages\/safety-verification\/safety-verification/)
+})
+
+test('ordinary confirmation keeps backend revision and workflow authority', () => {
+  assert.match(assessmentPage, /confirmAssessment/)
+  assert.match(assessmentPage, /workflowPayload/)
+  assert.match(assessmentPage, /runWorkflow/)
+  assert.match(assessmentPage, /assessment_revision/)
+})

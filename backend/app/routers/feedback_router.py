@@ -174,17 +174,17 @@ class _SQLAlchemyFeedbackRepository:
             listened = int(playback["listened_seconds"])
             completion_rate = min(listened / duration, 1.0)
 
-        disliked_features = list(experience["disliked_features"])
-        disliked_instruments = list(experience["disliked_instruments"])
+        disliked_features = list(experience.get("disliked_features") or [])
+        disliked_instruments = list(experience.get("disliked_instruments") or [])
         change_label = str(post["change_label"])
         if change_label == "worse":
             decision_action = "reduce_current_music"
-        elif disliked_features or disliked_instruments or experience["favorite"]:
+        elif disliked_features or disliked_instruments or experience.get("favorite") is True or experience.get("liked_features") or experience.get("adjustment_preferences"):
             decision_action = "adjust_personal_preference"
         else:
             decision_action = "keep_personal_preference"
 
-        tension_delta = int(post["tension"]) - int(pre["tension"])
+        tension_delta = _optional_delta(pre.get("tension"), post.get("tension"))
         body_delta = _optional_delta(
             pre.get("body_tension"),
             post.get("body_tension"),
@@ -200,21 +200,24 @@ class _SQLAlchemyFeedbackRepository:
             prescription_id=str(record["prescription_id"]),
             track_id=str(record["music_id"]),
             schema_version="2.0",
-            subjective_satisfaction=int(experience["overall_rating"]),
-            subjective_relaxation=int(experience["relaxation_rating"]),
-            subjective_emotion_match=int(experience["music_match_rating"]),
+            subjective_satisfaction=_optional_int(experience.get("overall_rating")),
+            subjective_relaxation=_optional_int(experience.get("relaxation_rating")),
+            subjective_emotion_match=_optional_int(experience.get("music_match_rating")),
             subjective_text=str(experience["comment"]),
-            mood_before=int(pre["tension"]),
-            mood_after=int(post["tension"]),
+            mood_before=_optional_int(pre.get("tension")),
+            mood_after=_optional_int(post.get("tension")),
             relaxation_before=pre.get("body_tension"),
             relaxation_after=post.get("body_tension"),
-            music_match=int(experience["music_match_rating"]),
+            music_match=_optional_int(experience.get("music_match_rating")),
             will_continue=(
                 1
-                if experience["continue_use"] == "yes"
-                else (0 if experience["continue_use"] == "no" else None)
+                if experience.get("continue_use") == "yes"
+                else (0 if experience.get("continue_use") == "no" else None)
             ),
-            is_favorite=1 if experience["favorite"] else 0,
+            is_favorite=(
+                1 if experience.get("favorite") is True
+                else (0 if experience.get("favorite") is False else None)
+            ),
             disliked_features=json.dumps(
                 disliked_features + disliked_instruments,
                 ensure_ascii=False,
@@ -243,7 +246,9 @@ class _SQLAlchemyFeedbackRepository:
             ),
             profile_update=json.dumps(
                 {
-                    "goal": pre["goal"],
+                    "goal": pre.get("goal"),
+                    "liked_features": experience.get("liked_features", []),
+                    "adjustment_preferences": experience.get("adjustment_preferences", []),
                     "change_label": change_label,
                     "personal_preference_patch": preference_patch,
                 },
@@ -261,6 +266,9 @@ class _SQLAlchemyFeedbackRepository:
         self.db.commit()
         return True
 
+
+def _optional_int(value: object) -> int | None:
+    return None if value is None else int(value)
 
 def _optional_delta(before: object, after: object) -> int | None:
     if before is None or after is None:
