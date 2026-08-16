@@ -11,8 +11,10 @@ const materialPage = readFileSync(new URL('../pages/material/material.vue', impo
 const assessmentTemplate = assessmentPage.split('<script>')[0]
 
 test('assessment result is one plain-language confirmation page without internal metrics', () => {
-  assert.match(assessmentPage, /这与我现在的情况基本相符/)
-  assert.match(assessmentPage, /我想补充或修改/)
+  assert.match(assessmentPage, /确认一下我们对你当前状态的理解/)
+  assert.match(assessmentPage, /基本符合，继续/)
+  assert.match(assessmentPage, /有些地方不对，我要修改/)
+  assert.match(assessmentPage, /当前已使用问卷规则完成基础分析/)
   for (const internalCopy of ['可信度', '证据来源', '冲突信息', '缺失信息', '补充追问']) {
     assert.equal(assessmentTemplate.includes(internalCopy), false, `internal copy leaked: ${internalCopy}`)
   }

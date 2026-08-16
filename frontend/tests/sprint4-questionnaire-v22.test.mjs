@@ -71,6 +71,7 @@ test('real questionnaire page submits v2.2 and presents Q19/Q20 as final safety 
   assert.match(source, /questionnaireV22/)
   assert.match(source, /schema_version:\s*['"]questionnaire_v2\.2['"]/)
   assert.match(source, /最后两题用于安全确认/)
+  assert.match(source, /不参与普通状态或音乐评分，只用于安全确认/)
   assert.match(source, /custom_goal_text/)
   assert.match(source, /custom_text/)
 })

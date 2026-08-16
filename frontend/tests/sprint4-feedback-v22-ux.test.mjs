@@ -5,7 +5,7 @@ import test from 'node:test'
 const page = readFileSync(new URL('../pages/feedback-v2/feedback-v2.vue', import.meta.url), 'utf8')
 
 test('change label is the only required feedback field and is a large 2x2 grid', () => {
-  for (const label of ['明显好转', '有一点好转', '没有变化', '更不舒服']) {
+  for (const label of ['明显好一些', '稍微好一些', '差不多', '感觉更不舒服']) {
     assert.match(page, new RegExp(label))
   }
   assert.match(page, /变化感受.*必填/s)
@@ -19,7 +19,7 @@ test('all other feedback groups are optional and include positive plus adjustmen
   assert.match(page, /听前与听后状态（选填）/)
   assert.match(page, /喜欢的音乐特点（选填）/)
   assert.match(page, /希望下次调整（选填）/)
-  assert.match(page, /本次使用体验（选填）/)
+  assert.match(page, /还有什么想告诉我们？（选填）/)
   assert.match(page, /liked_features/)
   assert.match(page, /adjustment_preferences/)
 })

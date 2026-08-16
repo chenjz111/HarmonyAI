@@ -54,7 +54,7 @@
       <view class="comment-header preference-heading"><text class="comment-title">希望下次调整（选填）</text></view>
       <view class="comment-presets"><text class="preset-tag" v-for="item in adjustmentOptions" :key="item" :class="{ active: adjustmentPreferences.includes(item) }" @tap="toggleList('adjustmentPreferences', item)">{{ item }}</text></view>
 
-      <view class="comment-header preference-heading"><text class="comment-title">本次使用体验（选填）</text></view>
+      <view class="comment-header preference-heading"><text class="comment-title">还有什么想告诉我们？（选填）</text></view>
       <textarea class="comment-area" v-model="comment" placeholder="可以记录喜欢的地方、不适合的地方，或任何建议..." maxlength="500" :disable-default-padding="true" />
       <text class="comment-count">{{ comment.length }} / 500</text>
     </view>
@@ -92,10 +92,10 @@ export default {
       ],
       changeLabel: '',
       changeOptions: [
-        { value: 'much_better', label: '明显好转' },
-        { value: 'slightly_better', label: '有一点好转' },
-        { value: 'no_change', label: '没有变化' },
-        { value: 'worse', label: '更不舒服' }
+        { value: 'much_better', label: '明显好一些' },
+        { value: 'slightly_better', label: '稍微好一些' },
+        { value: 'no_change', label: '差不多' },
+        { value: 'worse', label: '感觉更不舒服' }
       ],
       overallRating: 0,
       ratings: [

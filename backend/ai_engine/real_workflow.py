@@ -313,7 +313,10 @@ def run_real_workflow_v21(
         confirmation_status = "blocked_safety"
     elif not assessment_confirmed:
         confirmation_status = "needs_confirmation"
-    elif assessment.get("follow_up_questions"):
+    elif (
+        assessment.get("follow_up_questions")
+        and _questionnaire_version(assessment) != "questionnaire_v2.2"
+    ):
         confirmation_status = "needs_follow_up"
     else:
         confirmation_status = "confirmed"
@@ -372,7 +375,10 @@ def continue_real_workflow_v21(*, assessment: Mapping[str, object], provider: ob
         confirmation_status = "blocked_safety"
     elif assessment.get("status") != "confirmed" or assessment.get("confirmation_level") != "fully_accurate":
         confirmation_status = "needs_confirmation"
-    elif assessment.get("follow_up_questions"):
+    elif (
+        assessment.get("follow_up_questions")
+        and _questionnaire_version(assessment) != "questionnaire_v2.2"
+    ):
         confirmation_status = "needs_follow_up"
     else:
         confirmation_status = "confirmed"
@@ -383,6 +389,17 @@ def continue_real_workflow_v21(*, assessment: Mapping[str, object], provider: ob
         music = match_music_v2(prescription, music_catalog) if _should_run_music(prescription) else None
     return {"assessment": assessment, "confirmation": {"status": confirmation_status}, "diagnosis": diagnosis, "prescription": prescription, "music": music, "feedback": {"status": "not_submitted"}, "agent_statuses": {"assessment": str(assessment.get("status", "unknown")), "confirmation": confirmation_status, "diagnosis": _status(diagnosis or {}), "prescription": _status(prescription or {}), "music": _status(music or {}), "feedback": "not_submitted"}, "degradations": {"assessment": _degradation(assessment), "diagnosis": _degradation(diagnosis or {}), "prescription": _degradation(prescription or {}), "music": _degradation(music or {})}}
 
+
+
+def _questionnaire_version(assessment: Mapping[str, object]) -> str | None:
+    processing_status = assessment.get("input_processing_status")
+    if not isinstance(processing_status, Mapping):
+        return None
+    questionnaire = processing_status.get("questionnaire")
+    if not isinstance(questionnaire, Mapping):
+        return None
+    version = questionnaire.get("version")
+    return str(version) if version else None
 
 def _should_run_music(prescription: object) -> bool:
     """Only invoke the Music agent when Prescription produced a usable result.
