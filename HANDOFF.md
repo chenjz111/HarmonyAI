@@ -14,10 +14,10 @@ feat/questionnaire-v2.2-ux-flow
 origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
 
 ### Current checkpoint
-3a16c5b — docs: finalize questionnaire v2.2 handoff
+52319e9 — fix: complete questionnaire v2.2 owner flow
 
 ### Latest verified code checkpoint
-0f2a3e1 — test: finalize questionnaire v2.2 presentation guards
+52319e9 — fix: complete questionnaire v2.2 owner flow
 
 ### Owner Decision
 实现 questionnaire_v2.2 + Assessment UX simplification，保持 Five-Agent / Safety architecture 不变。
@@ -33,6 +33,13 @@ origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
 - canonical questionnaire_v2.2 与 contract fixture 已增加严格等值守卫。
 - 分支已推送；唯一 PR #73 已创建，base=integration/sprint4-real-input。
 
+### Owner completion audit remediation
+- Q1 structured user goal now reaches Prescription as a preference: it may adjust BPM/duration, but never changes the diagnosis-selected tone or creates symptom evidence.
+- questionnaire_v2.2 ordinary conflict/follow-up metadata remains recorded but no longer creates a second confirmation gate; questionnaire_v2.1 behavior remains unchanged.
+- Final Assessment confirmation uses the approved title and two actions; Qwen-unavailable narrative processing is represented as questionnaire-rule fallback.
+- Q19/Q20 UI explicitly states that safety answers do not participate in ordinary state or music scoring.
+- Feedback 2×2 labels and free-experience heading match the final Owner audit wording; enum values and persistence pipeline are unchanged.
+- Added direct multi-signal regression proving a resolved OCR signal cannot clear confirmed questionnaire risk; Frozen Safety implementation was not modified.
 ### In Progress
 - PR #73 等待 Owner review；禁止自动 merge。
 
@@ -56,9 +63,11 @@ origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
 - Frontend: 82/82 PASS
 - H5: PASS (DONE Build complete)
 - Contract: 32/32 PASS
-- Safety / Assessment / Feedback targeted backend: 163/163 PASS
+- Owner completion targeted backend: 143/143 PASS
+- Final affected backend subset: 42/42 PASS
+- Safety / Assessment / Feedback prior baseline: 163/163 PASS
 - Earlier backend full baseline on this branch: 710 PASS / 5 known environment-only failures
-- PR #73 CI at reviewed HEAD 3a16c5b: SUCCESS
+- PR #73 previous CI at 44a752c: SUCCESS; CI for 52319e9 must be checked after push.
 
 ### Tests currently failing
 NONE in the final targeted acceptance set.
