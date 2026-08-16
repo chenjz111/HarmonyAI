@@ -118,6 +118,8 @@ def test_feedback_runtime_returns_canonical_subjective_change_and_patch():
         "reduce_high_frequency": True,
         "preserve_instruments": [],
         "favorite_tracks_add": ["music-gong-001"],
+        "preferred_features": [],
+        "adjustment_preferences": [],
     }
     saved = next(iter(repository.records.values()))
     assert saved["music_id"] == "music-gong-001"

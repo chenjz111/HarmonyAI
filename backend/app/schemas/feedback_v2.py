@@ -17,16 +17,16 @@ from pydantic import (
 class PreState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    tension: StrictInt = Field(ge=0, le=10)
+    tension: StrictInt | None = Field(default=None, ge=0, le=10)
     body_tension: StrictInt | None = Field(default=None, ge=0, le=10)
     mental_fatigue: StrictInt | None = Field(default=None, ge=0, le=10)
-    goal: str = Field(min_length=1)
+    goal: str | None = Field(default=None, min_length=1)
 
 
 class PostState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    tension: StrictInt = Field(ge=0, le=10)
+    tension: StrictInt | None = Field(default=None, ge=0, le=10)
     body_tension: StrictInt | None = Field(default=None, ge=0, le=10)
     mental_fatigue: StrictInt | None = Field(default=None, ge=0, le=10)
     change_label: Literal[
@@ -40,18 +40,22 @@ class PostState(BaseModel):
 class FeedbackExperience(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    overall_rating: StrictInt = Field(ge=1, le=5)
-    relaxation_rating: StrictInt = Field(ge=1, le=5)
-    music_match_rating: StrictInt = Field(ge=1, le=5)
-    continue_use: Literal["yes", "maybe", "no"]
-    favorite: StrictBool
+    overall_rating: StrictInt | None = Field(default=None, ge=1, le=5)
+    relaxation_rating: StrictInt | None = Field(default=None, ge=1, le=5)
+    music_match_rating: StrictInt | None = Field(default=None, ge=1, le=5)
+    continue_use: Literal["yes", "maybe", "no"] | None = None
+    favorite: StrictBool | None = None
     disliked_features: list[str] = Field(default_factory=list)
     disliked_instruments: list[str] = Field(default_factory=list)
+    liked_features: list[str] = Field(default_factory=list)
+    adjustment_preferences: list[str] = Field(default_factory=list)
     comment: str = Field(default="", max_length=500)
 
     @field_validator(
         "disliked_features",
         "disliked_instruments",
+        "liked_features",
+        "adjustment_preferences",
         mode="after",
     )
     @classmethod
@@ -83,9 +87,9 @@ class FeedbackV2Request(BaseModel):
     session_id: str = Field(min_length=1)
     prescription_id: str = Field(min_length=1)
     music_id: str = Field(min_length=1)
-    pre_state: PreState
+    pre_state: PreState = Field(default_factory=PreState)
     post_state: PostState
-    experience: FeedbackExperience
+    experience: FeedbackExperience = Field(default_factory=FeedbackExperience)
     playback: PlaybackSummary | None = None
     submitted_at: datetime | None = None
 
@@ -93,7 +97,7 @@ class FeedbackV2Request(BaseModel):
 class SubjectiveChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    tension_delta: int
+    tension_delta: int | None
     body_tension_delta: int | None
     mental_fatigue_delta: int | None
     summary: str = Field(min_length=1)
@@ -102,11 +106,11 @@ class SubjectiveChange(BaseModel):
 class ExperienceSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    overall_rating: int
-    relaxation_rating: int
-    music_match_rating: int
-    continue_use: Literal["yes", "maybe", "no"]
-    favorite: bool
+    overall_rating: int | None
+    relaxation_rating: int | None
+    music_match_rating: int | None
+    continue_use: Literal["yes", "maybe", "no"] | None
+    favorite: bool | None
 
 
 class FeedbackDecision(BaseModel):
@@ -127,6 +131,8 @@ class PersonalPreferencePatch(BaseModel):
     reduce_high_frequency: bool
     preserve_instruments: list[str]
     favorite_tracks_add: list[str]
+    preferred_features: list[str]
+    adjustment_preferences: list[str]
 
 
 class FeedbackV2Response(BaseModel):

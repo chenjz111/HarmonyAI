@@ -17,13 +17,28 @@ class AnalysisMode(str, Enum):
     QUESTIONNAIRE_ONLY = "questionnaire_only"
 
 
+class GoalSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    primary_goal: str = Field(min_length=1)
+    secondary_goal: str | None = None
+    custom_goal_text: str | None = Field(default=None, max_length=200)
+
+
+class PhysicalSignalsSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    selected: list[str] = Field(min_length=1)
+    custom_text: str | None = Field(default=None, max_length=300)
+
 class QuestionnaireAnswer(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     question_id: str = Field(min_length=1)
-    value: str | int | list[str] | AppetiteValue
+    value: str | int | list[str] | AppetiteValue | GoalSelection | PhysicalSignalsSelection
     type: Literal[
         "single_choice",
+        "goal_selection",
         "visual_single",
         "frequency_0_4",
         "visual_multi",
@@ -43,7 +58,7 @@ class QuestionnaireContext(BaseModel):
 class QuestionnaireV2Submission(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    schema_version: Literal["questionnaire_v2.0", "questionnaire_v2.1"]
+    schema_version: Literal["questionnaire_v2.0", "questionnaire_v2.1", "questionnaire_v2.2"]
     time_window_days: Literal[7, 14]
     answers: list[QuestionnaireAnswer] = Field(min_length=12)
     started_at: str | None = None
@@ -60,9 +75,9 @@ class QuestionnaireV2Submission(BaseModel):
                 raise ValueError("questionnaire_v2.0 uses a 7-day window")
         else:
             if self.time_window_days != 14:
-                raise ValueError("questionnaire_v2.1 uses a 14-day window")
+                raise ValueError(f"{self.schema_version} uses a 14-day window")
             if len(self.answers) != 20:
-                raise ValueError("questionnaire_v2.1 requires exactly 20 answers")
+                raise ValueError(f"{self.schema_version} requires exactly 20 answers")
         return self
 
 

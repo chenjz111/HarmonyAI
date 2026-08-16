@@ -20,7 +20,7 @@ export function comfortFeedbackState(feedback) {
 
 export function safetyDestination(assessment = {}) {
   if (assessment.safety_status === 'needs_verification') {
-    return SAFETY_DESTINATIONS.VERIFICATION
+    return ''
   }
   if (['confirmed_mental_health_risk', 'confirmed_acute_physical_risk'].includes(assessment.safety_status)) {
     return SAFETY_DESTINATIONS.SUPPORT

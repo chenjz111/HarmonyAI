@@ -57,6 +57,8 @@ _FROZEN_V21_DIMENSIONS = {
 }
 _FROZEN_VISUAL_SCORES = {"calm": 0, "ripple": 1, "waves": 2, "swell": 3, "storm": 4}
 _FROZEN_ENERGY_SCORES = {"full": 0, "half": 2, "empty": 4}
+_V22_ENERGY_SCORES = {"full": 0, "three_quarters": 1, "half": 2, "quarter": 3, "empty": 4}
+_V22_GOALS = {"relaxation", "sleep", "calm_irritability", "improve_low_mood", "focus", "restore_energy", "daily_calm", "other"}
 _FROZEN_SAFETY_FLAGS = {"fleeting", "sometimes", "often", "specific_plan"}
 _FROZEN_EMERGENCY_FLAGS = {
     "severe_chest_pain", "severe_breathing_difficulty", "confusion", "near_fainting", "rapid_worsening",
@@ -194,6 +196,8 @@ def score_questionnaire(
     answers: Mapping[str, Any] | Sequence[Mapping[str, Any]],
 ) -> dict[str, object]:
     """Validate and deterministically score a complete Questionnaire V2 response."""
+    if isinstance(answers, Mapping) and answers.get("schema_version") == "questionnaire_v2.2":
+        return score_questionnaire_v22(answers)  # type: ignore[return-value]
     if isinstance(answers, Mapping) and answers.get("schema_version") == "questionnaire_v2.1":
         return score_questionnaire_v21(answers)  # type: ignore[return-value]
     normalized_answers = _normalize_answers(answers)
@@ -287,6 +291,140 @@ def score_questionnaire_v21(envelope: Mapping[str, Any]) -> QuestionnaireScore:
         source="built_in_compatibility_definition",
     )
 
+
+
+def score_questionnaire_v22(envelope: Mapping[str, Any]) -> QuestionnaireScore:
+    """Validate and score Questionnaire V2.2 without changing V2.1 semantics."""
+    if not isinstance(envelope, Mapping):
+        raise QuestionnaireValidationError("questionnaire_v2.2 must be a mapping")
+    if envelope.get("schema_version") != "questionnaire_v2.2":
+        raise QuestionnaireValidationError("schema_version must be questionnaire_v2.2")
+    if envelope.get("time_window_days") != 14:
+        raise QuestionnaireValidationError("time_window_days must be 14")
+
+    normalized = _normalize_answer_records(
+        envelope.get("answers"), expected_ids=FROZEN_V21_QUESTION_IDS
+    )
+    _validate_v22_values(normalized)
+
+    dimensions: dict[str, DimensionScore] = {}
+    for question_id, dimension in _FROZEN_V21_DIMENSIONS.items():
+        value = normalized[question_id]
+        raw_score = (
+            _V22_ENERGY_SCORES[str(value)]
+            if question_id == "q14_low_energy"
+            else _frozen_raw_score(question_id, value)
+        )
+        dimensions[dimension] = DimensionScore(
+            raw_score=raw_score,
+            normalized_score=raw_score * 25,
+            weighted_score=raw_score,
+            source_questions=(question_id,),
+            q04_qualitative=(
+                normalized["q04_worry_control"]
+                if dimension == "tension_worry"
+                else None
+            ),
+        )
+
+    physical_value = normalized["q16_physical_signals"]
+    selected = tuple(physical_value["selected"])
+    safety_flags: list[str] = []
+    if normalized["q19_self_harm"] in _FROZEN_SAFETY_FLAGS:
+        safety_flags.append("self_harm_thoughts")
+    safety_flags.extend(
+        flag for flag in normalized["q20_emergency"]
+        if flag in _FROZEN_EMERGENCY_FLAGS
+    )
+    goal = normalized["q01_user_goal"]
+    return QuestionnaireScore(
+        schema_version="questionnaire_v2.2",
+        questions_answered=20,
+        dimension_scores=dimensions,
+        physical_signals=selected,
+        safety_flags=tuple(safety_flags),
+        qualitative={
+            "goal": dict(goal),
+            "mood_state": normalized["q02_mood_weather"],
+            "worry_control": normalized["q04_worry_control"],
+            "appetite_change": normalized["q15_appetite_change"],
+            "physical_signals": selected,
+            "physical_signal_text": physical_value.get("custom_text"),
+            "duration": normalized["q17_duration"],
+            "daily_impact": normalized["q18_daily_impact"],
+            "self_harm": normalized["q19_self_harm"],
+            "emergency": tuple(normalized["q20_emergency"]),
+        },
+        source="questionnaire_v2.2_compatibility_definition",
+    )
+
+
+def _validate_v22_values(answers: Mapping[str, Any]) -> None:
+    goal = answers["q01_user_goal"]
+    if not isinstance(goal, Mapping) or set(goal) != {
+        "primary_goal", "secondary_goal", "custom_goal_text"
+    }:
+        raise QuestionnaireValidationError("invalid q01_user_goal")
+    primary = goal.get("primary_goal")
+    secondary = goal.get("secondary_goal")
+    custom_goal_text = goal.get("custom_goal_text")
+    if primary not in _V22_GOALS:
+        raise QuestionnaireValidationError("invalid q01_user_goal primary_goal")
+    if secondary is not None and (
+        secondary not in _V22_GOALS or secondary == primary
+    ):
+        raise QuestionnaireValidationError("invalid q01_user_goal secondary_goal")
+    uses_other = primary == "other" or secondary == "other"
+    if uses_other and (
+        not isinstance(custom_goal_text, str) or not custom_goal_text.strip()
+    ):
+        raise QuestionnaireValidationError(
+            "q01_user_goal custom_goal_text is required for other"
+        )
+    if not uses_other and custom_goal_text not in (None, ""):
+        raise QuestionnaireValidationError(
+            "q01_user_goal custom_goal_text requires other"
+        )
+
+    physical = answers["q16_physical_signals"]
+    if not isinstance(physical, Mapping) or set(physical) != {
+        "selected", "custom_text"
+    }:
+        raise QuestionnaireValidationError("invalid q16_physical_signals")
+    selected = physical.get("selected")
+    custom_text = physical.get("custom_text")
+    allowed_physical = {
+        "neck_tension", "head_heaviness", "palpitation", "chest_tightness",
+        "stomach_discomfort", "limb_fatigue", "cold_extremities", "sweating",
+        "dry_mouth", "none", "other",
+    }
+    if (
+        not isinstance(selected, (list, tuple))
+        or not selected
+        or any(item not in allowed_physical for item in selected)
+        or len(set(selected)) != len(selected)
+        or ("none" in selected and len(selected) != 1)
+    ):
+        raise QuestionnaireValidationError("invalid q16_physical_signals selected")
+    if "other" in selected and (
+        not isinstance(custom_text, str) or not custom_text.strip()
+    ):
+        raise QuestionnaireValidationError(
+            "q16_physical_signals custom_text is required for other"
+        )
+    if "other" not in selected and custom_text not in (None, ""):
+        raise QuestionnaireValidationError(
+            "q16_physical_signals custom_text requires other"
+        )
+
+    compatibility = dict(answers)
+    compatibility["q01_user_goal"] = "relaxation"
+    compatibility["q14_low_energy"] = {
+        "three_quarters": "full",
+        "quarter": "empty",
+    }.get(answers["q14_low_energy"], answers["q14_low_energy"])
+    compatibility["q16_physical_signals"] = list(selected)
+    _validate_frozen_v21_values(compatibility)
 
 def _score_frozen_questionnaire_v21(envelope: Mapping[str, Any]) -> QuestionnaireScore:
     normalized = _normalize_answer_records(

@@ -57,10 +57,40 @@
         <!-- 题目文本 -->
         <text class="q-text">{{ currentQuestion.text }}</text>
 
+        <view v-if="currentQuestion.order === 19" class="safety-section-intro">
+          <text class="safety-section-title">最后两题用于安全确认</text>
+          <text class="safety-section-copy">这些选择不参与普通状态评分，只用于在必要时优先提供安全支持。</text>
+        </view>
+
         <!-- 题型渲染区 -->
         <view class="q-options">
+          <!-- goal_selection: one primary goal plus one optional secondary goal -->
+          <view v-if="isGoalSelection" class="goal-selection">
+            <text class="goal-hint">请选择一个主要目标，也可以再选一个次要目标</text>
+            <view class="opt-row">
+              <view
+                v-for="opt in currentQuestion.options"
+                :key="String(opt.value)"
+                class="opt-btn goal-option"
+                :class="{ 'opt-selected': isGoalSelected(opt.value) }"
+                @tap="onToggleGoal(opt.value)"
+              >
+                <text class="opt-label">{{ opt.label }}</text>
+                <text v-if="goalRole(opt.value)" class="goal-role">{{ goalRole(opt.value) }}</text>
+              </view>
+            </view>
+            <textarea
+              v-if="usesOtherGoal"
+              class="custom-answer"
+              :value="goalCustomText"
+              maxlength="120"
+              placeholder="请简要写下你希望获得的帮助"
+              @input="onGoalCustomInput"
+            />
+          </view>
+
           <!-- frequency_0_4 / single_choice (button-row) -->
-          <view v-if="isButtonRow" class="opt-row" :class="'cols-' + currentQuestion.ui.columns">
+          <view v-else-if="isButtonRow" class="opt-row" :class="'cols-' + currentQuestion.ui.columns">
             <view
               v-for="opt in currentQuestion.options"
               :key="String(opt.value)"
@@ -158,6 +188,14 @@
               <text class="opt-label">{{ opt.label }}</text>
             </view>
           </view>
+          <textarea
+            v-if="currentQuestion.question_id === 'q16_physical_signals' && isMultiSelected('other')"
+            class="custom-answer"
+            :value="physicalCustomText"
+            maxlength="160"
+            placeholder="请简要描述其他身体感受"
+            @input="onPhysicalCustomInput"
+          />
         </view>
 
         <!-- 正向题提示 -->
@@ -186,11 +224,13 @@
 </template>
 
 <script>
-import { questionnaireV21 } from "@/common/questionnaire-data.js"
+import { questionnaireV22 } from "@/common/questionnaire-data.js"
 import { submitAssessment, saveQuestionnaireProgress, loadQuestionnaireProgress, clearQuestionnaireProgress, createSession } from "@/common/api-v2.js"
 import { getSprint3Session, updateSprint3Session } from "@/common/sprint3-session.js"
 import {
   applyExclusiveChoice,
+  applyGoalChoice,
+  applyPhysicalChoice,
   safetyFlowForAnswer,
   rendererModeFor,
   severityScaleFor,
@@ -201,9 +241,9 @@ import {
 export default {
   data() {
     return {
-      questions: questionnaireV21.questions,
-      modules: questionnaireV21.modules,
-      totalQuestions: questionnaireV21.total_questions,
+      questions: questionnaireV22.questions,
+      modules: questionnaireV22.modules,
+      totalQuestions: questionnaireV22.total_questions,
       currentIndex: 0,
       answers: {},
       showSafetyAlert: false,
@@ -224,6 +264,7 @@ export default {
     rendererMode() {
       return rendererModeFor(this.currentQuestion)
     },
+    isGoalSelection() { return this.rendererMode === "goal" },
     isButtonRow() { return this.rendererMode === "button-row" },
     isVisualRow() { return this.rendererMode === "visual" },
     isButtonGrid() { return this.rendererMode === "button-grid" },
@@ -231,7 +272,18 @@ export default {
     isCheckboxGrid() { return this.rendererMode === "multi" },
     isDirectional() { return this.rendererMode === "directional" },
     directionalSteps() { return severityScaleFor(this.currentQuestion) },
-    currentDirection() {
+    usesOtherGoal() {
+      const answer = this.answers.q01_user_goal
+      return Boolean(answer && (answer.primary_goal === "other" || answer.secondary_goal === "other"))
+    },
+    goalCustomText() {
+      const answer = this.answers.q01_user_goal
+      return answer && typeof answer.custom_goal_text === "string" ? answer.custom_goal_text : ""
+    },
+    physicalCustomText() {
+      const answer = this.answers.q16_physical_signals
+      return answer && typeof answer.custom_text === "string" ? answer.custom_text : ""
+    },    currentDirection() {
       const ans = this.answers[this.currentQuestion.question_id]
       return ans && typeof ans === "object" ? ans.direction : undefined
     },
@@ -278,13 +330,17 @@ export default {
     isMultiSelected(value) {
       const q = this.currentQuestion
       const ans = this.answers[q.question_id]
+      if (q.question_id === "q16_physical_signals" && ans && typeof ans === "object") {
+        return Array.isArray(ans.selected) && ans.selected.includes(value)
+      }
       if (!Array.isArray(ans)) return false
       return ans.includes(value)
     },
 
     isMultiDisabled(value) {
       const q = this.currentQuestion
-      const ans = this.answers[q.question_id]
+      const raw = this.answers[q.question_id]
+      const ans = q.question_id === "q16_physical_signals" && raw && typeof raw === "object" ? raw.selected : raw
       if (!Array.isArray(ans) || ans.length === 0) return false
       const mutex = ["q16_physical_signals", "q20_emergency"].includes(q.question_id) ? "none" : null
       if (!mutex) return false
@@ -338,12 +394,53 @@ export default {
 
     onToggleMulti(value) {
       const q = this.currentQuestion
+      if (q.question_id === "q16_physical_signals") {
+        this.answers[q.question_id] = applyPhysicalChoice(this.answers[q.question_id], value)
+        this.autoSave()
+        return
+      }
       const current = Array.isArray(this.answers[q.question_id]) ? this.answers[q.question_id] : []
       const next = applyExclusiveChoice(q.question_id, current, value)
       this.answers[q.question_id] = next
       this.autoSave()
       const flow = safetyFlowForAnswer(q.question_id, next)
       if (flow) this.triggerSafety(flow)
+    },
+
+    isGoalSelected(value) {
+      const answer = this.answers.q01_user_goal
+      return Boolean(answer && (answer.primary_goal === value || answer.secondary_goal === value))
+    },
+
+    goalRole(value) {
+      const answer = this.answers.q01_user_goal
+      if (!answer) return ""
+      if (answer.primary_goal === value) return "主要"
+      if (answer.secondary_goal === value) return "次要"
+      return ""
+    },
+
+    onToggleGoal(value) {
+      this.answers.q01_user_goal = applyGoalChoice(this.answers.q01_user_goal, value)
+      this.autoSave()
+    },
+
+    onGoalCustomInput(event) {
+      const current = this.answers.q01_user_goal || applyGoalChoice(undefined, "other")
+      this.answers.q01_user_goal = {
+        ...current,
+        custom_goal_text: event.detail.value,
+      }
+      this.autoSave()
+    },
+
+    onPhysicalCustomInput(event) {
+      const current = this.answers.q16_physical_signals || { selected: ["other"], custom_text: null }
+      this.answers.q16_physical_signals = {
+        ...current,
+        custom_text: event.detail.value,
+      }
+      this.autoSave()
     },
 
     checkSafety(value) {
@@ -409,7 +506,7 @@ export default {
           session = updateSprint3Session({ session_id: created.session_id, user_id: "demo_user_001" })
         }
         const questionnaireAnswers = {
-          schema_version: "questionnaire_v2.1",
+          schema_version: "questionnaire_v2.2",
           time_window_days: 14,
           answers: answersArray,
           safety_flags: this.safetyFlow ? [this.safetyFlow] : [],
@@ -591,6 +688,51 @@ export default {
 }
 
 /* 选项区 */
+.safety-section-intro {
+  margin-top: 24rpx;
+  padding: 24rpx;
+  border-radius: 18rpx;
+  background: #fff3ed;
+  border: 1rpx solid #e7b2a2;
+}
+.safety-section-title,
+.safety-section-copy,
+.goal-hint,
+.goal-role {
+  display: block;
+}
+.safety-section-title {
+  color: #a43f32;
+  font-weight: 700;
+  margin-bottom: 8rpx;
+}
+.safety-section-copy {
+  color: #694b45;
+  line-height: 1.6;
+}
+.goal-hint {
+  margin-bottom: 18rpx;
+  color: #6b746d;
+}
+.goal-option {
+  position: relative;
+}
+.goal-role {
+  margin-top: 8rpx;
+  color: #4c705f;
+  font-size: 22rpx;
+}
+.custom-answer {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 140rpx;
+  margin-top: 20rpx;
+  padding: 20rpx;
+  border: 1rpx solid #c8bfae;
+  border-radius: 16rpx;
+  background: #fffdf9;
+  color: #28342e;
+}
 .q-options {
   margin-bottom: 20rpx;
 }
