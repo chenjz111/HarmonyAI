@@ -9,6 +9,17 @@ def _artifact():
     return json.loads((ROOT / "knowledge" / "questionnaire-v2.2.json").read_text(encoding="utf-8"))
 
 
+def _contract_fixture():
+    return json.loads(
+        (ROOT / "tests" / "contract" / "fixtures" / "questionnaire-v2.2.contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def test_v22_contract_fixture_matches_canonical_artifact():
+    assert _contract_fixture() == _artifact()
+
 def _question(artifact, question_id):
     return next(question for question in artifact["questions"] if question["question_id"] == question_id)
 
