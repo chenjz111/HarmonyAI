@@ -22,6 +22,9 @@ test('all other feedback groups are optional and include positive plus adjustmen
   assert.match(page, /还有什么想告诉我们？（选填）/)
   assert.match(page, /liked_features/)
   assert.match(page, /adjustment_preferences/)
+  for (const preference of ['音量舒适', '调整音量', '调整环境音', '其他建议']) {
+    assert.match(page, new RegExp(preference))
+  }
 })
 
 test('optional ratings are omitted rather than filled with fake defaults', () => {

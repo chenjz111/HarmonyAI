@@ -70,6 +70,19 @@
             <text v-for="phys in physicalEntries" :key="phys.key" class="plain-body-text">{{ phys.value || phys.display_name }}</text>
           </view>
         </view>
+        <view class="ar-section">
+          <text class="ar-section-title">最近的情况</text>
+          <view class="plain-body-card ink-card">
+            <text class="plain-body-text">{{ recentContextText }}</text>
+          </view>
+        </view>
+
+        <view class="ar-section">
+          <text class="ar-section-title">本次音乐目标</text>
+          <view class="plain-body-card ink-card">
+            <text class="plain-body-text">{{ musicGoalText }}</text>
+          </view>
+        </view>
 
         <view class="ar-section">
           <view class="ar-confirm-card ink-card">
@@ -212,6 +225,36 @@ export default {
         }
       }
       return list
+    },
+    recentContextText() {
+      const direct = this.assessment.life_events?.triggers || []
+      const evidence = (this.assessment.evidence_items || [])
+        .filter(item => item.category === "life_event" && !item.negated)
+        .map(item => item.value)
+      const values = [...direct, ...evidence]
+        .map(item => typeof item === "string" ? item : item?.description || item?.value || "")
+        .filter(Boolean)
+      return [...new Set(values)].join("、") || "暂未提到特别的近期事件"
+    },
+
+    musicGoalText() {
+      const labels = {
+        relaxation: "放松紧张",
+        sleep: "帮助入睡",
+        calm_irritability: "平复烦躁",
+        improve_low_mood: "改善低落情绪",
+        focus: "提升专注",
+        restore_energy: "恢复精力",
+        release_emotion: "释放情绪",
+      }
+      const goal = this.assessment.user_goal
+      if (typeof goal === "string") return labels[goal] || "按当前需要提供音乐支持"
+      if (!goal || typeof goal !== "object") return "按当前需要提供音乐支持"
+      const values = [goal.primary_goal, goal.secondary_goal]
+        .filter(Boolean)
+        .map(value => value === "other" ? goal.custom_goal_text : labels[value])
+        .filter(Boolean)
+      return values.join("、") || goal.custom_goal_text || "按当前需要提供音乐支持"
     },
   },
 
