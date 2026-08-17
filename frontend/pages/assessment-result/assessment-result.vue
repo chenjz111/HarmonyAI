@@ -1,263 +1,134 @@
 <template>
   <view class="ar-page">
-    <!-- 水墨背景 -->
     <view class="ink-bg-circle ink-bg-tl"></view>
     <view class="ink-bg-circle ink-bg-br"></view>
-    <view class="ink-mountain"></view>
 
-    <!-- 安全流程提示 -->
-    <view v-if="isSafetyFlow" class="ar-safety-banner">
-      <text class="ar-safety-icon">!</text>
-      <text class="ar-safety-text">检测到安全风险。音乐调养仅作为辅助舒缓支持，不能替代专业帮助；如你感到无法自控或身体情况紧急，请立即联系信任的人或拨打心理援助热线。</text>
-    </view>
-
-    <!-- 加载态 -->
     <view v-if="loading" class="ar-loading">
-      <view class="ar-loading-circle">
-        <text class="ar-loading-text">和</text>
-      </view>
-      <text class="ar-loading-label">正在分析你的状态...</text>
-      <view class="ar-loading-steps">
-        <view class="ar-step" :class="{ 'step-done': step >= 1 }">
-          <text class="ar-step-icon">{{ step >= 1 ? '✓' : '○' }}</text>
-          <text class="ar-step-text">问卷评分</text>
-        </view>
-        <view class="ar-step" :class="{ 'step-done': step >= 2 }">
-          <text class="ar-step-icon">{{ step >= 2 ? '✓' : '○' }}</text>
-          <text class="ar-step-text">文本分析</text>
-        </view>
-        <view class="ar-step" :class="{ 'step-done': step >= 3 }">
-          <text class="ar-step-icon">{{ step >= 3 ? '✓' : '○' }}</text>
-          <text class="ar-step-text">材料分析</text>
-        </view>
-        <view class="ar-step" :class="{ 'step-done': step >= 4 }">
-          <text class="ar-step-icon">{{ step >= 4 ? '✓' : '○' }}</text>
-          <text class="ar-step-text">多源融合</text>
-        </view>
-      </view>
+      <view class="ar-loading-circle"><text class="ar-loading-text">和</text></view>
+      <text class="ar-loading-label">正在综合问卷、文字和材料信息...</text>
     </view>
 
-    <!-- 错误态 -->
     <view v-else-if="loadError" class="ar-error">
-      <view class="ar-error-circle">
-        <text class="ar-error-icon">!</text>
-      </view>
-      <text class="ar-error-title">分析失败</text>
+      <text class="ar-error-title">暂时无法显示评估</text>
       <text class="ar-error-msg">{{ loadError }}</text>
-      <view class="ar-error-btn" @tap="loadData">
-        <text>重新尝试</text>
-      </view>
+      <view class="ar-error-btn" @tap="loadData"><text>重新尝试</text></view>
     </view>
 
-    <!-- 结果内容 -->
-    <scroll-view v-if="!loading" scroll-y class="ar-scroll">
+    <scroll-view v-else scroll-y class="ar-scroll">
       <view v-if="operationError" class="ar-error">
         <text class="ar-error-title">操作未完成</text>
         <text class="ar-error-msg">{{ operationError }}</text>
       </view>
-      <!-- 数据来源状态 -->
-      <view class="ar-section">
-        <text class="ar-section-title">数据来源</text>
-        <view class="ar-source-list">
-          <view class="ar-source-item" v-for="src in sourceList" :key="src.key">
-            <view class="ar-source-dot" :class="'dot-' + src.status"></view>
-            <view class="ar-source-info">
-              <text class="ar-source-name">{{ src.name }}</text>
-              <text class="ar-source-detail">{{ src.detail }}</text>
+
+      <view v-if="needsSafetyVerification" class="ar-card ink-card safety-verification-card">
+        <text class="ar-eyebrow">信息核验</text>
+        <text class="ar-main-title">这条材料信息描述的是现在的你吗？</text>
+        <text class="ar-body-copy">材料中出现了需要关注的内容，但它也可能来自历史记录、他人信息或识别误差。请先确认，系统再决定后续服务。</text>
+        <view class="verification-options">
+          <view
+            v-for="item in safetyVerificationOptions"
+            :key="item.value"
+            class="verification-option"
+            @tap="submitSafetyVerification(item.value)"
+          >
+            <text>{{ item.label }}</text>
+          </view>
+        </view>
+        <text class="ar-help-copy">如果不确定，可以选择“暂时无法确认”。不确定信息不会被直接当作当前风险。</text>
+      </view>
+
+      <template v-else>
+        <view class="ar-card ink-card ar-summary-card">
+          <text class="ar-eyebrow">AI 状态理解</text>
+          <text class="ar-main-title">确认一下我们对你当前状态的理解</text>
+          <text class="ar-summary-text">{{ assessment.assessment_summary || "已根据你提供的信息形成初步状态理解。" }}</text>
+          <text v-if="usesQuestionnaireRuleFallback" class="ar-body-copy">当前已使用问卷规则完成基础分析。</text>
+        </view>
+
+        <view v-if="sourceList.length" class="ar-section">
+          <text class="ar-section-title">本次参考的信息</text>
+          <view class="plain-source-list">
+            <view v-for="src in sourceList" :key="src.key" class="plain-source-chip" :class="'source-' + src.status">
+              <text>{{ src.name }} · {{ src.status === 'done' ? '已参考' : '未提供或暂不可用' }}</text>
             </view>
           </view>
         </view>
-      </view>
 
-      <!-- 状态摘要 -->
-      <view v-if="assessment.assessment_summary" class="ar-card ink-card ar-summary-card">
-        <view class="ar-seal">辨证</view>
-        <text class="ar-summary-text">{{ assessment.assessment_summary }}</text>
-        <view v-if="assessment.confidence != null" class="ar-confidence">
-          <text class="ar-confidence-label">可信度</text>
-          <view class="ar-confidence-bar">
-            <view class="ar-confidence-fill" :style="{ width: (assessment.confidence * 100) + '%' }"></view>
+        <view v-if="emotionEntries.length" class="ar-section">
+          <text class="ar-section-title">目前比较突出的感受</text>
+          <view class="plain-state-grid">
+            <view v-for="dim in emotionEntries" :key="dim.key" class="plain-state-card ink-card">
+              <text class="plain-state-name">{{ dim.display_name }}</text>
+              <text class="plain-state-level">{{ plainSeverity(dim.score) }}</text>
+            </view>
           </view>
-          <text class="ar-confidence-value">{{ Math.round(assessment.confidence * 100) }}%</text>
         </view>
-      </view>
 
-      <!-- 情绪维度 -->
-      <view v-if="emotionEntries.length" class="ar-section">
-        <text class="ar-section-title">情绪维度</text>
-        <view class="ar-dim-list">
-          <view v-for="dim in emotionEntries" :key="dim.key" class="ar-dim-item ink-card" @tap="onTapEvidence(dim)">
-            <view class="ar-dim-header">
-              <text class="ar-dim-name">{{ dim.display_name }}</text>
-              <view class="ar-source-tag" :class="'tag-' + dim.source">
-                <text class="ar-tag-text">{{ sourceLabel(dim.source) }}</text>
+        <view v-if="physicalEntries.length" class="ar-section">
+          <text class="ar-section-title">你提到的身体感受</text>
+          <view class="plain-body-card ink-card">
+            <text v-for="phys in physicalEntries" :key="phys.key" class="plain-body-text">{{ phys.value || phys.display_name }}</text>
+          </view>
+        </view>
+        <view class="ar-section">
+          <text class="ar-section-title">最近的情况</text>
+          <view class="plain-body-card ink-card">
+            <text class="plain-body-text">{{ recentContextText }}</text>
+          </view>
+        </view>
+
+        <view class="ar-section">
+          <text class="ar-section-title">本次音乐目标</text>
+          <view class="plain-body-card ink-card">
+            <text class="plain-body-text">{{ musicGoalText }}</text>
+          </view>
+        </view>
+
+        <view class="ar-section">
+          <view class="ar-confirm-card ink-card">
+            <text class="ar-confirm-title">这和你现在的实际感受接近吗？</text>
+            <text class="ar-confirm-copy">你的确认会作为下一步辅助辨证和音乐建议的依据。</text>
+            <view v-if="confirmationStatus === 'error'" class="ar-error compact-error">
+              <text class="ar-error-msg">{{ confirmationError }}</text>
+            </view>
+            <view v-if="!confirmationLevel" class="ar-confirm-btns">
+              <view class="ar-confirm-btn ar-confirm-full" @tap="onConfirm('fully_accurate')">
+                <text>基本符合，继续</text>
+              </view>
+              <view class="ar-confirm-btn ar-confirm-partial" @tap="onConfirm('partially_accurate')">
+                <text>有些地方不对，我要修改</text>
               </view>
             </view>
-            <view class="ar-dim-bar-wrap">
-              <view class="ar-dim-bar">
-                <view class="ar-dim-fill" :style="{ width: (dim.score / 4 * 100) + '%', background: severityColor(dim.score) }"></view>
-              </view>
-              <text class="ar-dim-tier" :style="{ color: severityColor(dim.score) }">{{ dim.severity_display }}</text>
-            </view>
-          </view>
-        </view>
-      </view>
-
-      <!-- 身体信号 -->
-      <view v-if="physicalEntries.length" class="ar-section">
-        <text class="ar-section-title">身体信号</text>
-        <view class="ar-physical-list">
-          <view v-for="phys in physicalEntries" :key="phys.key" class="ar-physical-item ink-card">
-            <text class="ar-physical-name">{{ phys.display_name }}</text>
-            <text v-if="phys.severity_display" class="ar-physical-tier" :style="{ color: phys.color }">{{ phys.severity_display }}</text>
-            <text v-else class="ar-physical-value">{{ phys.value }}</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- 冲突信息 -->
-      <view v-if="assessment.conflicts && assessment.conflicts.length" class="ar-section">
-        <text class="ar-section-title">冲突信息</text>
-        <view v-for="cf in assessment.conflicts" :key="cf.conflict_id" class="ar-conflict-card ink-card">
-          <view class="ar-conflict-header">
-            <text class="ar-conflict-topic">{{ cf.display_topic }}</text>
-            <view class="ar-conflict-badge" :class="'cf-' + cf.severity">
-              <text>{{ cf.severity }}</text>
-            </view>
-          </view>
-          <text class="ar-conflict-summary">{{ cf.summary }}</text>
-          <view class="ar-conflict-sources">
-            <view v-for="(s, si) in cf.sources" :key="si" class="ar-conflict-source">
-              <text class="ar-cs-type">{{ sourceLabel(s.source_type) }}</text>
-              <text class="ar-cs-value">{{ s.label }} ({{ s.value }})</text>
-            </view>
-          </view>
-        </view>
-      </view>
-
-      <!-- 缺失信息 -->
-      <view v-if="assessment.missing_information && assessment.missing_information.length" class="ar-section">
-        <text class="ar-section-title">缺失信息</text>
-        <view v-for="mi in assessment.missing_information" :key="mi.field" class="ar-missing-card ink-card">
-          <view class="ar-missing-header">
-            <text class="ar-missing-name">{{ mi.display_name }}</text>
-            <view class="ar-missing-badge" :class="'mi-' + mi.severity">
-              <text>{{ mi.severity }}</text>
-            </view>
-          </view>
-          <text class="ar-missing-reason">{{ mi.reason }}</text>
-        </view>
-      </view>
-
-      <!-- 追问交互 -->
-      <view v-if="followUpQuestions.length && !followUpSubmitted" class="ar-section">
-        <text class="ar-section-title">补充追问</text>
-        <text class="ar-followup-hint">为了更好地理解你，请回答以下问题：</text>
-        <view v-for="(fu, fi) in followUpQuestions" :key="fu.follow_up_id" class="ar-fu-card ink-card">
-          <view class="ar-fu-header">
-            <view class="ar-fu-badge"><text>{{ fi + 1 }}</text></view>
-            <text class="ar-fu-text">{{ fu.text }}</text>
-          </view>
-          <!-- single_choice -->
-          <view v-if="fu.type === 'single_choice'" class="ar-fu-options">
-            <view
-              v-for="opt in fu.options"
-              :key="opt"
-              class="ar-fu-opt"
-              :class="{ 'opt-selected': followUpAnswers[fu.follow_up_id] === opt }"
-              @tap="onAnswerFollowUp(fu.follow_up_id, opt)"
-            >
-              <text>{{ opt }}</text>
-            </view>
-          </view>
-          <!-- scale_0_10 -->
-          <view v-else-if="fu.type === 'scale_0_10'" class="ar-fu-slider">
-            <slider :min="0" :max="10" :step="1" activeColor="#4A6B5C" backgroundColor="#E8E0CC" block-color="#4A6B5C" block-size="28" @change="onAnswerFollowUp(fu.follow_up_id, $event.detail.value)" />
-            <text class="ar-fu-slider-val">{{ followUpAnswers[fu.follow_up_id] !== undefined ? followUpAnswers[fu.follow_up_id] : 0 }}</text>
-          </view>
-          <!-- text -->
-          <textarea v-else class="ar-fu-textarea" placeholder="请输入..." v-model="followUpAnswers[fu.follow_up_id]" />
-        </view>
-        <view class="ar-fu-submit" @tap="onSubmitFollowUp">
-          <text>提交追问</text>
-        </view>
-      </view>
-
-      <!-- 确认交互 -->
-      <view v-if="!followUpQuestions.length || followUpSubmitted" class="ar-section">
-        <view class="ar-confirm-card ink-card">
-          <text class="ar-confirm-title">以下评估结果是否准确？</text>
-          <view v-if="confirmationStatus === 'error'" class="ar-error">
-            <text class="ar-error-title">确认失败</text>
-            <text class="ar-error-msg">{{ confirmationError }}</text>
-          </view>
-          <view v-if="!confirmationLevel" class="ar-confirm-btns">
-            <view class="ar-confirm-btn ar-confirm-full" @tap="onConfirm('fully_accurate')">
-              <text>完全准确</text>
-            </view>
-            <view class="ar-confirm-btn ar-confirm-partial" @tap="onConfirm('partially_accurate')">
-              <text>部分准确</text>
-            </view>
-            <view class="ar-confirm-btn ar-confirm-inaccurate" @tap="onConfirm('inaccurate')">
-              <text>不准确</text>
-            </view>
-          </view>
-          <!-- 修正输入 -->
-          <view v-else-if="confirmationLevel !== 'fully_accurate'" class="ar-correction">
-            <text class="ar-correction-hint">请告诉我们哪里不准确，或直接修改：</text>
-            <textarea
-              class="ar-correction-input"
-              v-model="correctionText"
-              placeholder="例如：紧张描述偏高，实际主要是睡眠问题..."
-              maxlength="300"
-            />
-            <view class="ar-correction-btns">
-              <view class="ar-correction-cancel" @tap="resetConfirm">
-                <text>返回</text>
-              </view>
-              <view class="ar-correction-submit" @tap="submitCorrection">
-                <text>提交修正</text>
+            <view v-else-if="confirmationLevel !== 'fully_accurate'" class="ar-correction">
+              <text class="ar-correction-hint">请写下需要补充或修改的地方：</text>
+              <textarea
+                class="ar-correction-input"
+                v-model="correctionText"
+                placeholder="例如：我不是害怕，主要是睡前脑子停不下来。"
+                maxlength="300"
+              />
+              <view class="ar-correction-btns">
+                <view class="ar-correction-cancel" @tap="resetConfirm"><text>返回</text></view>
+                <view class="ar-correction-submit" @tap="submitCorrection"><text>提交修改</text></view>
               </view>
             </view>
           </view>
         </view>
-      </view>
 
-      <!-- 证据列表 -->
-      <view v-if="assessment.evidence_items && assessment.evidence_items.length" class="ar-section">
-        <text class="ar-section-title">证据来源</text>
-        <view v-for="ev in assessment.evidence_items" :key="ev.evidence_id" class="ar-ev-item ink-card">
-          <view class="ar-ev-header">
-            <text class="ar-ev-name">{{ ev.display_name }}</text>
-            <view class="ar-source-tag" :class="'tag-' + ev.source_type">
-              <text class="ar-tag-text">{{ sourceLabel(ev.source_type) }}</text>
-            </view>
-          </view>
-          <text v-if="ev.quote" class="ar-ev-quote">"{{ ev.quote }}"</text>
-          <text class="ar-ev-ref">{{ ev.source_ref }}</text>
-          <view class="ar-ev-meta">
-            <text class="ar-ev-severity" :style="{ color: severityColor(ev.value) }">{{ ev.severity_display }}</text>
-            <text v-if="ev.confirmed" class="ar-ev-confirmed">✓ 已确认</text>
-          </view>
-        </view>
-      </view>
+        <text class="ar-disclaimer">{{ assessment.disclaimer || "本结果仅用于状态评估与音乐调养参考，不构成医学诊断或治疗建议。" }}</text>
+      </template>
 
-      <!-- 免责声明 -->
-      <text class="ar-disclaimer">{{ assessment.disclaimer || "本结果仅用于状态评估与音乐调养参考，不构成医学诊断或治疗建议。" }}</text>
-
-      <!-- 底部留白 -->
       <view class="ar-bottom-space"></view>
     </scroll-view>
   </view>
 </template>
-
 <script>
-import { submitFollowUpAnswers, confirmAssessment, runWorkflow } from "@/common/api-v2.js"
+import { submitFollowUpAnswers, confirmAssessment, runWorkflow, verifyAssessmentSafety } from "@/common/api-v2.js"
 import { getSprint3Session, updateSprint3Session } from "@/common/sprint3-session.js"
 import { safeUiError } from "@/common/safe-ui-error.js"
 import { createAssessmentFlow, applyFollowUpRevision, applyCorrectionRevision, workflowPayload, confirmationFailed } from "@/common/assessment-page-flow.js"
 
-import { safetyDestination } from "@/common/safety-flow.js"
+import { safetyDestination, safetyVerificationPayload } from "@/common/safety-flow.js"
 export default {
   data() {
     return {
@@ -276,10 +147,24 @@ export default {
       confirmationLevel: "",
       correctionText: "",
       operationError: "",
-    }
+      safetyVerificationOptions: [
+        { value: "current", label: "是，描述的是我现在的情况" },
+        { value: "past_resolved", label: "是过去的情况，现在已经缓解" },
+        { value: "other_person", label: "这是他人的信息" },
+        { value: "ocr_error", label: "材料识别有误" },
+        { value: "uncertain", label: "暂时无法确认" },
+      ],
+      safetyVerificationSubmitting: false,    }
   },
 
   computed: {
+    needsSafetyVerification() {
+      return this.assessment.safety_status === "needs_verification"
+    },
+    usesQuestionnaireRuleFallback() {
+      const narrative = this.assessment.input_processing_status?.narrative
+      return narrative?.status === "unavailable"
+    },
     sourceList() {
       const ips = this.assessment.input_processing_status || {}
       const list = []
@@ -341,6 +226,36 @@ export default {
       }
       return list
     },
+    recentContextText() {
+      const direct = this.assessment.life_events?.triggers || []
+      const evidence = (this.assessment.evidence_items || [])
+        .filter(item => item.category === "life_event" && !item.negated)
+        .map(item => item.value)
+      const values = [...direct, ...evidence]
+        .map(item => typeof item === "string" ? item : item?.description || item?.value || "")
+        .filter(Boolean)
+      return [...new Set(values)].join("、") || "暂未提到特别的近期事件"
+    },
+
+    musicGoalText() {
+      const labels = {
+        relaxation: "放松紧张",
+        sleep: "帮助入睡",
+        calm_irritability: "平复烦躁",
+        improve_low_mood: "改善低落情绪",
+        focus: "提升专注",
+        restore_energy: "恢复精力",
+        release_emotion: "释放情绪",
+      }
+      const goal = this.assessment.user_goal
+      if (typeof goal === "string") return labels[goal] || "按当前需要提供音乐支持"
+      if (!goal || typeof goal !== "object") return "按当前需要提供音乐支持"
+      const values = [goal.primary_goal, goal.secondary_goal]
+        .filter(Boolean)
+        .map(value => value === "other" ? goal.custom_goal_text : labels[value])
+        .filter(Boolean)
+      return values.join("、") || goal.custom_goal_text || "按当前需要提供音乐支持"
+    },
   },
 
   onLoad(opts) {
@@ -377,6 +292,38 @@ export default {
       }
     },
 
+    plainSeverity(score) {
+      const value = Number(score)
+      if (!Number.isFinite(value) || value <= 0.75) return "目前不明显"
+      if (value <= 1.75) return "轻度出现"
+      if (value <= 2.75) return "需要关注"
+      return "比较突出"
+    },
+
+    async submitSafetyVerification(resolution) {
+      if (this.safetyVerificationSubmitting) return
+      this.safetyVerificationSubmitting = true
+      this.operationError = ""
+      try {
+        const result = await verifyAssessmentSafety(
+          this.assessment.assessment_id,
+          safetyVerificationPayload(this.assessment, resolution),
+        )
+        this.assessment = result.assessment
+        updateSprint3Session({
+          assessment: this.assessment,
+          assessment_revision: this.assessment.revision,
+        })
+        const destination = safetyDestination(this.assessment)
+        if (destination) {
+          uni.redirectTo({ url: destination })
+        }
+      } catch (error) {
+        this.operationError = safeUiError(error, "SAFETY_VERIFICATION_FAILED").message
+      } finally {
+        this.safetyVerificationSubmitting = false
+      }
+    },
     dimDisplayName(key) {
       const names = {
         tension_worry: "紧张与担忧", overthinking: "思虑反复", irritability_anger: "烦躁易怒",
@@ -530,6 +477,31 @@ export default {
 </script>
 
 <style scoped>
+.ar-eyebrow,
+.ar-main-title,
+.ar-body-copy,
+.ar-help-copy,
+.ar-confirm-copy,
+.plain-state-name,
+.plain-state-level,
+.plain-body-text {
+  display: block;
+}
+.ar-eyebrow { color: #8b624e; font-size: 24rpx; margin-bottom: 14rpx; }
+.ar-main-title { color: #292724; font-size: 38rpx; font-weight: 700; line-height: 1.45; margin-bottom: 20rpx; }
+.ar-body-copy, .ar-help-copy, .ar-confirm-copy { color: #625e57; font-size: 26rpx; line-height: 1.7; }
+.verification-options { margin: 30rpx 0 18rpx; display: flex; flex-direction: column; gap: 14rpx; }
+.verification-option { padding: 24rpx; border: 1rpx solid #b9c8bf; border-radius: 18rpx; background: #f6faf7; color: #355849; text-align: center; }
+.plain-source-list { display: flex; flex-wrap: wrap; gap: 14rpx; }
+.plain-source-chip { padding: 14rpx 20rpx; border-radius: 999rpx; background: #edf3ef; color: #456556; }
+.plain-source-chip.source-skip, .plain-source-chip.source-pending { background: #f1ede4; color: #8a8377; }
+.plain-state-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16rpx; }
+.plain-state-card { padding: 24rpx; }
+.plain-state-name { color: #2c2c2a; font-size: 27rpx; font-weight: 600; }
+.plain-state-level { color: #6b776f; font-size: 23rpx; margin-top: 8rpx; }
+.plain-body-card { padding: 24rpx; display: flex; flex-direction: column; gap: 10rpx; }
+.plain-body-text { color: #5f625c; line-height: 1.6; }
+.compact-error { margin: 18rpx 0; }
 .ar-page {
   min-height: 100vh;
   background: #F7F3EB;

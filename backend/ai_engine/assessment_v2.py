@@ -19,7 +19,6 @@ from .narrative_schema import extract_narrative
 from .questionnaire_v2 import (
     QuestionnaireValidationError,
     score_questionnaire,
-    score_questionnaire_v21,
 )
 from .sprint4_contracts import EvidenceItem, NarrativeExtractionResult
 from .safety_rules import evaluate_safety, evaluate_safety_state
@@ -904,7 +903,7 @@ async def _run_assessment_v21_async(
     session_id = _v21_required_id(submission, "session_id")
     user_id = _v21_required_id(submission, "user_id")
     try:
-        questionnaire = score_questionnaire_v21(
+        questionnaire = score_questionnaire(
             submission.get("questionnaire_answers")  # type: ignore[arg-type]
         )
     except QuestionnaireValidationError as exc:
@@ -916,8 +915,14 @@ async def _run_assessment_v21_async(
     if document_text is not None and not document_confirmed:
         document_text = None
 
+    physical_signal_text = questionnaire.qualitative.get("physical_signal_text")
+    safety_text_parts = [
+        value
+        for value in (narrative_text, physical_signal_text)
+        if isinstance(value, str) and value.strip()
+    ]
     safety = evaluate_safety_state(
-        narrative_text=narrative_text,
+        narrative_text="\n".join(safety_text_parts) or None,
         confirmed_ocr_text=document_text,
         questionnaire_safety_flags=list(questionnaire.safety_flags),
     )
@@ -1109,8 +1114,27 @@ def _v21_questionnaire_evidence(questionnaire: object) -> list[EvidenceItem]:
             "dimension_score": None,
         }
     )
+    physical_signal_text = questionnaire.qualitative.get("physical_signal_text")
+    if isinstance(physical_signal_text, str) and physical_signal_text.strip():
+        result.append(
+            {
+                "evidence_id": "ev-questionnaire-physical-signal-text",
+                "category": "physical",
+                "label": "physical_signal_text",
+                "display_name": "其他身体感受",
+                "value": physical_signal_text.strip(),
+                "polarity": "present",
+                "severity": "moderate",
+                "severity_display": "用户补充",
+                "time_window": "过去两周",
+                "source_type": "questionnaire",
+                "source_ref": "questionnaire:q16_physical_signals:custom_text",
+                "confirmed": True,
+                "dimension_score": None,
+            }
+        )
     goal = questionnaire.qualitative.get("goal")
-    if isinstance(goal, str) and goal:
+    if (isinstance(goal, str) and goal) or isinstance(goal, Mapping):
         result.append(
             {
                 "evidence_id": "ev-questionnaire-goal",

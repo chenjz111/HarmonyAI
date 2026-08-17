@@ -66,9 +66,6 @@
     <view v-if="documentId && (ocrMode === 'success' || ocrMode === 'degraded' || ocrMode === 'manual')" class="file-card ocr-confirm-card">
       <view class="ocr-confirm-header">
         <text class="upload-title">请确认识别文字</text>
-        <view v-if="ocrInfo" class="ocr-confidence-tag">
-          <text class="ocr-confidence-text">置信度 {{ Math.round((ocrInfo.confidence || 0) * 100) }}%</text>
-        </view>
       </view>
       <text class="upload-hint">OCR 仅作辅助，识别有误时请直接修改</text>
       <textarea

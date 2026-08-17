@@ -1,46 +1,66 @@
 <template>
   <view class="container">
-    <view class="header"><text class="step-tag">第 4 步 · Feedback 2.0</text><text class="page-title">聆听前后有什么变化？</text><text class="page-subtitle">这些是你的主观感受，只会更新个人偏好，不会改写医学规则。</text></view>
+    <view class="header">
+      <text class="step-tag">体验反馈</text>
+      <text class="page-title">这次体验后，你感觉怎么样？</text>
+      <text class="page-subtitle">只有变化感受需要选择；其他内容均为选填，只会更新你的个人偏好，不会改写全局医学规则。</text>
+    </view>
+
+    <view class="rating-section required-change-section">
+      <view class="section-heading-row">
+        <text class="section-title inline-title">变化感受</text>
+        <text class="required-tag">必填</text>
+      </view>
+      <view class="change-card-grid">
+        <view v-for="item in changeOptions" :key="item.value" class="change-card" :class="{ active: changeLabel === item.value }" @tap="changeLabel = item.value">
+          <text>{{ item.label }}</text>
+        </view>
+      </view>
+    </view>
 
     <view class="rating-section">
-      <text class="section-title">听前与听后状态（0—10）</text>
+      <text class="section-title">听前与听后状态（选填）</text>
       <view class="rating-item" v-for="item in stateItems" :key="item.key">
-        <view class="rating-info"><text class="rating-label">{{ item.label }}</text><text class="rating-value">听前 {{ preState[item.key] }} → 听后 {{ postState[item.key] }}</text></view>
-        <text class="comment-optional">听前</text><slider :value="preState[item.key]" min="0" max="10" show-value activeColor="#6B8979" @change="setState('pre', item.key, $event.detail.value)" />
-        <text class="comment-optional">听后</text><slider :value="postState[item.key]" min="0" max="10" show-value activeColor="#C8896D" @change="setState('post', item.key, $event.detail.value)" />
-      </view>
-      <view class="comment-presets">
-        <text class="preset-tag" v-for="item in changeOptions" :key="item.value" :class="{ active: changeLabel === item.value }" @click="changeLabel = item.value">{{ item.label }}</text>
+        <view class="rating-info"><text class="rating-label">{{ item.label }}</text><text class="rating-value">{{ stateValueText(item.key) }}</text></view>
+        <text class="comment-optional">听前</text>
+        <slider :value="preState[item.key] ?? 5" min="0" max="10" show-value activeColor="#6B8979" @change="setState('pre', item.key, $event.detail.value)" />
+        <text class="comment-optional">听后</text>
+        <slider :value="postState[item.key] ?? 5" min="0" max="10" show-value activeColor="#C8896D" @change="setState('post', item.key, $event.detail.value)" />
       </view>
     </view>
 
     <view class="rating-main-card">
-      <text class="rating-main-label">整体满意度</text>
-      <view class="big-stars"><text class="big-star" v-for="s in 5" :key="s" :class="{ active: s <= overallRating }" @click="overallRating = s">★</text></view>
+      <text class="rating-main-label">整体满意度（选填）</text>
+      <view class="big-stars"><text class="big-star" v-for="s in 5" :key="s" :class="{ active: s <= overallRating }" @tap="overallRating = s">★</text></view>
     </view>
 
     <view class="rating-section">
-      <text class="section-title">音乐体验</text>
+      <text class="section-title">音乐体验（选填）</text>
       <view class="rating-list">
         <view class="rating-item" v-for="item in ratings" :key="item.key">
-          <view class="rating-info"><text class="rating-label">{{ item.label }}</text><text class="rating-value">{{ item.value || '—' }} / 5</text></view>
-          <view class="stars-row"><text class="star" v-for="s in 5" :key="s" :class="{ active: s <= item.value }" @click="item.value = s">★</text></view>
+          <view class="rating-info"><text class="rating-label">{{ item.label }}</text><text class="rating-value">{{ item.value || '未填写' }}</text></view>
+          <view class="stars-row"><text class="star" v-for="s in 5" :key="s" :class="{ active: s <= item.value }" @tap="item.value = s">★</text></view>
         </view>
       </view>
-      <text class="rating-label">以后是否愿意继续使用？</text>
-      <view class="comment-presets"><text class="preset-tag" v-for="item in continueOptions" :key="item.value" :class="{ active: continueUse === item.value }" @click="continueUse = item.value">{{ item.label }}</text></view>
-      <view class="comment-presets"><text class="preset-tag" :class="{ active: favorite }" @click="favorite = !favorite">{{ favorite ? '★ 已收藏' : '☆ 收藏本曲' }}</text></view>
+      <text class="rating-label optional-block-title">以后是否愿意继续使用？（选填）</text>
+      <view class="comment-presets"><text class="preset-tag" v-for="item in continueOptions" :key="item.value" :class="{ active: continueUse === item.value }" @tap="continueUse = item.value">{{ item.label }}</text></view>
+      <view class="comment-presets favorite-row"><text class="preset-tag" :class="{ active: favorite === true }" @tap="toggleFavorite">{{ favorite === true ? '★ 已收藏' : '☆ 收藏本曲（选填）' }}</text></view>
     </view>
 
     <view class="comment-card">
-      <view class="comment-header"><text class="comment-title">不喜欢的音乐特征</text><text class="comment-optional">可多选</text></view>
-      <view class="comment-presets"><text class="preset-tag" v-for="feature in featureOptions" :key="feature" :class="{ active: dislikedFeatures.includes(feature) }" @click="toggleFeature(feature)">{{ feature }}</text></view>
-      <textarea class="comment-area" v-model="comment" placeholder="还可以说说哪里舒服、哪里不适合..." maxlength="500" :disable-default-padding="true" />
+      <view class="comment-header"><text class="comment-title">喜欢的音乐特点（选填）</text></view>
+      <view class="comment-presets"><text class="preset-tag" v-for="feature in likedFeatureOptions" :key="feature" :class="{ active: likedFeatures.includes(feature) }" @tap="toggleList('likedFeatures', feature)">{{ feature }}</text></view>
+
+      <view class="comment-header preference-heading"><text class="comment-title">希望下次调整（选填）</text></view>
+      <view class="comment-presets"><text class="preset-tag" v-for="item in adjustmentOptions" :key="item" :class="{ active: adjustmentPreferences.includes(item) }" @tap="toggleList('adjustmentPreferences', item)">{{ item }}</text></view>
+
+      <view class="comment-header preference-heading"><text class="comment-title">还有什么想告诉我们？（选填）</text></view>
+      <textarea class="comment-area" v-model="comment" placeholder="可以记录喜欢的地方、不适合的地方，或任何建议..." maxlength="500" :disable-default-padding="true" />
       <text class="comment-count">{{ comment.length }} / 500</text>
     </view>
 
     <error-state v-if="status === 'error'" title="提交失败" :message="errorMsg" @retry="submit" />
-    <view class="btn-group"><view class="btn btn-primary" :class="{ disabled: !canSubmit }" @click="submit"><text class="btn-text">提交反馈</text><text class="btn-arrow">→</text></view></view>
+    <view class="btn-group"><view class="btn btn-primary" :class="{ disabled: !canSubmit }" @tap="submit"><text class="btn-text">提交反馈</text><text class="btn-arrow">→</text></view></view>
   </view>
 </template>
 
@@ -49,12 +69,22 @@ import ErrorState from '@/components/sprint3/error-state.vue'
 import { submitFeedback } from '@/common/api-v2.js'
 import { getSprint3Session, updateSprint3Session } from '@/common/sprint3-session.js'
 
+function compactObject(value) {
+  if (Array.isArray(value)) return value.map(compactObject)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, item]) => item !== null && item !== undefined && item !== '')
+      .map(([key, item]) => [key, compactObject(item)])
+  )
+}
+
 export default {
   components: { ErrorState },
   data() {
     return {
-      preState: { tension: 5, body_tension: 5, mental_fatigue: 5 },
-      postState: { tension: 5, body_tension: 5, mental_fatigue: 5 },
+      preState: { tension: null, body_tension: null, mental_fatigue: null },
+      postState: { tension: null, body_tension: null, mental_fatigue: null },
       stateItems: [
         { key: 'tension', label: '情绪紧张程度' },
         { key: 'body_tension', label: '身体紧绷程度' },
@@ -62,41 +92,58 @@ export default {
       ],
       changeLabel: '',
       changeOptions: [
-        { value: 'much_better', label: '明显好转' },
-        { value: 'slightly_better', label: '有一点好转' },
-        { value: 'no_change', label: '没变化' },
-        { value: 'worse', label: '更不舒服' }
+        { value: 'much_better', label: '明显好一些' },
+        { value: 'slightly_better', label: '稍微好一些' },
+        { value: 'no_change', label: '差不多' },
+        { value: 'worse', label: '感觉更不舒服' }
       ],
       overallRating: 0,
       ratings: [
         { key: 'relaxation', label: '放松程度', value: 0 },
         { key: 'music_match', label: '音乐匹配度', value: 0 }
       ],
-      continueUse: 'maybe',
+      continueUse: null,
       continueOptions: [
-        { value: 'yes', label: '愿意' }, { value: 'maybe', label: '可以考虑' }, { value: 'no', label: '不愿意' }
+        { value: 'yes', label: '愿意' },
+        { value: 'maybe', label: '可以考虑' },
+        { value: 'no', label: '暂时不愿意' }
       ],
-      favorite: false,
-      featureOptions: ['节奏太快', '节奏太慢', '高频刺耳', '环境音不适', '时长不合适'],
-      dislikedFeatures: [],
-      comment: '', status: 'idle', errorMsg: ''
+      favorite: null,
+      likedFeatureOptions: ['古琴音色', '节奏舒缓', '环境音', '音乐时长', '整体氛围', '音量舒适'],
+      likedFeatures: [],
+      adjustmentOptions: ['节奏更慢', '节奏更快', '减少高频', '更换乐器', '调整音量', '调整环境音', '缩短时长', '延长时长', '其他建议'],
+      adjustmentPreferences: [],
+      comment: '',
+      status: 'idle',
+      errorMsg: ''
     }
   },
   computed: {
     canSubmit() {
-      return this.overallRating > 0 && this.ratings.every(item => item.value > 0) && Boolean(this.changeLabel)
+      return Boolean(this.changeLabel)
     }
   },
   methods: {
-    setState(stage, key, value) { (stage === 'pre' ? this.preState : this.postState)[key] = value },
-    toggleFeature(feature) {
-      this.dislikedFeatures = this.dislikedFeatures.includes(feature)
-        ? this.dislikedFeatures.filter(item => item !== feature)
-        : [...this.dislikedFeatures, feature]
+    setState(stage, key, value) {
+      ;(stage === 'pre' ? this.preState : this.postState)[key] = value
+    },
+    stateValueText(key) {
+      const before = this.preState[key]
+      const after = this.postState[key]
+      if (before == null && after == null) return '未填写'
+      return '听前 ' + (before ?? '—') + ' → 听后 ' + (after ?? '—')
+    },
+    toggleList(key, value) {
+      this[key] = this[key].includes(value)
+        ? this[key].filter(item => item !== value)
+        : [...this[key], value]
+    },
+    toggleFavorite() {
+      this.favorite = this.favorite === true ? false : true
     },
     async submit() {
       if (!this.canSubmit) {
-        uni.showToast({ title: '请完成评分和变化选择', icon: 'none' })
+        uni.showToast({ title: '请选择本次体验后的变化感受', icon: 'none' })
         return
       }
       this.status = 'idle'
@@ -104,29 +151,34 @@ export default {
         const session = getSprint3Session()
         const music = session.music || session.workflow?.music || {}
         const playback = session.playback || {
-          listened_seconds: 0, duration_seconds: Math.max(1, music.duration_seconds || 30),
-          completion_rate: 0, pause_count: 0, skip_count: 0
+          listened_seconds: 0,
+          duration_seconds: Math.max(1, music.duration_seconds || 30),
+          completion_rate: 0,
+          pause_count: 0,
+          skip_count: 0
         }
-        const payload = {
+        const payload = compactObject({
           schema_version: 'feedback_v2.0',
           session_id: session.session_id,
-          prescription_id: session.prescription_id || session.workflow?.result_id || `rx_${Date.now()}`,
+          prescription_id: session.prescription_id || session.workflow?.result_id || ('rx_' + Date.now()),
           music_id: music.music_id || 'music_jiao_001',
-          pre_state: { ...this.preState, goal: 'relax' },
+          pre_state: { ...this.preState },
           post_state: { ...this.postState, change_label: this.changeLabel },
           experience: {
-            overall_rating: this.overallRating,
-            relaxation_rating: this.ratings[0].value,
-            music_match_rating: this.ratings[1].value,
+            overall_rating: this.overallRating || null,
+            relaxation_rating: this.ratings[0].value || null,
+            music_match_rating: this.ratings[1].value || null,
             continue_use: this.continueUse,
             favorite: this.favorite,
-            disliked_features: this.dislikedFeatures,
+            disliked_features: [],
             disliked_instruments: [],
+            liked_features: this.likedFeatures,
+            adjustment_preferences: this.adjustmentPreferences,
             comment: this.comment
           },
           playback,
           submitted_at: new Date().toISOString()
-        }
+        })
         const response = await submitFeedback(payload)
         updateSprint3Session({ feedback: response, feedback_payload: payload })
         uni.navigateTo({ url: '/pages/complete/complete' })
@@ -138,8 +190,52 @@ export default {
   }
 }
 </script>
-
 <style scoped>
+.change-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18rpx;
+}
+.change-card {
+  min-height: 150rpx;
+  padding: 24rpx;
+  border: 2rpx solid #d8d1c3;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #3f4f47;
+  background: #fffdf9;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+.change-card.active {
+  border-color: #4a6b5c;
+  background: #eaf1ed;
+  color: #2f5142;
+  box-shadow: 0 8rpx 20rpx rgba(74, 107, 92, 0.14);
+}
+.section-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+.inline-title {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.required-tag {
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  background: #c44a3e;
+  color: #fff;
+  font-size: 22rpx;
+}
+.optional-block-title { display: block; margin-top: 28rpx; }
+.favorite-row, .preference-heading { margin-top: 28rpx; }
 .container {
   min-height: 100vh;
   background: #F7F3EB;

@@ -1,3 +1,112 @@
+## CURRENT ACTIVE HANDOFF
+
+STATUS:
+READY_FOR_REVIEW
+
+### Repo / worktree
+- Repository: C:\Users\ASUS\HarmonyAI
+- Active isolated worktree: C:\Users\ASUS\HarmonyAI-questionnaire-v2.2
+
+### Current branch
+feat/questionnaire-v2.2-ux-flow
+
+### Base
+origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
+
+### Current checkpoint
+5e53156 — fix: complete assessment summary and feedback choices
+
+### Latest verified code checkpoint
+5e53156 — fix: complete assessment summary and feedback choices
+
+### Owner Decision
+实现 questionnaire_v2.2 + Assessment UX simplification，保持 Five-Agent / Safety architecture 不变。
+
+### Completed
+- questionnaire_v2.2 canonical/scoring/contract artifacts；questionnaire_v2.1 保持兼容。
+- Q1 结构化主目标 + 可选次目标；Q14 五档电量；Q16 结构化多选 + 自定义身体感受。
+- Q19/Q20 Frozen Safety 语义未改，并保留为最后独立安全确认区。
+- v2.2 前端 payload 已通过 FastAPI/Pydantic/Assessment route，并进入 frozen real Assessment runner。
+- Assessment 结果简化为唯一确认页；needs_verification 嵌入本页；confirmed risk 仍进入 Safety Support。
+- 材料页不再向用户显示 OCR 置信度百分比；内部 confidence 仍用于质量与降级判断。
+- Feedback 使用必填 2×2 变化卡片，其余字段选填，不制造默认分；只更新个人偏好。
+- canonical questionnaire_v2.2 与 contract fixture 已增加严格等值守卫。
+- 分支已推送；唯一 PR #73 已创建，base=integration/sprint4-real-input。
+
+### Owner completion audit remediation
+- Q1 structured user goal now reaches Prescription as a preference: it may adjust BPM/duration, but never changes the diagnosis-selected tone or creates symptom evidence.
+- questionnaire_v2.2 ordinary conflict/follow-up metadata remains recorded but no longer creates a second confirmation gate; questionnaire_v2.1 behavior remains unchanged.
+- Final Assessment confirmation uses the approved title and two actions; Qwen-unavailable narrative processing is represented as questionnaire-rule fallback.
+- Q19/Q20 UI explicitly states that safety answers do not participate in ordinary state or music scoring.
+- Feedback 2×2 labels and free-experience heading match the final Owner audit wording; enum values and persistence pipeline are unchanged.
+- Added direct multi-signal regression proving a resolved OCR signal cannot clear confirmed questionnaire risk; Frozen Safety implementation was not modified.
+- Final confirmation now shows plain-language recent context and music goals; Feedback choices now cover volume, environment sound and other adjustments without changing API enums or global rules.
+### In Progress
+- PR #73 等待 Owner review；禁止自动 merge。
+
+### Remaining
+- Owner review PR #73。
+- Android/manual acceptance 如仍需要，由后续人工门禁执行。
+
+### Important architectural constraints
+- Five-Agent architecture unchanged
+- questionnaire_v2.1 backward compatible
+- Q19/Q20 Frozen Safety semantics unchanged
+- generic confirmation cannot clear Safety
+- SafetySignal aggregation preserved
+- evidence coverage not shown as confidence
+- no Formal60
+- no emotion_f1 tuning
+- no Sprint5
+- no real AI music generation
+
+### Tests already passed
+- Frontend: 82/82 PASS
+- H5: PASS (DONE Build complete)
+- Contract: 32/32 PASS
+- Owner completion targeted backend: 143/143 PASS
+- Final affected backend subset: 42/42 PASS
+- Safety / Assessment / Feedback prior baseline: 163/163 PASS
+- Earlier backend full baseline on this branch: 710 PASS / 5 known environment-only failures
+- PR #73 previous CI at cbeb317: SUCCESS; CI for 5e53156 must be checked after push.
+
+### Tests currently failing
+NONE in the final targeted acceptance set.
+
+### Known environment-only failures
+- tests/api/test_document_v2.py: 3 failures。当前机器安装 PaddleOCR 后返回 failed，旧断言期望 degraded。
+- tests/tools/test_manual_acceptance_tools.py: 2 failures。全量测试 import 顺序导致 tools.s4_mysql_acceptance 不可见。
+- 上述 5 项是既有环境问题，不是本分支引入的回归。
+
+### Current blocker
+NONE。
+
+### Exact next action
+1. 查看 PR #73 最新 CI 与 changed files。
+2. Owner 决定是否批准；不要自动 merge。
+3. 不开始 Sprint5。
+
+### Files currently relevant
+- knowledge/questionnaire-v2.2.json
+- knowledge/questionnaire-scoring-v2.2.json
+- backend/app/schemas/assessment_v2.py
+- backend/ai_engine/questionnaire_v2.py
+- backend/ai_engine/assessment_v2.py
+- frontend/pages/questionnaire-v2/questionnaire-v2.vue
+- frontend/pages/assessment-result/assessment-result.vue
+- frontend/pages/material/material.vue
+- frontend/pages/feedback-v2/feedback-v2.vue
+- tests/contract/test_questionnaire_v22_schema.py
+
+### Do NOT touch
+- unrelated stash@{0}
+- deprecated C:\Users\ASUS\Desktop\ai-music
+- Formal60 evaluator/gold
+- unrelated Sprint4 code
+- Frozen Safety backend semantics
+
+HANDOFF_READY=YES
+---
 # AI 工具交接文档
 
 > **读者：下一个接手的 AI 工具（Codex / Claude / 其他）**
