@@ -14,10 +14,10 @@ feat/questionnaire-v2.2-ux-flow
 origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
 
 ### Current checkpoint
-52319e9 — fix: complete questionnaire v2.2 owner flow
+5e53156 — fix: complete assessment summary and feedback choices
 
 ### Latest verified code checkpoint
-52319e9 — fix: complete questionnaire v2.2 owner flow
+5e53156 — fix: complete assessment summary and feedback choices
 
 ### Owner Decision
 实现 questionnaire_v2.2 + Assessment UX simplification，保持 Five-Agent / Safety architecture 不变。
@@ -40,6 +40,7 @@ origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
 - Q19/Q20 UI explicitly states that safety answers do not participate in ordinary state or music scoring.
 - Feedback 2×2 labels and free-experience heading match the final Owner audit wording; enum values and persistence pipeline are unchanged.
 - Added direct multi-signal regression proving a resolved OCR signal cannot clear confirmed questionnaire risk; Frozen Safety implementation was not modified.
+- Final confirmation now shows plain-language recent context and music goals; Feedback choices now cover volume, environment sound and other adjustments without changing API enums or global rules.
 ### In Progress
 - PR #73 等待 Owner review；禁止自动 merge。
 
@@ -67,7 +68,7 @@ origin/integration/sprint4-real-input@5b9c4968b0e0e0c69e5778a36ff38a456d4e25cf
 - Final affected backend subset: 42/42 PASS
 - Safety / Assessment / Feedback prior baseline: 163/163 PASS
 - Earlier backend full baseline on this branch: 710 PASS / 5 known environment-only failures
-- PR #73 previous CI at 44a752c: SUCCESS; CI for 52319e9 must be checked after push.
+- PR #73 previous CI at cbeb317: SUCCESS; CI for 5e53156 must be checked after push.
 
 ### Tests currently failing
 NONE in the final targeted acceptance set.
