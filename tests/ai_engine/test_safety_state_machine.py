@@ -50,6 +50,25 @@ def test_direct_questionnaire_physical_emergency_takes_priority():
     assert result["comfort_audio_allowed"] is False
 
 
+
+def test_resolved_ocr_signal_cannot_clear_confirmed_questionnaire_risk():
+    result = safety_rules.decide_safety_state(
+        [
+            {
+                "type": "self_harm_thoughts",
+                "source": "ocr_document",
+                "verification_status": "resolved",
+            },
+            {
+                "type": "self_harm_thoughts",
+                "source": "questionnaire",
+                "verification_status": "confirmed",
+            },
+        ]
+    )
+
+    assert result["safety_status"] == "confirmed_mental_health_risk"
+    assert result["personalized_prescription_allowed"] is False
 def test_direct_current_narrative_risk_is_confirmed_not_pending():
     result = safety_rules.evaluate_safety_state(
         narrative_text="我现在正在考虑伤害自己。",

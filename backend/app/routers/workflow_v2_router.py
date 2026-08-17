@@ -96,7 +96,7 @@ async def create_assessment(body: AssessmentV2Request, db: Session = Depends(get
         payload = body.model_dump(mode="python")
         assessment_id = _result_id("asmt")
         questionnaire = payload["questionnaire_answers"]
-        if questionnaire["schema_version"] == "questionnaire_v2.1":
+        if questionnaire["schema_version"] in {"questionnaire_v2.1", "questionnaire_v2.2"}:
             result = await asyncio.to_thread(run_assessment_v21,
                 {
                     **payload,

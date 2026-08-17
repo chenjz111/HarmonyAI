@@ -60,10 +60,7 @@
       "path": "pages/assessment-result/assessment-result",
       "style": { "navigationBarTitleText": "评估结果", "navigationStyle": "custom" }
     },
-    {
-      "path": "pages/safety-verification/safety-verification",
-      "style": { "navigationBarTitleText": "安全信息核验" }
-    },
+
     {
       "path": "pages/safety-support/safety-support",
       "style": { "navigationBarTitleText": "安全支持" }

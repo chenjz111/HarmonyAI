@@ -75,8 +75,10 @@ def _preference_patch(
         ),
         "preserve_instruments": [],
         "favorite_tracks_add": (
-            [request.music_id] if experience.favorite else []
+            [request.music_id] if experience.favorite is True else []
         ),
+        "preferred_features": list(experience.liked_features),
+        "adjustment_preferences": list(experience.adjustment_preferences),
     }
 
 
@@ -93,8 +95,12 @@ def _success_response(
         reason_codes.append("dislike_instrument")
     if "high_frequency" in experience.disliked_features:
         reason_codes.append("dislike_high_frequency")
-    if experience.favorite:
+    if experience.favorite is True:
         reason_codes.append("favorite_music")
+    if experience.liked_features:
+        reason_codes.append("positive_preference")
+    if experience.adjustment_preferences:
+        reason_codes.append("adjustment_preference")
     if request.post_state.change_label == "worse":
         reason_codes.append("subjective_state_worse")
 
@@ -139,7 +145,7 @@ def _subjective_change(
 ) -> dict[str, object]:
     pre_state = request.pre_state
     post_state = request.post_state
-    tension_delta = post_state.tension - pre_state.tension
+    tension_delta = _optional_delta(pre_state.tension, post_state.tension)
     body_delta = _optional_delta(
         pre_state.body_tension,
         post_state.body_tension,
@@ -157,8 +163,15 @@ def _subjective_change(
         summary = "用户主观感到紧张、身体紧绷和精神疲劳有所下降。"
     elif any(value > 0 for value in available):
         summary = "用户主观反馈显示部分状态评分有所升高。"
-    else:
+    elif available:
         summary = "用户主观反馈显示状态评分基本不变。"
+    else:
+        summary = {
+            "much_better": "用户反馈本次体验后明显好转。",
+            "slightly_better": "用户反馈本次体验后有一点好转。",
+            "no_change": "用户反馈本次体验后没有明显变化。",
+            "worse": "用户反馈本次体验后感觉更不舒服。",
+        }[post_state.change_label]
     return {
         "tension_delta": tension_delta,
         "body_tension_delta": body_delta,

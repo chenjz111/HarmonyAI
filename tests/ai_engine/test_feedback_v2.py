@@ -92,6 +92,8 @@ def test_explicit_submission_uses_one_atomic_save_once_and_returns_only_a_person
         "reduce_high_frequency": True,
         "preserve_instruments": [],
         "favorite_tracks_add": ["music-jiao-01"],
+        "preferred_features": [],
+        "adjustment_preferences": [],
     }
     assert result["global_rule_update"] is False
     feedback_id = result["feedback_id"]
@@ -103,6 +105,8 @@ def test_explicit_submission_uses_one_atomic_save_once_and_returns_only_a_person
             "reduce_high_frequency": True,
             "preserve_instruments": [],
             "favorite_tracks_add": ["music-jiao-01"],
+            "preferred_features": [],
+            "adjustment_preferences": [],
         }
     ]
     assert repository.save_once_calls == 1

@@ -59,8 +59,8 @@ def test_v2_validation_rejects_invalid():
     assert data2["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_v2_no_default_rating():
-    """When user does NOT submit a rating, system does NOT auto-fill 4 stars."""
+def test_v2_optional_rating_is_not_auto_filled():
+    """Missing optional ratings are accepted and preserved as null, never auto-filled."""
     payload = {
         "schema_version": "feedback_v2.0",
         "session_id": "s_test_no_rating",
@@ -73,8 +73,10 @@ def test_v2_no_default_rating():
     resp = client.post("/api/v2/feedback", json=payload)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["success"] is False
-    assert data["error"]["code"] == "VALIDATION_ERROR"
+    assert data["success"] is True
+    assert data["data"]["experience_summary"]["overall_rating"] is None
+    assert data["data"]["experience_summary"]["relaxation_rating"] is None
+    assert data["data"]["experience_summary"]["music_match_rating"] is None
 
 
 def test_v2_feedback_error_does_not_leak_internal_details():
