@@ -109,9 +109,9 @@ export default {
         { value: 'no', label: '暂时不愿意' }
       ],
       favorite: null,
-      likedFeatureOptions: ['古琴音色', '节奏舒缓', '环境音', '音乐时长', '整体氛围'],
+      likedFeatureOptions: ['古琴音色', '节奏舒缓', '环境音', '音乐时长', '整体氛围', '音量舒适'],
       likedFeatures: [],
-      adjustmentOptions: ['节奏更慢', '节奏更快', '减少高频', '更换乐器', '缩短时长', '延长时长'],
+      adjustmentOptions: ['节奏更慢', '节奏更快', '减少高频', '更换乐器', '调整音量', '调整环境音', '缩短时长', '延长时长', '其他建议'],
       adjustmentPreferences: [],
       comment: '',
       status: 'idle',
