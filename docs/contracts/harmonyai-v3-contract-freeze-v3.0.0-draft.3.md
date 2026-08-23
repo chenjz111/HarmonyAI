@@ -127,7 +127,7 @@ V3 比赛版在没有完整注册系统时使用最小游客启动合同。客�
 {"primary_goal":"sleep","secondary_goal":"relaxation","custom_goal_text":null}
 ```
 
-`primary_goal`必填，`secondary_goal`可空且不得与主目标相同；枚举为 `sleep | relaxation | emotion_regulation | focus | energy | stress_relief | other`。`primary_goal=other`时 `custom_goal_text`必填且不超过200字。UserGoal在问卷外的音乐目标步骤采集。
+`primary_goal`必填，`secondary_goal`可空且不得与主目标相同；枚举为 `sleep | relaxation | emotion_regulation | focus | energy | stress_relief | other`。当 `primary_goal=other` 或 `secondary_goal=other` 时，`custom_goal_text`必填且不超过200字；未选择 `other` 时该字段必须为 `null`。UserGoal在问卷外的音乐目标步骤采集。
 
 #### QuestionnaireSchemaV3
 
