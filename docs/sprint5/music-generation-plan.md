@@ -26,7 +26,7 @@ Agent 不包含第三方 URL、Key 或厂商专有调用逻辑。
 - 任务状态：queued/running/succeeded/failed/cancelled。
 - 音频资产记录 owner/hash/format/duration/expiry；短时受控访问。
 - idempotency key 防止重复收费。
-- Safety blocked、Diagnosis abstained、Needs follow-up、Prescription missing 时不得生成。
+- Safety blocked、Needs follow-up、Prescription missing 时不得生成。Diagnosis abstained 但 Safety 为 `clear | resolved` 且 Assessment 信息充分时，沿用 ADR-0007 的 `emotion_based | wellness` 保守处方；只有真实无数据才不得生成。
 - 失败不可伪装成功；fallback 必须标记 `source_type=matched`。
 - Feedback 只更新个人偏好，不修改全局医学规则。
 

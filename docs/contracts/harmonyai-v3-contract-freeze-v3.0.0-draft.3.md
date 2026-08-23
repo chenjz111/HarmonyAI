@@ -42,7 +42,7 @@ Canonical 枚举以正文2.1为唯一权威；任何示例或旧文档中的 `ju
 | `ElementCode` | `wood | fire | earth | metal | water` |
 | `ToneCode` | `jiao | zhi | gong | shang | yu` |
 | `SourceType` | `document | case_summary | narrative | voice_transcript | questionnaire | user_correction` |
-| `SafetyStatus` | `clear | needs_verification | confirmed_mental_health_risk | confirmed_acute_physical_risk` |
+| `SafetyStatus` | `clear | needs_verification | resolved | confirmed_mental_health_risk | confirmed_acute_physical_risk` |
 | `Severity` | `none | mild | moderate | severe | unknown` |
 
 V3 API、数据库 Canonical 字段和 Provider-neutral 类型禁止 `jue`；当前代码的 `jiao` 保持兼容。
@@ -107,6 +107,19 @@ V3 API、数据库 Canonical 字段和 Provider-neutral 类型禁止 `jue`；当
 ```
 
 `auth_type=registered | guest`。数据库外键使用 `internal_user_pk: integer`；API只返回 `public_user_id`。游客必须先创建受控用户行并具有到期策略，不得退回 `user_id=1`。未认证为401；已认证但读取他人资源统一返回404以避免资源枚举；无权执行本用户操作返回403。
+
+V3 比赛版在没有完整注册系统时使用最小游客启动合同。客户端先调用 `POST /api/v3/auth/guest`，服务端原子创建受控 guest user/identity，并返回：
+
+```json
+{
+  "access_token":"opaque-or-signed-token",
+  "token_type":"Bearer",
+  "expires_at":"2026-08-23T08:00:00Z",
+  "public_user_id":"u_guest_xxx"
+}
+```
+
+`access_token` 属于 `SENSITIVE_CLIENT_INPUT + NOT_USER_VISIBLE`，只允许安全存储和 Authorization Header 传输。后续 `POST /api/v3/sessions` 必须从 Auth Context 取得用户；不得接受客户端 `user_id`。完整注册/登录可以后续扩展，但不得用固定用户替代游客身份。
 
 `UserGoal`：
 
@@ -188,7 +201,7 @@ V3 API、数据库 Canonical 字段和 Provider-neutral 类型禁止 `jue`；当
 
 Claim Dictionary是Questionnaire、Understanding、Agent1和RAG的单一代码来源。未收录或未批准的claim不得进入Organ mapping或RAG query。Claim条目只定义事实语义，不直接决定脏腑或调式。
 
-`QuestionnaireFactAdapter` 为确定性组件：验证Submission后，每个非none选择生成一个Canonical `NormalizedFact`，并设置 `source_type=questionnaire`、`source_id=questionnaire_submission_id`、`time_window=past_7_days`、`confirmation_status=confirmed`、`extraction.method=deterministic_questionnaire_mapping`。none不生成阳性Fact，但保留Submission快照。所有来源之后统一进入 `Fact → FactEvidence → OrganEvidenceLink`。
+`QuestionnaireFactAdapter` 为确定性组件：验证Submission后，每个非none选择生成一个Canonical `NormalizedFact`，并设置 `source_type=questionnaire`、`source_id=questionnaire_submission_id`、`time_window=past_7_days`、`confirmation_status=confirmed`、`extraction.method=deterministic_questionnaire_mapping`。none不生成阳性Fact，但保留Submission快照。问卷 Fact 以 `questionnaire_submission_id` 作为权威 owner，不伪造 Understanding revision；所有来源之后统一进入 `Fact → FactEvidence → OrganEvidenceLink`。
 
 `Conflict`：
 
@@ -443,12 +456,11 @@ ASR 失败必须 `status=failed` 并提供文字输入 fallback；不得返回�
   "revision":2,
   "status":"confirmed",
   "applied_changes":["chg_xxx"],
-  "superseded_fact_ids":["fact_xxx"],
-  "created_fact_ids":["fact_yyy"]
+  "affected_fact_ids":["fact_xxx"]
 }
 ```
 
-`decision`：`confirm | confirm_with_changes | reject_source | cannot_confirm`。采用optimistic concurrency，revision不匹配返回 `REVISION_CONFLICT`。修正产生新Revision，不覆盖旧数据；每个Revision保存完整物化CaseSummary、Source状态和Fact集合，未变化Fact复制到新Revision，变化Fact用supersedes链关联。默认由Revision Service修正事实并重新聚合，**不自动再次调用Qwen**；只有新增原文且显式 `reprocess_requested=true` 才创建新的Understanding run。
+`decision`：`confirm | confirm_with_changes | reject_source | cannot_confirm`。采用optimistic concurrency，revision不匹配返回 `REVISION_CONFLICT`。修正产生新Revision，不覆盖旧数据；每个Revision保存完整物化CaseSummary、Source状态和Fact集合。逻辑 `fact_id` 跨Revision保持稳定，每个Revision创建新的内部 `fact_row_id`，变化行通过 `supersedes_fact_row_id` 关联；内部 row ID 不返回前端。默认由Revision Service修正事实并重新聚合，**不自动再次调用Qwen**；只有新增原文且显式 `reprocess_requested=true` 才创建新的Understanding run。
 
 ## 3.8 Safety Resolution
 
@@ -457,12 +469,12 @@ ASR 失败必须 `status=failed` 并提供文字输入 fallback；不得返回�
 | resolution | 处理 | 最终状态 |
 |---|---|---|
 | `current_self` | 确认当前本人信号 | 对应 confirmed risk |
-| `past_resolved` | 标记历史；不清除其他当前信号 | 无其他信号则 clear |
-| `other_person` | 标记非本人 | 无其他信号则 clear |
-| `recognition_error` | 标记识别错误并审计 | 无其他信号则 clear |
+| `past_resolved` | 标记历史；不清除其他当前信号 | 无其他信号则 resolved |
+| `other_person` | 标记非本人 | 无其他信号则 resolved |
+| `recognition_error` | 标记识别错误并审计 | 无其他信号则 resolved |
 | `cannot_confirm` | 保持未决 | needs_verification |
 
-普通 Assessment Confirmation 不得解除 Safety。confirmed risk 进入 Safety Support，个性化 Prescription/Music 保持 blocked。
+普通 Assessment Confirmation 不得解除 Safety。`clear | resolved` 进入正常音乐轨；confirmed risk 进入 Safety Support，个性化 Prescription/Music 保持 blocked。
 
 ---
 
@@ -486,9 +498,9 @@ ASR 失败必须 `status=failed` 并提供文字输入 fallback；不得返回�
 }
 ```
 
-Backend只接受资源引用并从数据库读取已确认Snapshot；客户端不得重复提交NormalizedFact、Questionnaire answers或Evidence数组。无病例流程必须有已确认Narrative/Voice之一和已验证10题问卷；有病例流程必须有已确认CaseSummary，Narrative和问卷可选。
+Backend只接受资源引用并从数据库读取已确认Snapshot；客户端不得重复提交NormalizedFact、Questionnaire answers或Evidence数组。`questionnaire_ref` 类型为对象或 `null`：无病例流程必须有已确认Narrative/Voice之一和已验证10题问卷；有病例流程必须有已确认CaseSummary，Narrative和问卷可选。
 
-在聚合前，`QuestionnaireFactAdapter`把问卷选择转换为Canonical Fact，与Understanding confirmed facts合并。合并顺序固定为：subject/time-window过滤 → claim_code规范化 → 同来源去重 → 跨来源Conflict标记 → FactEvidence生成。问卷Fact不允许绕过Claim Dictionary，也不能由单题直接决定某脏或某调式。
+在聚合前，`QuestionnaireFactAdapter`把问卷选择转换为以 `questionnaire_submission_id` 为owner的Canonical Fact，与Understanding confirmed facts合并。合并顺序固定为：subject/time-window过滤 → claim_code规范化 → 同来源去重 → 跨来源Conflict标记 → FactEvidence生成。问卷Fact不允许绕过Claim Dictionary，也不能由单题直接决定某脏或某调式。
 ## 4.2 FactEvidence
 
 ```json
@@ -588,7 +600,7 @@ Coverage只按Fact计算，不按Link计算；两者独立保存。skipped/faile
 
 ## 4.6 Assessment Revision
 
-确认请求与3.7使用同一 `expected_revision + decision + changes` 结构，`target_type=fact_evidence`。成功必须返回 `previous_revision`、新 `revision`、新 `presentation` 和 `confirmation_status`。每个Revision是完整物化Snapshot：未变化Fact复制到新Revision，变化Fact创建新ID并通过supersedes链关联；旧Revision及其Fact/Link禁止UPDATE。写入新Revision、重算Links/Profile和更新current_revision必须在同一事务。Diagnosis只能读取新Revision。普通修正默认不再次调用Qwen。
+确认请求与3.7使用同一 `expected_revision + decision + changes` 结构，`target_type=fact_evidence`。成功必须返回 `previous_revision`、新 `revision`、新 `presentation` 和 `confirmation_status`。每个Revision是完整物化Snapshot：逻辑 `fact_evidence_id` 保持稳定，每个Revision创建新的内部 Evidence row并用 `supersedes_evidence_row_id` 关联；旧Revision及其Fact/Link禁止UPDATE。写入新Revision、重算Links/Profile和更新current_revision必须在同一事务。Diagnosis只能读取新Revision。普通修正默认不再次调用Qwen。
 
 ---
 
@@ -767,7 +779,7 @@ Provider Route Policy：Cloud Qwen为首选，Local Qwen为第二级，审核本
 
 | 情况 | 处理 | 最终状态 |
 |---|---|---|
-| Safety非clear / Assessment未确认 | 不调用RAG或Provider | `withheld`, abstained=false |
+| Safety非`clear | resolved` / Assessment未确认 | 不调用RAG或Provider | `withheld`, abstained=false |
 | 证据不足 / OrganProfile insufficient | 不调用普通推理 | `abstained`, reason=`INSUFFICIENT_EVIDENCE` |
 | Cloud Qwen失败，Local成功 | 继续Schema/Rule Check | `degraded`, degradation含Cloud error |
 | Cloud和Local都失败，本地规则有足够证据 | 规则候选必须引用Fact和mapping版本 | `degraded` |
@@ -818,7 +830,7 @@ Provider Route Policy：Cloud Qwen为首选，Local Qwen为第二级，审核本
 
 ## 6.1 Input 与边界
 
-Agent 3 将已保存 Diagnosis、User Goal 和 Preference Snapshot 转成 Provider-neutral `GenerationSpec`，不生成 Provider Prompt。
+Agent 3 将已保存 Diagnosis、其关联的已确认 Assessment、User Goal 和 Preference Snapshot 转成 Provider-neutral `GenerationSpec`，不生成 Provider Prompt。处方模式沿用已批准 ADR-0007：`syndrome_based | candidate_blend | emotion_based | wellness`。
 
 ```json
 {
@@ -852,6 +864,8 @@ Agent 3 将已保存 Diagnosis、User Goal 和 Preference Snapshot 转成 Provid
 ```
 
 Preference 不得改变 Tone weights，只能影响非医学音乐参数。
+
+`ToneProfile.status=available | fallback | insufficient`。`syndrome_based/candidate_blend` 使用审核后的证型→五行→五音映射，状态为 `available`。Diagnosis abstained 但 Safety 为 `clear | resolved`、Assessment 已确认且信息充分时，Agent 3 必须进入 `emotion_based` 或 `wellness`，状态为 `fallback`；此时 tone weights 只来自版本化、审核后的非诊断 fallback policy，`mapping_version` 必须标识 fallback 版本，页面不得把它表达为辨证结论。`insufficient` 仅用于完全没有有效状态数据，且不得伪造 weights。
 
 ## 6.3 GenerationSpec
 
@@ -897,7 +911,7 @@ Preference 不得改变 Tone weights，只能影响非医学音乐参数。
 }
 ```
 
-`status=withheld` 时 `generation_spec=null`。Safety blocked、Assessment未确认或Diagnosis abstained 必须 withheld。
+`status=withheld` 时 `generation_spec=null`。只有 Safety 非 `clear | resolved`、Assessment未确认、完全没有有效状态数据，或上游权威资源缺失时才 withheld。Diagnosis abstained **不等于**无音乐：若安全且Assessment信息充分，必须按 ADR-0007 生成 `emotion_based` / `wellness` 的保守 `GenerationSpec`；前端不得自行选择模式或构造处方。
 
 ---
 
@@ -1071,8 +1085,9 @@ Provider Adapter 可在内存中加入厂商Prompt/model参数，但这些字段
 # 9. 权威数据链与 API
 
 ```text
-Document/OCR + Narrative + Voice/ASR + QuestionnaireFactAdapter
-→ Understanding Revision（确认）
+Document/OCR + Narrative + Voice/ASR → Understanding Revision（确认）
+Questionnaire Submission → QuestionnaireFactAdapter → Questionnaire-owned Canonical Facts
+UserGoal + confirmed Understanding + optional/required Questionnaire Facts
 → Assessment Revision（确认）
 → Diagnosis Run（RAG + Provider + Rule Check）
 → Prescription（GenerationSpec + immutable Preference Snapshot ref）
@@ -1086,7 +1101,8 @@ Document/OCR + Narrative + Voice/ASR + QuestionnaireFactAdapter
 
 | Endpoint | Request / Response | 用途 |
 |---|---|---|
-| `POST /api/v3/sessions` | Entry request → EntryReadModel | 创建注册用户或受控guest会话 |
+| `POST /api/v3/auth/guest` | — → GuestAuthResponse | 创建受控游客身份；返回短期Bearer token |
+| `POST /api/v3/sessions` | Entry request → EntryReadModel | 以Auth Context创建业务会话 |
 | `POST /api/v3/documents` | multipart → SourceStatusReadModel | 上传JPG/PNG/PDF，返回document_id |
 | `GET /api/v3/documents/{id}` | — → SourceStatusReadModel | 查询OCR/材料状态 |
 | `POST /api/v3/audio/tasks` | multipart → AsrTask | 创建语音转写任务 |
@@ -1143,7 +1159,7 @@ Final Freeze前必须建立固定、版本化的V3 fixtures、Mock Provider响�
 - unsupported claim count为0，所有Fact/Chunk引用100%存在于输入；
 - 只有approved且版本匹配的KnowledgeChunk进入Provider；
 - Cloud success、401/403、429、timeout、5xx、invalid JSON、repair failure和Local fallback；
-- Evidence不足正确abstain，Safety非clear正确withheld，fallback不得绕过Safety；
+- Evidence不足正确abstain，Safety非`clear | resolved`正确withheld；安全且信息充分的Diagnosis abstain进入ADR-0007保守音乐降级，fallback不得绕过Safety；
 - sync/async响应语义、隐私日志、Prompt/Schema/Knowledge版本审计一致；
 - Preference低于最小样本只收集不应用，高于阈值后下一次Prescription读取正确immutable snapshot。
 
