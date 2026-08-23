@@ -368,3 +368,14 @@ yu    (羽调)      → 58   → 箫、古琴
 - Formal60：未运行；MySQL：PASS；OCR POC：`MANUAL_OCR_POC_PENDING`；Android：`MANUAL_ANDROID_TEST_PENDING`。
 - ADR：`docs/adr/ADR-0008-dual-track-safety-service-model.md`。
 - NEXT_ACTION：Review 本分支 PR 与 CI；不要合并前开始 Sprint 5；不要重跑 emotion_f1/Formal60。
+
+### Sprint 5 V3 Contract Freeze checkpoint（2026-08-24）
+
+- 权威业务基线：`origin/integration/sprint4-real-input@08ac591c58edb611c784f673edf61b134b9aedbb`。
+- Contract PR：#75，分支 `docs/sprint5-v3-contract-draft3`，包含计划检查点 `ad01157b9ccaff4b56306cee1d8110995debb176`；该检查点 CI PASS、PR MERGEABLE。
+- 三份 V3 合同已关闭结构性 P0，当前状态为 `READY_FOR_FINAL_SIGNOFF`，**尚未 FROZEN**。
+- 已完成 Owner-authorized AI / Backend proxy review closure；不得将其表述为钟睿宸或蔡子鑫本人签字。
+- 待办门禁：肖宇翔完成 Medical final signoff；彭翔完成 Client final signoff；随后 Owner 才能把三份合同标记为 `FROZEN`。
+- Sprint 5 可执行计划：`docs/superpowers/plans/2026-08-24-harmonyai-v3-sprint5.md`。
+- GitHub：Milestone `Sprint 5 - HarmonyAI V3`；#76 Owner Freeze、#77 Medical Signoff 可继续；#78～#81 在 Contract FROZEN 前保持 blocked。
+- `NEXT_ACTION`：等待/处理 PR #75 的 Medical 与 Client 最终 Review；若无新 blocker，由陈家智执行 Freeze Gate。冻结前不实现业务代码，不改变 Owner 已批准用户流程。
