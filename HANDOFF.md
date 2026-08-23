@@ -373,9 +373,9 @@ yu    (羽调)      → 58   → 箫、古琴
 
 - 权威业务基线：`origin/integration/sprint4-real-input@08ac591c58edb611c784f673edf61b134b9aedbb`。
 - Contract PR：#75，分支 `docs/sprint5-v3-contract-draft3`，包含计划检查点 `ad01157b9ccaff4b56306cee1d8110995debb176`；该检查点 CI PASS、PR MERGEABLE。
-- 三份 V3 合同已关闭结构性 P0，当前状态为 `READY_FOR_FINAL_SIGNOFF`，**尚未 FROZEN**。
+- Owner 已确认双门禁；三份 V3 合同在 PR #75 分支标记为 `FROZEN`，**尚未合并到 integration**。
 - 已完成 Owner-authorized AI / Backend proxy review closure；不得将其表述为钟睿宸或蔡子鑫本人签字。
-- 待办门禁：肖宇翔完成 Medical final signoff；彭翔完成 Client final signoff；随后 Owner 才能把三份合同标记为 `FROZEN`。
+- 医学内容门禁保持独立：肖宇翔仍须批准最终10题、Claim、Organ、Five-Tone 与 Knowledge Manifest；获批前不得启用 production 医学链路。
 - Sprint 5 可执行计划：`docs/superpowers/plans/2026-08-24-harmonyai-v3-sprint5.md`。
-- GitHub：Milestone `Sprint 5 - HarmonyAI V3`；#76 Owner Freeze、#77 Medical Signoff 可继续；#78～#81 在 Contract FROZEN 前保持 blocked。
-- `NEXT_ACTION`：等待/处理 PR #75 的 Medical 与 Client 最终 Review；若无新 blocker，由陈家智执行 Freeze Gate。冻结前不实现业务代码，不改变 Owner 已批准用户流程。
+- GitHub：Milestone `Sprint 5 - HarmonyAI V3`；#76 负责 PR #75 Final Gate，#77 继续医学内容；#78～#80 在 PR #75 合并后仅解锁不依赖医学内容的 foundation，#81 继续等待各线集成。
+- `NEXT_ACTION`：完成 PR #75 Final Gate 并按 Owner 决定合并；随后先实现 executable Schema、Auth/Migration 与 Provider foundation。医学 Assessment/Diagnosis/Prescription 仍等待 #77 approved manifests。

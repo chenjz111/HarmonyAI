@@ -3,8 +3,8 @@
 > Review 日期：2026-08-24
 > 基线：`origin/integration/sprint4-real-input@08ac591c58edb611c784f673edf61b134b9aedbb`
 > 被审合同：`harmonyai-v3-contract-freeze-v3.0.0-draft.3.md`、`frontend-read-model-contract-v3.md`、`harmonyai-v3-persistence-contract.md`
-> Review 角色：陈家智（Project Leader & AI Architect）架构收口；Backend / AI 为 Owner 已授权的 Codex 临时代审，不冒用成员签名
-> 结论：`STRUCTURAL_CONTRACT_READY_FOR_SIGNOFF`，尚未标记 `FROZEN`
+> Review 角色：陈家智（Project Leader & AI Architect）架构收口；Medical contract-shape / AI / Backend / Client 为 Owner 已授权的 Codex 临时代审，不冒用成员签名，不批准临床内容
+> 结论：`FREEZE`；三份合同结构已标记 `FROZEN`，医学内容继续受独立 production gate 约束
 
 ## 1. Owner 不变项
 
@@ -58,14 +58,14 @@
 
 当前结果：`PASS`。
 
-## 5. 仍需完成的 Freeze Gate
+## 5. 冻结后的独立 Gate
 
-这些不是合同结构缺陷，但在正式把状态改为 `FROZEN` 前不能跳过：
+以下事项不再阻止合同结构冻结，但仍严格限制后续实现和 production：
 
-1. **Medical final signoff**：最终10题 Questionnaire Manifest、Claim Dictionary、Organ Mapping阈值/组合规则、五行五音映射与 Knowledge Manifest 需要 Medical Knowledge Engineer 审核并标记 approved/checksum。
-2. **Client final signoff**：确认新增 Music Goal、guest bootstrap、Safety resolved/mental/acute 与保守音乐 Read Model 可直接实现，不读取 SERVER_INTERNAL。
-3. **AI/Backend executable gate（冻结后第一项）**：Contract 标记 `FROZEN` 并合并后，第一批实现建立最小 Contract fixtures / Schema validation / migration skeleton；它不属于冻结前置条件，也不得在冻结前提前开始业务代码。
-4. Medical、Client 结论和 Owner 决定必须记录在 PR #75；在此之前三份文档继续保持 `PROPOSED_FOR_FINAL_REVIEW`。AI/Backend 代理审查只记录技术结论，不冒用成员签名。
+1. **Medical production content gate**：最终10题 Questionnaire Manifest、Claim Dictionary、Organ Mapping阈值/组合规则、五行五音映射与 Knowledge Manifest 必须由 Medical Knowledge Engineer 审核并标记 approved/checksum。未通过时 API/RAG/Assessment/Diagnosis/Prescription 不得加载示例、Mock或旧V2医学资产。
+2. **Client member acknowledgement**：Owner-authorized Client proxy technical review 已通过且无已知 P0/P1；彭翔的个人确认仍保留为可追溯团队记录，但不再阻止结构合同冻结。
+3. **AI/Backend executable gate（冻结后第一项）**：PR #75 合并后，第一批实现建立最小 Contract fixtures、Schema validation 与 migration foundation，再开始上层业务实现。
+4. 所有 proxy review 都必须明确标注代理性质，不冒用成员签名；医学内容只能由 Medical Knowledge Engineer 批准。
 
 ## 6. Final Decision
 
@@ -74,10 +74,12 @@ STRUCTURAL P0 BLOCKERS: 0
 OWNER FLOW CONFLICTS: 0
 CONTRACT CONSISTENCY: PASS
 MEDICAL PRODUCTION ARTIFACTS: PENDING FINAL SIGNOFF
-CLIENT FINAL SIGNOFF: PENDING
+MEDICAL CONTRACT SHAPE: PASS (OWNER-AUTHORIZED PROXY)
+CLIENT TECHNICAL REVIEW: PASS (OWNER-AUTHORIZED PROXY)
 
-FINAL DECISION: READY_FOR_FINAL_SIGNOFF
-FROZEN: NO
+FINAL DECISION: FREEZE
+FROZEN: YES
+MEDICAL PRODUCTION CONTENT: DISABLED UNTIL APPROVED
 ```
 
-下一步不是让五个人直接写业务代码。先提交本轮合同修订，在 PR #75 上完成 Medical / Client final signoff；同时由 Owner 准备可执行 Contract Gate。签署完成后再把合同状态改为 `FROZEN`，随后启动 Sprint5 第一批开发。
+下一步先提交并验证本轮冻结修订，再由 Owner 处理 PR #75。合并后只启动不依赖具体医学内容的 executable Schema、Auth、Migration 与 Provider foundation；Issue #77 继续完成医学资产，获批前不得启用 production 医学链路。
