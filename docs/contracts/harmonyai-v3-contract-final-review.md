@@ -43,6 +43,8 @@
 | FR-P0-05 | V3 禁止固定 user_id，但没有可执行游客启动 | 增加 guest bootstrap、Auth Context 与客户端 token 边界 | `CLOSED` |
 | FR-P0-06 | Fact Revision 文案一处创建新逻辑ID、一处要求稳定ID | 统一为逻辑ID稳定、物理row新增、supersedes row链 | `CLOSED` |
 | FR-P0-07 | SafetySupport 使用不存在的 `blocked` enum | 改为 mental / acute 两种真实状态；acute 不提供安抚音频 | `CLOSED` |
+| FR-P1-08 | `other` 作为次要音乐目标时自填约束不一致 | 统一为主目标或次要目标选择 `other` 都必须填写，未选时必须为 `null` | `CLOSED` |
+| FR-P1-09 | 个人页“重置偏好”动作缺少调用落点 | Read Model 明确 `POST /api/v3/me/preferences/reset` | `CLOSED` |
 
 ## 4. 自动一致性检查
 
@@ -62,8 +64,8 @@
 
 1. **Medical final signoff**：最终10题 Questionnaire Manifest、Claim Dictionary、Organ Mapping阈值/组合规则、五行五音映射与 Knowledge Manifest 需要 Medical Knowledge Engineer 审核并标记 approved/checksum。
 2. **Client final signoff**：确认新增 Music Goal、guest bootstrap、Safety resolved/mental/acute 与保守音乐 Read Model 可直接实现，不读取 SERVER_INTERNAL。
-3. **AI/Backend executable gate**：建立最小 Contract fixtures / Schema validation / migration skeleton 后，验证字段与状态可以落地；这是实现前第一批任务，不等于开始完整业务功能。
-4. 四方结论和 Owner 决定必须记录在 PR #75；在此之前三份文档继续保持 `PROPOSED_FOR_FINAL_REVIEW`。
+3. **AI/Backend executable gate（冻结后第一项）**：Contract 标记 `FROZEN` 并合并后，第一批实现建立最小 Contract fixtures / Schema validation / migration skeleton；它不属于冻结前置条件，也不得在冻结前提前开始业务代码。
+4. Medical、Client 结论和 Owner 决定必须记录在 PR #75；在此之前三份文档继续保持 `PROPOSED_FOR_FINAL_REVIEW`。AI/Backend 代理审查只记录技术结论，不冒用成员签名。
 
 ## 6. Final Decision
 

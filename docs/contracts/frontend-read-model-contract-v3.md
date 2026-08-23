@@ -405,7 +405,7 @@ Safety Verification 必须提交 `expected_revision + resolution`。普通确认
   "actions":[
     {"id":"history","label":"生成记录","style":"secondary","enabled":true},
     {"id":"favorites","label":"我的收藏","style":"secondary","enabled":true},
-    {"id":"reset_preferences","label":"重置音乐偏好","style":"link","enabled":true}
+    {"id":"reset_preferences","label":"重置音乐偏好","style":"link","enabled":true,"endpoint":"/api/v3/me/preferences/reset","method":"POST"}
   ]
 }
 ```
