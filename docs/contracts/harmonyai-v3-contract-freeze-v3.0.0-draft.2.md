@@ -1,5 +1,7 @@
 # HarmonyAI V3 Contract Freeze — v3.0.0-draft.2
 
+> **SUPERSEDED**：本文件已由 `harmonyai-v3-contract-freeze-v3.0.0-draft.3.md` 的 FROZEN 合同取代，仅保留历史参考；不得作为 Sprint 5 实现依据。
+
 > API：`/api/v3`
 > 基线：`origin/integration/sprint4-real-input@709e4decef4e7c77ed55f5e548eec7809fc6a281`
 > 状态：`PROPOSED_FOR_FREEZE`

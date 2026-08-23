@@ -421,3 +421,12 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 本机 Full 684/689；5 个非本次 Safety 失败来自已安装 PaddleOCR 与其顶层 `tools` 包导入污染，已明确记录，待 CI 的干净环境验证。
 - Formal60 `NOT_RUN`；MySQL `PASS`；OCR/Android 人工 Gate 仍 PENDING。
 - NEXT_ACTION：PR Review + CI，保持未合并；不得开始 Sprint 5 或重新优化 emotion_f1。
+
+### Sprint 5 V3 合同冻结准备（2026-08-24）
+
+- 基线：`origin/integration/sprint4-real-input@08ac591c58edb611c784f673edf61b134b9aedbb`。
+- PR #75：分支 `docs/sprint5-v3-contract-draft3`，包含计划检查点 `ad01157b9ccaff4b56306cee1d8110995debb176`；该检查点 CI PASS、PR MERGEABLE。
+- draft.3 已统一五 Agent 边界、Understanding、Evidence、Auth/Persistence、Frontend Read Model、Safety、Diagnosis abstain 保守音乐和 Music Provider 接口；结构性 P0=0。
+- Owner 已确认双门禁：三份合同结构在 PR #75 分支标记为 `FROZEN`，医学 production 内容仍未批准且保持禁用；proxy review 不冒充成员签字。
+- Milestone `Sprint 5 - HarmonyAI V3` 与 #76～#81 已建立；PR #75 合并后可启动 executable Schema、Auth/Migration、Provider与Frontend shell，医学链路继续受 #77 阻塞。
+- 实施计划：`docs/superpowers/plans/2026-08-24-harmonyai-v3-sprint5.md`。不得用示例、Mock或V2映射绕过医学 content gate，也不得重设计 Owner 流程。
