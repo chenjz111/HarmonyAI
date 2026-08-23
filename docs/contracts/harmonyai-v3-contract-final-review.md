@@ -1,9 +1,9 @@
 # HarmonyAI V3 Contract Final Review
 
-> Review 日期：2026-08-24  
-> 基线：`origin/integration/sprint4-real-input@08ac591c58edb611c784f673edf61b134b9aedbb`  
-> 被审合同：`harmonyai-v3-contract-freeze-v3.0.0-draft.3.md`、`frontend-read-model-contract-v3.md`、`harmonyai-v3-persistence-contract.md`  
-> Review 角色：陈家智（Project Leader & AI Architect）架构收口；Backend / AI 为 Owner 已授权的 Codex 临时代审，不冒用成员签名  
+> Review 日期：2026-08-24
+> 基线：`origin/integration/sprint4-real-input@08ac591c58edb611c784f673edf61b134b9aedbb`
+> 被审合同：`harmonyai-v3-contract-freeze-v3.0.0-draft.3.md`、`frontend-read-model-contract-v3.md`、`harmonyai-v3-persistence-contract.md`
+> Review 角色：陈家智（Project Leader & AI Architect）架构收口；Backend / AI 为 Owner 已授权的 Codex 临时代审，不冒用成员签名
 > 结论：`STRUCTURAL_CONTRACT_READY_FOR_SIGNOFF`，尚未标记 `FROZEN`
 
 ## 1. Owner 不变项
