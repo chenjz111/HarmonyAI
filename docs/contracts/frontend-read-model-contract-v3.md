@@ -48,6 +48,19 @@ type PageState = "idle" | "loading" | "ready" | "empty" | "degraded" | "failed";
 ```
 
 字段命名在 JSON 中保持 snake_case。TypeScript 示例只表达类型，不授权前端构造后端对象。`target_id` 必须由后端生成且只用于提交，不得直接显示。
+
+应用启动且无有效身份时先调用 `POST /api/v3/auth/guest`：
+
+```json
+{
+  "access_token":"opaque-or-signed-token",
+  "token_type":"Bearer",
+  "expires_at":"2026-08-23T08:00:00Z",
+  "public_user_id":"u_guest_xxx"
+}
+```
+
+该结果不是页面 Read Model。`access_token` 只能放入安全客户端存储并作为 Bearer token 发送，不得显示、写普通日志或放入 URL；随后才能创建业务 Session。过期/无效 token 走 `UNAUTHENTICATED`，不得回退固定 `user_id`。
 ## 3. Start / Input Flow
 
 ### 3.1 EntryReadModel
@@ -131,6 +144,28 @@ type PageState = "idle" | "loading" | "ready" | "empty" | "degraded" | "failed";
 ```
 
 ASR unavailable 时 `voice_input.status=unavailable` 并保留文字输入；不得把“已输入但AI暂不可用”显示成“未提供”。
+
+### 5.1 Music Goal Read Model
+
+沿用已经批准并在 Sprint 4 验收通过的音乐目标步骤；V3 只是把它从医学10题问卷中分离，不改变“最多两个目标、一个主要一个次要、其他可填写”的交互。
+
+```json
+{
+  "page":"music_goal",
+  "title":"这一次，你最希望音乐优先帮助你改善什么？",
+  "max_selections":2,
+  "options":[
+    {"value":"sleep","label":"帮助入睡"},
+    {"value":"relaxation","label":"放松紧张"},
+    {"value":"other","label":"其他，我想自己填写"}
+  ],
+  "value":{"primary_goal":"sleep","secondary_goal":"relaxation","custom_goal_text":null},
+  "custom_input":{"visible_when":"other_selected","max_length":200},
+  "actions":[{"id":"continue","label":"继续","style":"primary","enabled":true}]
+}
+```
+
+选择第一个目标为主要目标，第二个为次要目标；再次点击可取消。主要与次要不得相同，最多两个；选择 `other` 时 custom text 必填。该页面只采集 `UserGoal`，不产生医学 Evidence、不改变 Safety，也不是额外确认页。
 
 ## 6. QuestionnaireReadModel
 
@@ -246,13 +281,15 @@ confirmed risk 使用独立 SafetySupportReadModel：
 ```json
 {
   "page":"safety_support",
-  "safety_status":"blocked",
+  "safety_status":"confirmed_mental_health_risk",
   "title":"请先获得现实中的支持",
   "message":"当前不会提供个性化音乐服务。",
   "help_actions":[{"id":"contact_help","label":"获取帮助","style":"primary","enabled":true}],
   "comfort_audio":{"available":true,"label":"播放安抚音频","disclaimer":"安抚音频不能替代专业帮助。"}
 }
 ```
+
+急性身体风险使用同一判别 Read Model，但 `safety_status=confirmed_acute_physical_risk`、`comfort_audio.available=false`，并显示紧急医疗帮助优先操作。`resolved` 返回正常音乐轨，不显示 Safety Support。
 
 Safety Verification 必须提交 `expected_revision + resolution`。普通确认不得解除 safety；confirmed risk 页面只使用“安全支持”“安抚音频”“获取帮助”等措辞，不得称为音乐处方或治疗。Safety Support 主操作优先于可选安抚音频。
 ## 10. Diagnosis / Generation Basis
@@ -319,7 +356,7 @@ Safety Verification 必须提交 `expected_revision + resolution`。普通确认
 }
 ```
 
-缺失 `stream_url`、Safety blocked、Diagnosis abstained、Prescription withheld 时不得由前端自行构造处方或请求生成。
+缺失 `stream_url`、Safety 非 `clear | resolved` 或 Prescription withheld 时，不得由前端自行构造处方或请求生成。Diagnosis abstained 由后端 Agent 3 决定是否进入 `emotion_based/wellness`；若后端返回有效 fallback Prescription 与 Music Asset，前端正常播放，但不得伪装成辨证音乐。
 
 ## 13. FeedbackReadModel
 
@@ -406,7 +443,7 @@ Safety Verification 必须提交 `expected_revision + resolution`。普通确认
 | `REVISION_CONFLICT` | 内容已更新，请刷新后再确认 | 刷新 |
 | `SAFETY_BLOCKED` | 当前不会提供个性化音乐服务 | 进入安全支持 |
 | `INSUFFICIENT_EVIDENCE` | 还需要补充少量信息 | 返回补充/保守非诊断路径 |
-| `DIAGNOSIS_ABSTAINED` | 当前信息不足以形成辨证倾向，不会生成个性化音乐 | 返回补充信息 |
+| `DIAGNOSIS_ABSTAINED` | 当前没有形成明确辨证倾向，将使用较保守的音乐方式 | 等待/展示后端 `emotion_based` 或 `wellness` 结果；仅真实无数据时返回补充 |
 | `PRESCRIPTION_WITHHELD` | 当前不会提供个性化音乐建议 | 返回支持页 |
 | `PROVIDER_AUTH_FAILED` | 智能分析服务暂时不可用 | 使用降级结果/稍后重试 |
 | `PROVIDER_RATE_LIMITED` | 当前请求较多，请稍后重试 | 重试 |

@@ -129,18 +129,20 @@
 | `confirmed_at` | timestamp nullable | 仅确认后有值 |
 | `created_at` | timestamp | NOT NULL |
 
-唯一：`(understanding_id,revision)`。Revision 行不可 UPDATE；状态变化通过创建下一 Revision 或受控 confirmation fields 完成。
+唯一：`(understanding_id,revision)`。Revision 行不可 UPDATE；包括 confirmation 在内的状态变化都必须创建下一 Revision，禁止原地修改“受控字段”。
 
 ### 4.4 `normalized_facts`
 
-每个 Understanding Revision 必须物化完整事实快照；不能只存增量后依赖应用层回放。
+每个来源 owner 的 Revision/Snapshot 必须物化完整事实；不能只存增量后依赖应用层回放。Understanding 来源使用不可变 Understanding Revision；确定性问卷来源使用不可变 Questionnaire Submission。
 
 | 列 | 类型 | 约束 |
 |---|---|---|
 | `fact_row_id` | ID | PK，数据库行身份 |
 | `fact_id` | ID | NOT NULL，跨 revision 稳定的逻辑事实 ID |
-| `understanding_id` | FK | NOT NULL |
-| `understanding_revision` | integer | NOT NULL，复合FK |
+| `owner_type` | string | understanding/questionnaire |
+| `understanding_id` | FK nullable | owner_type=understanding 时必填 |
+| `understanding_revision` | integer nullable | 与 understanding_id 组成复合FK |
+| `questionnaire_submission_id` | FK nullable | owner_type=questionnaire 时必填 |
 | `fact_code/category` | string | NOT NULL |
 | `display_name` | string | NOT NULL |
 | `value_json` | JSON | NOT NULL，判别联合验证 |
@@ -148,19 +150,20 @@
 | `negated` | boolean | NOT NULL |
 | `subject` | string | self/other/unknown |
 | `confirmation_status` | string | confirmed/unconfirmed/rejected |
-| `extraction_method` | string | qwen/rule/user_correction |
+| `extraction_method` | string | qwen/rule/user_correction/deterministic_questionnaire_mapping |
 | `extraction_confidence` | score nullable | 非医学准确率 |
 | `supersedes_fact_row_id` | FK nullable | 指向上一 revision 的行；修正链 |
 | `created_at` | timestamp | NOT NULL |
 
-唯一：`(understanding_id,understanding_revision,fact_id)`。索引：`(understanding_id,understanding_revision,confirmation_status)`。新 revision 复制未变化事实并为全部行生成新的 `fact_row_id`；变化事实保留同一逻辑 `fact_id`。
+CHECK 必须保证两种 owner 二选一：`understanding` 要求 Understanding 两列非空且 questionnaire 为空；`questionnaire` 要求 questionnaire 非空且 Understanding 两列为空。唯一：`(understanding_id,understanding_revision,fact_id)`（Understanding owner）与 `(questionnaire_submission_id,fact_id)`（Questionnaire owner）。索引：`(understanding_id,understanding_revision,confirmation_status)`、`(questionnaire_submission_id)`。新 Understanding revision 复制未变化事实并为全部行生成新的 `fact_row_id`；变化事实保留同一逻辑 `fact_id`。Questionnaire Fact 不创建伪 Understanding revision。
 
 ### 4.5 `fact_source_refs`
 
 | 列 | 类型 | 约束 |
 |---|---|---|
 | `fact_row_id` | FK | PK part → normalized_facts.fact_row_id |
-| `source_id` | FK | PK part |
+| `source_type` | string | PK part；Canonical SourceType |
+| `source_id` | ID | PK part；多态资源ID，不声明跨表FK |
 | `span_ref` | string nullable | 不保存原文 |
 | `created_at` | timestamp | NOT NULL |
 
@@ -188,16 +191,15 @@
 | `internal_user_pk` | FK | NOT NULL |
 | `session_row_id` | FK | NOT NULL |
 | `understanding_id` | FK | NOT NULL |
-| `understanding_revision` | integer | NOT NULL |
+| `understanding_revision` | integer | NOT NULL，读取已确认Snapshot |
+| `questionnaire_submission_id` | FK nullable | → questionnaire_submissions_v3 |
 | `current_revision` | integer | NOT NULL |
 | `status` | string | needs_confirmation/confirmed/degraded/withheld |
-| `safety_status` | string | NOT NULL |
-| `questionnaire_schema_version` | string nullable | V3为 3.0.0 |
-| `questionnaire_submission_json` | JSON nullable | 完整提交快照；按QuestionnaireV3Submission验证 |
+| `safety_status` | string | NOT NULL；CHECK为主合同SafetyStatus |
 | `user_goal_json` | JSON | NOT NULL |
 | `created_at/updated_at` | timestamp | NOT NULL |
 
-唯一：`(session_row_id,assessment_id)`。索引：`(internal_user_pk,created_at DESC)`、`(session_row_id,status)`。
+Assessment 不复制问卷 answers；通过 `questionnaire_submission_id` 引用已按 schema identity/checksum 保存的不可变 Submission。唯一：`(session_row_id,assessment_id)`。索引：`(internal_user_pk,created_at DESC)`、`(session_row_id,status)`。
 
 ### 5.2 `assessment_revisions_v3`
 
@@ -606,4 +608,6 @@
 - [ ] History由权威表查询，不重复存储。
 - [ ] versioned SQL migration ledger 在 SQLite/MySQL 上验证同等约束语义。
 - [ ] V3路由不硬编码用户ID，所有查询验证ownership。
+- [ ] 游客 bootstrap 原子创建 user/identity，token过期后不能继续访问，Session只从Auth Context取用户。
+- [ ] NormalizedFact owner二选一约束覆盖Understanding与Questionnaire，问卷不伪造Understanding revision。
 - [ ] 原文、Prompt、Key、原始异常不进入普通日志。
