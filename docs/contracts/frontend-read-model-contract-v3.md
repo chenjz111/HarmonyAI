@@ -1,7 +1,7 @@
 # HarmonyAI V3 Frontend Read Model Contract
 
 > 版本：`3.0.0-draft.3`
-> 状态：`PROPOSED_FOR_FINAL_REVIEW`
+> 状态：`FROZEN`
 > 权威主合同：`harmonyai-v3-contract-freeze-v3.0.0-draft.3.md`
 > 目标：保证 Client Engineer 只依赖稳定 Read Model 完成全部 V3 页面，不读取 Agent 内部对象。
 
@@ -440,6 +440,7 @@ Safety Verification 必须提交 `expected_revision + resolution`。普通确认
 | `OCR_UNAVAILABLE` | 材料识别暂时不可用，可改为文字描述 | 跳过/重试 |
 | `ASR_UNAVAILABLE` | 语音识别暂时不可用，可直接输入文字 | 切换文字 |
 | `QUESTIONNAIRE_SCHEMA_STALE` | 问卷已更新，请刷新后重新填写 | 刷新问卷 |
+| `MEDICAL_ASSET_UNAVAILABLE` | 医学内容尚未就绪，当前不能完成正式状态评估 | 稍后重试/返回 |
 | `REVISION_CONFLICT` | 内容已更新，请刷新后再确认 | 刷新 |
 | `SAFETY_BLOCKED` | 当前不会提供个性化音乐服务 | 进入安全支持 |
 | `INSUFFICIENT_EVIDENCE` | 还需要补充少量信息 | 返回补充/保守非诊断路径 |

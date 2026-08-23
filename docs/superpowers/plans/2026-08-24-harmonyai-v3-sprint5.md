@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 本计划只有在 PR #75 合并且三份合同状态改为 `FROZEN` 后才允许执行业务实现步骤。
+- 本计划只有在 PR #75 合并且三份合同状态改为 `FROZEN` 后才允许执行业务实现步骤；具体医学资产仍受独立 production gate 约束，未批准时只能使用明确标记的测试 fixture 验证结构，不能启用正式医学链路。
 - 五 Agent 名称与顺序固定：Assessment → Diagnosis → Prescription → Music → Feedback。
 - 不改变 Owner 已批准流程；普通用户只经历一次最终 Assessment Confirmation。
 - V3 使用新10题五脏问卷；V2 Q19/Q20 不进入 V3 普通流程，但后端 Safety 能力保留。
@@ -71,11 +71,11 @@
 
 **Interfaces:**
 - Produces: strict Pydantic types with `extra="forbid"`, including `SafetyStatus`, `NormalizedFactValue`, `OrganProfile`, `ToneProfile`, `MusicRef`, `UserGoal`, all Agent request/response types.
-- Consumes: PR #75 FROZEN contracts and approved `knowledge/v3` checksums.
+- Consumes: PR #75 FROZEN contracts。approved `knowledge/v3` checksums 是 Task 3 及其上层医学链路的依赖，不是可执行 Schema 的依赖。
 
-- [ ] **Step 1: Record final signoffs and freeze the documents**
+- [ ] **Step 1: Verify the double-gate freeze checkpoint**
 
-Verify PR #75 contains final Medical and Client signoff comments. Owner records that the previously authorized AI/Backend proxy reviews are closed without impersonating the corresponding members. Change all three contract headers to `FROZEN` in one documentation commit; do not change field names in this step.
+Verify PR #75 records the Owner double-gate decision and that all three contract headers are `FROZEN`. Confirm proxy technical reviews are labelled as proxy and do not impersonate members or approve clinical content. Confirm Issue #77 remains open and unapproved medical assets remain blocked from production. Do not change frozen field names in this step.
 
 - [ ] **Step 2: Write failing Canonical type tests**
 
@@ -559,7 +559,7 @@ feat: converge HarmonyAI V3 five-agent workflow
 
 - [ ] **Step 1: Merge in dependency order**
 
-Order: executable Schemas → Auth/Migrations/Medical Manifests → Understanding/Assessment → Diagnosis/RAG → Prescription/Music → Feedback/Profile → Frontend → Workflow convergence. Use normal merge commits; do not squash shared implementation history unless Owner explicitly changes policy.
+Order: executable Schemas → Auth/Migrations；Medical Manifests parallel；Understanding Provider与Frontend shell可并行准备 → approved Manifests后再接通Assessment/Diagnosis/RAG → Prescription/Music → Feedback/Profile → Frontend convergence → Workflow convergence。Use normal merge commits; do not squash shared implementation history unless Owner explicitly changes policy.
 
 - [ ] **Step 2: Run one final automated gate**
 
@@ -587,9 +587,9 @@ Only after Owner review may integration merge to dev. Main/tag/release require a
 
 | Issue | Planned PR sequence | Start gate |
 |---|---|---|
-| #76 Owner Contract Freeze | PR #75 + executable Schema PR | Medical/Client final signoff |
-| #77 Medical Assets | Medical Manifest PR | PR #75 field structure accepted |
-| #78 AI | Understanding/Assessment PR → Diagnosis/RAG PR | Contract FROZEN + approved manifests |
+| #76 Owner Contract Freeze | PR #75 + executable Schema PR | Owner双门禁决定 + PR Final Gate |
+| #77 Medical Assets | Medical Manifest PR | Contract结构FROZEN；production医学链路仍blocked |
+| #78 AI | Understanding Provider foundation → Assessment/Diagnosis/RAG PR | foundation需Contract FROZEN；医学链路需approved manifests |
 | #79 Backend | Auth/Migration PR → Music/Feedback platform PR | Contract FROZEN |
 | #80 Frontend | V3 flow PR | corresponding APIs stable in integration |
 | #81 Owner Integration | Workflow convergence PR → acceptance docs PR | #77-#80 integrated |

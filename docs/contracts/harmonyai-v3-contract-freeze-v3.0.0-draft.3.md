@@ -2,7 +2,7 @@
 
 > API：`/api/v3`
 > 基线：`origin/integration/sprint4-real-input@08ac591c58edb611c784f673edf61b134b9aedbb`
-> 状态：`PROPOSED_FOR_FINAL_REVIEW`
+> 状态：`FROZEN`
 > 输入：draft.2、首次 Contract Review、PR #74 医学/前端审查、Owner 授权的 Backend/AI 临时代审
 > 配套：`frontend-read-model-contract-v3.md`、`harmonyai-v3-persistence-contract.md`
 > 本合同仅用于辅助音乐调养系统，不构成医学诊断或治疗建议。
@@ -23,7 +23,7 @@
 | BF-10 身份/持久化未冻结 | 配套Persistence Contract冻结AuthPrincipal、V2 PK兼容、Revision Snapshot、事务与Migration |
 | 问卷提交/渲染不一致 | 冻结 `QuestionnaireSchemaV3`、判别联合答案、`QuestionnaireFactAdapter` 与 Schema API；医学题目内容使用独立签名 Manifest |
 | 7天/14天冲突 | V3统一为 `past_7_days` / `time_window_days=7`；不重写V2时间窗 |
-| Claim Dictionary缺失 | 冻结 `ClaimDictionaryV3` 格式、引用与版本规则；最终医学条目必须由 Medical Review批准后才能标记FROZEN |
+| Claim Dictionary缺失 | 冻结 `ClaimDictionaryV3` 格式、引用与版本规则；最终医学条目必须由 Medical Review 批准后才能启用 production，不作为结构合同冻结的前置条件 |
 | RAG不可复现 | 新增 KnowledgeChunk、Ingestion Manifest、Embedding/Index版本、审核过滤和分数语义 |
 | Diagnosis状态歧义 | 新增 Provider完整Schema及 `success/degraded/abstained/withheld/failed` 判别约束 |
 | API/幂等/事务未闭合 | 冻结Idempotency-Key、恢复查询、上传/取消/流接口及Feedback两阶段事务语义 |
@@ -162,7 +162,7 @@ V3 比赛版在没有完整注册系统时使用最小游客启动合同。客�
 }
 ```
 
-`answer_type`只允许 `multi_choice_evidence | single_choice_evidence | frequency_0_4`。发布Manifest必须恰好10题、ID为q01..q10且唯一；所有非none选项必须引用同版本Claim Dictionary。`none`与同题所有其他选项互斥。题目文案、选项和医学映射只有 `review_status=approved` 才可由 `GET /api/v3/questionnaire/schema` 返回。Draft.3不替医学负责人创造题目内容；上方题目/选项仅演示Schema形状，不是生产医学内容。最终Freeze必须附上已批准Manifest及checksum。所有示例 claim、mapping rule、threshold 同样不代表医学批准。
+`answer_type`只允许 `multi_choice_evidence | single_choice_evidence | frequency_0_4`。发布Manifest必须恰好10题、ID为q01..q10且唯一；所有非none选项必须引用同版本Claim Dictionary。`none`与同题所有其他选项互斥。题目文案、选项和医学映射只有 `review_status=approved` 才可由 `GET /api/v3/questionnaire/schema` 返回。本合同冻结 Schema、引用和审核门禁，不替医学负责人创造或批准题目内容；上方题目/选项仅演示Schema形状，不是生产医学内容。production 启用必须附上已批准 Manifest 及 checksum；任一必需资产缺失、未批准或 checksum 不匹配时，API 必须返回 `MEDICAL_ASSET_UNAVAILABLE`。所有示例 claim、mapping rule、threshold 同样不代表医学批准。
 
 `QuestionnaireV3Submission`：
 
@@ -1146,13 +1146,13 @@ Feedback采用明确的两阶段语义：
 
 所有资源查询先按AuthPrincipal限制user scope。未认证401；跨用户资源统一404；本用户无权执行的动作403。客户端提交user_id不参与授权。
 
-稳定错误至少包括：`UNAUTHENTICATED`、`FORBIDDEN`、`RESOURCE_NOT_FOUND`、`REVISION_CONFLICT`、`IDEMPOTENCY_KEY_REQUIRED`、`IDEMPOTENCY_KEY_REUSED`、`QUESTIONNAIRE_SCHEMA_STALE`、`CLAIM_DICTIONARY_UNAVAILABLE`、`SAFETY_BLOCKED`、`INSUFFICIENT_EVIDENCE`、`RAG_UNAVAILABLE`、`PROVIDER_NOT_CONFIGURED`、`PROVIDER_AUTH_FAILED`、`PROVIDER_RATE_LIMITED`、`PROVIDER_TIMEOUT`、`MODEL_SCHEMA_INVALID`、`PREFERENCE_VERSION_CONFLICT`和`NO_PLAYABLE_ASSET`。Provider原始错误不得进入客户端。
+稳定错误至少包括：`UNAUTHENTICATED`、`FORBIDDEN`、`RESOURCE_NOT_FOUND`、`REVISION_CONFLICT`、`IDEMPOTENCY_KEY_REQUIRED`、`IDEMPOTENCY_KEY_REUSED`、`QUESTIONNAIRE_SCHEMA_STALE`、`CLAIM_DICTIONARY_UNAVAILABLE`、`MEDICAL_ASSET_UNAVAILABLE`、`SAFETY_BLOCKED`、`INSUFFICIENT_EVIDENCE`、`RAG_UNAVAILABLE`、`PROVIDER_NOT_CONFIGURED`、`PROVIDER_AUTH_FAILED`、`PROVIDER_RATE_LIMITED`、`PROVIDER_TIMEOUT`、`MODEL_SCHEMA_INVALID`、`PREFERENCE_VERSION_CONFLICT`和`NO_PLAYABLE_ASSET`。Provider原始错误不得进入客户端。
 
 所有 `user_id` 来自Auth Context；V3 production contract禁止硬编码 `user_id=1`。
 
 # 10. V3 AI Acceptance Contract
 
-Final Freeze前必须建立固定、版本化的V3 fixtures、Mock Provider响应和审核知识测试集。Contract Gate至少覆盖：
+结构合同 Freeze 后，第一批实现必须建立固定、版本化的 V3 fixtures、Mock Provider 响应和审核知识测试集；相关功能 PR 进入 integration 前必须通过以下 Contract Gate：
 
 - Questionnaire Schema/Submission/FactAdapter，包括none互斥、stale checksum和10题完整性；
 - OCR/Narrative/ASR中的否定、subject、past_7_days、用户修正和跨来源去重；
@@ -1166,10 +1166,20 @@ Final Freeze前必须建立固定、版本化的V3 fixtures、Mock Provider响�
 最低Gate：Schema validity=100%；invalid Evidence/Chunk reference=0；unsupported claim=0；所有Safety invariant=100%；所有失败矩阵路径与期望status一致。质量指标另外记录grounded claim rate、abstain correctness、retrieval recall@k和fallback rate。Sprint4 emotion_f1不得作为V3唯一验收Gate。
 # 11. Freeze Gate
 
-- [ ] Owner 确认流程、Fallback 与用户措辞。
-- [ ] Medical Knowledge Engineer 确认 Claim Dictionary、Organ Link、聚合阈值和五行五音映射。
-- [ ] AI Engineering Lead 确认 Understanding、RAG、Provider、Schema repair 可实现。
-- [ ] Backend Platform Engineer 确认 Persistence、事务、迁移和 Auth ownership。
-- [ ] Client Engineer 确认 Frontend Read Model 足够，页面不读取 SERVER_INTERNAL。
-- [ ] 三份合同字段、状态和版本一致。
-- [ ] Final Freeze Review 结论为 `FREEZE` 后，本文状态才能改为 `FROZEN`。
+## 11.1 Contract Structure Freeze
+
+- [x] Owner 确认流程、Fallback 与用户措辞。
+- [x] Owner-authorized Medical contract-shape proxy review 确认 Claim、Organ Link、阈值、版本和审核门禁结构完整；不代表临床内容获批。
+- [x] Owner-authorized AI proxy review 确认 Understanding、RAG、Provider、Schema repair 可实现。
+- [x] Owner-authorized Backend proxy review 确认 Persistence、事务、迁移和 Auth ownership 可实现。
+- [x] Owner-authorized Client proxy review 确认 Frontend Read Model 足够，页面不读取 SERVER_INTERNAL。
+- [x] 三份合同字段、状态和版本一致。
+- [x] Final Freeze Review 结论为 `FREEZE`。
+
+## 11.2 Medical Production Content Gate
+
+- [ ] Medical Knowledge Engineer 批准最终10题 Questionnaire Manifest。
+- [ ] Medical Knowledge Engineer 批准 Claim Dictionary、Organ Mapping、Five-Tone Mapping 与 Knowledge Manifest。
+- [ ] 五份资产的 `review_status=approved`、source references、版本与 checksum 校验通过。
+
+11.2 未完成不撤销本合同的结构冻结，但必须阻止这些医学资产进入 production API、RAG、Assessment、Diagnosis 和 Prescription；不得用示例、Mock 或旧 V2 映射绕过。

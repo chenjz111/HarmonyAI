@@ -1,7 +1,7 @@
 # HarmonyAI V3 Persistence Contract
 
 > 版本：`3.0.0-draft.3`
-> 状态：`PROPOSED_FOR_FINAL_REVIEW`
+> 状态：`FROZEN`
 > 权威主合同：`harmonyai-v3-contract-freeze-v3.0.0-draft.3.md`
 > 目标数据库：SQLite（开发/测试）与 MySQL（部署）语义一致。
 
