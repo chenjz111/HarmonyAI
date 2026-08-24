@@ -11,6 +11,7 @@ from backend.app.models.assessment_evidence import AssessmentEvidence
 from backend.app.models.assessment_followup import AssessmentFollowUp
 from backend.app.models.assessment_revision import AssessmentRevision
 from backend.app.models.document import Document
+from backend.app.models.session import Session as SessionModel
 
 
 SPRINT4_TABLES = (
@@ -25,6 +26,7 @@ DOCUMENT_EXTENSION_COLUMNS = (
     "ocr_result_json",
     "ocr_processing_time_ms",
 )
+SESSION_EXTENSION_COLUMNS = ("input_mode",)
 
 
 def _required_columns() -> dict[str, set[str]]:
@@ -33,6 +35,7 @@ def _required_columns() -> dict[str, set[str]]:
         for table in SPRINT4_TABLES
     }
     required[Document.__tablename__] = set(DOCUMENT_EXTENSION_COLUMNS)
+    required[SessionModel.__tablename__] = set(SESSION_EXTENSION_COLUMNS)
     return required
 
 
@@ -77,12 +80,12 @@ def apply_sprint4_migrations(engine: Engine) -> dict[str, object]:
         existing = set(inspector.get_table_names())
         table_by_name = {
             table.name: table
-            for table in (*SPRINT4_TABLES, Document.__table__)
+            for table in (*SPRINT4_TABLES, Document.__table__, SessionModel.__table__)
         }
         for table_name, required in _required_columns().items():
             if table_name not in existing:
-                if table_name == Document.__tablename__:
-                    Document.__table__.create(connection, checkfirst=True)
+                if table_name in {Document.__tablename__, SessionModel.__tablename__}:
+                    table_by_name[table_name].create(connection, checkfirst=True)
                 continue
             present = {
                 column["name"]

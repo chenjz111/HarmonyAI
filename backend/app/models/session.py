@@ -23,6 +23,11 @@ class Session(Base):
     flow_version = Column(
         String(16), nullable=True, comment="V3 writes v3; V2 rows may be null"
     )
+    input_mode = Column(
+        String(16),
+        nullable=True,
+        comment="V3 entry choice persisted: with_document / without_document",
+    )
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
