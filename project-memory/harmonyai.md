@@ -439,3 +439,11 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 当前验证：V3 + targeted V2 21/21 PASS；Contract 64/64 PASS；compileall PASS；PR #83 CI SUCCESS。3 个旧 OCR API 用例在安装 PaddleOCR 的本机基线同样失败，不归因于 Sprint5 foundation。
 - #77 医学门禁仍 OPEN；禁止用示例问卷/Claim/Organ/Five-Tone 内容启用 production Assessment/Diagnosis/Prescription。
 - NEXT_ACTION：推进不依赖 #77 的 Provider interface/factory/health/mock foundation 与 #81 Owner acceptance matrix；最终业务集成继续等待 #77～#80。
+### Sprint 5 Provider foundation 与 Owner acceptance matrix（2026-08-24）
+
+- 权威 integration HEAD：`cef9d2660beb1f9ab6a6f677718d4854aa548288`。
+- PR #85 merged（`fca4a7171ddb57a76f3ec84f11e715d058c25e07`）：V3 Understanding Provider interface/Qwen adapter/fallback/repair/Claim gate/safe logging。Targeted `17/17`，兼容集合 `59/59`，CI SUCCESS。
+- PR #86 merged（`cef9d2660beb1f9ab6a6f677718d4854aa548288`）：V3 Music Provider interface/capability/task-state/public mapping/reviewed local fallback。Targeted `14/14`，兼容集合 `61/61`，CI SUCCESS。
+- Provider foundation不等于production接通：没有真实Music厂商adapter，没有V3业务路由；Mock只用于测试；未批准医学资产仍不能加载。
+- Owner验收文件已建立为进行中模板：`docs/sprint5/sprint5-acceptance-report.md`、`docs/sprint5/sprint5-manual-gates.md`。Final automated/full/frontend/H5/E2E均保持NOT_RUN；Android/OCR/MySQL V3/Qwen/Music Provider manual均按实际保持PENDING/NOT_READY。
+- #77仍是医学production blocker；#78～#81保持OPEN。NEXT_ACTION：医学资产批准后再接通Agent1/2/3；此前只推进medical-neutral persistence/provider/acceptance基础，不改变Owner流程。
