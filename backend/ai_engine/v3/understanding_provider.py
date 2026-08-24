@@ -9,6 +9,7 @@ from hashlib import sha256
 import json
 import time
 from typing import Literal, Protocol
+from urllib.error import HTTPError
 
 from pydantic import ValidationError
 
@@ -108,6 +109,24 @@ def _capabilities() -> ProviderCapabilities:
 
 
 def _map_provider_error(error: ProviderError) -> ProviderFailureV3:
+    if (
+        error.error_code == "INVALID_RESPONSE"
+        and isinstance(error.cause, HTTPError)
+        and error.cause.code in {401, 403}
+    ):
+        return ProviderFailureV3(
+            "PROVIDER_AUTH_FAILED",
+            retryable=False,
+            safe_message="AI 理解服务认证失败，请联系管理员。",
+            cause=error,
+        )
+    if error.error_code == "INVALID_RESPONSE" and error.retryable:
+        return ProviderFailureV3(
+            "PROVIDER_UNAVAILABLE",
+            retryable=True,
+            safe_message="AI 理解服务暂时不可用。",
+            cause=error,
+        )
     mapped = {
         "NOT_CONFIGURED": "PROVIDER_NOT_CONFIGURED",
         "CONNECTION_TIMEOUT": "PROVIDER_TIMEOUT",
@@ -134,6 +153,23 @@ def _map_provider_error(error: ProviderError) -> ProviderFailureV3:
         cause=error,
     )
 
+
+def _is_schema_repairable(error: ProviderError) -> bool:
+    if error.retryable:
+        return False
+    if (
+        error.error_code == "INVALID_RESPONSE"
+        and isinstance(error.cause, HTTPError)
+        and error.cause.code in {401, 403}
+    ):
+        return False
+    return error.error_code in {
+        "INVALID_RESPONSE",
+        "INVALID_JSON",
+        "JSON_REPAIR_FAILED",
+        "SCHEMA_VIOLATION",
+        "EMPTY_RESPONSE",
+    }
 
 class QwenUnderstandingProvider:
     """Typed adapter over the existing Qwen-compatible JSON transport."""
@@ -277,13 +313,8 @@ class QwenUnderstandingProvider:
             except ProviderFailureV3:
                 raise
             except ProviderError as error:
-                if attempt == 1 and error.error_code in {
-                    "INVALID_RESPONSE",
-                    "INVALID_JSON",
-                    "JSON_REPAIR_FAILED",
-                    "SCHEMA_VIOLATION",
-                    "EMPTY_RESPONSE",
-                }:
+                if attempt == 1 and _is_schema_repairable(error):
+
                     continue
                 failure = _map_provider_error(error)
                 self._health_status = "degraded" if failure.retryable else "down"
@@ -337,13 +368,8 @@ class QwenUnderstandingProvider:
             except ProviderFailureV3:
                 raise
             except ProviderError as error:
-                if attempt == 1 and error.error_code in {
-                    "INVALID_RESPONSE",
-                    "INVALID_JSON",
-                    "JSON_REPAIR_FAILED",
-                    "SCHEMA_VIOLATION",
-                    "EMPTY_RESPONSE",
-                }:
+                if attempt == 1 and _is_schema_repairable(error):
+
                     continue
                 failure = _map_provider_error(error)
                 self._health_status = "degraded" if failure.retryable else "down"
@@ -495,6 +521,11 @@ class UnderstandingProviderChain:
                 self.last_provider_kind = provider.health().provider_kind
                 return self._degraded(response, failures)
             except ProviderFailureV3 as error:
+                if error.error_code in {
+                    "MEDICAL_ASSET_UNAVAILABLE",
+                    "SOURCE_TOO_LONG",
+                }:
+                    raise
                 failures.append(error.error_code)
         raise ProviderFailureV3(
             "PROVIDER_UNAVAILABLE",
@@ -522,6 +553,11 @@ class UnderstandingProviderChain:
                 self.last_provider_kind = provider.health().provider_kind
                 return self._degraded(response, failures)
             except ProviderFailureV3 as error:
+                if error.error_code in {
+                    "MEDICAL_ASSET_UNAVAILABLE",
+                    "SOURCE_TOO_LONG",
+                }:
+                    raise
                 failures.append(error.error_code)
         raise ProviderFailureV3(
             "PROVIDER_UNAVAILABLE",

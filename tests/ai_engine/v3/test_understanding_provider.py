@@ -1,4 +1,5 @@
 import asyncio
+from urllib.error import HTTPError
 
 import pytest
 
@@ -246,6 +247,54 @@ def test_qwen_provider_repairs_once_after_backend_invalid_json_error():
     assert provider.last_run_metadata.repaired is True
 
 
+
+def test_retryable_invalid_response_is_network_failure_not_schema_repair():
+    network_error = ProviderError(
+        ProviderErrorCode.INVALID_RESPONSE,
+        True,
+        "raw network detail",
+        cause=OSError("private connection detail"),
+    )
+    backend = _SequenceBackend([network_error, _response()])
+    provider = QwenUnderstandingProvider(
+        backend=backend,
+        provider_kind="cloud",
+        provider_name="qwen",
+        model="qwen-plus",
+        claim_dictionary_version="medical_v3.test",
+        claim_dictionary=_claim_dictionary(),
+    )
+
+    with pytest.raises(ProviderFailureV3) as caught:
+        provider.complete_json(_request())
+
+    assert caught.value.error_code == "PROVIDER_UNAVAILABLE"
+    assert backend.calls == 1
+
+
+def test_auth_failure_is_not_repaired_and_uses_stable_error_code():
+    auth_error = ProviderError(
+        ProviderErrorCode.INVALID_RESPONSE,
+        False,
+        "raw authentication detail",
+        cause=HTTPError("https://example.invalid", 401, "unauthorized", {}, None),
+    )
+    backend = _SequenceBackend([auth_error, _response()])
+    provider = QwenUnderstandingProvider(
+        backend=backend,
+        provider_kind="cloud",
+        provider_name="qwen",
+        model="qwen-plus",
+        claim_dictionary_version="medical_v3.test",
+        claim_dictionary=_claim_dictionary(),
+    )
+
+    with pytest.raises(ProviderFailureV3) as caught:
+        provider.complete_json(_request())
+
+    assert caught.value.error_code == "PROVIDER_AUTH_FAILED"
+    assert backend.calls == 1
+
 def test_cloud_failed_status_falls_back_to_local():
     cloud = MockUnderstandingProvider(
         UnderstandingProviderResponse(
@@ -327,6 +376,33 @@ def test_provider_rejects_claim_dictionary_version_mismatch_before_call():
     assert caught.value.error_code == "MEDICAL_ASSET_UNAVAILABLE"
     assert backend.calls == 0
 
+
+def test_medical_asset_gate_stops_chain_before_local_or_rule_fallback():
+    cloud = QwenUnderstandingProvider(
+        backend=_SequenceBackend([_response()]),
+        provider_kind="cloud",
+        provider_name="qwen",
+        model="qwen-plus",
+        claim_dictionary_version="medical_v3.other",
+        claim_dictionary=_claim_dictionary(),
+    )
+    local = MockUnderstandingProvider(
+        UnderstandingProviderResponse.model_validate(_response()),
+        provider_kind="local",
+    )
+    rule = MockUnderstandingProvider(
+        UnderstandingProviderResponse.model_validate(_response()),
+        provider_kind="rule",
+    )
+    chain = UnderstandingProviderChain(cloud=cloud, local=local, rule=rule)
+
+    with pytest.raises(ProviderFailureV3) as caught:
+        chain.complete_json(_request())
+
+    assert caught.value.error_code == "MEDICAL_ASSET_UNAVAILABLE"
+    assert local.calls == 0
+    assert rule.calls == 0
+
 def test_provider_rejects_claim_value_outside_approved_dictionary():
     payload = _response()
     payload["facts"][0]["value"] = {"type": "severity", "value": "severe"}
@@ -345,7 +421,6 @@ def test_provider_rejects_claim_value_outside_approved_dictionary():
 
     assert caught.value.error_code == "MODEL_SCHEMA_INVALID"
     assert backend.calls == 2
-
 
 def test_provider_factory_reports_unconfigured_without_enabling_mock_success():
     bundle = build_understanding_provider_bundle(
