@@ -389,3 +389,12 @@ yu    (羽调)      → 58   → 箫、古琴
 - PR #83 本地门禁：V3/针对性V2回归 21/21 PASS、Contract 64/64 PASS、compileall PASS、GitHub CI SUCCESS。全 API 的 3 个 OCR 失败可在未含本分支的 integration 基线复现，源于已安装 PaddleOCR 对合成无效图片返回 failed，不属于 PR #83 回归。
 - Issues #77～#81 均保持 OPEN。#77 医学内容仍为 production blocker；10题正文、Claim Dictionary、Organ/Five-Tone Mapping 和 Knowledge Manifest 未经肖宇翔批准前不得启用医学链路。
 - NEXT_ACTION：继续不依赖医学内容的 Provider foundation 与 Owner 验收准备；#81 最终集成必须等待 #77～#80 的可合并成果，不得提前宣布完成。
+### Sprint 5 Provider foundation 与 Owner 验收准备（2026-08-24）
+
+- 当前权威 integration：`cef9d2660beb1f9ab6a6f677718d4854aa548288`。
+- PR #85（Understanding Provider Foundation）已合并：typed sync/async、Qwen adapter、Cloud→Local→Rule、单次Schema repair、Claim/version/value/span/time-window gate、safe health/log；CI SUCCESS。
+- PR #86（Music Provider Foundation）已合并：typed sync/async、capability gate、Provider task终态/取消权威、私有任务到公共MusicTask脱敏映射、明确reviewed local fallback；CI SUCCESS。
+- 定向证据：Understanding Provider `17/17`，其兼容集合 `59/59`；Music Provider `14/14`，其V3/Sprint4兼容集合 `61/61`。
+- 新增计划内Owner文件：`docs/sprint5/sprint5-acceptance-report.md`、`docs/sprint5/sprint5-manual-gates.md`。当前只允许 `PREPARATION_IN_PROGRESS`，不是最终验收。
+- #77 医学production content仍BLOCKED；#78～#80和#81保持OPEN。Agent1/2/3生产实现、真实Music Provider、Feedback闭环、V3前端和Five-Agent E2E均未完成。
+- NEXT_ACTION：先让肖宇翔完成#77审核资产；可并行继续不依赖医学内容的Generation persistence/API与Feedback persistence基础。全部功能线会师前不运行Sprint5 final full gate，不合并integration→dev。
