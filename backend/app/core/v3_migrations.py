@@ -10,10 +10,48 @@ from sqlalchemy.engine import Engine
 
 
 V3_FOUNDATION_VERSION = "0001_v3_foundation"
+V3_MIGRATION_VERSIONS = [
+    "0001_v3_foundation",
+    "0002_v3_business",
+]
+
 _REQUIRED_TABLES = {
+    # 0001 foundation
     "user_identities",
     "user_profiles",
     "idempotency_records",
+    # 0002 business (information understanding)
+    "understanding_runs",
+    "understanding_sources",
+    "understanding_revisions",
+    "normalized_facts",
+    "fact_source_refs",
+    "questionnaire_submissions_v3",
+    # 0002 business (assessment)
+    "assessment_v3",
+    "assessment_revisions_v3",
+    "fact_evidence",
+    "organ_evidence",
+    # 0002 business (diagnosis / rag)
+    "diagnosis_runs",
+    "diagnosis_candidates",
+    "diagnosis_candidate_evidence",
+    "knowledge_manifests",
+    "knowledge_chunks_v3",
+    "rag_retrieval_runs",
+    "rag_retrieval_hits",
+    "ai_provider_runs",
+    # 0002 business (prescription / music)
+    "prescription_v3",
+    "generation_tasks",
+    "music_assets",
+    # 0002 business (feedback / preference / favorite)
+    "feedback_v3",
+    "user_music_preferences",
+    "user_music_preference_versions",
+    "user_preference_items",
+    "preference_events",
+    "favorites",
 }
 
 
@@ -27,11 +65,12 @@ def _default_migrations_root() -> Path:
 
 def _read_migration(
     dialect: str,
+    version: str,
     direction: str,
     migrations_root: Path | None = None,
 ) -> str:
     root = migrations_root or _default_migrations_root()
-    path = root / dialect / f"{V3_FOUNDATION_VERSION}_{direction}.sql"
+    path = root / dialect / f"{version}_{direction}.sql"
     return path.read_text(encoding="utf-8")
 
 
@@ -91,8 +130,11 @@ def _enable_sqlite_foreign_keys(engine: Engine) -> None:
 
 def _apply_sqlite_migration(
     engine: Engine,
+    version: str,
     sql: str,
     checksum: str,
+    *,
+    session_upgrade: bool,
 ) -> bool:
     _enable_sqlite_foreign_keys(engine)
     raw = engine.raw_connection()
@@ -106,28 +148,30 @@ def _apply_sqlite_migration(
         )
         row = cursor.execute(
             "SELECT checksum FROM schema_migrations WHERE version = ?",
-            (V3_FOUNDATION_VERSION,),
+            (version,),
         ).fetchone()
         if row is not None:
             if row[0] != checksum:
                 raise MigrationChecksumMismatch(
-                    f"applied migration {V3_FOUNDATION_VERSION} checksum changed"
+                    f"applied migration {version} checksum changed"
                 )
             cursor.execute("PRAGMA foreign_keys=ON")
             raw.commit()
             return False
 
-        has_flow_version, has_user_fk = _session_contract(engine)
-        rendered = sql.replace(
-            "{{FLOW_VERSION_SELECT}}",
-            "flow_version" if has_flow_version else "NULL",
-        )
-        if has_flow_version and has_user_fk:
-            rendered = _remove_marked_block(rendered, "V3_SESSION_UPGRADE")
+        rendered = sql
+        if session_upgrade:
+            has_flow_version, has_user_fk = _session_contract(engine)
+            rendered = rendered.replace(
+                "{{FLOW_VERSION_SELECT}}",
+                "flow_version" if has_flow_version else "NULL",
+            )
+            if has_flow_version and has_user_fk:
+                rendered = _remove_marked_block(rendered, "V3_SESSION_UPGRADE")
         raw.executescript(rendered)
         cursor.execute(
             "INSERT INTO schema_migrations (version, checksum) VALUES (?, ?)",
-            (V3_FOUNDATION_VERSION, checksum),
+            (version, checksum),
         )
         cursor.execute("PRAGMA foreign_keys=ON")
         raw.commit()
@@ -143,7 +187,14 @@ def _apply_sqlite_migration(
         raw.close()
 
 
-def _apply_mysql_migration(engine: Engine, sql: str, checksum: str) -> bool:
+def _apply_mysql_migration(
+    engine: Engine,
+    version: str,
+    sql: str,
+    checksum: str,
+    *,
+    session_upgrade: bool,
+) -> bool:
     with engine.begin() as connection:
         connection.exec_driver_sql(
             "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -153,29 +204,30 @@ def _apply_mysql_migration(engine: Engine, sql: str, checksum: str) -> bool:
         )
         row = connection.exec_driver_sql(
             "SELECT checksum FROM schema_migrations WHERE version = %s",
-            (V3_FOUNDATION_VERSION,),
+            (version,),
         ).first()
         if row is not None:
             if row[0] != checksum:
                 raise MigrationChecksumMismatch(
-                    f"applied migration {V3_FOUNDATION_VERSION} checksum changed"
+                    f"applied migration {version} checksum changed"
                 )
             return False
 
-        has_flow_version, has_user_fk = _session_contract(engine)
         rendered = sql
-        if has_flow_version:
-            rendered = _remove_marked_block(rendered, "V3_SESSION_FLOW")
-        if has_user_fk:
-            rendered = _remove_marked_block(rendered, "V3_SESSION_FK")
-        if _has_session_owner_created_index(engine):
-            rendered = _remove_marked_block(rendered, "V3_SESSION_OWNER_INDEX")
+        if session_upgrade:
+            has_flow_version, has_user_fk = _session_contract(engine)
+            if has_flow_version:
+                rendered = _remove_marked_block(rendered, "V3_SESSION_FLOW")
+            if has_user_fk:
+                rendered = _remove_marked_block(rendered, "V3_SESSION_FK")
+            if _has_session_owner_created_index(engine):
+                rendered = _remove_marked_block(rendered, "V3_SESSION_OWNER_INDEX")
         statements = [item.strip() for item in rendered.split(";") if item.strip()]
         for statement in statements:
             connection.exec_driver_sql(statement)
         connection.exec_driver_sql(
             "INSERT INTO schema_migrations (version, checksum) VALUES (%s, %s)",
-            (V3_FOUNDATION_VERSION, checksum),
+            (version, checksum),
         )
         return True
 
@@ -185,22 +237,40 @@ def apply_v3_migrations(
     *,
     migrations_root: Path | None = None,
 ) -> dict[str, object]:
-    """Apply the V3 foundation once and reject changed applied SQL."""
+    """Apply all pending V3 migrations in order and reject changed applied SQL."""
 
     dialect = engine.dialect.name
     if dialect not in {"sqlite", "mysql"}:
         raise RuntimeError(f"unsupported V3 migration dialect: {dialect}")
-    sql = _read_migration(dialect, "up", migrations_root)
-    checksum = _checksum(sql)
-    applied = (
-        _apply_sqlite_migration(engine, sql, checksum)
-        if dialect == "sqlite"
-        else _apply_mysql_migration(engine, sql, checksum)
-    )
+    applied: list[str] = []
+    last_checksum = ""
+    for version in V3_MIGRATION_VERSIONS:
+        sql = _read_migration(dialect, version, "up", migrations_root)
+        checksum = _checksum(sql)
+        last_checksum = checksum
+        session_upgrade = version == V3_FOUNDATION_VERSION
+        if dialect == "sqlite":
+            applied_version = _apply_sqlite_migration(
+                engine,
+                version,
+                sql,
+                checksum,
+                session_upgrade=session_upgrade,
+            )
+        else:
+            applied_version = _apply_mysql_migration(
+                engine,
+                version,
+                sql,
+                checksum,
+                session_upgrade=session_upgrade,
+            )
+        if applied_version:
+            applied.append(version)
     return {
-        "applied_versions": [V3_FOUNDATION_VERSION] if applied else [],
-        "current_version": V3_FOUNDATION_VERSION,
-        "checksum": checksum,
+        "applied_versions": applied,
+        "current_version": V3_MIGRATION_VERSIONS[-1],
+        "checksum": last_checksum,
     }
 
 
@@ -234,9 +304,14 @@ def v3_migration_status(engine: Engine) -> dict[str, object]:
 def mysql_migration_sql(
     migrations_root: Path | None = None,
 ) -> tuple[str, str]:
-    """Expose MySQL SQL for credential-free structural validation."""
+    """Expose the concatenated MySQL SQL for credential-free structural validation."""
 
-    return (
-        _read_migration("mysql", "up", migrations_root),
-        _read_migration("mysql", "down", migrations_root),
+    up = "\n".join(
+        _read_migration("mysql", version, "up", migrations_root)
+        for version in V3_MIGRATION_VERSIONS
     )
+    down = "\n".join(
+        _read_migration("mysql", version, "down", migrations_root)
+        for version in reversed(V3_MIGRATION_VERSIONS)
+    )
+    return up, down
