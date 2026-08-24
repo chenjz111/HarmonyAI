@@ -126,6 +126,15 @@ class ProviderTaskTransitionGuard:
                     safe_message="音乐生成任务状态无效。",
                 )
             if (
+                previous.status in {"succeeded", "failed", "cancelled"}
+                and task != previous
+            ):
+                raise MusicProviderFailureV3(
+                    "GENERATION_TASK_STATE_INVALID",
+                    retryable=False,
+                    safe_message="音乐生成任务终态不可修改。",
+                )
+            if (
                 previous.progress_value is not None
                 and task.progress_value is not None
                 and task.progress_value < previous.progress_value
@@ -181,7 +190,10 @@ def build_matched_fallback_task(
         message="生成服务暂时不可用，已使用审核曲库匹配",
         poll_after_ms=None,
         audio_asset=matched_asset,
-        fallback=MusicFallback(applied=True, reason_code=reason_code),
+        fallback=MusicFallback(
+            applied=True,
+            reason_code=_normalize_provider_error_code(reason_code),
+        ),
         error_code=None,
     )
 
@@ -193,6 +205,11 @@ _PUBLIC_PROVIDER_ERRORS = {
     "GENERATION_PROVIDER_AUTH_FAILED",
     "GENERATION_PROVIDER_REJECTED",
 }
+
+def _normalize_provider_error_code(error_code: str | None) -> str:
+    if error_code in _PUBLIC_PROVIDER_ERRORS:
+        return error_code
+    return "GENERATION_PROVIDER_UNAVAILABLE"
 
 
 def map_provider_task_to_music_task(
@@ -271,9 +288,7 @@ def map_provider_task_to_music_task(
             error_code=None,
         )
     if provider_task.status == "failed":
-        error_code = provider_task.error_code
-        if error_code not in _PUBLIC_PROVIDER_ERRORS:
-            error_code = "GENERATION_PROVIDER_UNAVAILABLE"
+        error_code = _normalize_provider_error_code(provider_task.error_code)
         return FailedMusicTask(
             task_id=task_id,
             status="failed",

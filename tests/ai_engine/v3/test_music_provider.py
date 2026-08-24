@@ -199,6 +199,31 @@ def test_cancelled_provider_task_cannot_transition_back_to_success():
     assert caught.value.error_code == "GENERATION_TASK_STATE_INVALID"
 
 
+def test_terminal_provider_task_payload_is_immutable():
+    guard = ProviderTaskTransitionGuard()
+    guard.observe(
+        ProviderTask(
+            provider_task_id="provider_task_test",
+            status="failed",
+            progress_value=None,
+            asset_locator=None,
+            error_code="GENERATION_PROVIDER_TIMEOUT",
+        )
+    )
+
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        guard.observe(
+            ProviderTask(
+                provider_task_id="provider_task_test",
+                status="failed",
+                progress_value=None,
+                asset_locator=None,
+                error_code="vendor changed its explanation",
+            )
+        )
+
+    assert caught.value.error_code == "GENERATION_TASK_STATE_INVALID"
+
 def test_provider_failure_can_build_explicit_reviewed_local_match():
     task = build_matched_fallback_task(
         task_id="task_test",
@@ -212,6 +237,17 @@ def test_provider_failure_can_build_explicit_reviewed_local_match():
     assert task.audio_asset.music_ref.source_type == "matched"
     assert task.message == "生成服务暂时不可用，已使用审核曲库匹配"
 
+
+def test_fallback_reason_never_exposes_raw_provider_error():
+    task = build_matched_fallback_task(
+        task_id="task_test",
+        request=_generation_request(),
+        reason_code="vendor stack trace / secret detail",
+        matched_asset=_matched_asset(),
+    )
+
+    assert task.fallback.reason_code == "GENERATION_PROVIDER_UNAVAILABLE"
+    assert "vendor stack" not in task.model_dump_json()
 
 def test_fallback_is_not_allowed_when_policy_disables_it():
     with pytest.raises(MusicProviderFailureV3) as caught:
