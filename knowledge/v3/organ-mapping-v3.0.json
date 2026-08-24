@@ -1,0 +1,482 @@
+{
+  "schema_id": "organ_mapping_v3",
+  "schema_version": "3.0.0",
+  "manifest_version": "medical_v3.0",
+  "review_status": "approved",
+  "content_checksum": "sha256:442c5ff0c6872baf25a35b63bcb4b8169221761d90269ac27130b24e828758f7",
+  "scope": "Fact/Claim → OrganEvidenceLink 确定性规则；单 Claim 不直接决定某脏（单题不直接决定某脏、证型或调式），须经组合与阈值判定。",
+  "organ_element": {
+    "liver": "wood",
+    "heart": "fire",
+    "spleen": "earth",
+    "lung": "metal",
+    "kidney": "water"
+  },
+  "single_mappings": [
+    {
+      "claim_code": "anger_tendency",
+      "organ": "liver",
+      "element": "wood",
+      "direction": "supporting",
+      "link_strength": 0.55,
+      "mapping_rule_id": "map_anger_tendency_liver_01",
+      "source": "《素问·阴阳应象大论》'怒伤肝'；五志五脏对应",
+      "note": "情绪证据，须与肝系身体信号组合"
+    },
+    {
+      "claim_code": "agitation_tendency",
+      "organ": "heart",
+      "element": "fire",
+      "direction": "supporting",
+      "link_strength": 0.55,
+      "mapping_rule_id": "map_agitation_tendency_heart_01",
+      "source": "《素问·阴阳应象大论》'喜伤心'；心主神明",
+      "note": "'喜'为心神之志；兴奋收不住提示心火偏亢，须与心系身体信号组合"
+    },
+    {
+      "claim_code": "overthinking_tendency",
+      "organ": "spleen",
+      "element": "earth",
+      "direction": "supporting",
+      "link_strength": 0.55,
+      "mapping_rule_id": "map_overthinking_tendency_spleen_01",
+      "source": "《素问·阴阳应象大论》'思伤脾'",
+      "note": "思虑属脾，须与脾系身体信号组合"
+    },
+    {
+      "claim_code": "sadness_tendency",
+      "organ": "lung",
+      "element": "metal",
+      "direction": "supporting",
+      "link_strength": 0.55,
+      "mapping_rule_id": "map_sadness_tendency_lung_01",
+      "source": "《素问·阴阳应象大论》'悲伤肺'",
+      "note": "悲伤属肺，须与肺系身体信号组合"
+    },
+    {
+      "claim_code": "fear_tendency",
+      "organ": "kidney",
+      "element": "water",
+      "direction": "supporting",
+      "link_strength": 0.55,
+      "mapping_rule_id": "map_fear_tendency_kidney_01",
+      "source": "《素问·阴阳应象大论》'恐伤肾'",
+      "note": "恐惧属肾，须与肾系身体信号组合"
+    },
+    {
+      "claim_code": "flank_discomfort",
+      "organ": "liver",
+      "element": "wood",
+      "direction": "supporting",
+      "link_strength": 0.7,
+      "mapping_rule_id": "map_flank_discomfort_liver_01",
+      "source": "《灵枢·经脉》'肝足厥阴之脉……布胁肋'；胁肋胀闷属肝郁",
+      "note": "肝系主证"
+    },
+    {
+      "claim_code": "tendon_stiffness",
+      "organ": "liver",
+      "element": "wood",
+      "direction": "supporting",
+      "link_strength": 0.65,
+      "mapping_rule_id": "map_tendon_stiffness_liver_01",
+      "source": "《素问·痿论》'肝主身之筋膜'；《素问·六节藏象论》'肝者罢极之本'",
+      "note": "筋脉拘紧属肝"
+    },
+    {
+      "claim_code": "muscle_cramp",
+      "organ": "liver",
+      "element": "wood",
+      "direction": "supporting",
+      "link_strength": 0.6,
+      "mapping_rule_id": "map_muscle_cramp_liver_01",
+      "source": "《素问·痿论》'肝主身之筋膜'；肝血不足则筋失濡养",
+      "note": "抽筋属肝血不养筋"
+    },
+    {
+      "claim_code": "eye_discomfort",
+      "organ": "liver",
+      "element": "wood",
+      "direction": "supporting",
+      "link_strength": 0.6,
+      "mapping_rule_id": "map_eye_discomfort_liver_01",
+      "source": "《素问·金匮真言论》'肝开窍于目'",
+      "note": "目干涩属肝血不足"
+    },
+    {
+      "claim_code": "palpitation_at_rest",
+      "organ": "heart",
+      "element": "fire",
+      "direction": "supporting",
+      "link_strength": 0.7,
+      "mapping_rule_id": "map_palpitation_at_rest_heart_01",
+      "source": "《素问·灵兰秘典论》'心者君主之官……主血脉'；心悸属心",
+      "note": "心系主证"
+    },
+    {
+      "claim_code": "palpitation_after_activity",
+      "organ": "heart",
+      "element": "fire",
+      "direction": "supporting",
+      "link_strength": 0.6,
+      "mapping_rule_id": "map_palpitation_after_activity_heart_01",
+      "source": "同上；活动后心悸提示心气/心阴不足",
+      "note": "活动诱发，仍属心系"
+    },
+    {
+      "claim_code": "palpitation_night",
+      "organ": "heart",
+      "element": "fire",
+      "direction": "supporting",
+      "link_strength": 0.65,
+      "mapping_rule_id": "map_palpitation_night_heart_01",
+      "source": "同上；夜间心悸多属心血不足/心阴亏虚",
+      "note": "夜间加重，心系证据增强"
+    },
+    {
+      "claim_code": "tongue_tip_discomfort",
+      "organ": "heart",
+      "element": "fire",
+      "direction": "supporting",
+      "link_strength": 0.55,
+      "mapping_rule_id": "map_tongue_tip_discomfort_heart_01",
+      "source": "《素问·阴阳应象大论》'心在窍为舌'；舌尖红属心火",
+      "note": "舌尖对应心，轻度证据"
+    },
+    {
+      "claim_code": "poor_appetite",
+      "organ": "spleen",
+      "element": "earth",
+      "direction": "supporting",
+      "link_strength": 0.7,
+      "mapping_rule_id": "map_poor_appetite_spleen_01",
+      "source": "《素问·灵兰秘典论》'脾胃者仓廪之官'；脾主运化",
+      "note": "脾系主证"
+    },
+    {
+      "claim_code": "postmeal_bloating",
+      "organ": "spleen",
+      "element": "earth",
+      "direction": "supporting",
+      "link_strength": 0.65,
+      "mapping_rule_id": "map_postmeal_bloating_spleen_01",
+      "source": "《素问·阴阳应象大论》'脾主运化'；《中医诊断学》食后腹胀属脾虚",
+      "note": "运化失健"
+    },
+    {
+      "claim_code": "loose_stool",
+      "organ": "spleen",
+      "element": "earth",
+      "direction": "supporting",
+      "link_strength": 0.65,
+      "mapping_rule_id": "map_loose_stool_spleen_01",
+      "source": "《素问·至真要大论》'诸湿肿满皆属于脾'；《中医诊断学》便溏属脾虚湿盛",
+      "note": "脾失健运，湿邪下注"
+    },
+    {
+      "claim_code": "postmeal_heaviness",
+      "organ": "spleen",
+      "element": "earth",
+      "direction": "supporting",
+      "link_strength": 0.6,
+      "mapping_rule_id": "map_postmeal_heaviness_spleen_01",
+      "source": "《素问·痿论》'脾主身之肌肉'；《中医诊断学》食后困重属脾虚",
+      "note": "脾虚不运，清阳不升"
+    },
+    {
+      "claim_code": "throat_cough",
+      "organ": "lung",
+      "element": "metal",
+      "direction": "supporting",
+      "link_strength": 0.7,
+      "mapping_rule_id": "map_throat_cough_lung_01",
+      "source": "《灵枢·脉度》'肺气通于鼻'；《素问·咳论》'肺之令人咳'；咳属肺失宣肃",
+      "note": "肺系主证"
+    },
+    {
+      "claim_code": "exertional_breathlessness",
+      "organ": "lung",
+      "element": "metal",
+      "direction": "supporting",
+      "link_strength": 0.5,
+      "mapping_rule_id": "map_exertional_breathlessness_lung_01",
+      "source": "《类证治裁·喘证》'肺为气之主，肾为气之根'；动则气喘肺肾气虚",
+      "note": "⚠️ 肺肾双关联：单独出现不作肺证据（须排除肾不纳气），须伴喉咳/鼻/声等肺象佐证；见 multi_organ 规则"
+    },
+    {
+      "claim_code": "nasal_discomfort",
+      "organ": "lung",
+      "element": "metal",
+      "direction": "supporting",
+      "link_strength": 0.6,
+      "mapping_rule_id": "map_nasal_discomfort_lung_01",
+      "source": "《灵枢·脉度》'肺气通于鼻'；肺失宣肃则鼻塞",
+      "note": "肺系证据"
+    },
+    {
+      "claim_code": "voice_change",
+      "organ": "lung",
+      "element": "metal",
+      "direction": "supporting",
+      "link_strength": 0.55,
+      "mapping_rule_id": "map_voice_change_lung_01",
+      "source": "《素问·阴阳应象大论》'肺主皮毛……在音为商'；《中医诊断学》声嘶属肺",
+      "note": "金实不鸣/金破不鸣，肺系证据"
+    },
+    {
+      "claim_code": "lower_back_knee_weakness",
+      "organ": "kidney",
+      "element": "water",
+      "direction": "supporting",
+      "link_strength": 0.7,
+      "mapping_rule_id": "map_lower_back_knee_weakness_kidney_01",
+      "source": "《素问·脉要精微论》'腰者，肾之府'；《素问·痿论》'肾主身之骨髓'；腰膝酸软并见为肾虚典型",
+      "note": "腰膝并见归肾（单拆膝软需辨肝，见 multi_organ）"
+    },
+    {
+      "claim_code": "tinnitus",
+      "organ": "kidney",
+      "element": "water",
+      "direction": "supporting",
+      "link_strength": 0.6,
+      "mapping_rule_id": "map_tinnitus_kidney_01",
+      "source": "《灵枢·脉度》'肾气通于耳'；《中医耳鼻喉科学》慢性耳鸣多责肾虚",
+      "note": "问卷文案'嗡嗡声'偏慢性肾虚；肝火暴鸣为另一型（见 multi_organ）"
+    },
+    {
+      "claim_code": "nocturia",
+      "organ": "kidney",
+      "element": "water",
+      "direction": "supporting",
+      "link_strength": 0.6,
+      "mapping_rule_id": "map_nocturia_kidney_01",
+      "source": "《素问·上古天真论》肾主水；《中医诊断学》夜尿多属肾气虚",
+      "note": "肾气不固"
+    },
+    {
+      "claim_code": "sleep_disturbance",
+      "organ": "heart",
+      "element": "fire",
+      "direction": "supporting",
+      "link_strength": 0.4,
+      "mapping_rule_id": "map_sleep_disturbance_heart_01",
+      "source": "《素问·灵兰秘典论》心主神明；《中医诊断学》不寐多责心",
+      "note": "⚠️ 多脏关联（心脾肾）：睡眠证据须组合判定，不单独决定某脏；见 multi_organ"
+    },
+    {
+      "claim_code": "unrefreshing_sleep",
+      "organ": "heart",
+      "element": "fire",
+      "direction": "supporting",
+      "link_strength": 0.4,
+      "mapping_rule_id": "map_unrefreshing_sleep_heart_01",
+      "source": "同上；心脾肾多脏",
+      "note": "⚠️ 多脏关联，见 multi_organ"
+    },
+    {
+      "claim_code": "low_energy",
+      "organ": "spleen",
+      "element": "earth",
+      "direction": "supporting",
+      "link_strength": 0.4,
+      "mapping_rule_id": "map_low_energy_spleen_01",
+      "source": "《素问·痿论》'脾主身之肌肉'；《素问·六节藏象论》脾为后天之本",
+      "note": "⚠️ 多脏关联（脾肺肾）：乏力归脾主肌肉可接受，遇气短/腰酸需交叉；见 multi_organ"
+    },
+    {
+      "claim_code": "worry_control",
+      "organ": "spleen",
+      "element": "earth",
+      "direction": "supporting",
+      "link_strength": 0.4,
+      "mapping_rule_id": "map_worry_control_spleen_01",
+      "source": "《素问·阴阳应象大论》'思伤脾'；思虑过度耗伤脾气",
+      "note": "⚠️ 与 overthinking 同族，组合层避免重复计分；见 conflict_rules"
+    },
+    {
+      "claim_code": "concentration_decline",
+      "organ": "spleen",
+      "element": "earth",
+      "direction": "supporting",
+      "link_strength": 0.45,
+      "mapping_rule_id": "map_concentration_decline_spleen_01",
+      "source": "《素问·宣明五气》'五脏所主……脾主思'；《中医诊断学》健忘属思虑过度",
+      "note": "注意力下降归脾（思）"
+    },
+    {
+      "claim_code": "social_withdrawal",
+      "organ": "liver",
+      "element": "wood",
+      "direction": "supporting",
+      "link_strength": 0.45,
+      "mapping_rule_id": "map_social_withdrawal_liver_01",
+      "source": "《素问·六节藏象论》'肝者罢极之本……以生血气'；肝主疏泄调畅情志",
+      "note": "社交退缩提示肝失疏泄、情志郁结"
+    },
+    {
+      "claim_code": "daily_impact",
+      "organ": "spleen",
+      "element": "earth",
+      "direction": "supporting",
+      "link_strength": 0.35,
+      "mapping_rule_id": "map_daily_impact_spleen_01",
+      "source": "功能影响为通用指标，不作单一脏证据",
+      "note": "⚠️ 不映射单脏，仅作严重度调节；见 thresholds"
+    },
+    {
+      "claim_code": "emotional_recovery_slowness",
+      "organ": "liver",
+      "element": "wood",
+      "direction": "supporting",
+      "link_strength": 0.45,
+      "mapping_rule_id": "map_emotional_recovery_slowness_liver_01",
+      "source": "《素问·六节藏象论》肝主疏泄调畅情志；《中医内科学》情志调畅赖肝",
+      "note": "情绪恢复缓慢提示肝气不舒"
+    }
+  ],
+  "multi_organ_rules": [
+    {
+      "claim_code": "exertional_breathlessness",
+      "primary": "lung",
+      "secondary": [
+        "kidney"
+      ],
+      "rule": "动则气喘为肺肾气虚。单独出现不作肺证据（link_strength 降至 0.2 并标记 abstain 候选）；伴喉咳/鼻塞/声哑等肺象时按 single_mapping 0.5 计",
+      "source": "《类证治裁·喘证》'肺为气之主，肾为气之根'"
+    },
+    {
+      "claim_code": "lower_back_knee_weakness",
+      "primary": "kidney",
+      "secondary": [
+        "liver"
+      ],
+      "rule": "腰膝并见归肾（0.7）；若未来出现单拆'膝软'项须重辨（'膝者筋之府'属肝）",
+      "source": "《素问·脉要精微论》'膝者，筋之府'；《素问·痿论》'肾主身之骨髓'"
+    },
+    {
+      "claim_code": "tinnitus",
+      "primary": "kidney",
+      "secondary": [
+        "liver"
+      ],
+      "rule": "问卷文案'嗡嗡声'偏慢性肾虚耳鸣（0.6）；若出现'暴鸣/突发'须转肝火上扰型，本次问卷不含该口径",
+      "source": "《灵枢·脉度》'肾气通于耳'；《中医耳鼻喉科学》慢肾虚/暴肝火"
+    },
+    {
+      "claim_code": "sleep_disturbance",
+      "primary": "heart",
+      "secondary": [
+        "spleen",
+        "kidney"
+      ],
+      "rule": "不寐多责心，兼脾（思虑）肾（精亏）。心 0.4 / 脾 0.25 / 肾 0.2，组合判定，不单独决定心",
+      "source": "《素问·灵兰秘典论》心主神明；《中医诊断学》不寐病机心脾肾"
+    },
+    {
+      "claim_code": "unrefreshing_sleep",
+      "primary": "heart",
+      "secondary": [
+        "spleen",
+        "kidney"
+      ],
+      "rule": "同 sleep_disturbance",
+      "source": "同上"
+    },
+    {
+      "claim_code": "low_energy",
+      "primary": "spleen",
+      "secondary": [
+        "lung",
+        "kidney"
+      ],
+      "rule": "脾 0.4（主肌肉四肢）；伴气短→肺；伴腰酸→肾，交叉识别",
+      "source": "《素问·痿论》'脾主身之肌肉'"
+    }
+  ],
+  "combination_rules": [
+    {
+      "name": "肝系组合",
+      "organ": "liver",
+      "claims": [
+        "anger_tendency",
+        "flank_discomfort",
+        "tendon_stiffness",
+        "muscle_cramp",
+        "eye_discomfort",
+        "emotional_recovery_slowness"
+      ],
+      "note": "情绪+胁肋/筋/目证据叠加才构成肝系倾向"
+    },
+    {
+      "name": "心系组合",
+      "organ": "heart",
+      "claims": [
+        "agitation_tendency",
+        "palpitation_at_rest",
+        "palpitation_after_activity",
+        "palpitation_night",
+        "tongue_tip_discomfort"
+      ],
+      "note": "情绪+心悸/舌尖证据叠加"
+    },
+    {
+      "name": "脾系组合",
+      "organ": "spleen",
+      "claims": [
+        "overthinking_tendency",
+        "poor_appetite",
+        "postmeal_bloating",
+        "loose_stool",
+        "postmeal_heaviness",
+        "concentration_decline"
+      ],
+      "note": "思虑+运化/肌肉证据叠加"
+    },
+    {
+      "name": "肺系组合",
+      "organ": "lung",
+      "claims": [
+        "sadness_tendency",
+        "throat_cough",
+        "nasal_discomfort",
+        "voice_change"
+      ],
+      "note": "悲伤+喉/鼻/声证据叠加；喘须伴肺象"
+    },
+    {
+      "name": "肾系组合",
+      "organ": "kidney",
+      "claims": [
+        "fear_tendency",
+        "lower_back_knee_weakness",
+        "tinnitus",
+        "nocturia"
+      ],
+      "note": "恐惧+腰膝/耳/夜尿证据叠加"
+    }
+  ],
+  "thresholds": {
+    "organ_available_threshold": 0.2,
+    "organ_net_formula": "Σ(signed_contribution) = Σ(link_strength × reliability × direction_signed)；reliability 问卷=1.0、narrative 按 provider extraction_confidence",
+    "semantics": "organ_net >= 0.20 且为该脏最大者才列为候选；低于阈值返回 insufficient/abstain，不强行映射",
+    "note": "阈值 0.20 为合同 §4.4 冻结值；如需调整须 Owner 拍板并经医学复核"
+  },
+  "conflict_rules": [
+    {
+      "rule": "single_question_no_diagnosis",
+      "note": "单题/单 claim 不得直接决定某脏、证型或调式；候选须经 combination_rules 聚合后产生"
+    },
+    {
+      "rule": "worry_control_vs_overthinking",
+      "note": "worry_control 与 overthinking_tendency 高度相关，同一来源同时出现时只计一次（worry_control 作为定性上下文，不重复累加脾 evidence）"
+    },
+    {
+      "rule": "sleep_multi_organ_no_double_count",
+      "note": "sleep_disturbance 与 unrefreshing_sleep 同属睡眠家族，多脏规则同一来源取最高单值，不双倍累加"
+    },
+    {
+      "rule": "questionnaire_priority",
+      "note": "问卷确定性分数优先且不被 Qwen 覆盖；narrative 与问卷冲突时按 severity/direction 标记 conflict，不静默覆盖"
+    }
+  ]
+}
