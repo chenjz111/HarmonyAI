@@ -304,6 +304,7 @@ def test_music_provider_capabilities_are_explicit_and_bounded():
             }
         )
 
+
 def test_extended_public_registry_and_frozen_aliases():
     import backend.app.schemas.v3 as v3
     from backend.app.schemas.v3.prescription import PersonalizationAdjustment
@@ -321,3 +322,64 @@ def test_extended_public_registry_and_frozen_aliases():
         }
     )
     assert adjustment.model_dump(mode="json", by_alias=True)["from"] == "dizi"
+
+
+def test_diagnosis_input_rejects_confirmed_safety_risk():
+    from backend.app.schemas.v3.diagnosis import DiagnosisV3Input
+
+    payload = {
+        "schema_version": "diagnosis_v3.0",
+        "diagnosis_id": "diag_input_unsafe",
+        "assessment_ref": {
+            "assessment_id": "asmt_unsafe",
+            "revision": 2,
+            "confirmation_status": "confirmed",
+            "safety_status": "confirmed_mental_health_risk",
+        },
+        "organ_profile": {
+            "status": "insufficient",
+            "weights": None,
+            "score_semantics": "relative_evidence_distribution",
+        },
+        "fact_evidence": [],
+        "organ_evidence_links": [],
+        "conflicts": [],
+        "missing_information": [],
+    }
+    with pytest.raises(ValidationError):
+        DiagnosisV3Input.model_validate(payload)
+
+
+def test_revision_results_advance_exactly_once():
+    from backend.app.schemas.v3.assessment import AssessmentRevisionResult
+    from backend.app.schemas.v3.understanding import UnderstandingRevisionResult
+
+    understanding = {
+        "understanding_id": "und_1",
+        "previous_revision": 1,
+        "revision": 2,
+        "status": "confirmed",
+        "applied_changes": ["fact_1"],
+        "affected_fact_ids": ["fact_1"],
+    }
+    assert UnderstandingRevisionResult.model_validate(understanding).revision == 2
+    with pytest.raises(ValidationError):
+        UnderstandingRevisionResult.model_validate({**understanding, "revision": 3})
+
+    presentation = {
+        "title": "确认一下我们对你当前状态的理解",
+        "summary": "近期睡眠恢复不足。",
+        "body_summaries": ["睡眠恢复不足"],
+        "recent_context": "近期学习安排较紧。",
+        "goal_summary": "本次希望帮助入睡",
+    }
+    assessment = {
+        "assessment_id": "asmt_1",
+        "previous_revision": 1,
+        "revision": 2,
+        "confirmation_status": "confirmed",
+        "presentation": presentation,
+    }
+    assert AssessmentRevisionResult.model_validate(assessment).revision == 2
+    with pytest.raises(ValidationError):
+        AssessmentRevisionResult.model_validate({**assessment, "revision": 3})
