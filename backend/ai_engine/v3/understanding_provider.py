@@ -12,6 +12,7 @@ from typing import Literal, Protocol
 
 from pydantic import ValidationError
 
+from backend.ai_engine.providers import QwenCompatibleProvider
 from backend.ai_engine.sprint4_contracts import ProviderError
 from backend.app.schemas.v3.common import (
     ClaimDictionaryEntry,
@@ -86,6 +87,13 @@ class ProviderRunMetadata:
     repaired: bool
     latency_ms: int
     error_code: str | None
+
+
+@dataclass(frozen=True)
+class UnderstandingProviderBundle:
+    chain: "UnderstandingProviderChain"
+    health: tuple[ProviderHealth, ...]
+    configured_kinds: tuple[Literal["cloud", "local"], ...]
 
 
 def _now() -> datetime:
@@ -550,3 +558,73 @@ def build_safe_provider_log_fields(
         "latency_ms": latency_ms,
         "error_code": error_code,
     }
+
+
+def build_understanding_provider_bundle(
+    *,
+    claim_dictionary_version: str,
+    claim_dictionary: Mapping[str, ClaimDictionaryEntry],
+    environment: Mapping[str, str],
+) -> UnderstandingProviderBundle:
+    """Build Cloud/Local adapters without logging or returning credentials."""
+
+    providers: dict[str, QwenUnderstandingProvider] = {}
+    health: list[ProviderHealth] = []
+    config = (
+        (
+            "cloud",
+            "QWEN_BASE_URL",
+            "QWEN_API_KEY",
+            "QWEN_MODEL",
+        ),
+        (
+            "local",
+            "LOCAL_QWEN_BASE_URL",
+            "LOCAL_QWEN_API_KEY",
+            "LOCAL_QWEN_MODEL",
+        ),
+    )
+    for kind, base_key, secret_key, model_key in config:
+        base_url = environment.get(base_key, "").strip()
+        api_key = environment.get(secret_key, "").strip()
+        model = environment.get(model_key, "").strip()
+        if all((base_url, api_key, model)):
+            adapter = QwenUnderstandingProvider(
+                backend=QwenCompatibleProvider(
+                    base_url=base_url,
+                    api_key=api_key,
+                    model=model,
+                    timeout=20.0,
+                    max_retries=2,
+                ),
+                provider_kind=kind,
+                provider_name="qwen",
+                model=model,
+                claim_dictionary_version=claim_dictionary_version,
+                claim_dictionary=claim_dictionary,
+            )
+            providers[kind] = adapter
+            health.append(adapter.health())
+        else:
+            health.append(
+                ProviderHealth(
+                    status="not_configured",
+                    provider_kind=kind,
+                    provider="qwen",
+                    model=model or None,
+                    checked_at=_now(),
+                    capabilities=_capabilities(),
+                    safe_message="AI 理解服务尚未配置。",
+                )
+            )
+    configured_kinds = tuple(
+        kind for kind in ("cloud", "local") if kind in providers
+    )
+    return UnderstandingProviderBundle(
+        chain=UnderstandingProviderChain(
+            cloud=providers.get("cloud"),
+            local=providers.get("local"),
+        ),
+        health=tuple(health),
+        configured_kinds=configured_kinds,
+    )

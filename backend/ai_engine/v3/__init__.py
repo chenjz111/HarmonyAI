@@ -6,7 +6,9 @@ from .understanding_provider import (
     ProviderFailureV3,
     QwenUnderstandingProvider,
     UnderstandingProvider,
+    UnderstandingProviderBundle,
     UnderstandingProviderChain,
+    build_understanding_provider_bundle,
 )
 
 __all__ = [
@@ -15,5 +17,7 @@ __all__ = [
     "ProviderFailureV3",
     "QwenUnderstandingProvider",
     "UnderstandingProvider",
+    "UnderstandingProviderBundle",
     "UnderstandingProviderChain",
+    "build_understanding_provider_bundle",
 ]
