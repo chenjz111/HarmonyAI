@@ -36,6 +36,9 @@ from backend.app.routers import (
     assessment_v2_router,
     workflow_v2_router,
 )
+from backend.app.routers.v3 import auth_router as auth_v3_router
+from backend.app.routers.v3 import session_router as session_v3_router
+from backend.app.routers.v3.transport import V3APIError, v3_api_error_handler
 
 
 @asynccontextmanager
@@ -98,6 +101,9 @@ app.include_router(session_router.router, prefix="/api/v2", tags=["Sprint 3 — 
 app.include_router(provider_router.router, prefix="/api/v2", tags=["Sprint 4 — Provider 健康检查"])
 app.include_router(assessment_v2_router.router, prefix="/api/v2", tags=["Sprint 4 — Assessment V2"])
 app.include_router(workflow_v2_router.router, prefix="/api/v2", tags=["Sprint 3 — 工作流"])
+app.include_router(auth_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Auth"])
+app.include_router(session_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Session"])
+app.add_exception_handler(V3APIError, v3_api_error_handler)
 
 
 @app.get("/", include_in_schema=False)
