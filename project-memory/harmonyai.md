@@ -430,3 +430,12 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - Owner 已确认双门禁：三份合同结构在 PR #75 分支标记为 `FROZEN`，医学 production 内容仍未批准且保持禁用；proxy review 不冒充成员签字。
 - Milestone `Sprint 5 - HarmonyAI V3` 与 #76～#81 已建立；PR #75 合并后可启动 executable Schema、Auth/Migration、Provider与Frontend shell，医学链路继续受 #77 阻塞。
 - 实施计划：`docs/superpowers/plans/2026-08-24-harmonyai-v3-sprint5.md`。不得用示例、Mock或V2映射绕过医学 content gate，也不得重设计 Owner 流程。
+
+### Sprint 5 V3 executable foundation 已进入 integration（2026-08-24）
+
+- 当前权威 HEAD：origin/integration/sprint4-real-input@cafca2ac2592fe699e71a215246f5602eb8b863b。
+- PR #75（Contract Freeze）=MERGED@71103c0；PR #82（Executable Schemas）=MERGED@3e0d5c4；PR #83（Guest Auth / Ownership / Session / Migration Foundation）=MERGED@cafca2a。
+- 已建立真实可执行边界：canonical V3 schemas、统一 success/error envelope、受控 guest token、Auth Context 用户所有权、跨用户 404、per-user idempotency、SQLite 外键与 versioned checksum ledger、MySQL InnoDB/utf8mb4 migration SQL。
+- 当前验证：V3 + targeted V2 21/21 PASS；Contract 64/64 PASS；compileall PASS；PR #83 CI SUCCESS。3 个旧 OCR API 用例在安装 PaddleOCR 的本机基线同样失败，不归因于 Sprint5 foundation。
+- #77 医学门禁仍 OPEN；禁止用示例问卷/Claim/Organ/Five-Tone 内容启用 production Assessment/Diagnosis/Prescription。
+- NEXT_ACTION：推进不依赖 #77 的 Provider interface/factory/health/mock foundation 与 #81 Owner acceptance matrix；最终业务集成继续等待 #77～#80。
