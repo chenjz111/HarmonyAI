@@ -379,3 +379,13 @@ yu    (羽调)      → 58   → 箫、古琴
 - Sprint 5 可执行计划：`docs/superpowers/plans/2026-08-24-harmonyai-v3-sprint5.md`。
 - GitHub：Milestone `Sprint 5 - HarmonyAI V3`；#76 负责 PR #75 Final Gate，#77 继续医学内容；#78～#80 在 PR #75 合并后仅解锁不依赖医学内容的 foundation，#81 继续等待各线集成。
 - `NEXT_ACTION`：完成 PR #75 Final Gate 并按 Owner 决定合并；随后先实现 executable Schema、Auth/Migration 与 Provider foundation。医学 Assessment/Diagnosis/Prescription 仍等待 #77 approved manifests。
+
+### Sprint 5 V3 executable foundation checkpoint（2026-08-24）
+
+- 权威集成基线：origin/integration/sprint4-real-input@cafca2ac2592fe699e71a215246f5602eb8b863b。
+- PR #75 已以普通 Merge Commit 71103c0aeaf19dcbf3193eab53cad3ab5cf6cdcf 合并，V3 结构合同已冻结；不得自行改变 Owner 流程或五 Agent 边界。
+- PR #82 已以普通 Merge Commit 3e0d5c4255f0ab61d75d6604f1dabad7b4506196 合并：V3 executable schemas、跨 Agent 合同验证、Diagnosis safety gate；Contract 64/64 PASS（含后续基础测试时复核）。
+- PR #83 已以普通 Merge Commit cafca2ac2592fe699e71a215246f5602eb8b863b 合并：guest auth、AuthPrincipal ownership、V3 session bootstrap、统一 API envelope、per-user idempotency、SQLite/MySQL versioned migration foundation。
+- PR #83 本地门禁：V3/针对性V2回归 21/21 PASS、Contract 64/64 PASS、compileall PASS、GitHub CI SUCCESS。全 API 的 3 个 OCR 失败可在未含本分支的 integration 基线复现，源于已安装 PaddleOCR 对合成无效图片返回 failed，不属于 PR #83 回归。
+- Issues #77～#81 均保持 OPEN。#77 医学内容仍为 production blocker；10题正文、Claim Dictionary、Organ/Five-Tone Mapping 和 Knowledge Manifest 未经肖宇翔批准前不得启用医学链路。
+- NEXT_ACTION：继续不依赖医学内容的 Provider foundation 与 Owner 验收准备；#81 最终集成必须等待 #77～#80 的可合并成果，不得提前宣布完成。
