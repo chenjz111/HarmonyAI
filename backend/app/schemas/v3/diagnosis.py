@@ -16,6 +16,7 @@ from .common import (
     NormalizedFactValue,
     OrganCode,
     OrganProfile,
+    SafetyStatus,
     Score01,
     V3BaseModel,
 )
@@ -30,6 +31,15 @@ class DiagnosisV3Input(V3BaseModel):
     organ_evidence_links: list[OrganEvidenceLink]
     conflicts: list[Conflict]
     missing_information: list[MissingInformation]
+
+    @model_validator(mode="after")
+    def require_safe_confirmed_assessment(self) -> "DiagnosisV3Input":
+        if self.assessment_ref.safety_status not in {
+            SafetyStatus.clear,
+            SafetyStatus.resolved,
+        }:
+            raise ValueError("diagnosis requires a clear or resolved safety status")
+        return self
 
 
 class KnowledgeChunk(V3BaseModel):
