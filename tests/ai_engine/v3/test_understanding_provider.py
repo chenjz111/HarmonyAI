@@ -9,6 +9,7 @@ from backend.ai_engine.v3.understanding_provider import (
     QwenUnderstandingProvider,
     UnderstandingProviderChain,
     build_safe_provider_log_fields,
+    build_understanding_provider_bundle,
 )
 from backend.app.schemas.v3.common import ClaimDictionaryEntry, MedicalReview
 from backend.app.schemas.v3.understanding import (
@@ -344,3 +345,42 @@ def test_provider_rejects_claim_value_outside_approved_dictionary():
 
     assert caught.value.error_code == "MODEL_SCHEMA_INVALID"
     assert backend.calls == 2
+
+
+def test_provider_factory_reports_unconfigured_without_enabling_mock_success():
+    bundle = build_understanding_provider_bundle(
+        claim_dictionary_version="medical_v3.test",
+        claim_dictionary=_claim_dictionary(),
+        environment={},
+    )
+
+    assert [item.status for item in bundle.health] == [
+        "not_configured",
+        "not_configured",
+    ]
+    with pytest.raises(ProviderFailureV3) as caught:
+        bundle.chain.complete_json(_request())
+    assert caught.value.error_code == "PROVIDER_UNAVAILABLE"
+
+
+def test_provider_factory_builds_cloud_and_local_without_exposing_keys():
+    environment = {
+        "QWEN_BASE_URL": "https://cloud.example/v1",
+        "QWEN_API_KEY": "cloud-secret-value",
+        "QWEN_MODEL": "qwen-plus",
+        "LOCAL_QWEN_BASE_URL": "http://127.0.0.1:11434/v1",
+        "LOCAL_QWEN_API_KEY": "local-secret-value",
+        "LOCAL_QWEN_MODEL": "qwen2.5:7b",
+    }
+
+    bundle = build_understanding_provider_bundle(
+        claim_dictionary_version="medical_v3.test",
+        claim_dictionary=_claim_dictionary(),
+        environment=environment,
+    )
+
+    assert bundle.configured_kinds == ("cloud", "local")
+    assert [item.status for item in bundle.health] == ["configured", "configured"]
+    rendered = repr(bundle.health)
+    assert "cloud-secret-value" not in rendered
+    assert "local-secret-value" not in rendered
