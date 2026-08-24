@@ -1,0 +1,151 @@
+{
+  "schema_id": "knowledge_manifest_v3",
+  "schema_version": "3.0.0",
+  "manifest_version": "medical_v3.0",
+  "review_status": "approved",
+  "review_version": "medical_v3.0-r1",
+  "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+  "reviewed_at": "2026-08-24",
+  "content_checksum": "sha256:77970d192926403f64e794af44dc28ae2dc6588558827baf589dfc814e9ee393",
+  "scope": "HarmonyAI V3 生产医学资产总清单与来源审计。未批准资产不得进入 production API、RAG、Assessment、Diagnosis 或 Prescription。",
+  "assets": [
+    {
+      "asset": "questionnaire-v3.0.json",
+      "role": "10 题五脏问卷（生产版，按 Owner Flow Amendment 2026-08-24）",
+      "version": "medical_v3.0",
+      "content_checksum": "sha256:3ee2f75c43eee31c81963c1a2d27a0dfd7485ec49c5e7bdcb57ac0c37b8f6079",
+      "review_status": "approved",
+      "review_metadata": "10 题（q01-q10）；无 UserGoal；无 Q19/Q20；时间窗 past_7_days；使用策略 with_confirmed_document=optional / without_document=required"
+    },
+    {
+      "asset": "claim-dictionary-v3.0.json",
+      "role": "Claim Dictionary（单一代码来源：问卷 + Understanding + Agent1 + RAG）",
+      "version": "medical_v3.0",
+      "content_checksum": "sha256:9a20931048e775fbf1b4c02861e02c912d26b3b8d409bee33428efaded1f77b9",
+      "review_status": "approved",
+      "review_metadata": "32 条：5 情绪 + 17 问卷身体 + 10 narrative/文档 Fact 代码"
+    },
+    {
+      "asset": "organ-mapping-v3.0.json",
+      "role": "Organ Mapping（Fact/Claim → OrganEvidenceLink 规则）",
+      "version": "medical_v3.0",
+      "content_checksum": "sha256:442c5ff0c6872baf25a35b63bcb4b8169221761d90269ac27130b24e828758f7",
+      "review_status": "approved",
+      "review_metadata": "32 单映射 + 6 多脏规则 + 5 组合 + 阈值 0.20 + 4 冲突规则；单题不直接决定某脏"
+    },
+    {
+      "asset": "five-tone-mapping-v3.0.json",
+      "role": "Five-Tone Mapping（五脏/五行 → jiao/zhi/gong/shang/yu）",
+      "version": "medical_v3.0",
+      "content_checksum": "sha256:9affc0782ca4b9219cc20956a9b683b66f447d7edb7ed6102ab2b5466c6e3042",
+      "review_status": "approved",
+      "review_metadata": "5 脏-5 音对应 + 主调权重 + 5 禁忌边界"
+    }
+  ],
+  "knowledge_sources": [
+    {
+      "source": "《素问·阴阳应象大论》",
+      "use": "五志五脏对应（怒肝/喜心/思脾/悲肺/恐肾）与五脏开窍（肝目/心舌/脾口/肺鼻/肾耳）",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《素问·金匮真言论》",
+      "use": "肝开窍于目",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《素问·痿论》",
+      "use": "肝主身之筋膜；脾主身之肌肉；肾主身之骨髓",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《素问·灵兰秘典论》",
+      "use": "心者君主之官主血脉；脾胃者仓廪之官；心主神明",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《素问·脉要精微论》",
+      "use": "腰者肾之府；膝者筋之府（膝软辨肝的依据）",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《灵枢·脉度》",
+      "use": "肺气通于鼻；肾气通于耳",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《灵枢·五音五味》",
+      "use": "五音-五脏对应（角肝/徵心/宫脾/商肺/羽肾）",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《类证治裁·喘证》",
+      "use": "肺为气之主，肾为气之根（喘为肺肾双关联依据）",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《医宗必读》",
+      "use": "脾为生痰之源，肺为贮痰之器（痰为脾肺双关联依据）",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《乐记》",
+      "use": "五音配五行",
+      "grade": "A（经典）"
+    },
+    {
+      "source": "《中医诊断学》（统编教材）",
+      "use": "腰膝酸软属肾虚、食后腹胀/便溏属脾虚、不寐责心脾肾、健忘属思虑过度、声嘶属肺",
+      "grade": "B（教材）"
+    },
+    {
+      "source": "《中医内科学》（统编教材）",
+      "use": "喘证病机；痰饮；情志调畅赖肝",
+      "grade": "B（教材）"
+    },
+    {
+      "source": "《中医耳鼻喉科学》",
+      "use": "慢性耳鸣多责肾虚（如蝉），暴鸣多责肝火",
+      "grade": "B（教材）"
+    }
+  ],
+  "forbidden_expressions": [
+    "诊断",
+    "确诊",
+    "患有",
+    "治愈",
+    "治疗有效",
+    "疗效",
+    "病人",
+    "患者",
+    "你有X病",
+    "你是X证",
+    "建议就医（除 Safety 场景）",
+    "本音乐可治疗"
+  ],
+  "usage_boundaries": {
+    "output_wording": "只称'状态评估''辅助辨证倾向''音乐调养参考'",
+    "feedback_boundary": "用户反馈只更新个人偏好，不得修改全局医学规则（global_rule_update=false）",
+    "rag_boundary": "未批准资产不得进入 RAG；RAG 引用须可溯源，禁止'诊断/确诊/治疗'表述",
+    "safety_boundary": "V3 普通用户流程不显示 Q19/Q20；独立 Safety 交互暂缓接入；不得删除 Sprint4 后端 Safety 能力",
+    "music_boundary": "音乐 Provider 能力不足时不得以模型生成内容替代 approved Five-Tone Mapping",
+    "data_boundary": "禁止使用真实用户病历或可识别信息；测试案例一律脱敏虚构"
+  },
+  "rag_review_notes": [
+    {
+      "item": "V2 文献库（literature.json 等）",
+      "decision": "可作为候选来源材料（Issue #77 migration audit：'knowledge/v2 literature chunks 提供候选素材'），但须逐条补 V3 approved 元数据后方可进入 RAG；未补全前不启用",
+      "status": "pending_conversion"
+    },
+    {
+      "item": "V2.2 问卷交互模式与 option codes",
+      "decision": "交互模式已复用进 v3 问卷；V2 option code 与 V3 claim_code 不一致（V2.2 为 emotion→syndrome 结构），不作为 V3 claim 代码来源",
+      "status": "not_promoted"
+    },
+    {
+      "item": "V2 映射文件（emotion-to-syndrome / syndrome-to-tone）",
+      "decision": "V2 为 emotion→syndrome→tone 结构，V3 为 Fact→OrganEvidenceLink→Diagnosis/RAG；不自动迁移，全部由 V3 新 manifest 替代",
+      "status": "not_promoted"
+    }
+  ]
+}
