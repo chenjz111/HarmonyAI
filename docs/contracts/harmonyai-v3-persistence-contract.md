@@ -1,8 +1,8 @@
 # HarmonyAI V3 Persistence Contract
 
-> 版本：`3.0.0-draft.3`
-> 状态：`FROZEN`
-> 权威主合同：`harmonyai-v3-contract-freeze-v3.0.0-draft.3.md`
+> 版本：`draft.3 + owner-flow-amendment-001`
+> 状态：`PENDING_OWNER_REVIEW`；这里只定义迁移要求，不表示迁移已执行。
+> 权威：[Owner Flow Amendment 001](harmonyai-v3-owner-flow-amendment-001.md) 优先于 [历史 draft.3](harmonyai-v3-contract-freeze-v3.0.0-draft.3.md) 冲突条款；新增约束见§13。
 > 目标数据库：SQLite（开发/测试）与 MySQL（部署）语义一致。
 
 ## 1. 持久化原则
@@ -80,6 +80,8 @@
 | `flow_version` | string nullable | V3写 `v3`；V2旧行允许空 |
 | `status` | string | active/completed/abandoned/blocked |
 
+新流程另加flow_contract_version/input_mode/input_revision及活动引用，详见§13.1；旧flow_version=v3不足以区分两套合同，不得据此自动切换。
+
 现有 `user_id` 列作为internal_user_pk使用并补真实FK到users.id；不得把session_id改成PK。所有新V3表使用 `session_row_id INTEGER FK → sessions.id`，API Read Model继续返回字符串session_id。索引：`(user_id,created_at DESC)`、`(session_id)`。
 ## 4. Information Understanding Tables
 
@@ -92,7 +94,7 @@
 | `session_row_id` | FK | NOT NULL |
 | `current_revision` | integer | NOT NULL, `>=1` |
 | `status` | string | queued/processing/needs_confirmation/confirmed/degraded/failed |
-| `safety_status` | string | NOT NULL |
+| `safety_status` | string nullable | 旧合同行NOT NULL；新deferred_v3合同行必须NULL，详见§13.3 |
 | `degradation_json` | JSON | NOT NULL |
 | `created_at/updated_at` | timestamp | NOT NULL |
 
@@ -190,13 +192,13 @@ CHECK 必须保证两种 owner 二选一：`understanding` 要求 Understanding 
 | `assessment_id` | ID | PK |
 | `internal_user_pk` | FK | NOT NULL |
 | `session_row_id` | FK | NOT NULL |
-| `understanding_id` | FK | NOT NULL |
-| `understanding_revision` | integer | NOT NULL，读取已确认Snapshot |
+| `understanding_id` | FK nullable | 新无资料纯问卷允许NULL；与revision同时空或非空 |
+| `understanding_revision` | integer nullable | 非空时读取已确认Snapshot，复合FK不变；旧行仍必填 |
 | `questionnaire_submission_id` | FK nullable | → questionnaire_submissions_v3 |
 | `current_revision` | integer | NOT NULL |
 | `status` | string | needs_confirmation/confirmed/degraded/withheld |
-| `safety_status` | string | NOT NULL；CHECK为主合同SafetyStatus |
-| `user_goal_json` | JSON | NOT NULL |
+| `safety_status` | string nullable | 旧行主合同SafetyStatus非空；新policy必须NULL，见§13.3 |
+| `user_goal_json` | JSON nullable | 历史值保留；v3-owner-flow-1必须NULL，不制造默认目标 |
 | `created_at/updated_at` | timestamp | NOT NULL |
 
 Assessment 不复制问卷 answers；通过 `questionnaire_submission_id` 引用已按 schema identity/checksum 保存的不可变 Submission。唯一：`(session_row_id,assessment_id)`。索引：`(internal_user_pk,created_at DESC)`、`(session_row_id,status)`。
@@ -208,7 +210,7 @@ Assessment 不复制问卷 answers；通过 `questionnaire_submission_id` 引用
 | `assessment_id` | FK | PK part |
 | `revision` | integer | PK part |
 | `previous_revision` | integer nullable | 修正链 |
-| `understanding_revision` | integer | NOT NULL |
+| `understanding_revision` | integer nullable | 新纯问卷允许NULL，须与Assessment来源快照一致；旧行必填 |
 | `status/confirmation_status` | string | NOT NULL |
 | `state_summary` | text | NOT NULL |
 | `recent_context_summary` | text nullable | 用户友好摘要 |
@@ -574,6 +576,7 @@ Assessment 不复制问卷 answers；通过 `questionnaire_submission_id` 引用
 3. **Diagnosis completion**：RAG run、Provider run、Candidates、Evidence links、Diagnosis状态同一最终提交；失败保留run审计但不产生伪success。
 4. **Music task completion**：Music Asset ready 后再把 Task 置成功；二者同一事务。
 5. **Feedback 两阶段闭环**：阶段一在事务中写 Feedback（及独立 favorite 操作），提交后立即可返回；阶段二以 `feedback_id` 幂等地生成 Preference Event、新的不可变 Preference Version 并更新当前指针。阶段二失败不回滚已保存反馈，响应为 `preference_update.applied=false`，后续 worker 可安全重试。
+6. **输入版本与摘要修正**：新session的来源切换/确认/问卷提交，连同input_revision、活动引用及旧下游结果失效检查在同一提交边界。摘要全文提取在事务外执行，最终事务再次检查两个expected版本；失败不写半个confirmed revision。幂等重试不重复加版本。
 
 ## 10. 删除与保留
 
@@ -610,4 +613,66 @@ Assessment 不复制问卷 answers；通过 `questionnaire_submission_id` 引用
 - [ ] V3路由不硬编码用户ID，所有查询验证ownership。
 - [ ] 游客 bootstrap 原子创建 user/identity，token过期后不能继续访问，Session只从Auth Context取用户。
 - [ ] NormalizedFact owner二选一约束覆盖Understanding与Questionnaire，问卷不伪造Understanding revision。
+- [ ] 新旧session合同不混用；纯问卷nullable引用、无目标、Safety未执行NULL的条件约束正确。
+- [ ] 弃用资料/重传/迟到回调/旧Assessment引用有input_revision竞争测试。
 - [ ] 原文、Prompt、Key、原始异常不进入普通日志。
+
+## 13. Owner Flow Amendment 001 — 新增与兼容约束
+
+本节仅定义拟实施增量。不得修改已应用migration的SQL/checksum，必须追加新版本；若成员正在设计尚未合并的业务表，按审核后的本节适配，而不是重写整个数据库。
+
+### 13.1 Session 与活动来源
+
+在sessions增加以下列，旧行允许NULL，不自动回填成新流程：
+
+| 列 | 类型 | 新流程约束 |
+|---|---|---|
+| `flow_contract_version` | string nullable | 新会话固定v3-owner-flow-1，创建后不可变 |
+| `input_mode` | string nullable | 初始未选为NULL；选定后with_document/without_document |
+| `input_revision` | integer nullable | 新会话从1起，修改时CAS递增 |
+| `safety_policy` | string nullable | 新会话固定deferred_v3，仅服务端设置 |
+| `active_document_id` | FK nullable | 资料资源；仍需验证同用户/会话及OCR状态 |
+| `active_understanding_id` | FK nullable | → understanding_runs，与下一列配对 |
+| `active_understanding_revision` | integer nullable | 与ID构成FK → understanding_revisions |
+| `active_questionnaire_submission_id` | FK nullable | → questionnaire_submissions_v3 |
+
+input_mode=NULL只允许尚未选择入口的空会话，不允许评估。来源确认、替换、弃用、问卷活动引用改变均校验expected_input_revision。without_document不能保留active_document_id；但允许独立Narrative/Voice的Understanding。所有FK之外还需同用户/同session检查；只按ID存在不够。
+
+增加`session_input_revisions`审计快照：
+
+| 列 | 类型 | 约束 |
+|---|---|---|
+| `session_row_id` | integer FK | PK part → sessions.id |
+| `input_revision` | integer | PK part，>=1 |
+| `input_mode` | string nullable | 与该版本会话一致 |
+| `active_document_id` | FK nullable | 该版本资源引用 |
+| `active_understanding_id/active_understanding_revision` | FK pair nullable | 复合FK，必须同空或同非空 |
+| `active_questionnaire_submission_id` | FK nullable | → questionnaire_submissions_v3 |
+| `action` | string | create/select_mode/replace_document/discard_document/confirm_source/submit_questionnaire |
+| `created_at` | timestamp | NOT NULL |
+
+唯一(session_row_id,input_revision)，按主键查询；session指针更新与快照插入同一事务。快照不含OCR/自由文本副本。弃用不是删除历史行；新派生任务读取当前快照并拒绝旧input_revision。迟到任务可保留自己的完成记录，但不得更新活动指针。隐私删除仍按§10执行，不能拿审计为由无限期保留原文。
+
+### 13.2 Understanding / Assessment
+
+- understanding_runs、assessment_v3增加`flow_contract_version string`（历史行标识按实际旧合同回填，不标新流程）、`input_revision integer nullable`（新行必填）。复合FK `(session_row_id,input_revision)` 指向session_input_revisions；处理运行保存启动时版本，confirmed快照由活动来源版本引用，避免循环更新运行身份。
+- assessment_v3额外保存`input_mode`快照；新行CHECK：understanding_id/revision必须同空同非空；with_document必须非空且业务校验含成功OCR/confirmed摘要；without_document必须questionnaire_submission_id非空；任何新版Assessment都不能两个来源引用同时空。
+- 新assessment_revisions_v3增加`input_revision`指向所属session的输入快照，保留准确来源；纯问卷understanding_revision=NULL，Fact仍归questionnaire owner，不能新增假Understanding行。
+- 新版user_goal_json必须NULL；旧行历史值保留且维持旧必填验证。不能以放宽数据库nullable为由放宽所有旧API。
+- 摘要全文修正原子生成新的understanding_revisions、normalized_facts、source refs与confirmed状态；changed facts为user_correction，原OCR不覆盖。下游读取最新confirmed快照，不仅替换summary字符串。
+- 较晚改变来源时不修改旧Assessment/Evidence快照；当前性由session input_revision判断。Diagnosis/Prescription/Music仍沿FK追溯同一源版本，每次新调用校验活动版本。
+
+### 13.3 Safety 条件约束
+
+understanding_runs与assessment_v3新增`safety_policy`、`safety_evaluation_status`两列；新行分别固定deferred_v3、not_run，safety_status必须NULL。flow_contract_version、policy必须与session一致；服务端写入，禁止客户端指定。
+
+历史行维持原非空SafetyStatus/状态机。旧数据没有可证明的evaluation_status时保留NULL，不能补“已评估”证明。只放宽新合同这一分支的NULL，不给旧confirmed risk清空/改clear；旧Safety枚举不新增not_run。SQLite/MySQL都验证条件CHECK，跨表一致性由事务服务/集成测试保证。
+
+### 13.4 部署/回滚顺序
+
+1. 文档Owner审核合并后再实施迁移和双版本Schema/服务。
+2. 追加SQLite/MySQL迁移，保留旧行、旧快照、旧goal/Safety数据与ledger。
+3. 后端具备session版本协商、nullable来源、去目标、输入竞争与policy隔离后，前端才请求新流程；不能只发布入口改动。
+4. 回滚先停止创建新版本session，不把已创建新版记录改成旧版或填假goal/clear。若旧二进制无法读取新行，应恢复兼容版本/备份或拒绝破坏性downgrade，不能删除用户数据“回滚成功”。
+
+双数据库定向测试：纯问卷、资料单来源、资料弃用/重传、summary修正并发、同键重试、跨用户引用、旧版本非空约束、新版NULL/无goal约束、迟到OCR回调、旧风险兼容。现有历史测试通过不代表这些新增场景已经通过。

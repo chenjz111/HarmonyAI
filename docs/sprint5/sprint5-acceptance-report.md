@@ -4,7 +4,9 @@
 >
 > 权威基线：`origin/integration/sprint4-real-input@cef9d2660beb1f9ab6a6f677718d4854aa548288`
 >
-> 更新时间：2026-08-24
+> 历史证据日期：2026-08-24；流程验收要求更新：2026-08-26
+
+> 本次文档修订基线：`4a22b5fad75abf839d902fda6f35487d1865a9a8`；[Owner Flow Amendment 001](../contracts/harmonyai-v3-owner-flow-amendment-001.md) 待Owner Review。下列foundation测试与实现进度是原checkpoint，不据此判断成员最新PR完成度；本轮没有重新审查成员代码或执行运行时验收。
 
 本文是陈家智（Project Leader & AI Architect）的可恢复验收记录，不是 Sprint 5 完成声明。只有真实执行并保存证据的项目才能标记 `PASS`；`NOT_RUN`、`PENDING` 与 `BLOCKED` 不得推断为通过。
 
@@ -33,11 +35,11 @@
 
 | Gate | 状态 | 已有能力 | 仍需完成 |
 |---|---|---|---|
-| Contract structure | PASS | 三份结构合同 FROZEN | 不得自行改字段或用户流程 |
+| Historical contract structure | BASELINE_PASS | draft.3结构曾FROZEN | 新流程修订PENDING_OWNER_REVIEW，不能把旧测试当新合同通过 |
 | Medical production content | BLOCKED | 结构与 checksum 规则已冻结 | #77：最终10题、Claim、Organ、Five-Tone、Knowledge Manifest 由肖宇翔批准 |
 | V3 Auth / ownership | FOUNDATION_PASS | guest、AuthPrincipal、ownership、idempotency | 注册用户扩展若进入本 Sprint 需另行验收 |
 | V3 migrations | FOUNDATION_PASS | SQLite/MySQL 0001 与 checksum ledger | 后续业务表 migration；V3 live MySQL |
-| Information Understanding Provider | FOUNDATION_PASS | Qwen adapter、fallback、repair、safe logs | Safety detector编排、来源持久化、确认与不可变 revision |
+| Information Understanding Provider | FOUNDATION_PASS | Qwen adapter、fallback、repair、safe logs | 来源持久化、摘要修正确认、不可变revision及新流程policy；V3专用Safety暂缓 |
 | Agent 1 Assessment | BLOCKED | Input/Output Schema 已存在 | 依赖 approved Claim/Organ mapping；聚合、Evidence、确认服务未完成 |
 | Agent 2 Diagnosis | BLOCKED | Diagnosis/RAG Schema 已存在 | approved Knowledge Manifest、Retriever、Qwen、Rule Check、abstain 路径 |
 | Agent 3 Prescription | BLOCKED | ToneProfile/GenerationSpec Schema 已存在 | approved Five-Tone mapping、偏好快照、权威处方实现 |
@@ -53,21 +55,24 @@
 1. 五 Agent 顺序保持 `Assessment → Diagnosis → Prescription → Music → Feedback`。
 2. 不改变 Owner 已批准的 V3 用户流程；普通流程只有一次最终 Assessment Confirmation。
 3. 未批准医学资产不能进入 production API、RAG、Assessment、Diagnosis 或 Prescription。
-4. Safety 非 `clear | resolved` 时不得进入个性化 Diagnosis/Prescription/Music。
-5. Diagnosis abstained 但安全且信息充分时，由后端决定 `emotion_based | wellness`；前端不得造处方。
+4. 按session合同分离：Sprint4/旧V3非clear/resolved继续原门禁；新流程Safety为deferred_v3/not_run/null，不以未执行制造阻断或安全通过，不解除旧风险。
+5. Diagnosis abstained且输入有效、满足当前合同其他门禁时，由后端决定emotion_based/wellness；前端不得造处方，也不把未执行筛查写为“安全”。
 6. Provider 失败不得伪装生成成功；曲库 fallback 必须标记 `matched_fallback/source_type=matched`。
 7. 原文、OCR/ASR文本、Prompt、Key、Provider原始异常和私有 asset locator 不进入普通日志或客户端。
 8. Feedback 只改变个人音乐偏好，不改变医学映射、Evidence、Safety 或全局规则。
 9. Sprint 4 `emotion_f1` 优化保持 CLOSED；Sprint 5 不恢复 Formal60 调参任务。
+10. 有资料上传/摘要确认必填，描述/问卷选填；无资料描述选填、完整10题必填；无音乐目标。
+11. OCR失败不进摘要/Agent1；弃用资料服务端切换无资料模式，旧来源不参与后续分析。
+12. 摘要文本修正更新事实并确认新revision；最终Assessment确认仍只有一次，最新已确认版本进入Agent2。
 
 ## 5. 推荐集成顺序
 
-1. #77 医学资产批准并冻结 checksum。
+1. Owner审核本次文档PR；成员合并前不实施与旧合同冲突的生产部分。#77医学资产审批/checksum仍是独立门禁。
 2. #78 完成 Understanding Revision、Agent 1、RAG + Agent 2。
 3. #79 完成业务 migrations、Agent 4 task/asset API、Feedback/Preference persistence。
 4. Agent 3 在 approved Five-Tone mapping 和 immutable Preference Snapshot 上实现。
 5. #80 完成只消费 Read Model 的既定 V3 前端流程。
-6. #81 实现 Five-Agent workflow 与正常/降级/Safety/Revision/closed-loop E2E。
+6. #81 实现正常/降级/Revision/closed-loop E2E，加新policy隔离及Sprint4 Safety兼容测试，不实现被暂缓的V3 Safety流程。
 7. 只在全部实现会师后运行一次最终自动化 Gate，再执行手工 Gate。
 
 ## 6. 当前结论
@@ -82,3 +87,15 @@ INTEGRATION_TO_DEV: NOT_READY
 ```
 
 下一动作：等待 #77 的医学批准，同时继续不加载医学内容的持久化/Provider/验收基础；禁止提前合并 integration → dev、关闭 #81 或宣称 V3 成品完成。
+
+## 7. Owner Flow Amendment 新增验收状态
+
+| 范围 | 本轮状态 | 证据要求 |
+|---|---|---|
+| 正式流程合同修订 | PENDING_OWNER_REVIEW | 本次docs-only PR，由Owner审核，不自动merge |
+| FLOW-01～FLOW-12 | NOT_RUN | 按Amendment第9节逐项记录实现HEAD/测试，不引用旧PASS代替 |
+| 新V3专用Safety | DEFERRED / NOT_RUN | 明确限制，不记录Safety PASS；旧版本回归单独验证 |
+| Sprint4兼容回归 | NOT_RUN_THIS_CHANGE | 未来适配时验证Q19/Q20、风险状态/路由及普通确认不可清风险 |
+| 新版Desktop H5 / Android | PENDING | 两路径、OCR失败/弃用、摘要四操作、无目标、单一最终确认 |
+
+当前仅修订文档；不改业务代码、不合并成员PR、不宣布Sprint5完成。医学内容/API厂商/预算与上线仍依已有Issue和Owner决策推进。

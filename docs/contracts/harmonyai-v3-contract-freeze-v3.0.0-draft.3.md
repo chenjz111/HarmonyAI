@@ -7,6 +7,8 @@
 > 配套：`frontend-read-model-contract-v3.md`、`harmonyai-v3-persistence-contract.md`
 > 本合同仅用于辅助音乐调养系统，不构成医学诊断或治疗建议。
 
+> **2026-08-26 流程修订待审核**：[Owner Flow Amendment 001](harmonyai-v3-owner-flow-amendment-001.md)。本文件保留历史冻结正文；修订 PR 合并后，`v3-owner-flow-1` 的输入必填性、OCR 分流/摘要修改、删除音乐目标、Safety 暂缓，以 Amendment 001 及同步配套文档为准。旧 V3 / Sprint4 不被静默改写。合并前不要实施冲突的生产改动；旧必填字段和 Safety Gate 不能直接套用新流程。
+
 ## 1. Draft.3 修订结果与权威决策
 
 | Review finding | Draft.3 权威处理 |
