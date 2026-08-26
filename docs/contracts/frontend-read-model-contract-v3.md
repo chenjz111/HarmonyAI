@@ -1,8 +1,8 @@
 # HarmonyAI V3 Frontend Read Model Contract
 
-> 版本：`3.0.0-draft.3`
-> 状态：`FROZEN`
-> 权威主合同：`harmonyai-v3-contract-freeze-v3.0.0-draft.3.md`
+> 版本：`draft.3 + owner-flow-amendment-001`
+> 状态：`PENDING_OWNER_REVIEW`；本修订未表示页面/API已实现。
+> 权威：[Owner Flow Amendment 001](harmonyai-v3-owner-flow-amendment-001.md) 优先于 [历史 draft.3](harmonyai-v3-contract-freeze-v3.0.0-draft.3.md) 的冲突条款。
 > 目标：保证 Client Engineer 只依赖稳定 Read Model 完成全部 V3 页面，不读取 Agent 内部对象。
 
 ## 1. 客户端边界
@@ -12,6 +12,7 @@
 3. 客户端不得显示内部 enum、Coverage、模型置信度、检索分数、Prompt 或 Provider 原始错误。
 4. 所有用户文案由后端 `presentation` 或前端稳定 error-code 映射提供。
 5. Client 提交的 `user_id` 无效；身份来自 Auth Context。
+6. 本文新页面只适用服务端已接受的 `flow_contract_version=v3-owner-flow-1`。旧 V3/Sprint4 页面保持原合同；前端不能把旧session改成新版本或自行设置Safety policy。
 
 ## 2. Common Types
 
@@ -70,10 +71,10 @@ type PageState = "idle" | "loading" | "ready" | "empty" | "degraded" | "failed";
   "page":"entry",
   "session_id":"sess_xxx",
   "title":"开始了解你最近的状态",
-  "description":"你可以从近期材料或最近发生的事情开始。",
+  "description":"请选择是否有近期就诊资料。没有资料也可以通过状态问卷开始。",
   "choices":[
-    {"id":"with_document","label":"我有近期材料","next_route":"/v3/material"},
-    {"id":"without_document","label":"我没有近期材料","next_route":"/v3/narrative"}
+    {"id":"with_document","label":"我有近期就诊资料","next_route":"/v3/material"},
+    {"id":"without_document","label":"我没有近期就诊资料","next_route":"/v3/narrative"}
   ]
 }
 ```
@@ -85,14 +86,18 @@ type PageState = "idle" | "loading" | "ready" | "empty" | "degraded" | "failed";
   "source_id":"doc_xxx",
   "source_type":"document",
   "state":"processing",
-  "label":"正在识别材料",
+  "label":"正在识别资料",
   "message":"通常需要几秒钟。",
-  "can_skip":true,
-  "actions":[{"id":"skip","label":"暂时跳过","style":"secondary","enabled":true}]
+  "can_skip":false,
+  "actions":[{"id":"discard_document","label":"改用描述与问卷","style":"secondary","enabled":true,"endpoint":"/api/v3/sessions/sess_xxx/input-transitions","method":"POST"}]
 }
 ```
 
 状态：`uploading | processing | needs_confirmation | ready | degraded | failed | skipped`。OCR失败必须区分“未提供”和“已提供但识别失败”。
+
+有资料模式不能用普通skip跳过必需资料；discard_document 成功后才切换无资料模式。失败页标题“资料暂未识别成功”，文案及两个按钮严格使用 Amendment §3.1；旁注“自由描述可以跳过，10道状态问卷需要完成”。失败不进入摘要或Agent1。后端未完成切换时留在当前页、允许重试，不先导航造成旧资料残留。
+
+每个流程 Read Model 额外携带服务端 `flow_contract_version`、`input_mode`、`input_revision`（NOT_USER_VISIBLE，下面页面示例省略这些通用字段）。来源更改请求带 expected_input_revision，成功后使用响应的新版本。未知合同错误不能自动退回旧目标页。
 
 ## 4. Case Summary Page
 
@@ -102,7 +107,7 @@ type PageState = "idle" | "loading" | "ready" | "empty" | "degraded" | "failed";
   "understanding_id":"und_xxx",
   "revision":1,
   "status":"needs_confirmation",
-  "title":"确认材料内容",
+  "title":"请确认资料摘要",
   "summary":"材料中提到近期睡眠恢复不足。",
   "editable_fields":[
     {
@@ -113,16 +118,20 @@ type PageState = "idle" | "loading" | "ready" | "empty" | "degraded" | "failed";
       "required":false
     }
   ],
-  "source_notice":"这份摘要仅用于帮助理解你的情况，请确认或修改。",
+  "source_notice":"以下内容是系统根据你上传的资料整理出的简要信息。请确认它是否准确反映你的近期情况。",
   "warnings":[],
   "actions":[
-    {"id":"confirm","label":"内容基本准确","style":"primary","enabled":true,"endpoint":"/api/v3/understandings/und_xxx/confirmations","method":"POST"},
-    {"id":"edit","label":"我要修改","style":"secondary","enabled":true}
+    {"id":"confirm","label":"内容基本准确，继续","style":"primary","enabled":true,"endpoint":"/api/v3/understandings/und_xxx/confirmations","method":"POST"},
+    {"id":"edit","label":"修改资料摘要","style":"secondary","enabled":true},
+    {"id":"reupload","label":"重新上传资料","style":"secondary","enabled":true},
+    {"id":"discard_document","label":"改用描述与问卷","style":"link","enabled":true,"endpoint":"/api/v3/sessions/sess_xxx/input-transitions","method":"POST"}
   ]
 }
 ```
 
-提交只发送 `expected_revision + decision + changes[]`，其中 changes 使用统一 `target_id + old_value + new_value` 结构。页面不展示 OCR provider、raw OCR confidence 或原始异常。
+基本准确提交 `schema_version=understanding_v3.1 + expected_revision + expected_input_revision + decision=confirm + changes=[]`。结构化changes沿用旧 target_id/old_value/new_value；全文修改按 Amendment §4.2。页面不展示 OCR Provider、raw confidence 或原始异常。
+
+编辑状态增加 `summary_editor={value:string,max_length:2000,required:true}`，value初始化为当前summary，显示通俗文本框；可修改、添加、删除事实。按钮“保存修改并继续”“取消修改”。保存提交 edited_summary_text/reprocess_requested=true，提取校验和确认成功后直接进最近情况；失败保留输入、不改旧版本、不增加二次确认页。取消恢复原摘要、不提交。重新上传先取得新document ID再执行replace_document，原摘要不得继续被使用。
 ## 5. Narrative / Voice Page
 
 ```json
@@ -139,33 +148,18 @@ type PageState = "idle" | "loading" | "ready" | "empty" | "degraded" | "failed";
     "text":"最近总是睡不好。",
     "editable":true
   },
-  "actions":[{"id":"continue","label":"继续","style":"primary","enabled":true}]
+  "actions":[
+    {"id":"continue","label":"继续","style":"primary","enabled":true},
+    {"id":"skip_narrative","label":"暂不填写，继续","style":"link","enabled":true}
+  ]
 }
 ```
 
 ASR unavailable 时 `voice_input.status=unavailable` 并保留文字输入；不得把“已输入但AI暂不可用”显示成“未提供”。
 
-### 5.1 Music Goal Read Model
+### 5.1 选填与音乐目标删除
 
-沿用已经批准并在 Sprint 4 验收通过的音乐目标步骤；V3 只是把它从医学10题问卷中分离，不改变“最多两个目标、一个主要一个次要、其他可填写”的交互。
-
-```json
-{
-  "page":"music_goal",
-  "title":"这一次，你最希望音乐优先帮助你改善什么？",
-  "max_selections":2,
-  "options":[
-    {"value":"sleep","label":"帮助入睡"},
-    {"value":"relaxation","label":"放松紧张"},
-    {"value":"other","label":"其他，我想自己填写"}
-  ],
-  "value":{"primary_goal":"sleep","secondary_goal":"relaxation","custom_goal_text":null},
-  "custom_input":{"visible_when":"other_selected","max_length":200},
-  "actions":[{"id":"continue","label":"继续","style":"primary","enabled":true}]
-}
-```
-
-选择第一个目标为主要目标，第二个为次要目标；再次点击可取消。主要与次要不得相同，最多两个；选择 `other` 时 custom text 必填。该页面只采集 `UserGoal`，不产生医学 Evidence、不改变 Safety，也不是额外确认页。
+两条路径的文字/语音均选填；跳过不创建空Understanding。用户主动录音后可编辑/确认转写，但不录音不强制出现转写页。新版无音乐目标页面、UserGoal输入、目标卡片或隐藏必填；历史Sprint4页面不删除。
 
 ## 6. QuestionnaireReadModel
 
@@ -183,6 +177,8 @@ ASR unavailable 时 `voice_input.status=unavailable` 并保留文字输入；不
   "time_window_days":7,
   "title":"五脏状态问卷",
   "question_count":10,
+  "required_for_flow":false,
+  "skip_action":{"id":"skip_questionnaire","label":"跳过问卷，继续评估","style":"link","enabled":true},
   "estimated_minutes":3,
   "questions":[
     {
@@ -207,6 +203,8 @@ ASR unavailable 时 `voice_input.status=unavailable` 并保留文字输入；不
 `answer_type` 只允许 `multi_choice_evidence | single_choice_evidence | frequency_0_4`。选择题 options 使用 `option_code/claim_code/is_none/exclusive_with`；频率题 value 为0..4整数。示例只表达Schema形状，不代表医学内容已批准。生产 Manifest 必须恰好10题、`review_status=approved` 且 checksum 匹配；提交带 schema identity、7天窗口、answers 与 Idempotency-Key。过期 checksum 返回 `QUESTIONNAIRE_SCHEMA_STALE` 并要求刷新，不能静默按新题目解释旧答案。
 
 V3普通页面不含Q19/Q20；这不授权删除后端Safety能力。问卷选择值以Schema code提交，页面只显示审核文案。
+
+上述 required_for_flow/skip_action 是有资料且摘要已确认的示例。无资料（包括弃用资料）必须 required_for_flow=true、skip_action=null；描述可跳过但问卷不可跳过。它们由session权威模式生成，不改题目级required。资料模式问卷可整份跳过，未提交草稿不作为有效来源；一旦提交必须完整10题。Questionnaire schema本体仍是审核manifest，流程字段由Read Model组合层附加。
 ## 7. Understanding Processing
 
 ```json
@@ -227,6 +225,8 @@ V3普通页面不含Q19/Q20；这不授权删除后端Safety能力。问卷选�
 ```
 
 步骤状态只允许 `pending | running | complete | failed | skipped`。某来源 failed 时页面必须显示安全文案和可用的文字/问卷降级操作，不得显示 Provider 原始异常。
+
+纯问卷模式不创建understanding_id或展示伪Understanding进度，直接进入Agent1评估加载状态。可选来源跳过不写complete/100%。
 ## 8. Final Assessment Confirmation
 
 ```json
@@ -235,13 +235,14 @@ V3普通页面不含Q19/Q20；这不授权删除后端Safety能力。问卷选�
   "assessment_id":"asmt_xxx",
   "revision":1,
   "status":"needs_confirmation",
-  "safety_status":"clear",
+  "safety_policy":"deferred_v3",
+  "safety_evaluation_status":"not_run",
+  "safety_status":null,
   "title":"确认一下我们对你当前状态的理解",
   "summary":"近期主要表现为思虑增多、睡眠恢复不足和精力下降。",
   "sections":[
     {"id":"body","title":"身体感受","items":["睡眠恢复不足","白天精力下降"]},
-    {"id":"context","title":"最近情况","items":["近期学习安排带来压力"]},
-    {"id":"goal","title":"本次音乐目标","items":["帮助入睡","放松紧张"]}
+    {"id":"context","title":"最近情况","items":["近期学习安排带来压力"]}
   ],
   "editable_items":[
     {"target_id":"fev_xxx","label":"睡眠恢复不足","value":{"type":"severity","value":"moderate"},"allowed_values":["none","mild","moderate","severe"],"required":false}
@@ -255,43 +256,13 @@ V3普通页面不含Q19/Q20；这不授权删除后端Safety能力。问卷选�
 ```
 
 修正提交必须带 `expected_revision` 与 changes[]；成功响应返回 `revision+1` 的完整 Assessment Read Model。禁止字段：`evidence_coverage`、`source_diversity`、`provider_metadata`、内部 enum、原始 Evidence ID列表、模型置信度。`assessment_id/revision/safety_status/target_id` 只用于路由和提交。
-## 9. Safety Verification / Support
 
-```json
-{
-  "page":"safety_verification",
-  "understanding_id":"und_xxx",
-  "revision":1,
-  "title":"请确认这条信息",
-  "message":"材料中出现了需要确认的内容，请选择最符合的情况。",
-  "options":[
-    {"value":"current_self","label":"是，描述的是我现在的情况"},
-    {"value":"past_resolved","label":"是过去的情况，现在已经缓解"},
-    {"value":"other_person","label":"这是他人的信息"},
-    {"value":"recognition_error","label":"材料识别有误"},
-    {"value":"cannot_confirm","label":"暂时无法确认"}
-  ],
-  "submit_action":{"id":"submit_safety_resolution","label":"确认并继续","style":"primary","enabled":false,"endpoint":"/api/v3/understandings/und_xxx/safety-resolutions","method":"POST"},
-  "help_actions":[]
-}
-```
+新合同确认同时带expected_input_revision。未提供最近情况时省略context或显示“未填写”，不能生成虚构经历。Safety policy/status不显示，不能渲染“已确认安全”。普通最终确认只有一次；Agent1先生成本页数据，确认后的最新revision再进入Agent2。
+## 9. V3 Safety 暂缓（不是已通过）
 
-confirmed risk 使用独立 SafetySupportReadModel：
+新流程不接入专用Safety检测/核验/支持/安抚音频页面；不存在独立Safety路由或以此为前提的继续按钮。按 Amendment §6 保存 deferred_v3/not_run/null，页面不显示这些技术字段，也不能显示“无风险”。
 
-```json
-{
-  "page":"safety_support",
-  "safety_status":"confirmed_mental_health_risk",
-  "title":"请先获得现实中的支持",
-  "message":"当前不会提供个性化音乐服务。",
-  "help_actions":[{"id":"contact_help","label":"获取帮助","style":"primary","enabled":true}],
-  "comfort_audio":{"available":true,"label":"播放安抚音频","disclaimer":"安抚音频不能替代专业帮助。"}
-}
-```
-
-急性身体风险使用同一判别 Read Model，但 `safety_status=confirmed_acute_physical_risk`、`comfort_audio.available=false`，并显示紧急医疗帮助优先操作。`resolved` 返回正常音乐轨，不显示 Safety Support。
-
-Safety Verification 必须提交 `expected_revision + resolution`。普通确认不得解除 safety；confirmed risk 页面只使用“安全支持”“安抚音频”“获取帮助”等措辞，不得称为音乐处方或治疗。Safety Support 主操作优先于可选安抚音频。
+旧V3与Sprint4的Safety页面、Q19/Q20和风险门禁保留在其原版本。新旧路由不能共用一个全局关闭开关；普通确认/跳过资料/反馈不能清除旧会话风险。若收到旧资源或合同不匹配，返回版本错误并停止该请求，不把用户重定向到一个伪造的clear状态。后续启用V3 Safety须新的Owner决策。
 ## 10. Diagnosis / Generation Basis
 
 ```json
@@ -356,7 +327,7 @@ Safety Verification 必须提交 `expected_revision + resolution`。普通确认
 }
 ```
 
-缺失 `stream_url`、Safety 非 `clear | resolved` 或 Prescription withheld 时，不得由前端自行构造处方或请求生成。Diagnosis abstained 由后端 Agent 3 决定是否进入 `emotion_based/wellness`；若后端返回有效 fallback Prescription 与 Music Asset，前端正常播放，但不得伪装成辨证音乐。
+缺失stream_url或Prescription withheld时，前端不得构造处方或请求生成。服务端按session policy判定可用性：新版不能把safety_status=null误判为风险阻断，旧版非clear/resolved仍执行原门禁。Diagnosis abstained由Agent3决定emotion_based/wellness；有效fallback处方/资产可播放，但不得伪装辨证音乐。
 
 ## 13. FeedbackReadModel
 
@@ -437,22 +408,25 @@ Safety Verification 必须提交 `expected_revision + resolution`。普通确认
 |---|---|---|
 | `UNAUTHENTICATED` | 登录状态已失效 | 重新登录/游客继续 |
 | `RESOURCE_NOT_FOUND` | 当前内容不存在或不可访问 | 返回上一页 |
-| `OCR_UNAVAILABLE` | 材料识别暂时不可用，可改为文字描述 | 跳过/重试 |
+| `OCR_UNAVAILABLE` | 资料暂未识别成功 | 重新上传资料 / 改用描述与问卷（描述选填，10题必填） |
+| `FLOW_CONTRACT_UNSUPPORTED` | 当前服务尚未支持此流程 | 稍后重试，不按旧合同静默提交 |
+| `FLOW_CONTRACT_MISMATCH` | 当前记录不属于此流程版本 | 停止请求，返回原版本记录入口 |
+| `INPUT_REVISION_CONFLICT` | 资料已更新，请刷新后继续 | 刷新当前活动来源，不能重用旧资料 |
 | `ASR_UNAVAILABLE` | 语音识别暂时不可用，可直接输入文字 | 切换文字 |
 | `QUESTIONNAIRE_SCHEMA_STALE` | 问卷已更新，请刷新后重新填写 | 刷新问卷 |
 | `MEDICAL_ASSET_UNAVAILABLE` | 医学内容尚未就绪，当前不能完成正式状态评估 | 稍后重试/返回 |
 | `REVISION_CONFLICT` | 内容已更新，请刷新后再确认 | 刷新 |
-| `SAFETY_BLOCKED` | 当前不会提供个性化音乐服务 | 进入安全支持 |
+| `SAFETY_BLOCKED`（仅旧版本） | 当前不会提供个性化音乐服务 | 原版本安全支持；新流程不借此隐式接入Safety |
 | `INSUFFICIENT_EVIDENCE` | 还需要补充少量信息 | 返回补充/保守非诊断路径 |
 | `DIAGNOSIS_ABSTAINED` | 当前没有形成明确辨证倾向，将使用较保守的音乐方式 | 等待/展示后端 `emotion_based` 或 `wellness` 结果；仅真实无数据时返回补充 |
-| `PRESCRIPTION_WITHHELD` | 当前不会提供个性化音乐建议 | 返回支持页 |
+| `PRESCRIPTION_WITHHELD` | 当前还不能提供音乐建议 | 按后端原因补充/确认/重试；新版不默认跳Safety Support |
 | `PROVIDER_AUTH_FAILED` | 智能分析服务暂时不可用 | 使用降级结果/稍后重试 |
 | `PROVIDER_RATE_LIMITED` | 当前请求较多，请稍后重试 | 重试 |
 | `PROVIDER_TIMEOUT` | 智能分析暂未完成 | 重试/使用降级结果 |
 | `GENERATION_PROVIDER_UNAVAILABLE` | 生成服务暂时不可用 | 重试/审核曲库fallback |
 | `NO_PLAYABLE_ASSET` | 当前没有可播放音频 | 返回音乐依据页 |
 
-Raw provider exception、Provider名称和密钥信息不得进入 UI。错误路由必须尊重 Safety/Diagnosis/Prescription 权威状态，前端不得自行放行。
+Raw provider exception、Provider名称和密钥信息不得进入UI。按session合同消费后端权威状态；前端不得自行放行或伪造Safety clear。
 ## 16. Client Freeze Checklist
 
 - [ ] 每页数据只来自对应 Read Model。
@@ -460,7 +434,11 @@ Raw provider exception、Provider名称和密钥信息不得进入 UI。错误�
 - [ ] 病例摘要、语音、Assessment 修正均有 optimistic concurrency。
 - [ ] Questionnaire包含真实10题 Schema、checksum、7天窗口和stale处理。
 - [ ] 普通流程只有一次最终 Assessment Confirmation。
-- [ ] Safety Verification 提交动作、Safety Support帮助动作完整，且不可被普通确认解除。
+- [ ] 两路径描述选填；有资料问卷选填、无资料10题必填；不造空Understanding。
+- [ ] OCR失败不进摘要；弃用/重传服务端更新input_revision，旧来源不再参与分析。
+- [ ] 摘要有四操作和可编辑通俗文本；保存即修正并确认，无新增确认门。
+- [ ] 无音乐目标页面/请求/展示依赖。
+- [ ] 新流程Safety暂缓且不伪造clear；Sprint4原Safety能力保留，旧风险不可由普通确认解除。
 - [ ] Understanding、生成进度、失败、fallback和Player均有明确状态。
 - [ ] Feedback具有权威听前快照、选填听后状态和feedback_id响应。
 - [ ] Profile、History、Favorites 字段完整且支持分页。
