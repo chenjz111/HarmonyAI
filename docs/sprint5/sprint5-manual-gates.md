@@ -4,7 +4,7 @@
 >
 > 当前基线：`origin/integration/sprint4-real-input@cef9d2660beb1f9ab6a6f677718d4854aa548288`
 
-> 上述为原证据基线；2026-08-26按 [Owner Flow Amendment 001](../contracts/harmonyai-v3-owner-flow-amendment-001.md) 更新待验收流程。修订基线4a22b5f，合同PR待审核，所有新增人工场景尚未执行。
+> 上述为原证据基线；[Owner Flow Amendment 001](../contracts/harmonyai-v3-owner-flow-amendment-001.md) 已于2026-08-27完成Owner合同审核。所有新增实现和人工场景仍未执行。
 
 本文件定义 Sprint 5 最终人工验收证据。任何项目只有实际操作并记录环境、步骤和结果后才能从 `PENDING` 改为 `PASS`。自动化测试、Schema 通过或 Sprint 4 的历史结果不能替代 Sprint 5 人工验收。
 

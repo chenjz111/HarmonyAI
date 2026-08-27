@@ -1,7 +1,7 @@
 # HarmonyAI V3 Frontend Read Model Contract
 
 > 版本：`draft.3 + owner-flow-amendment-001`
-> 状态：`PENDING_OWNER_REVIEW`；本修订未表示页面/API已实现。
+> 状态：`OWNER_APPROVED_NOT_IMPLEMENTED`；本修订未表示页面/API已实现。
 > 权威：[Owner Flow Amendment 001](harmonyai-v3-owner-flow-amendment-001.md) 优先于 [历史 draft.3](harmonyai-v3-contract-freeze-v3.0.0-draft.3.md) 的冲突条款。
 > 目标：保证 Client Engineer 只依赖稳定 Read Model 完成全部 V3 页面，不读取 Agent 内部对象。
 

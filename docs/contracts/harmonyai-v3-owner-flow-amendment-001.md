@@ -1,7 +1,7 @@
 # HarmonyAI V3 Owner Flow Amendment 001
 
 > 日期：2026-08-26
-> 状态：`PENDING_OWNER_REVIEW`；产品决定已获 Owner 确认，技术合同修订待 PR 审核合并。
+> 状态：`OWNER_APPROVED_NOT_IMPLEMENTED`；Owner 于 2026-08-27 完成合同审核。该状态只批准合同，不表示业务代码已适配或验收通过。
 > 基线：`origin/integration/sprint4-real-input@4a22b5fad75abf839d902fda6f35487d1865a9a8`
 > 新流程标识：`v3-owner-flow-1`
 > 范围：仅文档；不表示接口已部署、代码已适配或运行验收已通过。
