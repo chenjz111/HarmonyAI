@@ -1,7 +1,7 @@
 # HarmonyAI V3 Persistence Contract
 
 > 版本：`draft.3 + owner-flow-amendment-001`
-> 状态：`PENDING_OWNER_REVIEW`；这里只定义迁移要求，不表示迁移已执行。
+> 状态：`OWNER_APPROVED_NOT_IMPLEMENTED`；这里只定义迁移要求，不表示迁移已执行。
 > 权威：[Owner Flow Amendment 001](harmonyai-v3-owner-flow-amendment-001.md) 优先于 [历史 draft.3](harmonyai-v3-contract-freeze-v3.0.0-draft.3.md) 冲突条款；新增约束见§13。
 > 目标数据库：SQLite（开发/测试）与 MySQL（部署）语义一致。
 

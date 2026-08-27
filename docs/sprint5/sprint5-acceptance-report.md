@@ -35,7 +35,7 @@
 
 | Gate | 状态 | 已有能力 | 仍需完成 |
 |---|---|---|---|
-| Historical contract structure | BASELINE_PASS | draft.3结构曾FROZEN | 新流程修订PENDING_OWNER_REVIEW，不能把旧测试当新合同通过 |
+| Contract structure | AMENDMENT_APPROVED | draft.3历史结构 + Owner Flow Amendment 001 | 业务适配与新合同测试仍NOT_RUN，不能把旧测试当新合同通过 |
 | Medical production content | BLOCKED | 结构与 checksum 规则已冻结 | #77：最终10题、Claim、Organ、Five-Tone、Knowledge Manifest 由肖宇翔批准 |
 | V3 Auth / ownership | FOUNDATION_PASS | guest、AuthPrincipal、ownership、idempotency | 注册用户扩展若进入本 Sprint 需另行验收 |
 | V3 migrations | FOUNDATION_PASS | SQLite/MySQL 0001 与 checksum ledger | 后续业务表 migration；V3 live MySQL |
@@ -92,7 +92,7 @@ INTEGRATION_TO_DEV: NOT_READY
 
 | 范围 | 本轮状态 | 证据要求 |
 |---|---|---|
-| 正式流程合同修订 | PENDING_OWNER_REVIEW | 本次docs-only PR，由Owner审核，不自动merge |
+| 正式流程合同修订 | OWNER_APPROVED | PR #90于2026-08-27完成Owner Review；仅合同状态，不代表实现完成 |
 | FLOW-01～FLOW-12 | NOT_RUN | 按Amendment第9节逐项记录实现HEAD/测试，不引用旧PASS代替 |
 | 新V3专用Safety | DEFERRED / NOT_RUN | 明确限制，不记录Safety PASS；旧版本回归单独验证 |
 | Sprint4兼容回归 | NOT_RUN_THIS_CHANGE | 未来适配时验证Q19/Q20、风险状态/路由及普通确认不可清风险 |
