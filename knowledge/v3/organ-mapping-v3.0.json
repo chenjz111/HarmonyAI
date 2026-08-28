@@ -2,9 +2,10 @@
   "schema_id": "organ_mapping_v3",
   "schema_version": "3.0.0",
   "manifest_version": "medical_v3.0",
+  "mapping_version": "organ_mapping_v3.0",
   "review_status": "approved",
-  "content_checksum": "sha256:442c5ff0c6872baf25a35b63bcb4b8169221761d90269ac27130b24e828758f7",
-  "scope": "Fact/Claim → OrganEvidenceLink 确定性规则；单 Claim 不直接决定某脏（单题不直接决定某脏、证型或调式），须经组合与阈值判定。",
+  "content_checksum": "sha256:adaec5bc30e712a6c2a8e91eff449f069860c1d2ed79f07466cc80e2fd9392d8",
+  "scope": "Fact/Claim → OrganEvidenceLink 确定性规则；单 Claim 不直接决定某脏（单题不直接决定某脏、证型或调式），须经组合与阈值判定。 聚合判定采用可执行条件：候选脏须满足 combination_rules 的 min_count 与 minimum_total_support，单条证据不足以直接决定候选脏或调式。",
   "organ_element": {
     "liver": "wood",
     "heart": "fire",
@@ -405,7 +406,10 @@
         "eye_discomfort",
         "emotional_recovery_slowness"
       ],
-      "note": "情绪+胁肋/筋/目证据叠加才构成肝系倾向"
+      "min_count": 2,
+      "required_groups": [],
+      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "note": "至少 2 条不同肝系 claim 才构成肝系倾向；情绪+身体证据叠加"
     },
     {
       "name": "心系组合",
@@ -417,7 +421,10 @@
         "palpitation_night",
         "tongue_tip_discomfort"
       ],
-      "note": "情绪+心悸/舌尖证据叠加"
+      "min_count": 2,
+      "required_groups": [],
+      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "note": "至少 2 条不同心系 claim"
     },
     {
       "name": "脾系组合",
@@ -430,7 +437,10 @@
         "postmeal_heaviness",
         "concentration_decline"
       ],
-      "note": "思虑+运化/肌肉证据叠加"
+      "min_count": 2,
+      "required_groups": [],
+      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "note": "至少 2 条不同脾系 claim"
     },
     {
       "name": "肺系组合",
@@ -441,7 +451,10 @@
         "nasal_discomfort",
         "voice_change"
       ],
-      "note": "悲伤+喉/鼻/声证据叠加；喘须伴肺象"
+      "min_count": 2,
+      "required_groups": [],
+      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "note": "至少 2 条不同肺系 claim；喘须伴肺象（见 multi_organ）"
     },
     {
       "name": "肾系组合",
@@ -452,14 +465,19 @@
         "tinnitus",
         "nocturia"
       ],
-      "note": "恐惧+腰膝/耳/夜尿证据叠加"
+      "min_count": 2,
+      "required_groups": [],
+      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "note": "至少 2 条不同肾系 claim"
     }
   ],
   "thresholds": {
     "organ_available_threshold": 0.2,
-    "organ_net_formula": "Σ(signed_contribution) = Σ(link_strength × reliability × direction_signed)；reliability 问卷=1.0、narrative 按 provider extraction_confidence",
-    "semantics": "organ_net >= 0.20 且为该脏最大者才列为候选；低于阈值返回 insufficient/abstain，不强行映射",
-    "note": "阈值 0.20 为合同 §4.4 冻结值；如需调整须 Owner 拍板并经医学复核"
+    "minimum_total_support": 0.75,
+    "minimum_evidence_count": 2,
+    "organ_net_formula": "candidate_organ 须同时满足: ① 命中 combination_rules[organ].min_count 条不同 claim; ② Σ(link_strength × reliability × direction_signed) >= minimum_total_support(0.75); ③ organ_net 为该脏组合内最大值。单条证据(link_strength 0.55~0.70)不足以越过 minimum_total_support，不会单独决定候选脏",
+    "semantics": "三条全部满足才列为候选脏；不满足返回 insufficient/abstain，不强行映射",
+    "note": "阈值 0.20 为合同 §4.4 冻结值（单证据最低门槛）；minimum_total_support=0.75 与 minimum_evidence_count=2 为本医学侧新增可执行约束，确保单题不直接决定某脏/调式。如需调整须 Owner 拍板并经医学复核"
   },
   "conflict_rules": [
     {
