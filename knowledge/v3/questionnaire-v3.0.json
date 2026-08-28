@@ -67,7 +67,7 @@
       "options": [
         {
           "option_code": "flank_discomfort",
-          "label": "胸口附近有时会觉得闷闷的，想长舒一口气",
+          "label": "两侧肋骨（胁肋）附近有时会觉得闷闷的、胀胀的，想长舒一口气",
           "claim_code": "flank_discomfort",
           "is_none": false,
           "exclusive_with": []
@@ -218,7 +218,7 @@
         },
         {
           "option_code": "exertional_breathlessness",
-          "label": "走路、爬楼时，呼吸会比平时快一点",
+          "label": "和平时相比，走路、爬楼时明显更容易气喘、气不够用（比以前明显）",
           "claim_code": "exertional_breathlessness",
           "is_none": false,
           "exclusive_with": []
@@ -291,6 +291,6 @@
     }
   ],
   "claim_dictionary_version": "medical_v3.0",
-  "content_checksum": "sha256:3ee2f75c43eee31c81963c1a2d27a0dfd7485ec49c5e7bdcb57ac0c37b8f6079",
+  "content_checksum": "sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211",
   "review_status": "approved"
 }
