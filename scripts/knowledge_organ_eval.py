@@ -19,19 +19,66 @@ OM_PATH = os.path.join(ROOT, "knowledge", "v3", "organ-mapping-v3.0.json")
 
 ORGAN_ORDER = ["liver", "heart", "spleen", "lung", "kidney"]
 
-# 问卷题目 → claim 代码（questionnaire-v3.0.json 的结构映射）
-QUESTION_CLAIMS = {
-    "q01": ("anger_tendency", "questionnaire_emotion"),
-    "q02": ("agitation_tendency", "questionnaire_emotion"),
-    "q03": ("overthinking_tendency", "questionnaire_emotion"),
-    "q04": ("sadness_tendency", "questionnaire_emotion"),
-    "q05": ("fear_tendency", "questionnaire_emotion"),
-    "q06": ("multi", "questionnaire_body"),
-    "q07": ("multi", "questionnaire_body"),
-    "q08": ("multi", "questionnaire_body"),
-    "q09": ("multi", "questionnaire_body"),
-    "q10": ("multi", "questionnaire_body"),
-}
+QUESTIONNAIRE_PATH = os.path.join(ROOT, "knowledge", "v3", "questionnaire-v3.0.json")
+CLAIM_DICT_PATH = os.path.join(ROOT, "knowledge", "v3", "claim-dictionary-v3.0.json")
+
+
+def load_question_claims():
+    """从 approved questionnaire + claim-dictionary 资产推导 question_id → (claim_code, source)。
+
+    单一代码来源（PR #89 review P1-2）：questionnaire-v3.0.json 定义题目 answer_type 与
+    multi_choice option→claim 映射；claim-dictionary-v3.0.json 定义 frequency 题 claim_code。
+    不在 Python 中硬编码 q01-q10，且校验两者引用一致。
+    """
+    with open(QUESTIONNAIRE_PATH, encoding="utf-8") as f:
+        questionnaire = json.load(f)
+    with open(CLAIM_DICT_PATH, encoding="utf-8") as f:
+        dictionary = json.load(f)
+
+    # frequency 题（q01-q05）：value_type=frequency_0_4，questionnaire_option_refs 形如 ["q01"]
+    freq = {}
+    for e in dictionary["entries"]:
+        if e.get("value_type") != "frequency_0_4":
+            continue
+        for ref in e.get("questionnaire_option_refs", []):
+            if ":" not in ref:
+                freq[ref] = e["claim_code"]
+
+    # multi_choice 题：claim-dictionary 的 "qXX:option_code" 引用
+    claim_by_ref = {}
+    for e in dictionary["entries"]:
+        for ref in e.get("questionnaire_option_refs", []):
+            if ":" in ref:
+                claim_by_ref[ref] = e["claim_code"]
+
+    claims = {}
+    for question in questionnaire["questions"]:
+        qid = question["question_id"]
+        atype = question["answer_type"]
+        if atype == "frequency_0_4":
+            code = freq.get(qid)
+            if not code:
+                raise ValueError(f"frequency 题 {qid} 在 claim-dictionary 无对应 claim")
+            claims[qid] = (code, "questionnaire_emotion")
+        elif atype == "multi_choice_evidence":
+            for opt in question["options"]:
+                if opt.get("is_none"):
+                    continue
+                ref = f"{qid}:{opt['option_code']}"
+                expected = claim_by_ref.get(ref)
+                if opt["claim_code"] != expected:
+                    raise ValueError(
+                        f"{ref} 的 option.claim_code={opt['claim_code']!r} 与 "
+                        f"claim-dictionary 引用 {expected!r} 不一致")
+                if opt["claim_code"] != opt["option_code"]:
+                    raise ValueError(
+                        f"{ref} option_code={opt['option_code']!r} 与 claim_code={opt['claim_code']!r} 不一致")
+            claims[qid] = ("multi", "questionnaire_body")
+    return claims
+
+
+# 问卷题目 → claim 代码（从 questionnaire/claim-dictionary 资产推导，单一代码来源）
+QUESTION_CLAIMS = load_question_claims()
 
 
 def load_organ_mapping():
@@ -84,22 +131,49 @@ def _strength_map(om):
     return {m["claim_code"]: m for m in om["single_mappings"]}
 
 
+def multi_organ_links_map(om):
+    """claim_code -> links 列表（multi_organ_rules 中已结构化的可执行 link）。
+
+    每条 link 含 organ/element/direction/link_strength/mapping_rule_id；主脏 link 的
+    link_strength 与 single_mappings 一致，额外列出次脏 link 实现合同 §4.4
+    「多脏相关事实使用多个 Link，不复制 Fact」。
+    """
+    return {
+        r["claim_code"]: r["links"]
+        for r in om.get("multi_organ_rules", [])
+        if r.get("links")
+    }
+
+
 def compute_organ_scores(om, present_claims):
     """present_claims: {claim_code: reliability}。返回 {organ: organ_net}。
-    organ_net(脏) = Σ(link_strength × reliability × direction_signed)，仅对该脏
-    combination_rules[organ].claims 内的 present claims 求和。
+
+    organ_net(脏) = Σ(link_strength × reliability × direction_signed)。
+    两套贡献来源：
+      - 多脏 claim（multi_organ_rules 已结构化 links）：按 links 向多脏贡献；
+      - 单脏 claim：仅当落在 combination_rules[organ].claims 内才计入（排除
+        daily_impact 等"不映射单脏"的通用 claim）。
     """
     present = _dedup_claims(om, present_claims)
     strength = _strength_map(om)
+    multi_links = multi_organ_links_map(om)
+    combo_sets = {org: combo_claims_for(om, org) for org in ORGAN_ORDER}
     scores = {org: 0.0 for org in ORGAN_ORDER}
-    for org in ORGAN_ORDER:
-        combo_claims = combo_claims_for(om, org)
-        for claim in combo_claims & present.keys():
-            m = strength.get(claim)
-            if m is None:
-                continue
-            direction = 1.0 if m["direction"] == "supporting" else -1.0
-            scores[org] += m["link_strength"] * present[claim] * direction
+
+    for claim, rel in present.items():
+        links = multi_links.get(claim)
+        if links is not None:
+            for link in links:
+                direction = 1.0 if link["direction"] == "supporting" else -1.0
+                scores[link["organ"]] += link["link_strength"] * rel * direction
+            continue
+        m = strength.get(claim)
+        if m is None:
+            continue
+        if not any(claim in s for s in combo_sets.values()):
+            continue
+        direction = 1.0 if m["direction"] == "supporting" else -1.0
+        scores[m["organ"]] += m["link_strength"] * rel * direction
     return scores
 
 

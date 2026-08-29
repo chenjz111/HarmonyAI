@@ -6,7 +6,7 @@
   "review_version": "medical_v3.0-r1",
   "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
   "reviewed_at": "2026-08-24",
-  "content_checksum": "sha256:16d271c2d474dad2a8365794e0b8d93cb3d94d690a4cdec71f31171f477d2080",
+  "content_checksum": "sha256:81afe60b69e1109b95e24edef11eda7a962d9cb407986f3631317cdba1c848d4",
   "scope": "HarmonyAI V3 医学映射第一批（问卷/Claim/Organ/Five-Tone Manifest 与医学边界审核）。**不含 production RAG Ingestion Manifest**——RAG 文档嵌入与检索参数未批准，须待第二批补齐并经 Owner 批准后方可进入 Agent2 RAG。未批准资产不得进入 production API、RAG、Assessment、Diagnosis 或 Prescription。",
   "assets": [
     {
@@ -29,25 +29,17 @@
       "asset": "organ-mapping-v3.0.json",
       "role": "Organ Mapping（Fact/Claim → OrganEvidenceLink 规则）",
       "version": "medical_v3.0",
-      "content_checksum": "sha256:adaec5bc30e712a6c2a8e91eff449f069860c1d2ed79f07466cc80e2fd9392d8",
+      "content_checksum": "sha256:2713d43d4dc684637022c0b05ecfe994055ef4a622ab53d890adccbbdfd0ee86",
       "review_status": "approved",
-      "review_metadata": "32 单映射 + 6 多脏规则 + 5 组合 + 阈值 0.20 + 4 冲突规则；单题不直接决定某脏"
+      "review_metadata": "32 单映射 + 6 多脏规则(结构化 links) + 5 组合 + minimum_total_support 0.75 + 4 冲突规则；单题不直接决定某脏"
     },
     {
       "asset": "five-tone-mapping-v3.0.json",
       "role": "Five-Tone Mapping（五脏/五行 → jiao/zhi/gong/shang/yu）",
       "version": "medical_v3.0",
-      "content_checksum": "sha256:9affc0782ca4b9219cc20956a9b683b66f447d7edb7ed6102ab2b5466c6e3042",
+      "content_checksum": "sha256:8f6bd8b91a5989201bc5605d6ddc55ac76162ad566f932bd89a901f19c4fe36e",
       "review_status": "approved",
       "review_metadata": "5 脏-5 音对应 + 主调权重 + 5 禁忌边界"
-    },
-    {
-      "asset": "knowledge-manifest-v3.0.json",
-      "role": "本批次资产总清单与来源审计（医学映射第一批；RAG Ingestion 未批准）",
-      "version": "medical_v3.0",
-      "content_checksum": "见本文件 content_checksum",
-      "review_status": "approved",
-      "review_metadata": "声明范围收窄：仅医学映射与边界审核；production RAG Ingestion Manifest 未批准（rag_ingestion_status=NOT_APPROVED_PENDING）"
     }
   ],
   "knowledge_sources": [

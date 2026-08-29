@@ -3,7 +3,7 @@
   "schema_version": "3.0.0",
   "manifest_version": "medical_v3.0",
   "review_status": "approved",
-  "content_checksum": "sha256:9affc0782ca4b9219cc20956a9b683b66f447d7edb7ed6102ab2b5466c6e3042",
+  "content_checksum": "sha256:8f6bd8b91a5989201bc5605d6ddc55ac76162ad566f932bd89a901f19c4fe36e",
   "scope": "五脏/五行证据 → 五音（jiao/zhi/gong/shang/yu）映射边界；为 Music Agent 处方参数提供医学依据。输出只称'音乐调养参考'，不构成诊断或治疗。",
   "organ_tone_table": [
     {
