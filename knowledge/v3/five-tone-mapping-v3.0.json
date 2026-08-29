@@ -95,7 +95,7 @@
     },
     {
       "rule": "no_single_organ_determination",
-      "note": "单脏证据不足（organ_net < 0.20）时不强行给主调，返回 insufficient/abstain，可给通用舒缓曲目兜底"
+      "note": "单脏证据不足（无候选脏：distinct claim 数 < combination_rules.min_count 或 organ_net < 0.75）时不强行给主调，返回 insufficient/abstain，可给通用舒缓曲目兜底（统一语义见 organ-mapping-v3.0.json thresholds/scoring_spec）"
     },
     {
       "rule": "multi_organ_balance",

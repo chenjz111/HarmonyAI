@@ -408,7 +408,7 @@
       ],
       "min_count": 2,
       "required_groups": [],
-      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "support_formula": "sum(link_strength × reliability × direction_signed)",
       "note": "至少 2 条不同肝系 claim 才构成肝系倾向；情绪+身体证据叠加"
     },
     {
@@ -423,7 +423,7 @@
       ],
       "min_count": 2,
       "required_groups": [],
-      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "support_formula": "sum(link_strength × reliability × direction_signed)",
       "note": "至少 2 条不同心系 claim"
     },
     {
@@ -439,7 +439,7 @@
       ],
       "min_count": 2,
       "required_groups": [],
-      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "support_formula": "sum(link_strength × reliability × direction_signed)",
       "note": "至少 2 条不同脾系 claim"
     },
     {
@@ -453,7 +453,7 @@
       ],
       "min_count": 2,
       "required_groups": [],
-      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "support_formula": "sum(link_strength × reliability × direction_signed)",
       "note": "至少 2 条不同肺系 claim；喘须伴肺象（见 multi_organ）"
     },
     {
@@ -467,7 +467,7 @@
       ],
       "min_count": 2,
       "required_groups": [],
-      "support_formula": "sum(link_strength × reliability) / len(claims_in_combo)",
+      "support_formula": "sum(link_strength × reliability × direction_signed)",
       "note": "至少 2 条不同肾系 claim"
     }
   ],
@@ -478,6 +478,23 @@
     "organ_net_formula": "candidate_organ 须同时满足: ① 命中 combination_rules[organ].min_count 条不同 claim; ② Σ(link_strength × reliability × direction_signed) >= minimum_total_support(0.75); ③ organ_net 为该脏组合内最大值。单条证据(link_strength 0.55~0.70)不足以越过 minimum_total_support，不会单独决定候选脏",
     "semantics": "三条全部满足才列为候选脏；不满足返回 insufficient/abstain，不强行映射",
     "note": "阈值 0.20 为合同 §4.4 冻结值（单证据最低门槛）；minimum_total_support=0.75 与 minimum_evidence_count=2 为本医学侧新增可执行约束，确保单题不直接决定某脏/调式。如需调整须 Owner 拍板并经医学复核"
+  },
+  "scoring_spec": {
+    "score_semantics": "weighted_support_sum",
+    "organ_net_definition": "organ_net(脏) = Σ(link_strength × reliability × direction_signed)，对所有映射到该脏的 present claims 求和；与 combination_rules.support_formula、thresholds.organ_net_formula 统一为 sum 语义（V1.0 曾误写为均值，已修正）",
+    "reliability_model": {
+      "questionnaire_body_multi_choice": 1.0,
+      "questionnaire_emotion_frequency": "answer_value / 4（frequency_0_4：1→0.25，2→0.5，3→0.75，4→1.0）",
+      "narrative_claim": 0.6,
+      "document_claim": 0.7
+    },
+    "candidate_rule": "该脏 present 的 distinct claims 数 ≥ combination_rules[organ].min_count 且 organ_net ≥ thresholds.minimum_total_support；两者同时满足才列为候选脏",
+    "primary_rule": "候选脏中 organ_net 最高者为主脏；同分按器官固定顺序确定性取舍",
+    "secondary_rule": "其余候选脏按 organ_net 降序排列为次脏",
+    "abstain_rule": "无候选脏 → abstain=true，音乐兜底 wellness_generic，不强行映射",
+    "per_claim_floor": "organ_available_threshold=0.20（合同 §4.4 冻结值）为单条 claim 最低门槛，link_strength < 0.20 的 claim 不计入",
+    "multi_organ_note": "multi_organ_rules 用于 Assessment 侧拆分多脏证据的细化；候选脏判定仍以 single_mappings 强度为准，不改变是否进入候选",
+    "note": "reliability 默认值（narrative 0.6 / document 0.7）供医学侧复核；narrative/文档抽取的 claim 可靠性低于问卷直接证据。调整可靠性须 Owner 拍板并经医学复核"
   },
   "conflict_rules": [
     {

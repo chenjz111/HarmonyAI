@@ -37,7 +37,7 @@
 | 否定 | V3_C001（"心情其实挺好…没有低落"）| 问卷 q04=3 vs 叙述否定 → 应产生 conflict 而非强行归肺 |
 | 历史情况 | V3_N001（"最近工作压力大"）| 时间窗 past_7_days 内，作当前状态证据 |
 | 他人信息 | （新增建议）"我妈说她睡不好" | subject=other → 不计入本人五脏 Evidence |
-| 证据不足 | V3_I001 / V3_I002 | organ_net < 0.20 → abstain，不强行映射 |
+| 证据不足 | V3_I001 / V3_I002 | 无候选脏（distinct claim 数 < 组合 min_count 或 organ_net < 0.75）→ abstain，不强行映射；0.20 仅为单条 claim 的 per-claim floor |
 | 冲突表达 | V3_C001 | 标记 conflict，不静默覆盖 |
 
 **结论**：现有案例覆盖 4/5 项；**他人信息（subject=other）缺案例**——建议钟睿宸的 Understanding 测试补充 1 条（见下方补充案例）。
