@@ -4,7 +4,7 @@
   "manifest_version": "medical_v3.0",
   "mapping_version": "organ_mapping_v3.0",
   "review_status": "approved",
-  "content_checksum": "sha256:adaec5bc30e712a6c2a8e91eff449f069860c1d2ed79f07466cc80e2fd9392d8",
+  "content_checksum": "sha256:2713d43d4dc684637022c0b05ecfe994055ef4a622ab53d890adccbbdfd0ee86",
   "scope": "Fact/Claim → OrganEvidenceLink 确定性规则；单 Claim 不直接决定某脏（单题不直接决定某脏、证型或调式），须经组合与阈值判定。 聚合判定采用可执行条件：候选脏须满足 combination_rules 的 min_count 与 minimum_total_support，单条证据不足以直接决定候选脏或调式。",
   "organ_element": {
     "liver": "wood",
@@ -342,7 +342,23 @@
       "secondary": [
         "kidney"
       ],
-      "rule": "动则气喘为肺肾气虚。单独出现不作肺证据（link_strength 降至 0.2 并标记 abstain 候选）；伴喉咳/鼻塞/声哑等肺象时按 single_mapping 0.5 计",
+      "links": [
+        {
+          "organ": "lung",
+          "element": "metal",
+          "direction": "supporting",
+          "link_strength": 0.5,
+          "mapping_rule_id": "map_exertional_breathlessness_lung_multi_01"
+        },
+        {
+          "organ": "kidney",
+          "element": "water",
+          "direction": "supporting",
+          "link_strength": 0.2,
+          "mapping_rule_id": "map_exertional_breathlessness_kidney_multi_01"
+        }
+      ],
+      "rule": "动则气喘为肺肾气虚。单独出现不作肺证据（lung 0.5 / kidney 0.2 拆分 link，均不在肺/肾组合内故不满足 min_count、不单独决定）；伴喉咳/鼻塞/声哑等肺象时 lung 0.5 计入肺系",
       "source": "《类证治裁·喘证》'肺为气之主，肾为气之根'"
     },
     {
@@ -350,6 +366,15 @@
       "primary": "kidney",
       "secondary": [
         "liver"
+      ],
+      "links": [
+        {
+          "organ": "kidney",
+          "element": "water",
+          "direction": "supporting",
+          "link_strength": 0.7,
+          "mapping_rule_id": "map_lower_back_knee_weakness_kidney_multi_01"
+        }
       ],
       "rule": "腰膝并见归肾（0.7）；若未来出现单拆'膝软'项须重辨（'膝者筋之府'属肝）",
       "source": "《素问·脉要精微论》'膝者，筋之府'；《素问·痿论》'肾主身之骨髓'"
@@ -359,6 +384,15 @@
       "primary": "kidney",
       "secondary": [
         "liver"
+      ],
+      "links": [
+        {
+          "organ": "kidney",
+          "element": "water",
+          "direction": "supporting",
+          "link_strength": 0.6,
+          "mapping_rule_id": "map_tinnitus_kidney_multi_01"
+        }
       ],
       "rule": "问卷文案'嗡嗡声'偏慢性肾虚耳鸣（0.6）；若出现'暴鸣/突发'须转肝火上扰型，本次问卷不含该口径",
       "source": "《灵枢·脉度》'肾气通于耳'；《中医耳鼻喉科学》慢肾虚/暴肝火"
@@ -370,6 +404,29 @@
         "spleen",
         "kidney"
       ],
+      "links": [
+        {
+          "organ": "heart",
+          "element": "fire",
+          "direction": "supporting",
+          "link_strength": 0.4,
+          "mapping_rule_id": "map_sleep_disturbance_heart_multi_01"
+        },
+        {
+          "organ": "spleen",
+          "element": "earth",
+          "direction": "supporting",
+          "link_strength": 0.25,
+          "mapping_rule_id": "map_sleep_disturbance_spleen_multi_01"
+        },
+        {
+          "organ": "kidney",
+          "element": "water",
+          "direction": "supporting",
+          "link_strength": 0.2,
+          "mapping_rule_id": "map_sleep_disturbance_kidney_multi_01"
+        }
+      ],
       "rule": "不寐多责心，兼脾（思虑）肾（精亏）。心 0.4 / 脾 0.25 / 肾 0.2，组合判定，不单独决定心",
       "source": "《素问·灵兰秘典论》心主神明；《中医诊断学》不寐病机心脾肾"
     },
@@ -380,6 +437,29 @@
         "spleen",
         "kidney"
       ],
+      "links": [
+        {
+          "organ": "heart",
+          "element": "fire",
+          "direction": "supporting",
+          "link_strength": 0.4,
+          "mapping_rule_id": "map_unrefreshing_sleep_heart_multi_01"
+        },
+        {
+          "organ": "spleen",
+          "element": "earth",
+          "direction": "supporting",
+          "link_strength": 0.25,
+          "mapping_rule_id": "map_unrefreshing_sleep_spleen_multi_01"
+        },
+        {
+          "organ": "kidney",
+          "element": "water",
+          "direction": "supporting",
+          "link_strength": 0.2,
+          "mapping_rule_id": "map_unrefreshing_sleep_kidney_multi_01"
+        }
+      ],
       "rule": "同 sleep_disturbance",
       "source": "同上"
     },
@@ -389,6 +469,15 @@
       "secondary": [
         "lung",
         "kidney"
+      ],
+      "links": [
+        {
+          "organ": "spleen",
+          "element": "earth",
+          "direction": "supporting",
+          "link_strength": 0.4,
+          "mapping_rule_id": "map_low_energy_spleen_multi_01"
+        }
       ],
       "rule": "脾 0.4（主肌肉四肢）；伴气短→肺；伴腰酸→肾，交叉识别",
       "source": "《素问·痿论》'脾主身之肌肉'"
@@ -472,12 +561,11 @@
     }
   ],
   "thresholds": {
-    "organ_available_threshold": 0.2,
     "minimum_total_support": 0.75,
     "minimum_evidence_count": 2,
     "organ_net_formula": "candidate_organ 须同时满足: ① 命中 combination_rules[organ].min_count 条不同 claim; ② Σ(link_strength × reliability × direction_signed) >= minimum_total_support(0.75); ③ organ_net 为该脏组合内最大值。单条证据(link_strength 0.55~0.70)不足以越过 minimum_total_support，不会单独决定候选脏",
     "semantics": "三条全部满足才列为候选脏；不满足返回 insufficient/abstain，不强行映射",
-    "note": "阈值 0.20 为合同 §4.4 冻结值（单证据最低门槛）；minimum_total_support=0.75 与 minimum_evidence_count=2 为本医学侧新增可执行约束，确保单题不直接决定某脏/调式。如需调整须 Owner 拍板并经医学复核"
+    "note": "minimum_total_support=0.75 与 minimum_evidence_count=2 为唯一可执行候选阈值（单一阈值语义，无第二套 per-claim 门槛）；确保单题不直接决定某脏/调式。如需调整须 Owner 拍板并经医学复核"
   },
   "scoring_spec": {
     "score_semantics": "weighted_support_sum",
@@ -492,8 +580,7 @@
     "primary_rule": "候选脏中 organ_net 最高者为主脏；同分按器官固定顺序确定性取舍",
     "secondary_rule": "其余候选脏按 organ_net 降序排列为次脏",
     "abstain_rule": "无候选脏 → abstain=true，音乐兜底 wellness_generic，不强行映射",
-    "per_claim_floor": "organ_available_threshold=0.20（合同 §4.4 冻结值）为单条 claim 最低门槛，link_strength < 0.20 的 claim 不计入",
-    "multi_organ_note": "multi_organ_rules 用于 Assessment 侧拆分多脏证据的细化；候选脏判定仍以 single_mappings 强度为准，不改变是否进入候选",
+    "multi_organ_note": "multi_organ_rules 已结构化为 links（organ/element/direction/link_strength/mapping_rule_id），评估器对不在 combination_rules 内的多脏 claim（sleep_disturbance/unrefreshing_sleep/low_energy/exertional_breathlessness）按 links 向多脏贡献 organ_net，但不计入 distinct claim 计数、不单独决定候选脏；lower_back_knee_weakness/tinnitus 已在肾组合内按主脏 link 计，secondary 为未来口径",
     "note": "reliability 默认值（narrative 0.6 / document 0.7）供医学侧复核；narrative/文档抽取的 claim 可靠性低于问卷直接证据。调整可靠性须 Owner 拍板并经医学复核"
   },
   "conflict_rules": [
