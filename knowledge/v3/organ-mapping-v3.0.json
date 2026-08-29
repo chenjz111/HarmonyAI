@@ -4,7 +4,7 @@
   "manifest_version": "medical_v3.0",
   "mapping_version": "organ_mapping_v3.0",
   "review_status": "approved",
-  "content_checksum": "sha256:2713d43d4dc684637022c0b05ecfe994055ef4a622ab53d890adccbbdfd0ee86",
+  "content_checksum": "sha256:8fe7ec59131d28cf99e119fe78faa2740dac33cf315942c0b5e75a0e67838ea6",
   "scope": "Fact/Claim → OrganEvidenceLink 确定性规则；单 Claim 不直接决定某脏（单题不直接决定某脏、证型或调式），须经组合与阈值判定。 聚合判定采用可执行条件：候选脏须满足 combination_rules 的 min_count 与 minimum_total_support，单条证据不足以直接决定候选脏或调式。",
   "organ_element": {
     "liver": "wood",
@@ -359,7 +359,9 @@
         }
       ],
       "rule": "动则气喘为肺肾气虚。单独出现不作肺证据（lung 0.5 / kidney 0.2 拆分 link，均不在肺/肾组合内故不满足 min_count、不单独决定）；伴喉咳/鼻塞/声哑等肺象时 lung 0.5 计入肺系",
-      "source": "《类证治裁·喘证》'肺为气之主，肾为气之根'"
+      "source": "《类证治裁·喘证》'肺为气之主，肾为气之根'",
+      "review_status": "approved",
+      "review_version": "medical_v3.0-r1"
     },
     {
       "claim_code": "lower_back_knee_weakness",
@@ -377,7 +379,9 @@
         }
       ],
       "rule": "腰膝并见归肾（0.7）；若未来出现单拆'膝软'项须重辨（'膝者筋之府'属肝）",
-      "source": "《素问·脉要精微论》'膝者，筋之府'；《素问·痿论》'肾主身之骨髓'"
+      "source": "《素问·脉要精微论》'膝者，筋之府'；《素问·痿论》'肾主身之骨髓'",
+      "review_status": "approved",
+      "review_version": "medical_v3.0-r1"
     },
     {
       "claim_code": "tinnitus",
@@ -395,7 +399,9 @@
         }
       ],
       "rule": "问卷文案'嗡嗡声'偏慢性肾虚耳鸣（0.6）；若出现'暴鸣/突发'须转肝火上扰型，本次问卷不含该口径",
-      "source": "《灵枢·脉度》'肾气通于耳'；《中医耳鼻喉科学》慢肾虚/暴肝火"
+      "source": "《灵枢·脉度》'肾气通于耳'；《中医耳鼻喉科学》慢肾虚/暴肝火",
+      "review_status": "approved",
+      "review_version": "medical_v3.0-r1"
     },
     {
       "claim_code": "sleep_disturbance",
@@ -428,7 +434,9 @@
         }
       ],
       "rule": "不寐多责心，兼脾（思虑）肾（精亏）。心 0.4 / 脾 0.25 / 肾 0.2，组合判定，不单独决定心",
-      "source": "《素问·灵兰秘典论》心主神明；《中医诊断学》不寐病机心脾肾"
+      "source": "《素问·灵兰秘典论》心主神明；《中医诊断学》不寐病机心脾肾",
+      "review_status": "approved",
+      "review_version": "medical_v3.0-r1"
     },
     {
       "claim_code": "unrefreshing_sleep",
@@ -461,7 +469,9 @@
         }
       ],
       "rule": "同 sleep_disturbance",
-      "source": "同上"
+      "source": "同上",
+      "review_status": "approved",
+      "review_version": "medical_v3.0-r1"
     },
     {
       "claim_code": "low_energy",
@@ -480,7 +490,9 @@
         }
       ],
       "rule": "脾 0.4（主肌肉四肢）；伴气短→肺；伴腰酸→肾，交叉识别",
-      "source": "《素问·痿论》'脾主身之肌肉'"
+      "source": "《素问·痿论》'脾主身之肌肉'",
+      "review_status": "approved",
+      "review_version": "medical_v3.0-r1"
     }
   ],
   "combination_rules": [

@@ -6,7 +6,7 @@
   "review_version": "medical_v3.0-r1",
   "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
   "reviewed_at": "2026-08-24",
-  "content_checksum": "sha256:81afe60b69e1109b95e24edef11eda7a962d9cb407986f3631317cdba1c848d4",
+  "content_checksum": "sha256:3bb9a8afd6754dee43c0ff0955dda6e2b78bda066b72785f500fe7c9d7069d47",
   "scope": "HarmonyAI V3 医学映射第一批（问卷/Claim/Organ/Five-Tone Manifest 与医学边界审核）。**不含 production RAG Ingestion Manifest**——RAG 文档嵌入与检索参数未批准，须待第二批补齐并经 Owner 批准后方可进入 Agent2 RAG。未批准资产不得进入 production API、RAG、Assessment、Diagnosis 或 Prescription。",
   "assets": [
     {
@@ -29,9 +29,9 @@
       "asset": "organ-mapping-v3.0.json",
       "role": "Organ Mapping（Fact/Claim → OrganEvidenceLink 规则）",
       "version": "medical_v3.0",
-      "content_checksum": "sha256:2713d43d4dc684637022c0b05ecfe994055ef4a622ab53d890adccbbdfd0ee86",
+      "content_checksum": "sha256:8fe7ec59131d28cf99e119fe78faa2740dac33cf315942c0b5e75a0e67838ea6",
       "review_status": "approved",
-      "review_metadata": "32 单映射 + 6 多脏规则(结构化 links) + 5 组合 + minimum_total_support 0.75 + 4 冲突规则；单题不直接决定某脏"
+      "review_metadata": "32 单映射 + 6 多脏规则(结构化 links，含 source/review_status/review_version) + 5 组合 + minimum_total_support 0.75 + 4 冲突规则；单题不直接决定某脏"
     },
     {
       "asset": "five-tone-mapping-v3.0.json",

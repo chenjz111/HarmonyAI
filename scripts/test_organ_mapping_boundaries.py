@@ -161,7 +161,11 @@ def test_multi_organ_rules_have_executable_links():
             assert link['direction'] in ('supporting', 'contradicting'), f'{claim} link direction 非法'
             assert 0.0 < link['link_strength'] <= 1.0, f'{claim} link_strength 越界'
             assert link['mapping_rule_id'], f'{claim} link 缺 mapping_rule_id'
-    print(f"✅ 多脏规则: {len(om['multi_organ_rules'])} 条 multi_organ_rule 全部含可执行 links")
+        # PR #89 review 增量项：来源与审核状态须明确
+        assert rule.get('source'), f'{claim} 缺 source（来源）'
+        assert rule.get('review_status') == 'approved', f'{claim} 缺/错 review_status'
+        assert rule.get('review_version'), f'{claim} 缺 review_version'
+    print(f"✅ 多脏规则: {len(om['multi_organ_rules'])} 条 multi_organ_rule 含可执行 links + source/review_status/review_version")
 
 
 def test_multi_organ_claim_produces_multiple_links():
