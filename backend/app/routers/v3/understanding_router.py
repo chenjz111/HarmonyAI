@@ -11,8 +11,8 @@ from backend.app.routers.v3.transport import V3APIError, v3_success
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.schemas.v3.understanding import (
-    UnderstandingRevisionResult,
     UnderstandingV31ConfirmationRequest,
+    UnderstandingV31ConfirmationResult,
     UnderstandingV31Request,
     UnderstandingV31Response,
 )
@@ -200,14 +200,14 @@ def get_understanding(
 
 @router.post(
     "/understandings/{understanding_id}/confirmations",
-    response_model=V3SuccessEnvelope[UnderstandingRevisionResult],
+    response_model=V3SuccessEnvelope[UnderstandingV31ConfirmationResult],
 )
 def confirm_understanding(
     understanding_id: str,
     body: Annotated[dict[str, object], Body()],
     principal: AuthPrincipal = Depends(get_current_v3_principal),
     db: Session = Depends(get_db),
-) -> V3SuccessEnvelope[UnderstandingRevisionResult]:
+) -> V3SuccessEnvelope[UnderstandingV31ConfirmationResult]:
     schema_version = body.get("schema_version")
     if schema_version != "understanding_v3.1":
         raise V3APIError(

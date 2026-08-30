@@ -35,6 +35,7 @@ from backend.app.schemas.v3.understanding import (
     UnderstandingRevisionResult,
     UnderstandingSource,
     UnderstandingV31ConfirmationRequest,
+    UnderstandingV31ConfirmationResult,
     UnderstandingV31Request,
     UnderstandingV31Response,
     VoiceTranscript,
@@ -421,21 +422,29 @@ def run_understanding_v31(
 
     # A CaseSummary is a *document* summary. Narrative-only runs must not
     # fabricate a material summary, must not show "材料内容摘要"/"资料中提到",
-    # and must not introduce a document-confirmation step.
-    case_summary = (
-        _build_case_summary(
+    # and must not introduce a document-confirmation step. P1: a narrative
+    # is the user's own 最近情况 input, so a narrative-only run is born
+    # confirmed — no extra confirmation page, and the facts are immediately
+    # consumable by Agent 1.
+    if source_document_ids:
+        case_summary = _build_case_summary(
             source_document_ids=source_document_ids,
             summary_text=_summary_from_facts(document_facts),
             revision=1,
         )
-        if source_document_ids
-        else None
-    )
+        understanding_status = "needs_confirmation"
+        snapshot_status = "needs_confirmation"
+    else:
+        case_summary = None
+        understanding_status = "confirmed"
+        snapshot_status = "confirmed"
+        for fact in normalized_facts:
+            fact.confirmation_status = "confirmed"
     content = UnderstandingV31Response(
         schema_version="understanding_v3.1",
         understanding_id=understanding_id,
         revision=1,
-        status="needs_confirmation",
+        status=understanding_status,
         case_summary=case_summary,
         voice_transcripts=[],
         normalized_facts=normalized_facts,
@@ -454,14 +463,34 @@ def run_understanding_v31(
             revision=1,
             session_id=request.session_id,
             internal_user_pk=principal.internal_user_pk,
-            status="needs_confirmation",
+            status=snapshot_status,
             snapshot_json=json.dumps(content, ensure_ascii=False),
             safety_policy="deferred_v3",
             safety_evaluation_status="not_run",
             safety_status=None,
         )
     )
-    db.commit()
+    if source_document_ids:
+        db.commit()
+    else:
+        # Bind the confirmed narrative understanding to the session so it is
+        # immediately usable by Agent 1; the CAS still uses the request's
+        # expected_input_revision so a racing transition cannot be
+        # overwritten.
+        try:
+            update_understanding_ref(
+                db,
+                principal,
+                request.session_id,
+                understanding_id=understanding_id,
+                revision=1,
+                expected_input_revision=request.expected_input_revision,
+                commit=False,
+            )
+            db.commit()
+        except InputRevisionConflict:
+            db.rollback()
+            raise
     return UnderstandingV31Response.model_validate(content)
 
 
@@ -638,6 +667,15 @@ def confirm_understanding_v3_1(
 
     if request.decision == "confirm":
         content["status"] = "confirmed"
+        # P0: plain confirm must propagate the confirmation to the inner
+        # state — CaseSummary and facts — otherwise Agent 1 cannot consume
+        # a coherent confirmed snapshot.
+        case_summary = content.get("case_summary")
+        if isinstance(case_summary, dict):
+            case_summary["status"] = "confirmed"
+            case_summary["revision"] = new_revision
+        for fact in content.get("normalized_facts") or []:
+            fact["confirmation_status"] = "confirmed"
     else:
         if request.edited_summary_text is not None:
             # Full-text summary edits belong to the with-document flow only:
@@ -710,6 +748,7 @@ def confirm_understanding_v3_1(
             expected_input_revision=request.expected_input_revision,
             commit=False,
         )
+        new_input_revision = request.expected_input_revision + 1
         db.commit()
     except InputRevisionConflict:
         # The session moved on (e.g. discard/replace raced with this
@@ -718,11 +757,13 @@ def confirm_understanding_v3_1(
         # never re-referenced.
         db.rollback()
         raise
-    return UnderstandingRevisionResult(
+    return UnderstandingV31ConfirmationResult(
         understanding_id=understanding_id,
         previous_revision=previous_revision,
         revision=new_revision,
         status="confirmed",
         applied_changes=applied_changes,
         affected_fact_ids=affected_fact_ids,
+        input_revision=new_input_revision,
+        understanding=UnderstandingV31Response.model_validate(content),
     )

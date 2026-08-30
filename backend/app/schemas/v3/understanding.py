@@ -340,6 +340,18 @@ class UnderstandingRevisionResult(V3BaseModel):
         return self
 
 
+class UnderstandingV31ConfirmationResult(UnderstandingRevisionResult):
+    """Owner Flow Amendment 001 §4.2 — confirmation response.
+
+    Besides the revision result, returns the server-authoritative
+    ``input_revision`` and the latest Understanding Read Model so clients
+    never guess the next expected versions.
+    """
+
+    input_revision: Annotated[int, Field(ge=1)]
+    understanding: UnderstandingV31Response
+
+
 class SafetySignalResolution(V3BaseModel):
     safety_signal_ref: NonEmptyString
     resolution: Literal[
