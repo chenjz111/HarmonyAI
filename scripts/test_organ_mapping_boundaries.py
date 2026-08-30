@@ -19,6 +19,10 @@ supporting 方向 link_strength，reliability=1.0）：
 import os
 import sys
 
+# Windows 中文环境 stdout 默认 GBK，emoji 输出会 UnicodeEncodeError（PR #89 复审问题 2）
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from knowledge_organ_eval import (

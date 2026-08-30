@@ -24,7 +24,14 @@ from knowledge_organ_eval import (  # noqa: E402
 )
 
 CASES_PATH = ROOT / "evals" / "sprint5" / "cases.jsonl"
+FIVE_TONE_PATH = ROOT / "knowledge" / "v3" / "five-tone-mapping-v3.0.json"
 OM = load_organ_mapping()
+
+# 五音映射从 approved 资产加载（单一代码来源，非硬编码）
+ORGAN_TONE = {
+    row["organ"]: row["tone"]
+    for row in json.load(open(FIVE_TONE_PATH, encoding="utf-8"))["organ_tone_table"]
+}
 
 # 独立 golden 锚点：主脏 / 次脏 / abstain / 调式 / organ_net（人工审核，勿自动改）。
 GOLDEN = {
@@ -81,6 +88,21 @@ def test_eval_case_matches_golden(case):
     for org in ORGAN_ORDER:
         assert abs(scores[org] - g["organ_net"][org]) < 1e-6, (
             f"{cid}: organ_net[{org}] golden={g['organ_net'][org]} 实算={round(scores[org], 6)}")
+
+    # abstain / tones：算法输出（与 regenerate 同语义）必须命中医学锚点 golden。
+    # 此前这两项只经「数据文件 expected ↔ golden」校验（两边都是人工值，一致即过），
+    # 算法若把 abstain/五音判定改坏测试仍可能全绿；此处用算法输出直接对 golden 验证。
+    algo_abstain = (case["type"] != "conflict") and (primary is None)
+    assert algo_abstain == g["abstain"], (
+        f"{cid}: abstain 偏离 golden（golden={g['abstain']} 实算={algo_abstain}）")
+    if case["type"] == "conflict":
+        algo_tones = []
+    elif primary is None:
+        algo_tones = ["wellness_generic"]
+    else:
+        algo_tones = [ORGAN_TONE[primary]]
+    assert algo_tones == g["tones"], (
+        f"{cid}: tones 偏离 golden（golden={g['tones']} 实算={algo_tones}）")
 
 
 @pytest.mark.parametrize("case", _load_cases(), ids=lambda c: c["case_id"])
