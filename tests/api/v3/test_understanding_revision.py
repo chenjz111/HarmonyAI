@@ -371,9 +371,12 @@ def test_run_accepts_narrative_source(monkeypatch, db_session_factory):
     )
     assert response.status_code == 201, response.text
     understanding = _v3_data(response)
-    # narrative-only: no material CaseSummary, facts still extracted
+    # narrative-only: no material CaseSummary, facts still extracted and
+    # confirmed immediately (no extra confirmation step)
     assert understanding["case_summary"] is None
+    assert understanding["status"] == "confirmed"
     assert len(understanding["normalized_facts"]) == 1
+    assert understanding["normalized_facts"][0]["confirmation_status"] == "confirmed"
 
 
 def test_run_rejects_narrative_without_text(monkeypatch, db_session_factory):
@@ -548,6 +551,11 @@ def test_run_produces_editable_case_summary_and_plain_confirm(monkeypatch, db_se
     assert result["previous_revision"] == 1
     assert result["revision"] == 2
     assert result["status"] == "confirmed"
+    # Amendment §4.2: the confirmation response must carry the latest
+    # server-authoritative input_revision and Understanding Read Model.
+    assert result["input_revision"] == 3
+    assert result["understanding"]["revision"] == 2
+    assert result["understanding"]["status"] == "confirmed"
 
     latest = _v3_data(
         client.get(
@@ -557,6 +565,14 @@ def test_run_produces_editable_case_summary_and_plain_confirm(monkeypatch, db_se
     )
     assert latest["revision"] == 2
     assert latest["status"] == "confirmed"
+    # P0: plain confirm propagates to the inner state so Agent 1 can consume
+    # a coherent confirmed snapshot.
+    assert latest["case_summary"]["status"] == "confirmed"
+    assert latest["case_summary"]["revision"] == 2
+    assert all(
+        fact["confirmation_status"] == "confirmed"
+        for fact in latest["normalized_facts"]
+    )
 
     activity = _v3_data(
         client.get(
@@ -1008,6 +1024,11 @@ def test_run_narrative_only_has_no_material_summary(monkeypatch, db_session_fact
     assert response.status_code == 201, response.text
     understanding = _v3_data(response)
     assert understanding["case_summary"] is None
+    # P1: a narrative-only understanding is born confirmed — no material
+    # confirmation step, no second confirmation page, and the facts are
+    # immediately consumable by Agent 1.
+    assert understanding["status"] == "confirmed"
+    assert understanding["revision"] == 1
     raw = json.dumps(response.json(), ensure_ascii=False)
     assert "材料内容摘要" not in raw
     assert "资料中提到" not in raw
@@ -1016,6 +1037,21 @@ def test_run_narrative_only_has_no_material_summary(monkeypatch, db_session_fact
     fact = understanding["normalized_facts"][0]
     assert fact["source_refs"][0]["source_id"] == narrative_id
     assert fact["source_refs"][0]["source_type"] == "narrative"
+    assert fact["confirmation_status"] == "confirmed"
+
+    # the narrative understanding is bound to the session so Agent 1 can
+    # consume it; input_revision advanced exactly once
+    activity = _v3_data(
+        client.get(
+            f"/api/v3/sessions/{session_id}/activity",
+            headers=_headers(token),
+        )
+    )
+    assert activity["understanding_ref"] == {
+        "understanding_id": understanding["understanding_id"],
+        "revision": 1,
+    }
+    assert activity["input_revision"] == 2
 
 
 def test_run_document_only_summary_has_only_document_ids(
@@ -1131,7 +1167,8 @@ def test_full_text_edit_rejected_on_narrative_only(monkeypatch, db_session_facto
         json={
             "schema_version": "understanding_v3.1",
             "expected_revision": 1,
-            "expected_input_revision": 1,
+            # narrative-only run already confirmed and bumped input to 2
+            "expected_input_revision": 2,
             "decision": "confirm_with_changes",
             "edited_summary_text": "资料中提到最近入睡较慢。",
             "reprocess_requested": True,

@@ -37,6 +37,7 @@ from .understanding import (
     UnderstandingV3Request,
     UnderstandingV3Response,
     UnderstandingV31ConfirmationRequest,
+    UnderstandingV31ConfirmationResult,
     UnderstandingV31Request,
     UnderstandingV31Response,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "UnderstandingV3Request",
     "UnderstandingV3Response",
     "UnderstandingV31ConfirmationRequest",
+    "UnderstandingV31ConfirmationResult",
     "UnderstandingV31Request",
     "UnderstandingV31Response",
     "UserGoal",
