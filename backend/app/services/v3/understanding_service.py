@@ -638,6 +638,26 @@ def _reprocess_edited_summary(
     return facts, method
 
 
+def _finalize_confirmed_content(
+    content: dict[str, object],
+    new_revision: int,
+) -> None:
+    """Shared confirmation closure for confirm and confirm_with_changes.
+
+    Guarantees the outer status, the CaseSummary (status + revision) and
+    every normalized fact are confirmed together, so Agent 1 always reads a
+    coherent confirmed snapshot no matter which decision path ran.
+    """
+    content["status"] = "confirmed"
+    content["revision"] = new_revision
+    case_summary = content.get("case_summary")
+    if isinstance(case_summary, dict):
+        case_summary["status"] = "confirmed"
+        case_summary["revision"] = new_revision
+    for fact in content.get("normalized_facts") or []:
+        fact["confirmation_status"] = "confirmed"
+
+
 def confirm_understanding_v3_1(
     db: Session,
     principal: AuthPrincipal,
@@ -666,64 +686,57 @@ def confirm_understanding_v3_1(
     ]
 
     if request.decision == "confirm":
-        content["status"] = "confirmed"
-        # P0: plain confirm must propagate the confirmation to the inner
-        # state — CaseSummary and facts — otherwise Agent 1 cannot consume
-        # a coherent confirmed snapshot.
-        case_summary = content.get("case_summary")
-        if isinstance(case_summary, dict):
-            case_summary["status"] = "confirmed"
-            case_summary["revision"] = new_revision
-        for fact in content.get("normalized_facts") or []:
-            fact["confirmation_status"] = "confirmed"
+        # No content change; the shared confirmation closure below handles
+        # the outer status, CaseSummary and facts.
+        pass
+    elif request.edited_summary_text is not None:
+        # Full-text summary edits belong to the with-document flow only:
+        # a narrative-only run has no material summary to edit, and we
+        # must not fabricate one (nor place a narrative ID in
+        # source_document_ids).
+        if not document_source_ids:
+            raise ChangeNotAllowed
+        source_id = document_source_ids[0]
+        facts, _method = _reprocess_edited_summary(
+            session_id=snapshot.session_id,
+            source_id=source_id,
+            edited_summary_text=request.edited_summary_text,
+            provider_chain=provider_chain,
+        )
+        content["normalized_facts"] = [
+            fact.model_dump(mode="json") for fact in facts
+        ]
+        content["case_summary"] = CaseSummary(
+            case_summary_id=_uid("summary"),
+            source_document_ids=document_source_ids,
+            revision=new_revision,
+            status="confirmed",
+            title="材料内容摘要",
+            summary=request.edited_summary_text,
+            editable_fields=[
+                EditableField(
+                    field_id="summary",
+                    label="资料摘要",
+                    value=request.edited_summary_text,
+                    value_type="text",
+                    required=True,
+                )
+            ],
+            warnings=[],
+        ).model_dump(mode="json")
+        applied_changes = [_uid("chg")]
+        affected_fact_ids = [
+            item["fact_id"] for item in content["normalized_facts"]
+        ]
     else:
-        if request.edited_summary_text is not None:
-            # Full-text summary edits belong to the with-document flow only:
-            # a narrative-only run has no material summary to edit, and we
-            # must not fabricate one (nor place a narrative ID in
-            # source_document_ids).
-            if not document_source_ids:
-                raise ChangeNotAllowed
-            source_id = document_source_ids[0]
-            facts, _method = _reprocess_edited_summary(
-                session_id=snapshot.session_id,
-                source_id=source_id,
-                edited_summary_text=request.edited_summary_text,
-                provider_chain=provider_chain,
-            )
-            content["normalized_facts"] = [
-                fact.model_dump(mode="json") for fact in facts
-            ]
-            content["case_summary"] = CaseSummary(
-                case_summary_id=_uid("summary"),
-                source_document_ids=document_source_ids,
-                revision=new_revision,
-                status="confirmed",
-                title="材料内容摘要",
-                summary=request.edited_summary_text,
-                editable_fields=[
-                    EditableField(
-                        field_id="summary",
-                        label="资料摘要",
-                        value=request.edited_summary_text,
-                        value_type="text",
-                        required=True,
-                    )
-                ],
-                warnings=[],
-            ).model_dump(mode="json")
-            applied_changes = [_uid("chg")]
-            affected_fact_ids = [
-                item["fact_id"] for item in content["normalized_facts"]
-            ]
-        else:
-            applied_changes, affected_fact_ids = _apply_structured_changes(
-                content,
-                request.changes,
-            )
-        content["status"] = "confirmed"
+        applied_changes, affected_fact_ids = _apply_structured_changes(
+            content,
+            request.changes,
+        )
 
-    content["revision"] = new_revision
+    # Shared final confirmation closure: outer status + CaseSummary + all
+    # facts are confirmed together for every decision path.
+    _finalize_confirmed_content(content, new_revision)
 
     db.add(
         V3UnderstandingSnapshot(
