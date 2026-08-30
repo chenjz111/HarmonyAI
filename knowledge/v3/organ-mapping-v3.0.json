@@ -4,7 +4,7 @@
   "manifest_version": "medical_v3.0",
   "mapping_version": "organ_mapping_v3.0",
   "review_status": "approved",
-  "content_checksum": "sha256:8fe7ec59131d28cf99e119fe78faa2740dac33cf315942c0b5e75a0e67838ea6",
+  "content_checksum": "sha256:771ca8d799a2df6fedd789beabe90e840432862fb72500d52cb15cf90b5ea495",
   "scope": "Fact/Claim → OrganEvidenceLink 确定性规则；单 Claim 不直接决定某脏（单题不直接决定某脏、证型或调式），须经组合与阈值判定。 聚合判定采用可执行条件：候选脏须满足 combination_rules 的 min_count 与 minimum_total_support，单条证据不足以直接决定候选脏或调式。",
   "organ_element": {
     "liver": "wood",
@@ -366,9 +366,7 @@
     {
       "claim_code": "lower_back_knee_weakness",
       "primary": "kidney",
-      "secondary": [
-        "liver"
-      ],
+      "secondary": [],
       "links": [
         {
           "organ": "kidney",
@@ -378,17 +376,26 @@
           "mapping_rule_id": "map_lower_back_knee_weakness_kidney_multi_01"
         }
       ],
-      "rule": "腰膝并见归肾（0.7）；若未来出现单拆'膝软'项须重辨（'膝者筋之府'属肝）",
-      "source": "《素问·脉要精微论》'膝者，筋之府'；《素问·痿论》'肾主身之骨髓'",
+      "future_links": [
+        {
+          "organ": "liver",
+          "element": "wood",
+          "direction": "supporting",
+          "link_strength": 0.2,
+          "mapping_rule_id": "map_lower_back_knee_weakness_liver_future_01",
+          "condition": "未来问卷新增单拆'膝软'项时启用（膝者筋之府，属肝）；当前问卷 q10 为腰/腿合并口径，无触发点，不参与计算",
+          "source": "《素问·脉要精微论》'膝者，筋之府'；《素问·痿论》'肝主身之筋膜'"
+        }
+      ],
+      "rule": "腰膝并见归肾（0.7）；膝软单拆属肝为未来口径（见 future_links，不参与当前计算）",
+      "source": "《素问·脉要精微论》'腰者，肾之府'；《素问·痿论》'肾主身之骨髓'",
       "review_status": "approved",
       "review_version": "medical_v3.0-r1"
     },
     {
       "claim_code": "tinnitus",
       "primary": "kidney",
-      "secondary": [
-        "liver"
-      ],
+      "secondary": [],
       "links": [
         {
           "organ": "kidney",
@@ -398,7 +405,18 @@
           "mapping_rule_id": "map_tinnitus_kidney_multi_01"
         }
       ],
-      "rule": "问卷文案'嗡嗡声'偏慢性肾虚耳鸣（0.6）；若出现'暴鸣/突发'须转肝火上扰型，本次问卷不含该口径",
+      "future_links": [
+        {
+          "organ": "liver",
+          "element": "wood",
+          "direction": "supporting",
+          "link_strength": 0.2,
+          "mapping_rule_id": "map_tinnitus_liver_future_01",
+          "condition": "未来问卷出现'暴鸣/突发'口径时启用（肝火上扰型）；当前问卷 q10 为'嗡嗡声'偏慢性肾虚，无触发点，不参与计算",
+          "source": "《中医耳鼻喉科学》慢肾虚/暴肝火"
+        }
+      ],
+      "rule": "问卷文案'嗡嗡声'偏慢性肾虚耳鸣（0.6）；暴鸣/突发属肝火上扰为未来口径（见 future_links，不参与当前计算）",
       "source": "《灵枢·脉度》'肾气通于耳'；《中医耳鼻喉科学》慢肾虚/暴肝火",
       "review_status": "approved",
       "review_version": "medical_v3.0-r1"
@@ -476,10 +494,7 @@
     {
       "claim_code": "low_energy",
       "primary": "spleen",
-      "secondary": [
-        "lung",
-        "kidney"
-      ],
+      "secondary": [],
       "links": [
         {
           "organ": "spleen",
@@ -489,7 +504,27 @@
           "mapping_rule_id": "map_low_energy_spleen_multi_01"
         }
       ],
-      "rule": "脾 0.4（主肌肉四肢）；伴气短→肺；伴腰酸→肾，交叉识别",
+      "future_links": [
+        {
+          "organ": "lung",
+          "element": "metal",
+          "direction": "supporting",
+          "link_strength": 0.2,
+          "mapping_rule_id": "map_low_energy_lung_future_01",
+          "condition": "伴气短（exertional_breathlessness）时启用；气短为独立 claim 已计入肺组合，low_energy 本身不静态拆分，不参与当前计算",
+          "source": "《素问·痿论》'脾主身之肌肉'；肺主气"
+        },
+        {
+          "organ": "kidney",
+          "element": "water",
+          "direction": "supporting",
+          "link_strength": 0.2,
+          "mapping_rule_id": "map_low_energy_kidney_future_01",
+          "condition": "伴腰酸（lower_back_knee_weakness）时启用；腰酸为独立 claim 已计入肾组合，low_energy 本身不静态拆分，不参与当前计算",
+          "source": "《素问·脉要精微论》'腰者，肾之府'"
+        }
+      ],
+      "rule": "脾 0.4（主肌肉四肢）；伴气短→肺、伴腰酸→肾为条件性未来关联（见 future_links，不参与当前计算；气短/腰酸作为独立 claim 已分别计入肺/肾组合）",
       "source": "《素问·痿论》'脾主身之肌肉'",
       "review_status": "approved",
       "review_version": "medical_v3.0-r1"
@@ -592,7 +627,7 @@
     "primary_rule": "候选脏中 organ_net 最高者为主脏；同分按器官固定顺序确定性取舍",
     "secondary_rule": "其余候选脏按 organ_net 降序排列为次脏",
     "abstain_rule": "无候选脏 → abstain=true，音乐兜底 wellness_generic，不强行映射",
-    "multi_organ_note": "multi_organ_rules 已结构化为 links（organ/element/direction/link_strength/mapping_rule_id），评估器对不在 combination_rules 内的多脏 claim（sleep_disturbance/unrefreshing_sleep/low_energy/exertional_breathlessness）按 links 向多脏贡献 organ_net，但不计入 distinct claim 计数、不单独决定候选脏；lower_back_knee_weakness/tinnitus 已在肾组合内按主脏 link 计，secondary 为未来口径",
+    "multi_organ_note": "multi_organ_rules 已结构化为 links（organ/element/direction/link_strength/mapping_rule_id），评估器对不在 combination_rules 内的多脏 claim（sleep_disturbance/unrefreshing_sleep/low_energy/exertional_breathlessness）按 links 向多脏贡献 organ_net，但不计入 distinct claim 计数、不单独决定候选脏；lower_back_knee_weakness/tinnitus 已在肾组合内按主脏 link 计。future_links 为未来/条件性关联（如单拆膝软、暴鸣口径、伴气短/腰酸交叉），评估器不读取、不参与当前计算；启用时须提升为 links 并经医学复核",
     "note": "reliability 默认值（narrative 0.6 / document 0.7）供医学侧复核；narrative/文档抽取的 claim 可靠性低于问卷直接证据。调整可靠性须 Owner 拍板并经医学复核"
   },
   "conflict_rules": [

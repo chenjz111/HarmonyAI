@@ -198,6 +198,51 @@ def test_multi_organ_claim_never_decides_alone():
     print(f'✅ 多脏边界: {checked} 个组合外多脏 claim 单独出现不产生候选脏')
 
 
+def test_multi_organ_primary_secondary_match_links():
+    """声明与执行严格一致（PR #89 复审阻塞项）：
+    每条 multi_organ_rule 的 links organ 集合 == {primary} ∪ secondary，
+    不允许出现声明了 secondary 但没有可执行 link 的双口径。"""
+    om = load_om()
+    for rule in om['multi_organ_rules']:
+        claim = rule['claim_code']
+        declared = {rule['primary']} | set(rule.get('secondary') or [])
+        linked = {link['organ'] for link in rule['links']}
+        assert declared == linked, (
+            f"{claim}: primary+secondary 声明={sorted(declared)} 与实际 links={sorted(linked)} 不一致")
+    print(f"✅ 声明一致性: {len(om['multi_organ_rules'])} 条规则 primary+secondary 与实际 links 严格一致")
+
+
+def test_future_links_structured_and_not_computed():
+    """future_links 为未来/条件性关联：结构可校验、不在 links/secondary 中出现、
+    评估器不产生 organ_net 贡献（PR #89 复审阻塞项，方案 B）。"""
+    om = load_om()
+    oe = om['organ_element']
+    for rule in om['multi_organ_rules']:
+        claim = rule['claim_code']
+        future = rule.get('future_links') or []
+        linked_organs = {link['organ'] for link in rule['links']}
+        secondary = set(rule.get('secondary') or [])
+        for fl in future:
+            assert fl['organ'] in oe, f'{claim} future_links organ 非法'
+            assert oe[fl['organ']] == fl['element'], f'{claim} future_links element 不一致'
+            assert fl['direction'] in ('supporting', 'contradicting')
+            assert 0.0 < fl['link_strength'] <= 1.0, f'{claim} future_links link_strength 越界'
+            assert fl['mapping_rule_id'], f'{claim} future_links 缺 mapping_rule_id'
+            assert fl.get('condition'), f'{claim} future_links 缺触发条件 condition'
+            assert fl.get('source'), f'{claim} future_links 缺来源 source'
+            # future_links 不得与当前计算口径重复
+            assert fl['organ'] not in linked_organs, f'{claim} future_links 与 links 重复 organ {fl["organ"]}'
+            assert fl['organ'] not in secondary, f'{claim} future_links 与 secondary 重复 organ {fl["organ"]}'
+        # future_links 中的 organ 不得产生 organ_net 贡献
+        if future:
+            scores = compute_organ_scores(om, {claim: 1.0})
+            for fl in future:
+                assert abs(scores.get(fl['organ'], 0.0)) < 1e-9, (
+                    f'{claim} future_links organ {fl["organ"]} 不应产生 organ_net 贡献（当前不参与计算）')
+    future_count = sum(len(r.get('future_links') or []) for r in om['multi_organ_rules'])
+    print(f'✅ future_links: 共 {future_count} 条未来/条件性关联，结构可校验且不参与当前计算')
+
+
 # --------------------------------------------------------------------------
 # 阈值语义（PR #89 review P1-1）
 # --------------------------------------------------------------------------
@@ -237,6 +282,8 @@ if __name__ == '__main__':
     test_multi_organ_rules_have_executable_links()
     test_multi_organ_claim_produces_multiple_links()
     test_multi_organ_claim_never_decides_alone()
+    test_multi_organ_primary_secondary_match_links()
+    test_future_links_structured_and_not_computed()
     test_single_threshold_semantics()
     test_question_claims_sourced_from_assets()
     print()
