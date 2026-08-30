@@ -41,3 +41,10 @@ def isolated_api_database():
     finally:
         app.dependency_overrides.pop(get_db, None)
         Base.metadata.drop_all(bind=_engine)
+
+
+@pytest.fixture
+def db_session_factory():
+    """Expose the isolated testing session factory for direct row setup."""
+
+    return _TestingSession
