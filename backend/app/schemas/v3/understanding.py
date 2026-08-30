@@ -266,6 +266,14 @@ class UnderstandingConfirmationRequest(V3BaseModel):
                 raise ValueError("edited_summary_text requires reprocess_requested")
         if self.schema_version == "understanding_v3.1" and self.expected_input_revision is None:
             raise ValueError("understanding_v3.1 requires expected_input_revision")
+        if (
+            self.schema_version == "understanding_v3.1"
+            and self.decision in {"reject_source", "cannot_confirm"}
+        ):
+            raise ValueError(
+                "understanding_v3.1 only allows confirm / confirm_with_changes; "
+                "discard or re-upload goes through input-transitions"
+            )
         return self
 
 
@@ -276,6 +284,10 @@ class UnderstandingRevisionResult(V3BaseModel):
     status: Literal["confirmed", "needs_confirmation", "rejected"]
     applied_changes: list[NonEmptyString]
     affected_fact_ids: list[NonEmptyString]
+    # Owner Flow Amendment 001 §4.2: the confirmation also returns the latest
+    # Understanding Read Model and the new input_revision in the same response.
+    input_revision: Annotated[int, Field(ge=1)] | None = None
+    understanding: UnderstandingV3Response | None = None
 
     @model_validator(mode="after")
     def revision_must_advance_once(self) -> "UnderstandingRevisionResult":

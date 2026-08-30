@@ -25,6 +25,7 @@ from hashlib import sha256
 import json
 import uuid
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from backend.app.models import Session as SessionModel
@@ -497,7 +498,17 @@ def confirm_understanding(
             if previous_revision is not None:
                 revision_row = _revision(db, understanding_id, previous_revision)
                 if revision_row is not None:
-                    return _result_from_revision(revision_row), True
+                    session_row = (
+                        db.query(SessionModel)
+                        .filter(SessionModel.id == run.session_row_id)
+                        .one_or_none()
+                    )
+                    input_revision = (
+                        session_row.input_revision if session_row is not None else None
+                    )
+                    return _result_from_revision(
+                        db, run, revision_row, input_revision=input_revision
+                    ), True
 
     if request.expected_revision != run.current_revision:
         raise RevisionConflict
@@ -508,9 +519,14 @@ def confirm_understanding(
     )
     if session_row is None:
         raise OwnedResourceNotFound
-    if request.expected_input_revision is not None:
-        if session_row.input_revision != request.expected_input_revision:
-            raise InputRevisionConflict
+    if (
+        request.schema_version == "understanding_v3.1"
+        and request.decision in {"reject_source", "cannot_confirm"}
+    ):
+        raise InvalidChange(
+            "UNSUPPORTED_DECISION",
+            "该流程版本请通过输入切换丢弃或重新上传资料。",
+        )
     if request.reprocess_requested and request.edited_summary_text is None:
         raise InvalidChange(
             "REPROCESS_NOT_SUPPORTED",
@@ -563,12 +579,17 @@ def confirm_understanding(
     run.current_revision = next_revision
     run.status = _run_status_for_revision(new_status, request.decision)
 
+    new_input_revision: int | None = None
     if (
         new_status == "confirmed"
         and session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
     ):
-        _bind_session_active_understanding(
-            db, session_row, understanding_id, next_revision
+        new_input_revision = _cas_bind_understanding(
+            db,
+            session_row,
+            understanding_id,
+            next_revision,
+            request.expected_input_revision,
         )
 
     if record is None:
@@ -587,7 +608,12 @@ def confirm_understanding(
     record.status = "succeeded"
     record.response_code = 201
     db.commit()
-    return _result_from_revision(revision_row), False
+    return (
+        _result_from_revision(
+            db, run, revision_row, input_revision=new_input_revision
+        ),
+        False,
+    )
 
 
 def _apply_decision(
@@ -621,10 +647,26 @@ def _apply_full_text_edit(
     case_summary = json.loads(json.dumps(base))
     case_summary["summary"] = request.edited_summary_text
     case_summary["status"] = "confirmed"
-    # Facts are re-extracted from the edited text (empty here until a claim
-    # dictionary/provider is wired); the edit itself is recorded as a
-    # user_correction so it never impersonates the OCR source.
-    return case_summary, ["chg_summary_edit"], []
+    # Re-extract facts from the edited text through the controlled
+    # Understanding provider. The edit is recorded as a user_correction so it
+    # never impersonates the OCR source; facts are re-derived from the edited
+    # summary, not copied from the old Evidence.
+    affected_fact_ids = _re_extract_facts(request.edited_summary_text)
+    return case_summary, ["chg_summary_edit"], affected_fact_ids
+
+
+def _re_extract_facts(edited_text: str) -> list[str]:
+    """Controlled fact re-extraction hook for the edited summary.
+
+    Returns the fact IDs affected by the full-text edit. This must re-run the
+    Understanding provider over ``edited_text`` against the approved claim
+    dictionary. The backend does not yet have an approved claim dictionary or
+    a configured provider (see docs/sprint5 provider-decision-record-*), so
+    this returns [] honestly rather than fabricating facts — the summary text
+    is still updated and published atomically.
+    """
+    del edited_text
+    return []
 
 
 def _apply_changes(
@@ -688,7 +730,13 @@ def _result_status(decision: str | None) -> str:
     return "needs_confirmation"
 
 
-def _result_from_revision(revision_row: UnderstandingRevision) -> UnderstandingRevisionResult:
+def _result_from_revision(
+    db: Session,
+    run: UnderstandingRun,
+    revision_row: UnderstandingRevision,
+    *,
+    input_revision: int | None = None,
+) -> UnderstandingRevisionResult:
     presentation = revision_row.presentation_json or {}
     return UnderstandingRevisionResult(
         understanding_id=revision_row.understanding_id,
@@ -697,19 +745,39 @@ def _result_from_revision(revision_row: UnderstandingRevision) -> UnderstandingR
         status=_result_status(revision_row.confirmation_decision),
         applied_changes=list(presentation.get("applied_changes") or []),
         affected_fact_ids=list(presentation.get("affected_fact_ids") or []),
+        input_revision=input_revision,
+        understanding=_read_model(db, run),
     )
 
 
-def _bind_session_active_understanding(
+def _cas_bind_understanding(
     db: Session,
     session_row: SessionModel,
     understanding_id: str,
     revision: int,
-) -> None:
-    next_input_revision = (session_row.input_revision or 0) + 1
-    session_row.active_understanding_id = understanding_id
-    session_row.active_understanding_revision = revision
-    session_row.input_revision = next_input_revision
+    expected: int | None,
+) -> int:
+    """Atomically CAS the session input_revision and bind the confirmed
+    understanding reference. Fails with InputRevisionConflict if the session's
+    input_revision no longer matches ``expected`` (no read-then-write race)."""
+    if expected is None:
+        raise InvalidChange("INPUT_REVISION_REQUIRED", "该流程需要输入版本。")
+    result = db.execute(
+        update(SessionModel)
+        .where(
+            SessionModel.id == session_row.id,
+            SessionModel.input_revision == expected,
+        )
+        .values(
+            input_revision=expected + 1,
+            active_understanding_id=understanding_id,
+            active_understanding_revision=revision,
+        )
+        .execution_options(synchronize_session="fetch")
+    )
+    if result.rowcount != 1:
+        raise InputRevisionConflict
+    next_input_revision = expected + 1
     db.add(
         SessionInputRevision(
             session_row_id=session_row.id,
@@ -722,6 +790,7 @@ def _bind_session_active_understanding(
             action="confirm_source",
         )
     )
+    return next_input_revision
 
 
 def _revision_from_record(resource_id: str) -> int | None:
