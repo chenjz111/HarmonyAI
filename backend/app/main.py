@@ -38,6 +38,7 @@ from backend.app.routers import (
 )
 from backend.app.routers.v3 import auth_router as auth_v3_router
 from backend.app.routers.v3 import session_router as session_v3_router
+from backend.app.routers.v3 import understanding_router as understanding_v3_router
 from backend.app.routers.v3.transport import V3APIError, v3_api_error_handler
 
 
@@ -103,6 +104,7 @@ app.include_router(assessment_v2_router.router, prefix="/api/v2", tags=["Sprint 
 app.include_router(workflow_v2_router.router, prefix="/api/v2", tags=["Sprint 3 — 工作流"])
 app.include_router(auth_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Auth"])
 app.include_router(session_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Session"])
+app.include_router(understanding_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Understanding"])
 app.add_exception_handler(V3APIError, v3_api_error_handler)
 
 

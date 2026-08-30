@@ -10,7 +10,9 @@ import uuid
 from sqlalchemy.orm import Session
 
 from backend.app.models.session import Session as SessionModel
+from backend.app.models.v3.activity import V3SessionActivity
 from backend.app.models.v3.session import V3IdempotencyRecord
+from backend.app.schemas.v3.activity import SUPPORTED_FLOW_CONTRACT_VERSION
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.session import EntryChoice, EntryReadModel
 
@@ -23,6 +25,10 @@ class IdempotencyConflict(RuntimeError):
 
 
 class OwnedResourceNotFound(RuntimeError):
+    pass
+
+
+class FlowContractUnsupported(RuntimeError):
     pass
 
 
@@ -95,6 +101,11 @@ def create_v3_session(
             if session is not None:
                 return _entry_read_model(session.session_id), True
 
+    flow_contract_version = payload.get("flow_contract_version")
+    if flow_contract_version is not None:
+        if flow_contract_version != SUPPORTED_FLOW_CONTRACT_VERSION:
+            raise FlowContractUnsupported
+
     session_id = f"sess_{uuid.uuid4().hex}"
     if record is None:
         record = V3IdempotencyRecord(
@@ -115,6 +126,19 @@ def create_v3_session(
         flow_version="v3",
     )
     db.add(session)
+    if flow_contract_version is not None:
+        db.add(
+            V3SessionActivity(
+                session_id=session_id,
+                internal_user_pk=principal.internal_user_pk,
+                flow_contract_version=SUPPORTED_FLOW_CONTRACT_VERSION,
+                input_mode=None,
+                input_revision=1,
+                active_document_id=None,
+                understanding_ref=None,
+                questionnaire_ref=None,
+            )
+        )
     try:
         db.flush()
         record.resource_type = "session"

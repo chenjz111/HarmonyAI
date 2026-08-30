@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import Field, JsonValue, StringConstraints, model_validator
 
 from .common import (
     Degradation,
@@ -228,6 +228,20 @@ class UnderstandingV3Response(V3BaseModel):
     degradation: Degradation
 
 
+class UnderstandingV31Response(UnderstandingV3Response):
+    """Owner Flow Amendment 001 §6 — new flow discriminator with deferred Safety.
+
+    `safety_status` is always null under `deferred_v3`: the pipeline is
+    deliberately not run, and the system must not claim a risk verdict.
+    """
+
+    schema_version: Literal["understanding_v3.1"]
+    flow_contract_version: Literal["v3-owner-flow-1"]
+    safety_policy: Literal["deferred_v3"]
+    safety_evaluation_status: Literal["not_run"]
+    safety_status: None
+
+
 class RevisionChange(V3BaseModel):
     target_type: Literal["normalized_fact", "case_summary", "voice_transcript", "source"]
     target_id: NonEmptyString
@@ -249,6 +263,50 @@ class UnderstandingConfirmationRequest(V3BaseModel):
             raise ValueError("confirm_with_changes requires at least one change")
         if self.decision != "confirm_with_changes" and self.changes:
             raise ValueError("changes are only allowed for confirm_with_changes")
+        return self
+
+
+EditedSummaryText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=2000),
+]
+
+
+class UnderstandingV31ConfirmationRequest(V3BaseModel):
+    """Owner Flow Amendment 001 §4.2 — new-flow confirmation discriminator.
+
+    `reject_source` / `cannot_confirm` are not valid here: discarding or
+    re-uploading a source goes through `input-transitions` instead, and the
+    legacy decisions keep their old behavior on `understanding_v3.0`.
+    """
+
+    schema_version: Literal["understanding_v3.1"]
+    expected_revision: Annotated[int, Field(ge=1)]
+    expected_input_revision: Annotated[int, Field(ge=1)]
+    decision: Literal["confirm", "confirm_with_changes"]
+    changes: list[RevisionChange] = Field(default_factory=list)
+    edited_summary_text: EditedSummaryText | None = None
+    reprocess_requested: bool = False
+
+    @model_validator(mode="after")
+    def validate_decision_shape(self) -> "UnderstandingV31ConfirmationRequest":
+        if self.decision == "confirm":
+            if self.changes or self.edited_summary_text is not None or self.reprocess_requested:
+                raise ValueError(
+                    "confirm cannot carry changes, edited_summary_text, or reprocess_requested"
+                )
+            return self
+        full_edit = self.edited_summary_text is not None
+        structured = bool(self.changes)
+        if full_edit == structured:
+            raise ValueError(
+                "confirm_with_changes requires either edited_summary_text with "
+                "reprocess_requested or structured changes, not both"
+            )
+        if full_edit and not self.reprocess_requested:
+            raise ValueError("full-text edit requires reprocess_requested=true")
+        if structured and self.reprocess_requested:
+            raise ValueError("structured changes cannot request reprocessing")
         return self
 
 

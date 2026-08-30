@@ -1,5 +1,7 @@
 from pathlib import Path
 import shutil
+import tempfile
+import uuid
 
 import pytest
 from sqlalchemy import create_engine, inspect, text
@@ -10,6 +12,23 @@ from backend.app.core.v3_migrations import (
     mysql_migration_sql,
     v3_migration_status,
 )
+
+
+@pytest.fixture
+def tmp_workspace():
+    """Writable temp dir with best-effort cleanup.
+
+    Created via ``Path.mkdir`` instead of ``tempfile.mkdtemp``: some sandboxed
+    environments deny sqlite file creation inside mkdtemp-created directories,
+    and pytest's builtin ``tmp_path`` session cleanup can also fail there.
+    """
+    base = Path(tempfile.gettempdir()) / f"harmonyai-v3-mig-{uuid.uuid4().hex}"
+    base.mkdir(parents=True, exist_ok=True)
+    yield base
+    try:
+        shutil.rmtree(base)
+    except OSError:
+        pass
 
 
 def _create_legacy_foundation(engine):
@@ -42,14 +61,17 @@ def _create_legacy_foundation(engine):
         )
 
 
-def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'v3.db'}")
+def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_workspace):
+    engine = create_engine(f"sqlite:///{tmp_workspace / 'v3.db'}")
     _create_legacy_foundation(engine)
 
     first = apply_v3_migrations(engine)
     second = apply_v3_migrations(engine)
 
-    assert first["applied_versions"] == ["0001_v3_foundation"]
+    assert first["applied_versions"] == [
+        "0001_v3_foundation",
+        "0002_v3_session_activity",
+    ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)
     assert status["applied"] is True
@@ -72,13 +94,13 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
     )
 
 
-def test_applied_v3_migration_checksum_cannot_change(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'checksum.db'}")
+def test_applied_v3_migration_checksum_cannot_change(tmp_workspace):
+    engine = create_engine(f"sqlite:///{tmp_workspace / 'checksum.db'}")
     _create_legacy_foundation(engine)
     apply_v3_migrations(engine)
 
     source = Path(__file__).parents[3] / "backend" / "migrations" / "v3"
-    changed = tmp_path / "changed-migrations"
+    changed = tmp_workspace / "changed-migrations"
     shutil.copytree(source, changed)
     up = changed / "sqlite" / "0001_v3_foundation_up.sql"
     up.write_text(up.read_text(encoding="utf-8") + "\n-- changed\n", encoding="utf-8")
@@ -103,8 +125,42 @@ def test_mysql_v3_migration_scripts_have_equivalent_foundation_constraints():
     assert "DROP INDEX ix_sessions_user_created ON sessions" in down
 
 
-def test_sqlite_foreign_key_enforcement_rejects_new_orphan_session(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'fk.db'}")
+def test_v3_activity_migration_creates_both_new_tables(tmp_workspace):
+    engine = create_engine(f"sqlite:///{tmp_workspace / 'activity.db'}")
+    _create_legacy_foundation(engine)
+
+    result = apply_v3_migrations(engine)
+
+    assert "0002_v3_session_activity" in result["applied_versions"]
+    tables = set(inspect(engine).get_table_names())
+    assert "v3_session_activities" in tables
+    assert "v3_understanding_snapshots" in tables
+    status = v3_migration_status(engine)
+    assert status["session_activity_present"] is True
+    assert status["understanding_snapshots_present"] is True
+    assert status["applied"] is True
+
+
+def test_mysql_activity_migration_scripts_are_dialect_equivalent():
+    root = Path(__file__).parents[3] / "backend" / "migrations" / "v3"
+    up = (root / "mysql" / "0002_v3_session_activity_up.sql").read_text(
+        encoding="utf-8"
+    )
+    down = (root / "mysql" / "0002_v3_session_activity_down.sql").read_text(
+        encoding="utf-8"
+    )
+
+    assert "CREATE TABLE IF NOT EXISTS v3_session_activities" in up
+    assert "CREATE TABLE IF NOT EXISTS v3_understanding_snapshots" in up
+    assert "UNIQUE KEY uq_v3_session_activity_session" in up
+    assert "UNIQUE KEY uq_v3_understanding_revision" in up
+    assert "ENGINE=InnoDB" in up
+    assert "DROP TABLE IF EXISTS v3_understanding_snapshots" in down
+    assert "DROP TABLE IF EXISTS v3_session_activities" in down
+
+
+def test_sqlite_foreign_key_enforcement_rejects_new_orphan_session(tmp_workspace):
+    engine = create_engine(f"sqlite:///{tmp_workspace / 'fk.db'}")
     _create_legacy_foundation(engine)
     apply_v3_migrations(engine)
 
@@ -120,8 +176,8 @@ def test_sqlite_foreign_key_enforcement_rejects_new_orphan_session(tmp_path):
     assert inspect(engine).get_foreign_keys("sessions")
 
 
-def test_sqlite_v3_identity_constraints_and_cascade_are_enforced(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'constraints.db'}")
+def test_sqlite_v3_identity_constraints_and_cascade_are_enforced(tmp_workspace):
+    engine = create_engine(f"sqlite:///{tmp_workspace / 'constraints.db'}")
     _create_legacy_foundation(engine)
     apply_v3_migrations(engine)
 
