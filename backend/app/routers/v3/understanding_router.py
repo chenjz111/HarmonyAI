@@ -18,6 +18,7 @@ from backend.app.schemas.v3.understanding import (
 from backend.app.services.v3.auth_service import get_current_v3_principal
 from backend.app.services.v3.understanding_service import (
     IdempotencyConflict,
+    InputRevisionConflict,
     InvalidChange,
     OwnedResourceNotFound,
     RevisionConflict,
@@ -124,6 +125,12 @@ def confirm_run(
             409,
             "REVISION_CONFLICT",
             "理解状态已更新，请基于最新版本重试。",
+        ) from None
+    except InputRevisionConflict:
+        raise V3APIError(
+            409,
+            "INPUT_REVISION_CONFLICT",
+            "输入状态已更新，请基于最新版本重试。",
         ) from None
     except IdempotencyConflict:
         raise V3APIError(

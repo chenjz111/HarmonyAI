@@ -43,6 +43,43 @@ class AssessmentV3(Base):
             "status IN ('needs_confirmation', 'confirmed', 'degraded', 'withheld')",
             name="ck_assessment_v3_status",
         ),
+        CheckConstraint(
+            "(understanding_id IS NULL AND understanding_revision IS NULL) "
+            "OR (understanding_id IS NOT NULL AND understanding_revision IS NOT NULL)",
+            name="ck_assessment_v3_understanding_pair",
+        ),
+        CheckConstraint(
+            "input_mode IS NULL OR input_mode IN ('with_document', 'without_document')",
+            name="ck_assessment_v3_input_mode",
+        ),
+        CheckConstraint(
+            "flow_contract_version IS NULL OR "
+            "flow_contract_version = 'v3-owner-flow-1'",
+            name="ck_assessment_v3_flow_contract",
+        ),
+        CheckConstraint(
+            "input_revision IS NULL OR input_revision >= 1",
+            name="ck_assessment_v3_input_revision",
+        ),
+        CheckConstraint(
+            "safety_policy IS NULL OR safety_policy = 'deferred_v3'",
+            name="ck_assessment_v3_safety_policy",
+        ),
+        CheckConstraint(
+            "safety_evaluation_status IS NULL OR "
+            "safety_evaluation_status = 'not_run'",
+            name="ck_assessment_v3_safety_eval",
+        ),
+        CheckConstraint(
+            "flow_contract_version IS NULL OR "
+            "flow_contract_version != 'v3-owner-flow-1' OR user_goal_json IS NULL",
+            name="ck_assessment_v3_no_goal_new_flow",
+        ),
+        CheckConstraint(
+            "flow_contract_version IS NULL OR "
+            "flow_contract_version != 'v3-owner-flow-1' OR safety_status IS NULL",
+            name="ck_assessment_v3_safety_null_new_flow",
+        ),
     )
 
     assessment_id = Column(String(64), primary_key=True)
@@ -55,13 +92,18 @@ class AssessmentV3(Base):
     session_row_id = Column(
         Integer, ForeignKey("sessions.id"), nullable=False, index=True
     )
-    understanding_id = Column(String(64), nullable=False)
-    understanding_revision = Column(Integer, nullable=False)
+    understanding_id = Column(String(64), nullable=True)
+    understanding_revision = Column(Integer, nullable=True)
     questionnaire_submission_id = Column(String(64), nullable=True)
     current_revision = Column(Integer, nullable=False)
     status = Column(String(24), nullable=False)
-    safety_status = Column(String(32), nullable=False)
-    user_goal_json = Column(JSON, nullable=False)
+    safety_status = Column(String(32), nullable=True)
+    user_goal_json = Column(JSON, nullable=True)
+    flow_contract_version = Column(String(32), nullable=True)
+    input_revision = Column(Integer, nullable=True)
+    input_mode = Column(String(16), nullable=True)
+    safety_policy = Column(String(32), nullable=True)
+    safety_evaluation_status = Column(String(32), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -97,7 +139,8 @@ class AssessmentRevisionV3(Base):
     )
     revision = Column(Integer, primary_key=True)
     previous_revision = Column(Integer, nullable=True)
-    understanding_revision = Column(Integer, nullable=False)
+    understanding_revision = Column(Integer, nullable=True)
+    input_revision = Column(Integer, nullable=True)
     status = Column(String(24), nullable=False)
     confirmation_status = Column(String(16), nullable=False)
     state_summary = Column(Text, nullable=False)

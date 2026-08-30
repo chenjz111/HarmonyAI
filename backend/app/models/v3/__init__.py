@@ -1,7 +1,7 @@
 """Sprint 5 V3 persistence models."""
 
 from .identity import UserIdentity, UserProfile
-from .session import V3IdempotencyRecord
+from .session import SessionInputRevision, V3IdempotencyRecord
 from .understanding import (
     FactSourceRef,
     NormalizedFact,
@@ -36,6 +36,7 @@ __all__ = [
     "UserIdentity",
     "UserProfile",
     "V3IdempotencyRecord",
+    "SessionInputRevision",
     "UnderstandingRun",
     "UnderstandingSource",
     "UnderstandingRevision",

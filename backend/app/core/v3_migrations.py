@@ -13,6 +13,7 @@ V3_FOUNDATION_VERSION = "0001_v3_foundation"
 V3_MIGRATION_VERSIONS = [
     "0001_v3_foundation",
     "0002_v3_business",
+    "0003_v3_owner_flow",
 ]
 
 _REQUIRED_TABLES = {
@@ -52,6 +53,8 @@ _REQUIRED_TABLES = {
     "user_preference_items",
     "preference_events",
     "favorites",
+    # 0003 owner flow amendment (session activity audit)
+    "session_input_revisions",
 }
 
 
@@ -113,6 +116,17 @@ def _has_session_owner_created_index(engine: Engine) -> bool:
     )
 
 
+def _has_owner_flow_session_columns(engine: Engine) -> bool:
+    """True when sessions already carries the v3-owner-flow-1 columns (e.g. a
+    fresh create_all schema), so 0003 must not re-ADD them."""
+    inspector = inspect(engine)
+    if "sessions" not in inspector.get_table_names():
+        return False
+    return "flow_contract_version" in {
+        column["name"] for column in inspector.get_columns("sessions")
+    }
+
+
 def _enable_sqlite_foreign_keys(engine: Engine) -> None:
     if getattr(engine, "_harmonyai_v3_fk_listener", False):
         return
@@ -135,6 +149,7 @@ def _apply_sqlite_migration(
     checksum: str,
     *,
     session_upgrade: bool,
+    session_owner_flow: bool = False,
 ) -> bool:
     _enable_sqlite_foreign_keys(engine)
     raw = engine.raw_connection()
@@ -168,6 +183,8 @@ def _apply_sqlite_migration(
             )
             if has_flow_version and has_user_fk:
                 rendered = _remove_marked_block(rendered, "V3_SESSION_UPGRADE")
+        if session_owner_flow and _has_owner_flow_session_columns(engine):
+            rendered = _remove_marked_block(rendered, "V3_OWNER_FLOW_SESSION")
         raw.executescript(rendered)
         cursor.execute(
             "INSERT INTO schema_migrations (version, checksum) VALUES (?, ?)",
@@ -194,6 +211,7 @@ def _apply_mysql_migration(
     checksum: str,
     *,
     session_upgrade: bool,
+    session_owner_flow: bool = False,
 ) -> bool:
     with engine.begin() as connection:
         connection.exec_driver_sql(
@@ -222,6 +240,8 @@ def _apply_mysql_migration(
                 rendered = _remove_marked_block(rendered, "V3_SESSION_FK")
             if _has_session_owner_created_index(engine):
                 rendered = _remove_marked_block(rendered, "V3_SESSION_OWNER_INDEX")
+        if session_owner_flow and _has_owner_flow_session_columns(engine):
+            rendered = _remove_marked_block(rendered, "V3_OWNER_FLOW_SESSION")
         statements = [item.strip() for item in rendered.split(";") if item.strip()]
         for statement in statements:
             connection.exec_driver_sql(statement)
@@ -249,6 +269,7 @@ def apply_v3_migrations(
         checksum = _checksum(sql)
         last_checksum = checksum
         session_upgrade = version == V3_FOUNDATION_VERSION
+        session_owner_flow = version == "0003_v3_owner_flow"
         if dialect == "sqlite":
             applied_version = _apply_sqlite_migration(
                 engine,
@@ -256,6 +277,7 @@ def apply_v3_migrations(
                 sql,
                 checksum,
                 session_upgrade=session_upgrade,
+                session_owner_flow=session_owner_flow,
             )
         else:
             applied_version = _apply_mysql_migration(
@@ -264,6 +286,7 @@ def apply_v3_migrations(
                 sql,
                 checksum,
                 session_upgrade=session_upgrade,
+                session_owner_flow=session_owner_flow,
             )
         if applied_version:
             applied.append(version)
