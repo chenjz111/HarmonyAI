@@ -1,4 +1,4 @@
-"""V3 Understanding endpoints (Owner Flow Amendment 001 §4.2)."""
+"""V3 Understanding endpoints (Owner Flow Amendment 001 §3.2/§4.2)."""
 
 from typing import Annotated
 
@@ -12,8 +12,8 @@ from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.schemas.v3.understanding import (
     UnderstandingRevisionResult,
-    UnderstandingV3Request,
     UnderstandingV31ConfirmationRequest,
+    UnderstandingV31Request,
     UnderstandingV31Response,
 )
 from backend.app.services.v3.activity_service import (
@@ -24,12 +24,17 @@ from backend.app.services.v3.auth_service import get_current_v3_principal
 from backend.app.services.v3.understanding_service import (
     ChangeNotAllowed,
     InputRevisionConflict,
+    InvalidSourceType,
     MedicalAssetUnavailable,
     RevisionConflict,
+    SourceNoValidText,
+    SourceNotActive,
+    SourceNotOwned,
+    SourceNotReady,
     UnderstandingNotFound,
     confirm_understanding_v3_1,
     get_understanding_read_model,
-    run_understanding_v3,
+    run_understanding_v31,
 )
 
 
@@ -69,15 +74,32 @@ def _provider_error(error: ProviderFailureV3) -> V3APIError:
     status_code=201,
 )
 def create_understanding(
-    body: UnderstandingV3Request,
+    body: Annotated[dict[str, object], Body()],
     principal: AuthPrincipal = Depends(get_current_v3_principal),
     db: Session = Depends(get_db),
 ) -> V3SuccessEnvelope[UnderstandingV31Response]:
+    schema_version = body.get("schema_version")
+    if schema_version != "understanding_v3.1":
+        # Legacy v3.0 is preserved for old clients but never auto-migrated;
+        # new Owner Flow requests must use the v3.1 discriminator.
+        raise V3APIError(
+            422,
+            "INVALID_SCHEMA_VERSION",
+            "新流程仅支持 understanding_v3.1 判别版本。",
+        )
     try:
-        result = run_understanding_v3(
+        request = UnderstandingV31Request.model_validate(body)
+    except Exception:
+        raise V3APIError(
+            422,
+            "INVALID_UNDERSTANDING_REQUEST",
+            "理解请求不符合 understanding_v3.1 契约。",
+        ) from None
+    try:
+        result = run_understanding_v31(
             db,
             principal,
-            body,
+            request,
             _resolve_provider_chain(),
         )
     except OwnedResourceNotFound:
@@ -87,6 +109,42 @@ def create_understanding(
             409,
             "FLOW_CONTRACT_UNSUPPORTED",
             "该会话未绑定当前流程契约。",
+        ) from None
+    except InputRevisionConflict:
+        raise V3APIError(
+            409,
+            "INPUT_REVISION_CONFLICT",
+            "输入版本已变化，请刷新后重试。",
+        ) from None
+    except InvalidSourceType:
+        raise V3APIError(
+            422,
+            "INVALID_SOURCE_TYPE",
+            "理解请求仅接受 document 来源。",
+        ) from None
+    except SourceNotReady:
+        raise V3APIError(
+            422,
+            "SOURCE_NOT_READY",
+            "资料尚未完成处理，请稍后重试。",
+        ) from None
+    except SourceNotActive:
+        raise V3APIError(
+            409,
+            "SOURCE_NOT_ACTIVE",
+            "资料已弃用或被替换，请重新上传。",
+        ) from None
+    except SourceNotOwned:
+        raise V3APIError(
+            404,
+            "RESOURCE_NOT_FOUND",
+            "未找到对应资料。",
+        ) from None
+    except SourceNoValidText:
+        raise V3APIError(
+            422,
+            "SOURCE_NO_VALID_TEXT",
+            "资料未能识别出有效文字，请重新上传或改用问卷流程。",
         ) from None
     except MedicalAssetUnavailable:
         raise V3APIError(

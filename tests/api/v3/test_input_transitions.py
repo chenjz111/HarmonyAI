@@ -102,7 +102,9 @@ def test_select_mode_sets_entry_and_bumps_revision():
     assert response.status_code == 200
     ack = _v3_data(response)
     assert ack["action"] == "select_mode"
-    assert ack["expected_input_revision"] == 1
+    assert ack["input_revision"] == 2  # server-authoritative new revision
+    assert ack["state"]["input_mode"] == "without_document"
+    assert ack["state"]["input_revision"] == 2
 
     state = _v3_data(_activity(token, session_id))
     assert state["input_mode"] == "without_document"
@@ -160,6 +162,10 @@ def test_discard_document_switches_to_without_document_mode():
         {"action": "discard_document", "expected_input_revision": 2},
     )
     assert response.status_code == 200
+    ack = _v3_data(response)
+    assert ack["input_revision"] == 3
+    assert ack["state"]["input_mode"] == "without_document"
+    assert ack["state"]["active_document_id"] is None
     state = _v3_data(_activity(token, session_id))
     assert state["input_mode"] == "without_document"
     assert state["active_document_id"] is None

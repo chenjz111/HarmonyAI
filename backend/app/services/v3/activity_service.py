@@ -1,7 +1,10 @@
 """V3 session activity state transitions (Amendment 001 §4.1).
 
 Implements select_mode / replace_document / discard_document with
-ownership, idempotency, and input_revision optimistic concurrency.
+ownership, idempotency, and database-level input_revision optimistic
+concurrency: the revision is advanced with a single atomic
+``UPDATE ... WHERE input_revision = expected`` so two requests carrying
+the same stale revision cannot both succeed.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ from hashlib import sha256
 import json
 import uuid
 
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from backend.app.models.document import Document
@@ -150,6 +154,19 @@ def get_session_activity(
     return _activity_to_state(_load_activity(db, session_id), session_id)
 
 
+def _transition_result(
+    db: Session,
+    session_id: str,
+    action: str,
+) -> InputTransitionResult:
+    state = _activity_to_state(_load_activity(db, session_id), session_id)
+    return InputTransitionResult(
+        action=action,
+        input_revision=state.input_revision,
+        state=state,
+    )
+
+
 def apply_input_transition(
     db: Session,
     principal: AuthPrincipal,
@@ -158,8 +175,7 @@ def apply_input_transition(
     *,
     idempotency_key: str,
 ) -> tuple[InputTransitionResult, bool]:
-    session = _load_owned_session(db, principal, session_id)
-    del session
+    _load_owned_session(db, principal, session_id)
     activity = _require_owner_flow(_load_activity(db, session_id))
 
     payload = {
@@ -185,14 +201,9 @@ def apply_input_transition(
         if record.request_hash != request_hash:
             raise IdempotencyConflict
         if record.status == "succeeded":
+            result = _transition_result(db, session_id, request.action)
             db.commit()
-            return (
-                InputTransitionResult(
-                    action=request.action,
-                    expected_input_revision=request.expected_input_revision,
-                ),
-                True,
-            )
+            return result, True
         # A non-terminal record means the previous attempt never completed;
         # drop it and run the transition fresh.
         db.delete(record)
@@ -207,7 +218,9 @@ def apply_input_transition(
         if activity.input_mode is not None:
             db.rollback()
             raise TransitionNotAllowed
-        activity.input_mode = request.input_mode
+        new_mode = request.input_mode
+        new_document = activity.active_document_id
+        new_understanding_ref = activity.understanding_ref
     elif request.action == "replace_document":
         document = db.query(Document).filter(
             Document.document_id == request.document_id,
@@ -217,15 +230,32 @@ def apply_input_transition(
         if document is None:
             db.rollback()
             raise DocumentNotOwned
-        activity.input_mode = "with_document"
-        activity.active_document_id = request.document_id
-        activity.understanding_ref = None
+        new_mode = "with_document"
+        new_document = request.document_id
+        new_understanding_ref = None
     else:  # discard_document
-        activity.input_mode = "without_document"
-        activity.active_document_id = None
-        activity.understanding_ref = None
+        new_mode = "without_document"
+        new_document = None
+        new_understanding_ref = None
 
-    activity.input_revision += 1
+    # Atomic compare-and-set: only one request carrying the same
+    # expected_input_revision can win the revision bump.
+    updated = db.execute(
+        sa_update(V3SessionActivity)
+        .where(
+            V3SessionActivity.session_id == session_id,
+            V3SessionActivity.input_revision == request.expected_input_revision,
+        )
+        .values(
+            input_revision=request.expected_input_revision + 1,
+            input_mode=new_mode,
+            active_document_id=new_document,
+            understanding_ref=new_understanding_ref,
+        )
+    )
+    if updated.rowcount != 1:
+        db.rollback()
+        raise InputRevisionConflict
 
     if record is None:
         record = V3IdempotencyRecord(
@@ -248,13 +278,7 @@ def apply_input_transition(
     except Exception:
         db.rollback()
         raise
-    return (
-        InputTransitionResult(
-            action=request.action,
-            expected_input_revision=request.expected_input_revision,
-        ),
-        False,
-    )
+    return _transition_result(db, session_id, request.action), False
 
 
 def update_understanding_ref(
@@ -268,18 +292,33 @@ def update_understanding_ref(
 ) -> int:
     """Record the confirmed Understanding reference and bump input_revision.
 
+    Uses an atomic compare-and-set on ``input_revision`` so concurrent
+    confirmations cannot both succeed on the same expected revision.
     Returns the new input_revision. Raises FlowContractUnsupported for
     sessions that were not created under the owner flow contract. When
     ``commit=False`` the caller owns the transaction.
     """
     _load_owned_session(db, principal, session_id)
     activity = _require_owner_flow(_load_activity(db, session_id))
-    activity.understanding_ref = json.dumps(
+    ref_json = json.dumps(
         {"understanding_id": understanding_id, "revision": revision},
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    activity.input_revision += 1
+    updated = db.execute(
+        sa_update(V3SessionActivity)
+        .where(
+            V3SessionActivity.session_id == session_id,
+            V3SessionActivity.input_revision == activity.input_revision,
+        )
+        .values(
+            input_revision=activity.input_revision + 1,
+            understanding_ref=ref_json,
+        )
+    )
+    if updated.rowcount != 1:
+        db.rollback()
+        raise InputRevisionConflict
     if commit:
         db.commit()
-    return activity.input_revision
+    return activity.input_revision + 1

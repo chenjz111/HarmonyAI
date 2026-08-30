@@ -57,16 +57,16 @@ def _entry_read_model(session_id: str) -> EntryReadModel:
         page="entry",
         session_id=session_id,
         title="开始了解你最近的状态",
-        description="你可以从近期材料或最近发生的事情开始。",
+        description="你可以从近期就诊资料或最近发生的事情开始。",
         choices=[
             EntryChoice(
                 id="with_document",
-                label="我有近期材料",
+                label="我有近期就诊资料",
                 next_route="/v3/material",
             ),
             EntryChoice(
                 id="without_document",
-                label="我没有近期材料",
+                label="我没有近期就诊资料",
                 next_route="/v3/narrative",
             ),
         ],

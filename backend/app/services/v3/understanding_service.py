@@ -19,6 +19,7 @@ from backend.ai_engine.v3.understanding_provider import (
     ProviderFailureV3,
     UnderstandingProviderChain,
 )
+from backend.app.models.document import Document
 from backend.app.models.session import Session as SessionModel
 from backend.app.models.v3.activity import V3SessionActivity
 from backend.app.models.v3.understanding import V3UnderstandingSnapshot
@@ -33,13 +34,14 @@ from backend.app.schemas.v3.understanding import (
     UnderstandingProviderRequest,
     UnderstandingRevisionResult,
     UnderstandingSource,
-    UnderstandingV3Request,
     UnderstandingV31ConfirmationRequest,
+    UnderstandingV31Request,
     UnderstandingV31Response,
     VoiceTranscript,
 )
 from backend.app.services.v3.activity_service import (
     FlowContractUnsupported,
+    InputRevisionConflict,
     OwnedResourceNotFound,
     update_understanding_ref,
 )
@@ -53,16 +55,32 @@ class RevisionConflict(RuntimeError):
     pass
 
 
-class InputRevisionConflict(RuntimeError):
-    pass
-
-
 class MedicalAssetUnavailable(RuntimeError):
     pass
 
 
 class ChangeNotAllowed(RuntimeError):
     pass
+
+
+class SourceNotActive(RuntimeError):
+    """Source does not match the session's active document."""
+
+
+class SourceNotOwned(RuntimeError):
+    """Source is not owned by this user/session."""
+
+
+class SourceNoValidText(RuntimeError):
+    """Source OCR did not produce usable text."""
+
+
+class SourceNotReady(RuntimeError):
+    """Source processing status is not ready."""
+
+
+class InvalidSourceType(RuntimeError):
+    """Only document sources are accepted by the v3.1 run flow."""
 
 
 def _utc_now() -> datetime:
@@ -136,29 +154,120 @@ def _fact_from_provider(
     )
 
 
-def run_understanding_v3(
+def _validate_document_source(
     db: Session,
     principal: AuthPrincipal,
-    request: UnderstandingV3Request,
+    *,
+    session_id: str,
+    activity: V3SessionActivity,
+    source: UnderstandingSource,
+) -> str:
+    """Validate a document source and return the authoritative OCR text.
+
+    Forged, stale, discarded, or un-OCR'd documents never reach the
+    Provider/Agent1: the OCR text is read from the server-side Document
+    record, not from the client payload.
+    """
+    if source.source_type != SourceType.document:
+        raise InvalidSourceType
+    if source.processing_status != "ready":
+        raise SourceNotReady
+    if source.source_id != activity.active_document_id:
+        raise SourceNotActive
+    document = (
+        db.query(Document)
+        .filter(
+            Document.document_id == source.source_id,
+            Document.user_id == principal.internal_user_pk,
+            Document.session_id == session_id,
+        )
+        .one_or_none()
+    )
+    if document is None:
+        raise SourceNotOwned
+    ocr_text = (document.ocr_text or "").strip()
+    if (
+        not ocr_text
+        or document.status in {"ocr_failed", "deleted", "skipped"}
+    ):
+        raise SourceNoValidText
+    return ocr_text
+
+
+def _build_case_summary(
+    *,
+    source_document_ids: list[str],
+    summary_text: str,
+    revision: int,
+) -> dict[str, object]:
+    return CaseSummary(
+        case_summary_id=_uid("summary"),
+        source_document_ids=source_document_ids,
+        revision=revision,
+        status="needs_confirmation",
+        title="材料内容摘要",
+        summary=summary_text,
+        editable_fields=[
+            EditableField(
+                field_id="summary",
+                label="资料摘要",
+                value=summary_text,
+                value_type="text",
+                required=True,
+            )
+        ],
+        warnings=[],
+    ).model_dump(mode="json")
+
+
+def _summary_from_facts(facts: list) -> str:
+    if not facts:
+        return ""
+    parts = []
+    for fact in facts:
+        raw = fact.value.value
+        if hasattr(raw, "value"):
+            raw = raw.value
+        parts.append(f"{fact.display_name}（{raw}）")
+    return "资料中提到：" + "、".join(parts) + "。"
+
+
+def run_understanding_v31(
+    db: Session,
+    principal: AuthPrincipal,
+    request: UnderstandingV31Request,
     provider_chain: UnderstandingProviderChain | None,
 ) -> UnderstandingV31Response:
-    """Run the understanding provider and persist an immutable revision 1.
+    """Run the v3.1 understanding flow and persist an immutable revision 1.
 
-    Returns MEDICAL_ASSET_UNAVAILABLE via :class:`MedicalAssetUnavailable`
-    when no approved claim dictionary / provider is available (Issue #77).
+    Validates every document source against the session's active input
+    (ownership, active_document_id, OCR success, readiness, input_revision)
+    and always produces a confirmable, editable CaseSummary. Returns
+    MEDICAL_ASSET_UNAVAILABLE via :class:`MedicalAssetUnavailable` when no
+    approved claim dictionary / provider is available (Issue #77).
     """
     _load_owned_session(db, principal, request.session_id)
     activity = _require_owner_flow(_load_activity(db, request.session_id))
-    del activity
+    if activity.input_revision != request.expected_input_revision:
+        raise InputRevisionConflict
     if provider_chain is None:
         raise MedicalAssetUnavailable
 
     understanding_id = _uid("und")
     normalized_facts: list[NormalizedFact] = []
     source_statuses: list[SourceStatus] = []
+    source_document_ids: list[str] = []
     provider_kind = "rule"
+    all_facts: list = []
     try:
         for source in request.inputs:
+            ocr_text = _validate_document_source(
+                db,
+                principal,
+                session_id=request.session_id,
+                activity=activity,
+                source=source,
+            )
             provider_request = UnderstandingProviderRequest(
                 request_id=_uid("req"),
                 schema_version="understanding_provider_v3.0",
@@ -168,7 +277,7 @@ def run_understanding_v3(
                     "source_type": source.source_type.value,
                     "subject_hint": "unknown",
                     "time_window": "past_7_days",
-                    "text": source.text or "",
+                    "text": ocr_text,
                 },
                 allowed_claim_dictionary_version="medical_v3.0",
                 max_facts=30,
@@ -185,6 +294,8 @@ def run_understanding_v3(
                         extraction_method=method,
                     )
                 )
+                all_facts.append(fact)
+            source_document_ids.append(source.source_id)
             source_statuses.append(
                 SourceStatus(
                     source_id=source.source_id,
@@ -200,12 +311,17 @@ def run_understanding_v3(
             raise MedicalAssetUnavailable from None
         raise
 
+    summary_text = _summary_from_facts(all_facts)
     content = UnderstandingV31Response(
         schema_version="understanding_v3.1",
         understanding_id=understanding_id,
         revision=1,
         status="needs_confirmation",
-        case_summary=None,
+        case_summary=_build_case_summary(
+            source_document_ids=source_document_ids,
+            summary_text=summary_text,
+            revision=1,
+        ),
         voice_transcripts=[],
         normalized_facts=normalized_facts,
         source_statuses=source_statuses,

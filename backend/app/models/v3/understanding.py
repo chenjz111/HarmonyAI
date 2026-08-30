@@ -29,7 +29,12 @@ class V3UnderstandingSnapshot(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     understanding_id = Column(String(64), nullable=False, index=True)
     revision = Column(Integer, nullable=False)
-    session_id = Column(String(64), nullable=False, index=True)
+    session_id = Column(
+        String(64),
+        ForeignKey("sessions.session_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     internal_user_pk = Column(
         Integer,
         ForeignKey("users.id", ondelete="CASCADE"),

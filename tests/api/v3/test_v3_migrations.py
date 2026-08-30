@@ -154,9 +154,47 @@ def test_mysql_activity_migration_scripts_are_dialect_equivalent():
     assert "CREATE TABLE IF NOT EXISTS v3_understanding_snapshots" in up
     assert "UNIQUE KEY uq_v3_session_activity_session" in up
     assert "UNIQUE KEY uq_v3_understanding_revision" in up
+    assert "REFERENCES sessions(session_id) ON DELETE CASCADE" in up
     assert "ENGINE=InnoDB" in up
     assert "DROP TABLE IF EXISTS v3_understanding_snapshots" in down
     assert "DROP TABLE IF EXISTS v3_session_activities" in down
+
+
+def test_sqlite_activity_session_foreign_key_rejects_orphan_rows(tmp_workspace):
+    engine = create_engine(f"sqlite:///{tmp_workspace / 'fk-activity.db'}")
+    _create_legacy_foundation(engine)
+    apply_v3_migrations(engine)
+
+    with pytest.raises(Exception):
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO v3_session_activities ("
+                    "session_id, internal_user_pk, input_revision"
+                    ") VALUES ('sess_orphan_activity', 1, 1)"
+                )
+            )
+
+    assert inspect(engine).get_foreign_keys("v3_session_activities")
+    assert inspect(engine).get_foreign_keys("v3_understanding_snapshots")
+
+
+def test_sqlite_understanding_snapshot_session_foreign_key(tmp_workspace):
+    engine = create_engine(f"sqlite:///{tmp_workspace / 'fk-und.db'}")
+    _create_legacy_foundation(engine)
+    apply_v3_migrations(engine)
+
+    with pytest.raises(Exception):
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO v3_understanding_snapshots ("
+                    "understanding_id, revision, session_id, internal_user_pk, "
+                    "status, snapshot_json"
+                    ") VALUES ('und_orphan', 1, 'sess_orphan_und', 1, "
+                    "'needs_confirmation', '{}')"
+                )
+            )
 
 
 def test_sqlite_foreign_key_enforcement_rejects_new_orphan_session(tmp_workspace):

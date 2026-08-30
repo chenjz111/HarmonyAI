@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS v3_session_activities (
     questionnaire_ref TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
     FOREIGN KEY (internal_user_pk) REFERENCES users(id) ON DELETE CASCADE,
     CHECK (input_revision >= 1),
     CHECK (input_mode IS NULL OR input_mode IN ('with_document', 'without_document'))
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS v3_understanding_snapshots (
     safety_status VARCHAR(32),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (understanding_id, revision),
+    FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
     FOREIGN KEY (internal_user_pk) REFERENCES users(id) ON DELETE CASCADE,
     CHECK (revision >= 1)
 );

@@ -59,6 +59,21 @@ class UnderstandingV3Request(V3BaseModel):
     inputs: Annotated[list[UnderstandingSource], Field(min_length=1)]
 
 
+class UnderstandingV31Request(V3BaseModel):
+    """Owner Flow Amendment 001 §4.2 — new flow run discriminator.
+
+    New clients must use ``understanding_v3.1``; the v3.0 shape is kept for
+    legacy compatibility and is never auto-migrated. The server validates
+    every document source against the session's active input before any
+    Provider/Agent work.
+    """
+
+    schema_version: Literal["understanding_v3.1"]
+    session_id: NonEmptyString
+    expected_input_revision: Annotated[int, Field(ge=1)]
+    inputs: Annotated[list[UnderstandingSource], Field(min_length=1)]
+
+
 class TextSpan(V3BaseModel):
     start: Annotated[int, Field(ge=0)]
     end: Annotated[int, Field(gt=0)]
