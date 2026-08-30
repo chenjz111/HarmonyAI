@@ -350,6 +350,7 @@ def run_understanding_v31(
     source_document_ids: list[str] = []
     provider_kind = "rule"
     all_facts: list = []
+    document_facts: list = []
     try:
         for source in request.inputs:
             if source.source_type == SourceType.document:
@@ -394,7 +395,12 @@ def run_understanding_v31(
                     )
                 )
                 all_facts.append(fact)
-            source_document_ids.append(source.source_id)
+                if source.source_type == SourceType.document:
+                    document_facts.append(fact)
+            if source.source_type == SourceType.document:
+                # CaseSummary.source_document_ids must only ever hold real
+                # document IDs; narrative IDs stay in fact source_refs.
+                source_document_ids.append(source.source_id)
             source_statuses.append(
                 SourceStatus(
                     source_id=source.source_id,
@@ -412,17 +418,25 @@ def run_understanding_v31(
 
     if not all_facts:
         raise NoFactsExtracted
-    summary_text = _summary_from_facts(all_facts)
+
+    # A CaseSummary is a *document* summary. Narrative-only runs must not
+    # fabricate a material summary, must not show "材料内容摘要"/"资料中提到",
+    # and must not introduce a document-confirmation step.
+    case_summary = (
+        _build_case_summary(
+            source_document_ids=source_document_ids,
+            summary_text=_summary_from_facts(document_facts),
+            revision=1,
+        )
+        if source_document_ids
+        else None
+    )
     content = UnderstandingV31Response(
         schema_version="understanding_v3.1",
         understanding_id=understanding_id,
         revision=1,
         status="needs_confirmation",
-        case_summary=_build_case_summary(
-            source_document_ids=source_document_ids,
-            summary_text=summary_text,
-            revision=1,
-        ),
+        case_summary=case_summary,
         voice_transcripts=[],
         normalized_facts=normalized_facts,
         source_statuses=source_statuses,
@@ -616,13 +630,23 @@ def confirm_understanding_v3_1(
     applied_changes: list[str] = []
     affected_fact_ids: list[str] = []
     summary_sources = content.get("source_statuses") or []
-    source_ids = [item.get("source_id") for item in summary_sources]
+    document_source_ids = [
+        item.get("source_id")
+        for item in summary_sources
+        if item.get("source_type") == SourceType.document.value
+    ]
 
     if request.decision == "confirm":
         content["status"] = "confirmed"
     else:
         if request.edited_summary_text is not None:
-            source_id = source_ids[0] if source_ids else f"src_{uuid.uuid4().hex}"
+            # Full-text summary edits belong to the with-document flow only:
+            # a narrative-only run has no material summary to edit, and we
+            # must not fabricate one (nor place a narrative ID in
+            # source_document_ids).
+            if not document_source_ids:
+                raise ChangeNotAllowed
+            source_id = document_source_ids[0]
             facts, _method = _reprocess_edited_summary(
                 session_id=snapshot.session_id,
                 source_id=source_id,
@@ -634,7 +658,7 @@ def confirm_understanding_v3_1(
             ]
             content["case_summary"] = CaseSummary(
                 case_summary_id=_uid("summary"),
-                source_document_ids=source_ids or [source_id],
+                source_document_ids=document_source_ids,
                 revision=new_revision,
                 status="confirmed",
                 title="材料内容摘要",
@@ -676,15 +700,24 @@ def confirm_understanding_v3_1(
             safety_status=None,
         )
     )
-    update_understanding_ref(
-        db,
-        principal,
-        snapshot.session_id,
-        understanding_id=understanding_id,
-        revision=new_revision,
-        commit=False,
-    )
-    db.commit()
+    try:
+        update_understanding_ref(
+            db,
+            principal,
+            snapshot.session_id,
+            understanding_id=understanding_id,
+            revision=new_revision,
+            expected_input_revision=request.expected_input_revision,
+            commit=False,
+        )
+        db.commit()
+    except InputRevisionConflict:
+        # The session moved on (e.g. discard/replace raced with this
+        # confirmation). Roll the whole transaction back so no half-made
+        # snapshot revision is persisted and the deactivated source is
+        # never re-referenced.
+        db.rollback()
+        raise
     return UnderstandingRevisionResult(
         understanding_id=understanding_id,
         previous_revision=previous_revision,

@@ -220,6 +220,77 @@ def test_v3_migrations_tolerate_orm_create_all_first(tmp_workspace):
     assert "v3_understanding_snapshots" in inspect(engine).get_table_names()
 
 
+def test_sqlite_0002_down_rolls_back_response_json_and_tables(tmp_workspace):
+    """0002 owns the idempotency_records.response_json column, so its down
+    migration must remove the column and both tables."""
+    root = Path(__file__).parents[3] / "backend" / "migrations" / "v3"
+    engine = create_engine(f"sqlite:///{tmp_workspace / 'down.db'}")
+    _create_legacy_foundation(engine)
+    apply_v3_migrations(engine)
+
+    columns = [
+        column["name"]
+        for column in inspect(engine).get_columns("idempotency_records")
+    ]
+    assert "response_json" in columns
+    assert "v3_session_activities" in inspect(engine).get_table_names()
+    assert "v3_understanding_snapshots" in inspect(engine).get_table_names()
+
+    down = (root / "sqlite" / "0002_v3_session_activity_down.sql").read_text(
+        encoding="utf-8"
+    )
+    raw = engine.raw_connection()
+    try:
+        # The pooled connection may predate the 0002 up run (which executed
+        # on a different pooled connection); refresh its schema cache before
+        # applying the down script, otherwise SQLite reports the ALTER-added
+        # column as missing.
+        raw.execute("PRAGMA table_info(idempotency_records)").fetchall()
+        raw.commit()
+        raw.executescript(down)
+        raw.commit()
+    finally:
+        raw.close()
+
+    columns = [
+        column["name"]
+        for column in inspect(engine).get_columns("idempotency_records")
+    ]
+    assert "response_json" not in columns
+    assert "v3_session_activities" not in inspect(engine).get_table_names()
+    assert "v3_understanding_snapshots" not in inspect(engine).get_table_names()
+    # simulate a true rollback-then-reapply: clear the 0002 ledger entry
+    # (down does not delete the ledger) and run up again
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "DELETE FROM schema_migrations "
+            "WHERE version = '0002_v3_session_activity'"
+        )
+    result = apply_v3_migrations(engine)
+    assert "0002_v3_session_activity" in result["applied_versions"]
+    assert "response_json" in [
+        column["name"]
+        for column in inspect(engine).get_columns("idempotency_records")
+    ]
+
+
+def test_mysql_0002_down_script_rolls_back_response_json():
+    root = Path(__file__).parents[3] / "backend" / "migrations" / "v3"
+    down = (root / "mysql" / "0002_v3_session_activity_down.sql").read_text(
+        encoding="utf-8"
+    )
+    up = (root / "mysql" / "0002_v3_session_activity_up.sql").read_text(
+        encoding="utf-8"
+    )
+
+    assert "ALTER TABLE idempotency_records DROP COLUMN response_json" in down
+    assert "DROP TABLE IF EXISTS v3_understanding_snapshots" in down
+    assert "DROP TABLE IF EXISTS v3_session_activities" in down
+    # up declares the column with a marker so create_all-first is tolerated
+    assert "ADD COLUMN response_json" in up
+    assert "V3_IDEMPOTENCY_RESPONSE_JSON_BEGIN" in up
+
+
 def test_sqlite_foreign_key_enforcement_rejects_new_orphan_session(tmp_workspace):
     engine = create_engine(f"sqlite:///{tmp_workspace / 'fk.db'}")
     _create_legacy_foundation(engine)

@@ -1,5 +1,6 @@
 """Owner Flow Amendment 001 §3.2/§3.3/§4.2 — Understanding v3.1 run + revision."""
 
+import json
 import uuid
 
 from fastapi.testclient import TestClient
@@ -370,7 +371,8 @@ def test_run_accepts_narrative_source(monkeypatch, db_session_factory):
     )
     assert response.status_code == 201, response.text
     understanding = _v3_data(response)
-    assert understanding["case_summary"] is not None
+    # narrative-only: no material CaseSummary, facts still extracted
+    assert understanding["case_summary"] is None
     assert len(understanding["normalized_facts"]) == 1
 
 
@@ -839,3 +841,301 @@ def test_cross_user_understanding_read_returns_404(monkeypatch, db_session_facto
         headers=_headers(stranger),
     )
     assert response.status_code == 404
+
+
+# --------------------------- discard/replace vs confirm races (P0) ------------
+
+def _run_understanding(token: str, session_id: str, document_id: str) -> str:
+    response = client.post(
+        "/api/v3/understandings",
+        headers=_headers(token),
+        json=_understanding_run_body(session_id, document_id, 2),
+    )
+    assert response.status_code == 201, response.text
+    return _v3_data(response)["understanding_id"]
+
+
+def _confirm(token: str, understanding_id: str, *, expected_input_revision: int):
+    return client.post(
+        f"/api/v3/understandings/{understanding_id}/confirmations",
+        headers=_headers(token),
+        json={
+            "schema_version": "understanding_v3.1",
+            "expected_revision": 1,
+            "expected_input_revision": expected_input_revision,
+            "decision": "confirm",
+        },
+    )
+
+
+def test_confirm_after_discard_returns_conflict_and_no_half_revision(
+    monkeypatch, db_session_factory
+):
+    """A stale confirmation racing a discard_document must lose: the CAS
+    uses the request's original expected_input_revision (2), the session is
+    already at 3, so it returns INPUT_REVISION_CONFLICT without writing a
+    snapshot or resurrecting the discarded source."""
+    monkeypatch.setattr(
+        understanding_router, "_resolve_provider_chain", _mock_chain
+    )
+    token = _guest_token()
+    session_id, document_id = _prepare_with_document(token, db_session_factory)
+    understanding_id = _run_understanding(token, session_id, document_id)
+
+    # interleave: discard moves the session to input_revision 3
+    discard = client.post(
+        f"/api/v3/sessions/{session_id}/input-transitions",
+        headers={
+            **_headers(token),
+            "Idempotency-Key": f"mk-disc-{uuid.uuid4().hex}",
+        },
+        json={"action": "discard_document", "expected_input_revision": 2},
+    )
+    assert discard.status_code == 200
+
+    # the stale confirmation (expected_input_revision=2) must conflict
+    confirm = _confirm(token, understanding_id, expected_input_revision=2)
+    assert confirm.status_code == 409
+    assert confirm.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
+
+    # no half-made revision was persisted
+    latest = _v3_data(
+        client.get(
+            f"/api/v3/understandings/{understanding_id}",
+            headers=_headers(token),
+        )
+    )
+    assert latest["revision"] == 1
+    assert latest["status"] == "needs_confirmation"
+
+    # the discarded source is not re-referenced; activity stays consistent
+    activity = _v3_data(
+        client.get(
+            f"/api/v3/sessions/{session_id}/activity",
+            headers=_headers(token),
+        )
+    )
+    assert activity["understanding_ref"] is None
+    assert activity["input_revision"] == 3
+    assert activity["active_document_id"] is None
+    assert activity["input_mode"] == "without_document"
+
+
+def test_confirm_after_replace_document_returns_conflict(
+    monkeypatch, db_session_factory
+):
+    """Same race against replace_document: the stale confirmation must not
+    re-point understanding_ref at the replaced (old) material."""
+    monkeypatch.setattr(
+        understanding_router, "_resolve_provider_chain", _mock_chain
+    )
+    token = _guest_token()
+    session_id, document_id = _prepare_with_document(token, db_session_factory)
+    understanding_id = _run_understanding(token, session_id, document_id)
+
+    new_document_id = f"doc_{uuid.uuid4().hex}"
+    _create_ocr_document(
+        db_session_factory, token, session_id, document_id=new_document_id
+    )
+    replace = client.post(
+        f"/api/v3/sessions/{session_id}/input-transitions",
+        headers={
+            **_headers(token),
+            "Idempotency-Key": f"mk-rep-{uuid.uuid4().hex}",
+        },
+        json={
+            "action": "replace_document",
+            "expected_input_revision": 2,
+            "document_id": new_document_id,
+        },
+    )
+    assert replace.status_code == 200
+
+    confirm = _confirm(token, understanding_id, expected_input_revision=2)
+    assert confirm.status_code == 409
+    assert confirm.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
+
+    latest = _v3_data(
+        client.get(
+            f"/api/v3/understandings/{understanding_id}",
+            headers=_headers(token),
+        )
+    )
+    assert latest["revision"] == 1
+
+    activity = _v3_data(
+        client.get(
+            f"/api/v3/sessions/{session_id}/activity",
+            headers=_headers(token),
+        )
+    )
+    assert activity["understanding_ref"] is None  # old material not re-pointed
+    assert activity["input_revision"] == 3
+    assert activity["active_document_id"] == new_document_id
+    assert activity["input_mode"] == "with_document"
+
+
+# ------------------------ narrative vs document separation (P1) --------------
+
+def test_run_narrative_only_has_no_material_summary(monkeypatch, db_session_factory):
+    """Narrative is "最近情况", not 就诊资料: no material CaseSummary, no
+    "材料内容摘要"/"资料中提到" copy, no document-confirmation step."""
+    monkeypatch.setattr(
+        understanding_router, "_resolve_provider_chain", _mock_chain
+    )
+    token = _guest_token()
+    session_id = _create_flow_session(token)
+    narrative_id = f"nar_{uuid.uuid4().hex}"
+
+    response = client.post(
+        "/api/v3/understandings",
+        headers=_headers(token),
+        json={
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 1,
+            "inputs": [
+                {
+                    "source_id": narrative_id,
+                    "source_type": "narrative",
+                    "processing_status": "ready",
+                    "text": "最近入睡困难，白天没什么精神。",
+                    "captured_at": "2026-08-01T00:00:00Z",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 201, response.text
+    understanding = _v3_data(response)
+    assert understanding["case_summary"] is None
+    raw = json.dumps(response.json(), ensure_ascii=False)
+    assert "材料内容摘要" not in raw
+    assert "资料中提到" not in raw
+    assert "请确认资料摘要" not in raw
+
+    fact = understanding["normalized_facts"][0]
+    assert fact["source_refs"][0]["source_id"] == narrative_id
+    assert fact["source_refs"][0]["source_type"] == "narrative"
+
+
+def test_run_document_only_summary_has_only_document_ids(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_router, "_resolve_provider_chain", _mock_chain
+    )
+    token = _guest_token()
+    session_id, document_id = _prepare_with_document(token, db_session_factory)
+
+    understanding = _v3_data(
+        client.post(
+            "/api/v3/understandings",
+            headers=_headers(token),
+            json=_understanding_run_body(session_id, document_id, 2),
+        )
+    )
+    assert understanding["case_summary"] is not None
+    assert understanding["case_summary"]["source_document_ids"] == [document_id]
+    assert understanding["case_summary"]["title"] == "材料内容摘要"
+
+
+def test_run_document_plus_narrative_separates_source_refs(
+    monkeypatch, db_session_factory
+):
+    """In a mixed run the CaseSummary keeps only real document IDs and the
+    narrative fact carries its own narrative source ref."""
+    monkeypatch.setattr(
+        understanding_router, "_resolve_provider_chain", _mock_chain
+    )
+    token = _guest_token()
+    session_id, document_id = _prepare_with_document(token, db_session_factory)
+    narrative_id = f"nar_{uuid.uuid4().hex}"
+
+    response = client.post(
+        "/api/v3/understandings",
+        headers=_headers(token),
+        json={
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "inputs": [
+                {
+                    "source_id": document_id,
+                    "source_type": "document",
+                    "processing_status": "ready",
+                    "text": "客户端文本被忽略",
+                    "captured_at": "2026-08-01T00:00:00Z",
+                },
+                {
+                    "source_id": narrative_id,
+                    "source_type": "narrative",
+                    "processing_status": "ready",
+                    "text": "最近入睡困难。",
+                    "captured_at": "2026-08-01T00:00:00Z",
+                },
+            ],
+        },
+    )
+    assert response.status_code == 201, response.text
+    understanding = _v3_data(response)
+
+    assert understanding["case_summary"]["source_document_ids"] == [document_id]
+    assert narrative_id not in understanding["case_summary"]["source_document_ids"]
+
+    source_refs = [
+        fact["source_refs"][0]["source_id"]
+        for fact in understanding["normalized_facts"]
+    ]
+    assert document_id in source_refs
+    assert narrative_id in source_refs
+    narrative_fact = next(
+        fact
+        for fact in understanding["normalized_facts"]
+        if fact["source_refs"][0]["source_id"] == narrative_id
+    )
+    assert narrative_fact["source_refs"][0]["source_type"] == "narrative"
+
+
+def test_full_text_edit_rejected_on_narrative_only(monkeypatch, db_session_factory):
+    """A narrative-only understanding has no material summary; a full-text
+    summary edit must not fabricate a document CaseSummary."""
+    monkeypatch.setattr(
+        understanding_router, "_resolve_provider_chain", _mock_chain
+    )
+    token = _guest_token()
+    session_id = _create_flow_session(token)
+    understanding_id = _v3_data(
+        client.post(
+            "/api/v3/understandings",
+            headers=_headers(token),
+            json={
+                "schema_version": "understanding_v3.1",
+                "session_id": session_id,
+                "expected_input_revision": 1,
+                "inputs": [
+                    {
+                        "source_id": f"nar_{uuid.uuid4().hex}",
+                        "source_type": "narrative",
+                        "processing_status": "ready",
+                        "text": "最近入睡困难。",
+                        "captured_at": "2026-08-01T00:00:00Z",
+                    }
+                ],
+            },
+        )
+    )["understanding_id"]
+
+    response = client.post(
+        f"/api/v3/understandings/{understanding_id}/confirmations",
+        headers=_headers(token),
+        json={
+            "schema_version": "understanding_v3.1",
+            "expected_revision": 1,
+            "expected_input_revision": 1,
+            "decision": "confirm_with_changes",
+            "edited_summary_text": "资料中提到最近入睡较慢。",
+            "reprocess_requested": True,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "CHANGE_NOT_ALLOWED"
