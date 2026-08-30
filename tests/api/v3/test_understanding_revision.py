@@ -161,21 +161,23 @@ def _understanding_run_body(
     }
 
 
+def _mock_fact() -> UnderstandingProviderFact:
+    return UnderstandingProviderFact(
+        claim_code="sleep_unrefreshing",
+        display_name="睡眠后仍感疲惫",
+        category="sleep",
+        value={"type": "severity", "value": "moderate"},
+        time_window="past_7_days",
+        negated=False,
+        subject="self",
+        span=TextSpan(start=0, end=6),
+        extraction_confidence=0.8,
+    )
+
+
 def _mock_chain(*, facts: list | None = None) -> UnderstandingProviderChain:
     if facts is None:
-        facts = [
-            UnderstandingProviderFact(
-                claim_code="sleep_unrefreshing",
-                display_name="睡眠后仍感疲惫",
-                category="sleep",
-                value={"type": "severity", "value": "moderate"},
-                time_window="past_7_days",
-                negated=False,
-                subject="self",
-                span=TextSpan(start=0, end=6),
-                extraction_confidence=0.8,
-            )
-        ]
+        facts = [_mock_fact()]
     provider = MockUnderstandingProvider(
         UnderstandingProviderResponse(
             status="success",
@@ -651,8 +653,23 @@ def test_confirm_revision_and_input_revision_conflicts(monkeypatch, db_session_f
 
 
 def test_structured_change_applies_whitelist_and_marks_user_correction(monkeypatch, db_session_factory):
+    # two facts: only the first is modified, the second must still end up
+    # confirmed by the shared confirmation closure
+    second_fact = UnderstandingProviderFact(
+        claim_code="daytime_fatigue",
+        display_name="白天精神不足",
+        category="energy",
+        value={"type": "frequency_0_4", "value": 3},
+        time_window="past_7_days",
+        negated=False,
+        subject="self",
+        span=TextSpan(start=0, end=6),
+        extraction_confidence=0.7,
+    )
     monkeypatch.setattr(
-        understanding_router, "_resolve_provider_chain", _mock_chain
+        understanding_router,
+        "_resolve_provider_chain",
+        lambda: _mock_chain(facts=[_mock_fact(), second_fact]),
     )
     token = _guest_token()
     session_id, document_id = _prepare_with_document(token, db_session_factory)
@@ -665,6 +682,7 @@ def test_structured_change_applies_whitelist_and_marks_user_correction(monkeypat
     )
     understanding_id = understanding["understanding_id"]
     fact_id = understanding["normalized_facts"][0]["fact_id"]
+    other_fact_id = understanding["normalized_facts"][1]["fact_id"]
 
     rejected = client.post(
         f"/api/v3/understandings/{understanding_id}/confirmations",
@@ -711,6 +729,9 @@ def test_structured_change_applies_whitelist_and_marks_user_correction(monkeypat
     result = _v3_data(accepted)
     assert result["revision"] == 2
     assert fact_id in result["affected_fact_ids"]
+    assert other_fact_id not in result["affected_fact_ids"]
+    assert result["input_revision"] == 3
+    assert result["understanding"]["revision"] == 2
 
     latest = _v3_data(
         client.get(
@@ -718,10 +739,29 @@ def test_structured_change_applies_whitelist_and_marks_user_correction(monkeypat
             headers=_headers(token),
         )
     )
-    updated_fact = latest["normalized_facts"][0]
+    # shared closure: outer status, CaseSummary and ALL facts confirmed
+    assert latest["status"] == "confirmed"
+    assert latest["case_summary"]["status"] == "confirmed"
+    assert latest["case_summary"]["revision"] == 2
+    assert all(
+        fact["confirmation_status"] == "confirmed"
+        for fact in latest["normalized_facts"]
+    )
+    updated_fact = next(
+        fact
+        for fact in latest["normalized_facts"]
+        if fact["fact_id"] == fact_id
+    )
     assert updated_fact["negated"] is True
-    assert updated_fact["confirmation_status"] == "confirmed"
     assert updated_fact["extraction"]["method"] == "user_correction"
+    # the untouched fact keeps its value but is confirmed too
+    untouched = next(
+        fact
+        for fact in latest["normalized_facts"]
+        if fact["fact_id"] == other_fact_id
+    )
+    assert untouched["negated"] is False
+    assert untouched["confirmation_status"] == "confirmed"
 
 
 def test_full_text_edit_without_provider_is_503_and_preserves_snapshot(monkeypatch, db_session_factory):
