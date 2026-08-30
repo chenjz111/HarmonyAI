@@ -64,6 +64,38 @@
     {
       "path": "pages/safety-support/safety-support",
       "style": { "navigationBarTitleText": "安全支持" }
+    },
+    {
+      "path": "pages/entry/entry",
+      "style": { "navigationBarTitleText": "开始评估", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-material/v3-material",
+      "style": { "navigationBarTitleText": "上传就诊资料", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-summary/v3-summary",
+      "style": { "navigationBarTitleText": "确认资料摘要", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-narrative/v3-narrative",
+      "style": { "navigationBarTitleText": "最近情况", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-questionnaire/v3-questionnaire",
+      "style": { "navigationBarTitleText": "五脏状态问卷", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-confirm/v3-confirm",
+      "style": { "navigationBarTitleText": "状态确认", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-basis/v3-basis",
+      "style": { "navigationBarTitleText": "音乐生成", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-player/v3-player",
+      "style": { "navigationBarTitleText": "音乐调养", "navigationStyle": "custom" }
     }
   ],
   "globalStyle": {

@@ -19,6 +19,11 @@ export function comfortFeedbackState(feedback) {
 }
 
 export function safetyDestination(assessment = {}) {
+  // V3 Safety 暂缓（Amendment §6）：v3-owner-flow-1 会话绑定 deferred_v3，
+  // 不执行独立 Safety 分流；Sprint4/旧 V3 会话不传 safety_policy，行为保持不变。
+  if (assessment.safety_policy === 'deferred_v3') {
+    return ''
+  }
   if (assessment.safety_status === 'needs_verification') {
     return ''
   }
@@ -26,6 +31,12 @@ export function safetyDestination(assessment = {}) {
     return SAFETY_DESTINATIONS.SUPPORT
   }
   return ''
+}
+
+// 判定当前会话是否处于 V3 Safety 暂缓策略（deferred_v3）。
+// 仅用于前端路由决策，不展示给用户，也不能据此宣称"无风险"。
+export function isSafetyDeferred(sessionOrAssessment = {}) {
+  return sessionOrAssessment.safety_policy === 'deferred_v3'
 }
 
 export function safetyVerificationPayload(assessment, resolution) {
