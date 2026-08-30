@@ -524,6 +524,112 @@ def test_without_document_requires_complete_questionnaire_for_assessment():
         validate_assessment_input_readiness(session, row)
 
 
+def test_confirmation_returns_read_model_and_input_revision():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers, session_id, "sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "with_document"},
+    )
+    with _seed_db() as session:
+        user_pk = _user_pk(session, headers["Authorization"])
+        document_id = _seed_document(
+            session, user_pk=user_pk, session_id=session_id, ocr_text="材料提到睡眠恢复不足。"
+        )
+    _transition(
+        headers, session_id, "rep-1",
+        {"expected_input_revision": 2, "action": "replace_document", "document_id": document_id},
+    )
+    understanding_id = _v3_data(
+        client.post(
+            "/api/v3/understandings",
+            headers={**headers, "Idempotency-Key": "und-1"},
+            json={
+                "schema_version": "understanding_v3.1",
+                "session_id": session_id,
+                "inputs": [
+                    {
+                        "source_id": "src_1",
+                        "source_type": "document",
+                        "processing_status": "ready",
+                        "text_ref": document_id,
+                        "captured_at": "2026-01-01T00:00:00Z",
+                    }
+                ],
+            },
+        )
+    )["understanding_id"]
+
+    result = _v3_data(
+        client.post(
+            f"/api/v3/understandings/{understanding_id}/confirmations",
+            headers={**headers, "Idempotency-Key": "confirm-1"},
+            json={
+                "schema_version": "understanding_v3.1",
+                "expected_revision": 1,
+                "expected_input_revision": 3,
+                "decision": "confirm",
+            },
+        )
+    )
+    assert result["revision"] == 2
+    assert result["status"] == "confirmed"
+    assert result["input_revision"] == 4
+    assert result["understanding"]["understanding_id"] == understanding_id
+    assert result["understanding"]["revision"] == 2
+    assert result["understanding"]["status"] == "confirmed"
+
+
+def test_v31_rejects_legacy_reject_and_cannot_confirm():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers, session_id, "sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "with_document"},
+    )
+    with _seed_db() as session:
+        user_pk = _user_pk(session, headers["Authorization"])
+        document_id = _seed_document(
+            session, user_pk=user_pk, session_id=session_id, ocr_text="材料内容。"
+        )
+    _transition(
+        headers, session_id, "rep-1",
+        {"expected_input_revision": 2, "action": "replace_document", "document_id": document_id},
+    )
+    understanding_id = _v3_data(
+        client.post(
+            "/api/v3/understandings",
+            headers={**headers, "Idempotency-Key": "und-1"},
+            json={
+                "schema_version": "understanding_v3.1",
+                "session_id": session_id,
+                "inputs": [
+                    {
+                        "source_id": "src_1",
+                        "source_type": "document",
+                        "processing_status": "ready",
+                        "text_ref": document_id,
+                        "captured_at": "2026-01-01T00:00:00Z",
+                    }
+                ],
+            },
+        )
+    )["understanding_id"]
+
+    for decision in ("reject_source", "cannot_confirm"):
+        response = client.post(
+            f"/api/v3/understandings/{understanding_id}/confirmations",
+            headers={**headers, "Idempotency-Key": f"confirm-{decision}"},
+            json={
+                "schema_version": "understanding_v3.1",
+                "expected_revision": 1,
+                "expected_input_revision": 3,
+                "decision": decision,
+            },
+        )
+        assert response.status_code == 422
+
+
 def test_with_document_requires_confirmed_understanding_for_assessment():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
