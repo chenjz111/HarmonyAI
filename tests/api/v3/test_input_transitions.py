@@ -277,6 +277,48 @@ def test_transition_idempotency_replays_and_conflicts():
     assert conflicting.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
 
 
+def test_idempotent_replay_returns_identical_result_after_interleaved_transition():
+    """Same key + same request must replay the exact stored response even
+    after another transition moved the session state forward."""
+    token = _guest_token()
+    session_id = _create_session(token, flow="v3-owner-flow-1")
+    key = f"idem-seq-{uuid.uuid4().hex}"
+    first_body = {
+        "action": "select_mode",
+        "expected_input_revision": 1,
+        "input_mode": "without_document",
+    }
+
+    first = _transition(token, session_id, first_body, key=key)
+    assert first.status_code == 200
+    first_result = _v3_data(first)
+    assert first_result["input_revision"] == 2
+    assert first_result["state"]["input_revision"] == 2
+
+    # interleave: a different transition bumps the session to revision 3
+    second = _transition(
+        token,
+        session_id,
+        {"action": "discard_document", "expected_input_revision": 2},
+        key=f"idem-other-{uuid.uuid4().hex}",
+    )
+    assert second.status_code == 200
+    assert _v3_data(second)["input_revision"] == 3
+    state = _v3_data(_activity(token, session_id))
+    assert state["input_revision"] == 3
+
+    # replay of the first request must return the first result verbatim,
+    # not a freshly computed result based on the current (revision 3) state.
+    replay = _transition(token, session_id, first_body, key=key)
+    assert replay.status_code == 200
+    assert _v3_data(replay) == first_result
+    assert _v3_data(replay)["input_revision"] == 2
+
+    # the session state itself is untouched by the replay
+    state = _v3_data(_activity(token, session_id))
+    assert state["input_revision"] == 3
+
+
 def test_cross_user_activity_read_returns_404():
     token = _guest_token()
     session_id = _create_session(token, flow="v3-owner-flow-1")

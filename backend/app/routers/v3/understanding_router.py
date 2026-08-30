@@ -26,12 +26,15 @@ from backend.app.services.v3.understanding_service import (
     InputRevisionConflict,
     InvalidSourceType,
     MedicalAssetUnavailable,
+    NoFactsExtracted,
     RevisionConflict,
     SourceNoValidText,
     SourceNotActive,
     SourceNotOwned,
     SourceNotReady,
+    SourceOcrFailed,
     UnderstandingNotFound,
+    VoiceTranscriptNotEnabled,
     confirm_understanding_v3_1,
     get_understanding_read_model,
     run_understanding_v31,
@@ -120,7 +123,7 @@ def create_understanding(
         raise V3APIError(
             422,
             "INVALID_SOURCE_TYPE",
-            "理解请求仅接受 document 来源。",
+            "理解请求仅接受 document、narrative 来源。",
         ) from None
     except SourceNotReady:
         raise V3APIError(
@@ -140,11 +143,31 @@ def create_understanding(
             "RESOURCE_NOT_FOUND",
             "未找到对应资料。",
         ) from None
+    except SourceOcrFailed:
+        raise V3APIError(
+            422,
+            "SOURCE_OCR_FAILED",
+            "资料 OCR 结果无效或已降级，请重新上传或改用描述与问卷。",
+        ) from None
     except SourceNoValidText:
         raise V3APIError(
             422,
             "SOURCE_NO_VALID_TEXT",
             "资料未能识别出有效文字，请重新上传或改用问卷流程。",
+        ) from None
+    except VoiceTranscriptNotEnabled:
+        raise V3APIError(
+            422,
+            "VOICE_TRANSCRIPT_NOT_ENABLED",
+            "语音转写暂未启用，请使用文字描述或问卷。",
+        ) from None
+    except NoFactsExtracted:
+        raise V3APIError(
+            422,
+            "NO_FACTS_EXTRACTED",
+            "暂时无法从资料生成有效摘要，请重试、重新上传或改用描述与问卷。",
+            retryable=True,
+            next_actions=["retry", "reupload", "switch_to_narrative_and_questionnaire"],
         ) from None
     except MedicalAssetUnavailable:
         raise V3APIError(

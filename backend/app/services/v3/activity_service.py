@@ -201,8 +201,18 @@ def apply_input_transition(
         if record.request_hash != request_hash:
             raise IdempotencyConflict
         if record.status == "succeeded":
+            if record.response_json:
+                # Exact replay: same key + same request must return the
+                # identical stored result even if later transitions moved
+                # the session state forward.
+                stored = InputTransitionResult.model_validate(
+                    json.loads(record.response_json)
+                )
+                db.rollback()
+                return stored, True
+            # Fallback for legacy records without a stored payload.
             result = _transition_result(db, session_id, request.action)
-            db.commit()
+            db.rollback()
             return result, True
         # A non-terminal record means the previous attempt never completed;
         # drop it and run the transition fresh.
@@ -257,6 +267,7 @@ def apply_input_transition(
         db.rollback()
         raise InputRevisionConflict
 
+    result = _transition_result(db, session_id, request.action)
     if record is None:
         record = V3IdempotencyRecord(
             idempotency_record_id=f"idem_{uuid.uuid4().hex}",
@@ -274,11 +285,16 @@ def apply_input_transition(
         record.resource_id = session_id
         record.status = "succeeded"
         record.response_code = 200
+        record.response_json = json.dumps(
+            result.model_dump(mode="json"),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         db.commit()
     except Exception:
         db.rollback()
         raise
-    return _transition_result(db, session_id, request.action), False
+    return result, False
 
 
 def update_understanding_ref(

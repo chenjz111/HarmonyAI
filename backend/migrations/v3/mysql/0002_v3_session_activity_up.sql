@@ -47,3 +47,7 @@ CREATE TABLE IF NOT EXISTS v3_understanding_snapshots (
         FOREIGN KEY (internal_user_pk) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT ck_v3_understanding_revision CHECK (revision >= 1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Exact idempotent replay: store the success payload on the idempotency record.
+ALTER TABLE idempotency_records
+    ADD COLUMN response_json TEXT NULL;
