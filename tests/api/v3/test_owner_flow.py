@@ -21,7 +21,12 @@ from backend.app.main import app
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
 from backend.app.models.v3.identity import UserIdentity
-from backend.app.models.v3.understanding import QuestionnaireSubmissionV3
+from backend.app.models.v3.session import SessionInputRevision
+from backend.app.models.v3.understanding import (
+    NormalizedFact,
+    QuestionnaireSubmissionV3,
+    UnderstandingRevision,
+)
 from backend.app.services.v3.activity_service import (
     AssessmentInputNotReady,
     validate_assessment_input_readiness,
@@ -324,6 +329,23 @@ def test_edited_summary_text_confirms_new_revision():
     assert read["case_summary"]["summary"].startswith("材料提到睡眠恢复不足")
     assert read["safety_status"] is None
 
+    # The failed edit must leave every piece of state untouched: no new
+    # revision, no input_revision bump, no active-understanding bind, no facts,
+    # no half-written database rows.
+    row = _session_row(session_id)
+    assert row.input_revision == 3
+    assert row.active_understanding_id is None
+    assert row.active_understanding_revision is None
+    with _seed_db() as session:
+        assert (
+            session.query(UnderstandingRevision)
+            .filter(UnderstandingRevision.understanding_id == understanding_id)
+            .count()
+            == 1
+        )
+        assert session.query(SessionInputRevision).count() == 3
+        assert session.query(NormalizedFact).count() == 0
+
 
 def test_reprocess_without_edited_text_is_rejected():
     headers = _guest_headers()
@@ -527,6 +549,80 @@ def test_without_document_requires_complete_questionnaire_for_assessment():
         validate_assessment_input_readiness(session, row)
 
 
+def _make_submission(session, *, user_pk, session_row_id, answers_json):
+    submission = QuestionnaireSubmissionV3(
+        questionnaire_submission_id=f"qsub_{uuid.uuid4().hex}",
+        internal_user_pk=user_pk,
+        session_row_id=session_row_id,
+        schema_id="questionnaire_v3",
+        schema_version="3.0.0",
+        manifest_version="medical_v3.0",
+        content_checksum="sha256:test",
+        time_window_days=7,
+        answers_json=answers_json,
+        idempotency_key=f"idem-{uuid.uuid4().hex}",
+        submitted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    session.add(submission)
+    session.flush()
+    return submission
+
+
+def test_readiness_rejects_duplicate_missing_unknown_and_old_v2_questions():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers, session_id, "sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+    )
+    canonical = [f"q{i:02d}" for i in range(1, 11)]
+
+    with _seed_db() as session:
+        row = session.query(SessionModel).filter(SessionModel.session_id == session_id).one()
+        user_pk = _user_pk(session, headers["Authorization"])
+
+        def assert_rejected(answers_json):
+            submission = _make_submission(
+                session, user_pk=user_pk, session_row_id=row.id, answers_json=answers_json
+            )
+            row.active_questionnaire_submission_id = submission.questionnaire_submission_id
+            with pytest.raises(AssessmentInputNotReady) as exc:
+                validate_assessment_input_readiness(session, row)
+            assert exc.value.code == "QUESTIONNAIRE_INCOMPLETE"
+
+        # Duplicate question: 10 answers but q01 twice, q10 missing.
+        dup = [{"question_id": canonical[0]}] * 2 + [
+            {"question_id": qid} for qid in canonical[1:9]
+        ]
+        assert len(dup) == 10
+        assert_rejected(dup)
+
+        # Missing question: only 9 distinct answers.
+        assert_rejected([{"question_id": qid} for qid in canonical[:9]])
+
+        # Unknown question: replace q10 with q99.
+        assert_rejected(
+            [{"question_id": qid} for qid in canonical[:9]] + [{"question_id": "q99"}]
+        )
+
+        # Old V2 question ids must not be accepted.
+        assert_rejected(
+            [{"question_id": qid} for qid in canonical[:9]] + [{"question_id": "q01_user_goal"}]
+        )
+
+        # Cross-user submission is rejected even if the answers are valid.
+        stranger = _make_submission(
+            session,
+            user_pk=user_pk + 999,
+            session_row_id=row.id,
+            answers_json=[{"question_id": qid} for qid in canonical],
+        )
+        row.active_questionnaire_submission_id = stranger.questionnaire_submission_id
+        with pytest.raises(AssessmentInputNotReady) as exc:
+            validate_assessment_input_readiness(session, row)
+        assert exc.value.code == "QUESTIONNAIRE_NOT_OWNED"
+
+
 def test_confirmation_returns_read_model_and_input_revision():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
@@ -650,6 +746,27 @@ def test_confirmation_replay_returns_first_success_state():
     assert data["input_revision"] == 4  # first success's, not the later 5
     assert data["understanding"]["revision"] == 2
     assert data["understanding"]["status"] == "confirmed"
+
+    # Replay must not create any new revision, input_revision bump, or snapshot.
+    row = _session_row(session_id)
+    assert row.input_revision == 5  # unchanged from discard, not bumped to 6
+    with _seed_db() as session:
+        assert (
+            session.query(UnderstandingRevision)
+            .filter(UnderstandingRevision.understanding_id == understanding_id)
+            .count()
+            == 2
+        )
+        assert session.query(SessionInputRevision).count() == 5
+
+    # Same Idempotency-Key with a different payload is an idempotency conflict.
+    conflict = client.post(
+        f"/api/v3/understandings/{understanding_id}/confirmations",
+        headers={**headers, "Idempotency-Key": "confirm-1"},
+        json={**confirm_body, "expected_input_revision": 5},
+    )
+    assert conflict.status_code == 422
+    assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
 
 
 def test_v31_rejects_legacy_reject_and_cannot_confirm():

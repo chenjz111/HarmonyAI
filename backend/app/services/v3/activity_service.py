@@ -459,25 +459,33 @@ def validate_assessment_input_readiness(
         raise AssessmentInputNotReady(
             "QUESTIONNAIRE_NOT_OWNED", "问卷提交不属于当前会话。"
         )
-    # A complete submission must answer all 10 unique canonical question IDs
-    # (q01..q10); a longer array of duplicated IDs is not a valid submission.
+    # A complete submission must answer exactly 10 unique canonical question
+    # IDs (q01..q10); duplicates, missing or unknown/old-V2 questions are all
+    # rejected (a longer array with a duplicated ID is not a valid submission).
+    answers = submission.answers_json or []
+    if len(answers) != _QUESTIONNAIRE_COMPLETE:
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INCOMPLETE", "需要完整提交10道状态问卷。"
+        )
     answer_ids = {
-        item.get("question_id")
-        for item in (submission.answers_json or [])
-        if isinstance(item, dict)
+        item.get("question_id") for item in answers if isinstance(item, dict)
     }
     if answer_ids != _QUESTIONNAIRE_QUESTION_IDS:
         raise AssessmentInputNotReady(
             "QUESTIONNAIRE_INCOMPLETE", "需要完整提交10道状态问卷（唯一题号）。"
         )
-    # Precise schema/manifest/checksum validation against the canonical
-    # approved manifest (PR #89). Until it merges, fall back to structural
-    # checks — never maintain a local copy of the checksum constant.
+    # Precise schema/version/manifest/checksum validation against the canonical
+    # approved manifest (PR #89). Until it merges, fall back to the known
+    # structural identities below — the checksum is never hard-coded locally.
     manifest = _approved_questionnaire_manifest()
     if manifest is not None:
         if submission.schema_id != manifest.get("schema_id"):
             raise AssessmentInputNotReady(
                 "QUESTIONNAIRE_INVALID_SCHEMA", "问卷 schema 无效。"
+            )
+        if submission.schema_version != manifest.get("schema_version"):
+            raise AssessmentInputNotReady(
+                "QUESTIONNAIRE_INVALID_SCHEMA_VERSION", "问卷 schema 版本无效。"
             )
         if submission.manifest_version != manifest.get("manifest_version"):
             raise AssessmentInputNotReady(
@@ -491,6 +499,14 @@ def validate_assessment_input_readiness(
         if submission.schema_id != "questionnaire_v3":
             raise AssessmentInputNotReady(
                 "QUESTIONNAIRE_INVALID_SCHEMA", "问卷版本无效。"
+            )
+        if submission.schema_version != "3.0.0":
+            raise AssessmentInputNotReady(
+                "QUESTIONNAIRE_INVALID_SCHEMA_VERSION", "问卷 schema 版本无效。"
+            )
+        if submission.manifest_version != "medical_v3.0":
+            raise AssessmentInputNotReady(
+                "QUESTIONNAIRE_INVALID_MANIFEST", "问卷 manifest 版本无效。"
             )
         if not (submission.content_checksum or "").startswith("sha256:"):
             raise AssessmentInputNotReady(
