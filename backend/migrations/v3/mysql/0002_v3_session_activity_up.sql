@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS v3_session_activities (
     PRIMARY KEY (id),
     UNIQUE KEY uq_v3_session_activity_session (session_id),
     KEY ix_v3_session_activity_owner (internal_user_pk),
+    CONSTRAINT fk_v3_session_activity_session
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
     CONSTRAINT fk_v3_session_activity_user
         FOREIGN KEY (internal_user_pk) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT ck_v3_session_activity_revision CHECK (input_revision >= 1),
@@ -39,6 +41,8 @@ CREATE TABLE IF NOT EXISTS v3_understanding_snapshots (
     PRIMARY KEY (id),
     UNIQUE KEY uq_v3_understanding_revision (understanding_id, revision),
     KEY ix_v3_understanding_owner (internal_user_pk, understanding_id),
+    CONSTRAINT fk_v3_understanding_session
+        FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
     CONSTRAINT fk_v3_understanding_user
         FOREIGN KEY (internal_user_pk) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT ck_v3_understanding_revision CHECK (revision >= 1)

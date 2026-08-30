@@ -62,5 +62,12 @@ class InputTransitionRequest(V3BaseModel):
 
 
 class InputTransitionResult(V3BaseModel):
+    """Server-authoritative transition outcome.
+
+    Carries the *new* ``input_revision`` and the full current activity
+    state so clients never guess the next expected revision.
+    """
+
     action: InputTransitionAction
-    expected_input_revision: Annotated[int, Field(ge=1)]
+    input_revision: Annotated[int, Field(ge=1)]
+    state: SessionActivityState

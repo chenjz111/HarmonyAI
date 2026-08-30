@@ -21,7 +21,13 @@ class V3SessionActivity(Base):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(String(64), unique=True, nullable=False, index=True)
+    session_id = Column(
+        String(64),
+        ForeignKey("sessions.session_id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
     internal_user_pk = Column(
         Integer,
         ForeignKey("users.id", ondelete="CASCADE"),

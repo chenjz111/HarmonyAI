@@ -37,6 +37,7 @@ from .understanding import (
     UnderstandingV3Request,
     UnderstandingV3Response,
     UnderstandingV31ConfirmationRequest,
+    UnderstandingV31Request,
     UnderstandingV31Response,
 )
 from .session import EntryReadModel
@@ -81,6 +82,7 @@ __all__ = [
     "UnderstandingV3Request",
     "UnderstandingV3Response",
     "UnderstandingV31ConfirmationRequest",
+    "UnderstandingV31Request",
     "UnderstandingV31Response",
     "UserGoal",
 ]
