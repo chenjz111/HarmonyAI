@@ -92,6 +92,22 @@ def test_assessment_v31_with_document_allows_optional_questionnaire():
     assert valid.understanding_ref.revision == 2
 
 
+def test_assessment_v31_accepts_narrative_understanding_plus_questionnaire():
+    """Narrative facts (own understanding) plus a complete questionnaire can
+    feed Agent 1 together; both refs are accepted by the v3.1 input."""
+    valid = AssessmentV31Request.model_validate(
+        {
+            "schema_version": "assessment_v3.1",
+            "session_id": "sess_1",
+            "expected_input_revision": 5,
+            "understanding_ref": {"understanding_id": "und_narrative", "revision": 1},
+            "questionnaire_ref": _questionnaire_ref(),
+        }
+    )
+    assert valid.understanding_ref.understanding_id == "und_narrative"
+    assert valid.questionnaire_ref.questionnaire_submission_id == "qsub_1"
+
+
 def test_assessment_v31_response_has_null_safety_and_no_goal_summary():
     base = {
         "schema_version": "assessment_v3.1",

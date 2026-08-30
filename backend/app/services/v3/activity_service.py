@@ -304,18 +304,22 @@ def update_understanding_ref(
     *,
     understanding_id: str,
     revision: int,
+    expected_input_revision: int,
     commit: bool = True,
 ) -> int:
     """Record the confirmed Understanding reference and bump input_revision.
 
-    Uses an atomic compare-and-set on ``input_revision`` so concurrent
-    confirmations cannot both succeed on the same expected revision.
-    Returns the new input_revision. Raises FlowContractUnsupported for
-    sessions that were not created under the owner flow contract. When
-    ``commit=False`` the caller owns the transaction.
+    The compare-and-set uses the caller's original ``expected_input_revision``
+    — never a freshly re-read value — so a confirmation that raced with
+    discard/replace cannot resurrect a deactivated source: if the session
+    moved on, the atomic UPDATE matches zero rows and
+    :class:`InputRevisionConflict` is raised with the whole transaction
+    rolled back (including any pending Understanding snapshot).
+    Returns the new input_revision. When ``commit=False`` the caller owns
+    the transaction.
     """
     _load_owned_session(db, principal, session_id)
-    activity = _require_owner_flow(_load_activity(db, session_id))
+    _require_owner_flow(_load_activity(db, session_id))
     ref_json = json.dumps(
         {"understanding_id": understanding_id, "revision": revision},
         ensure_ascii=False,
@@ -325,10 +329,10 @@ def update_understanding_ref(
         sa_update(V3SessionActivity)
         .where(
             V3SessionActivity.session_id == session_id,
-            V3SessionActivity.input_revision == activity.input_revision,
+            V3SessionActivity.input_revision == expected_input_revision,
         )
         .values(
-            input_revision=activity.input_revision + 1,
+            input_revision=expected_input_revision + 1,
             understanding_ref=ref_json,
         )
     )
@@ -337,4 +341,4 @@ def update_understanding_ref(
         raise InputRevisionConflict
     if commit:
         db.commit()
-    return activity.input_revision + 1
+    return expected_input_revision + 1
