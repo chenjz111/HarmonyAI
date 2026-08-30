@@ -29,7 +29,10 @@ from sqlalchemy.orm import Session
 
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
-from backend.app.models.v3.session import V3IdempotencyRecord
+from backend.app.models.v3.session import (
+    SessionInputRevision,
+    V3IdempotencyRecord,
+)
 from backend.app.models.v3.understanding import (
     QuestionnaireSubmissionV3,
     UnderstandingRevision,
@@ -76,6 +79,10 @@ class RevisionConflict(RuntimeError):
     pass
 
 
+class InputRevisionConflict(RuntimeError):
+    pass
+
+
 class IdempotencyConflict(RuntimeError):
     pass
 
@@ -85,6 +92,9 @@ class InvalidChange(RuntimeError):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+_FLOW_CONTRACT_V3_OWNER = "v3-owner-flow-1"
 
 
 def _utc_now() -> datetime:
@@ -294,13 +304,20 @@ def _persist_run(
 ) -> tuple[UnderstandingRun, list[UnderstandingSource]]:
     understanding_id = f"und_{uuid.uuid4().hex}"
     run_status, reason_codes = _run_status_and_reasons(resolved)
+    is_new_flow = session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
     run = UnderstandingRun(
         understanding_id=understanding_id,
         internal_user_pk=principal.internal_user_pk,
         session_row_id=session_row.id,
         current_revision=1,
         status=run_status,
-        safety_status="clear",
+        # New-flow sessions defer V3 safety (deferred_v3 / not_run / null);
+        # legacy sessions keep a concrete safety status.
+        safety_status=None if is_new_flow else "clear",
+        flow_contract_version=session_row.flow_contract_version,
+        input_revision=session_row.input_revision,
+        safety_policy="deferred_v3" if is_new_flow else None,
+        safety_evaluation_status="not_run" if is_new_flow else None,
         degradation_json={
             "active": run_status in {"degraded", "failed"},
             "reason_codes": reason_codes,
@@ -484,10 +501,20 @@ def confirm_understanding(
 
     if request.expected_revision != run.current_revision:
         raise RevisionConflict
-    if request.reprocess_requested:
+    session_row = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == run.session_row_id)
+        .one_or_none()
+    )
+    if session_row is None:
+        raise OwnedResourceNotFound
+    if request.expected_input_revision is not None:
+        if session_row.input_revision != request.expected_input_revision:
+            raise InputRevisionConflict
+    if request.reprocess_requested and request.edited_summary_text is None:
         raise InvalidChange(
             "REPROCESS_NOT_SUPPORTED",
-            "重新处理需要重新提交原文，请重新调用创建接口。",
+            "重新处理需要提供修改后的摘要文本。",
         )
 
     current = _revision(db, understanding_id, run.current_revision)
@@ -536,6 +563,14 @@ def confirm_understanding(
     run.current_revision = next_revision
     run.status = _run_status_for_revision(new_status, request.decision)
 
+    if (
+        new_status == "confirmed"
+        and session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
+    ):
+        _bind_session_active_understanding(
+            db, session_row, understanding_id, next_revision
+        )
+
     if record is None:
         record = V3IdempotencyRecord(
             idempotency_record_id=f"idem_{uuid.uuid4().hex}",
@@ -567,11 +602,29 @@ def _apply_decision(
             [],
         )
     if decision == "confirm_with_changes":
+        if request.edited_summary_text is not None:
+            return _apply_full_text_edit(current, request)
         return _apply_changes(current, request)
     if decision == "reject_source":
         return None, [], []
     # cannot_confirm: keep the materialized snapshot undecided.
     return current.case_summary_json, [], []
+
+
+def _apply_full_text_edit(
+    current: UnderstandingRevision,
+    request: UnderstandingConfirmationRequest,
+) -> tuple[dict[str, object] | None, list[str], list[str]]:
+    base = current.case_summary_json
+    if base is None:
+        raise InvalidChange("NO_CASE_SUMMARY", "当前没有可确认的材料摘要。")
+    case_summary = json.loads(json.dumps(base))
+    case_summary["summary"] = request.edited_summary_text
+    case_summary["status"] = "confirmed"
+    # Facts are re-extracted from the edited text (empty here until a claim
+    # dictionary/provider is wired); the edit itself is recorded as a
+    # user_correction so it never impersonates the OCR source.
+    return case_summary, ["chg_summary_edit"], []
 
 
 def _apply_changes(
@@ -644,6 +697,30 @@ def _result_from_revision(revision_row: UnderstandingRevision) -> UnderstandingR
         status=_result_status(revision_row.confirmation_decision),
         applied_changes=list(presentation.get("applied_changes") or []),
         affected_fact_ids=list(presentation.get("affected_fact_ids") or []),
+    )
+
+
+def _bind_session_active_understanding(
+    db: Session,
+    session_row: SessionModel,
+    understanding_id: str,
+    revision: int,
+) -> None:
+    next_input_revision = (session_row.input_revision or 0) + 1
+    session_row.active_understanding_id = understanding_id
+    session_row.active_understanding_revision = revision
+    session_row.input_revision = next_input_revision
+    db.add(
+        SessionInputRevision(
+            session_row_id=session_row.id,
+            input_revision=next_input_revision,
+            input_mode=session_row.input_mode,
+            active_document_id=session_row.active_document_id,
+            active_understanding_id=understanding_id,
+            active_understanding_revision=revision,
+            active_questionnaire_submission_id=session_row.active_questionnaire_submission_id,
+            action="confirm_source",
+        )
     )
 
 

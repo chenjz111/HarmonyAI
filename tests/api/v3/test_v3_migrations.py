@@ -49,7 +49,11 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
     first = apply_v3_migrations(engine)
     second = apply_v3_migrations(engine)
 
-    assert first["applied_versions"] == ["0001_v3_foundation", "0002_v3_business"]
+    assert first["applied_versions"] == [
+        "0001_v3_foundation",
+        "0002_v3_business",
+        "0003_v3_owner_flow",
+    ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)
     assert status["applied"] is True
@@ -147,6 +151,15 @@ def test_mysql_v3_migration_scripts_have_equivalent_foundation_constraints():
     # Circular music_assets <-> generation_tasks FK is closed via ALTER.
     assert "fk_music_assets_generation_task" in up
     assert "REFERENCES generation_tasks(task_id)" in up
+
+    # 0003_v3_owner_flow: session activity columns, nullable relaxation and
+    # the session_input_revisions audit table are present.
+    assert "CREATE TABLE IF NOT EXISTS session_input_revisions" in up
+    assert "DROP TABLE IF EXISTS session_input_revisions" in down
+    assert "ADD COLUMN flow_contract_version" in up
+    assert "MODIFY COLUMN user_goal_json JSON NULL" in up
+    assert "MODIFY COLUMN safety_status VARCHAR(32) NULL" in up
+    assert "MODIFY COLUMN understanding_revision INTEGER NULL" in up
 
 
 def test_sqlite_foreign_key_enforcement_rejects_new_orphan_session(tmp_path):

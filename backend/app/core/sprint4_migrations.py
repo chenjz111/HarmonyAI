@@ -26,7 +26,16 @@ DOCUMENT_EXTENSION_COLUMNS = (
     "ocr_result_json",
     "ocr_processing_time_ms",
 )
-SESSION_EXTENSION_COLUMNS = ("input_mode",)
+SESSION_EXTENSION_COLUMNS = (
+    "input_mode",
+    "flow_contract_version",
+    "input_revision",
+    "safety_policy",
+    "active_document_id",
+    "active_understanding_id",
+    "active_understanding_revision",
+    "active_questionnaire_submission_id",
+)
 
 
 def _required_columns() -> dict[str, set[str]]:

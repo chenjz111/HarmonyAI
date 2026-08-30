@@ -39,6 +39,8 @@ BUSINESS_TABLES = {
     "user_preference_items",
     "preference_events",
     "favorites",
+    # 0003 owner flow amendment (session activity audit)
+    "session_input_revisions",
 }
 
 
@@ -107,9 +109,13 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
     first = apply_v3_migrations(engine)
     second = apply_v3_migrations(engine)
 
-    assert first["applied_versions"] == ["0001_v3_foundation", "0002_v3_business"]
+    assert first["applied_versions"] == [
+        "0001_v3_foundation",
+        "0002_v3_business",
+        "0003_v3_owner_flow",
+    ]
     assert second["applied_versions"] == []
-    assert second["current_version"] == "0002_v3_business"
+    assert second["current_version"] == "0003_v3_owner_flow"
 
     tables = set(inspect(engine).get_table_names())
     assert BUSINESS_TABLES <= tables
@@ -120,7 +126,11 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
                 text("SELECT version FROM schema_migrations")
             )
         }
-    assert versions == {"0001_v3_foundation", "0002_v3_business"}
+    assert versions == {
+        "0001_v3_foundation",
+        "0002_v3_business",
+        "0003_v3_owner_flow",
+    }
 
 
 def test_understanding_run_cascades_when_user_is_deleted(tmp_path):
@@ -307,6 +317,74 @@ def test_music_asset_checksum_and_score01_checks_are_enforced(tmp_path):
                     "degradation_json, presentation_json) "
                     "VALUES ('a1', 1, 1, 'needs_confirmation', 'unconfirmed', 's', "
                     "'{}', 1.5, 0, '[]', '[]', '{}', '{}')"
+                )
+            )
+
+
+def test_owner_flow_null_relaxation_allows_new_flow_rows(tmp_path):
+    """0003 relaxes NOT NULL on safety/goal/understanding refs so new
+    v3-owner-flow-1 rows may store NULL (deferred_v3 safety, no goal,
+    pure-questionnaire) without faking values."""
+    engine = _engine(tmp_path)
+    _create_foundation(engine)
+    apply_v3_migrations(engine)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO understanding_runs (understanding_id, internal_user_pk, "
+                "session_row_id, current_revision, status, safety_status, "
+                "flow_contract_version, input_revision, safety_policy, "
+                "safety_evaluation_status, degradation_json) "
+                "VALUES ('und_null', 1, 1, 1, 'needs_confirmation', NULL, "
+                "'v3-owner-flow-1', 2, 'deferred_v3', 'not_run', '{}')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO understanding_revisions (understanding_id, revision, "
+                "status, presentation_json) "
+                "VALUES ('und_null', 1, 'confirmed', '{}')"
+            )
+        )
+        # New-flow assessment: NULL understanding_id/goal/safety, pure questionnaire.
+        connection.execute(
+            text(
+                "INSERT INTO questionnaire_submissions_v3 ("
+                "questionnaire_submission_id, internal_user_pk, session_row_id, "
+                "schema_id, schema_version, manifest_version, content_checksum, "
+                "time_window_days, answers_json, idempotency_key, submitted_at) "
+                "VALUES ('qsub_null', 1, 1, 'questionnaire_v3', '3.0.0', 'm1', "
+                "'sha256:null', 7, '[]', 'idem-null', '2026-01-01 00:00:00')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO assessment_v3 (assessment_id, internal_user_pk, "
+                "session_row_id, understanding_id, understanding_revision, "
+                "questionnaire_submission_id, current_revision, status, "
+                "safety_status, user_goal_json, flow_contract_version, "
+                "input_revision, input_mode, safety_policy, safety_evaluation_status) "
+                "VALUES ('asmt_null', 1, 1, NULL, NULL, 'qsub_null', 1, "
+                "'needs_confirmation', NULL, NULL, 'v3-owner-flow-1', 2, "
+                "'without_document', 'deferred_v3', 'not_run')"
+            )
+        )
+
+    # The session_input_revisions audit table is present and enforces its action CHECK.
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO session_input_revisions (session_row_id, input_revision, "
+                "input_mode, action) VALUES (1, 3, 'without_document', 'discard_document')"
+            )
+        )
+    with pytest.raises(Exception):
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO session_input_revisions (session_row_id, input_revision, "
+                    "input_mode, action) VALUES (1, 4, 'with_document', 'bogus_action')"
                 )
             )
 

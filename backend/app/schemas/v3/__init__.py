@@ -1,6 +1,6 @@
 """HarmonyAI V3 frozen transport schemas."""
 
-from .assessment import AssessmentV3Request, AssessmentV3Response
+from .assessment import AssessmentV31Request, AssessmentV3Request, AssessmentV3Response
 from .common import (
     AuthPrincipal,
     ClaimDictionaryEntry,
@@ -20,11 +20,12 @@ from .diagnosis import DiagnosisV3, DiagnosisV3Input
 from .feedback import FeedbackV3, FeedbackV3Output
 from .envelope import V3Error, V3ErrorEnvelope, V3SuccessEnvelope
 from .music import MusicGenerationV3Request, MusicProviderCapabilities, MusicTask
-from .prescription import PrescriptionV3, PrescriptionV3Request
+from .prescription import PrescriptionV3, PrescriptionV31Request, PrescriptionV3Request
 from .understanding import UnderstandingV3Request, UnderstandingV3Response
 from .session import EntryReadModel
 
 __all__ = [
+    "AssessmentV31Request",
     "AssessmentV3Request",
     "AssessmentV3Response",
     "AuthPrincipal",
@@ -46,6 +47,7 @@ __all__ = [
     "OrganCode",
     "OrganProfile",
     "PrescriptionV3",
+    "PrescriptionV31Request",
     "PrescriptionV3Request",
     "ProviderHealth",
     "QuestionnaireSchemaV3",

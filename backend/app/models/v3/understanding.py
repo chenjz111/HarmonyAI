@@ -34,6 +34,24 @@ class UnderstandingRun(Base):
             "'confirmed', 'degraded', 'failed')",
             name="ck_understanding_runs_status",
         ),
+        CheckConstraint(
+            "flow_contract_version IS NULL OR "
+            "flow_contract_version = 'v3-owner-flow-1'",
+            name="ck_understanding_runs_flow_contract",
+        ),
+        CheckConstraint(
+            "input_revision IS NULL OR input_revision >= 1",
+            name="ck_understanding_runs_input_revision",
+        ),
+        CheckConstraint(
+            "safety_policy IS NULL OR safety_policy = 'deferred_v3'",
+            name="ck_understanding_runs_safety_policy",
+        ),
+        CheckConstraint(
+            "safety_evaluation_status IS NULL OR "
+            "safety_evaluation_status = 'not_run'",
+            name="ck_understanding_runs_safety_eval",
+        ),
     )
 
     understanding_id = Column(String(64), primary_key=True)
@@ -48,7 +66,13 @@ class UnderstandingRun(Base):
     )
     current_revision = Column(Integer, nullable=False)
     status = Column(String(24), nullable=False)
-    safety_status = Column(String(32), nullable=False)
+    # New v3-owner-flow-1 rows set safety_status=NULL (deferred_v3); legacy
+    # rows keep a concrete SafetyStatus. See Owner Flow Amendment 001 §13.3.
+    safety_status = Column(String(32), nullable=True)
+    flow_contract_version = Column(String(32), nullable=True)
+    input_revision = Column(Integer, nullable=True)
+    safety_policy = Column(String(32), nullable=True)
+    safety_evaluation_status = Column(String(32), nullable=True)
     degradation_json = Column(JSON, nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
