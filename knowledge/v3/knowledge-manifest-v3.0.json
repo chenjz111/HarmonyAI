@@ -6,7 +6,7 @@
   "review_version": "medical_v3.0-r1",
   "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
   "reviewed_at": "2026-08-24",
-  "content_checksum": "sha256:1ebdc73d3c5ea00c37f14059539b34bbe88989b666710f38d7a3d2c38b686c36",
+  "content_checksum": "sha256:3a10b5a657baffc04b95e360f65cd345e129302e5d4706ab8b429807ee80f036",
   "scope": "HarmonyAI V3 医学映射第一批（问卷/Claim/Organ/Five-Tone Manifest 与医学边界审核）。**不含 production RAG Ingestion Manifest**——RAG 文档嵌入与检索参数未批准，须待第二批补齐并经 Owner 批准后方可进入 Agent2 RAG。未批准资产不得进入 production API、RAG、Assessment、Diagnosis 或 Prescription。",
   "assets": [
     {
@@ -23,7 +23,7 @@
       "version": "medical_v3.0",
       "content_checksum": "sha256:9a20931048e775fbf1b4c02861e02c912d26b3b8d409bee33428efaded1f77b9",
       "review_status": "approved",
-      "review_metadata": "32 条：5 情绪 + 17 问卷身体 + 10 narrative/文档 Fact 代码"
+      "review_metadata": "32 条：5 情绪(frequency_0_4) + 19 问卷身体(boolean，q06:4+q07:4+q08:4+q09:4+q10:3) + 8 narrative/文档 severity 事实(sleep_disturbance/unrefreshing_sleep/low_energy/worry_control/concentration_decline/social_withdrawal/daily_impact/emotional_recovery_slowness)"
     },
     {
       "asset": "organ-mapping-v3.0.json",
