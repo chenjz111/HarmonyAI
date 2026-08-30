@@ -5,7 +5,12 @@
   2. 评测文件 cases.jsonl 每个用例记录 医学审核版本与审核状态。
 """
 import json
+import sys
 from pathlib import Path
+
+# Windows 中文环境 stdout 默认 GBK，emoji 输出会 UnicodeEncodeError（PR #89 复审问题 2）
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 ROOT = Path(__file__).resolve().parents[2]
 KNOWLEDGE_V3 = ROOT / "knowledge" / "v3"
