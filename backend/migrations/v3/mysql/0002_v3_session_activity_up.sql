@@ -49,5 +49,7 @@ CREATE TABLE IF NOT EXISTS v3_understanding_snapshots (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Exact idempotent replay: store the success payload on the idempotency record.
+-- V3_IDEMPOTENCY_RESPONSE_JSON_BEGIN
 ALTER TABLE idempotency_records
     ADD COLUMN response_json TEXT NULL;
+-- V3_IDEMPOTENCY_RESPONSE_JSON_END

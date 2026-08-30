@@ -44,4 +44,6 @@ CREATE INDEX IF NOT EXISTS ix_v3_understanding_owner
 ON v3_understanding_snapshots(internal_user_pk, understanding_id);
 
 -- Exact idempotent replay: store the success payload on the idempotency record.
+-- V3_IDEMPOTENCY_RESPONSE_JSON_BEGIN
 ALTER TABLE idempotency_records ADD COLUMN response_json TEXT;
+-- V3_IDEMPOTENCY_RESPONSE_JSON_END
