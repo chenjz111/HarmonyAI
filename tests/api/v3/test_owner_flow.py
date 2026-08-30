@@ -298,27 +298,30 @@ def test_edited_summary_text_confirms_new_revision():
         )
     )["understanding_id"]
 
-    result = _v3_data(
-        client.post(
-            f"/api/v3/understandings/{understanding_id}/confirmations",
-            headers={**headers, "Idempotency-Key": "confirm-1"},
-            json={
-                "schema_version": "understanding_v3.1",
-                "expected_revision": 1,
-                "expected_input_revision": 3,
-                "decision": "confirm_with_changes",
-                "edited_summary_text": "资料提到近期入睡较慢，白天有些疲惫。",
-                "reprocess_requested": True,
-            },
-        )
+    # Full-text edit requires fact re-extraction, which is unavailable without
+    # a configured Understanding provider — it must fail with a stable error
+    # and leave the old revision intact (never publish empty facts as confirmed).
+    response = client.post(
+        f"/api/v3/understandings/{understanding_id}/confirmations",
+        headers={**headers, "Idempotency-Key": "confirm-1"},
+        json={
+            "schema_version": "understanding_v3.1",
+            "expected_revision": 1,
+            "expected_input_revision": 3,
+            "decision": "confirm_with_changes",
+            "edited_summary_text": "资料提到近期入睡较慢，白天有些疲惫。",
+            "reprocess_requested": True,
+        },
     )
-    assert result["revision"] == 2
-    assert result["status"] == "confirmed"
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "FACT_EXTRACTION_UNAVAILABLE"
 
     read = _v3_data(
         client.get(f"/api/v3/understandings/{understanding_id}", headers=headers)
     )
-    assert read["case_summary"]["summary"] == "资料提到近期入睡较慢，白天有些疲惫。"
+    assert read["revision"] == 1
+    assert read["status"] == "needs_confirmation"
+    assert read["case_summary"]["summary"].startswith("材料提到睡眠恢复不足")
     assert read["safety_status"] is None
 
 
@@ -578,6 +581,75 @@ def test_confirmation_returns_read_model_and_input_revision():
     assert result["understanding"]["understanding_id"] == understanding_id
     assert result["understanding"]["revision"] == 2
     assert result["understanding"]["status"] == "confirmed"
+
+
+def test_confirmation_replay_returns_first_success_state():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers, session_id, "sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "with_document"},
+    )
+    with _seed_db() as session:
+        user_pk = _user_pk(session, headers["Authorization"])
+        document_id = _seed_document(
+            session, user_pk=user_pk, session_id=session_id, ocr_text="材料内容。"
+        )
+    _transition(
+        headers, session_id, "rep-1",
+        {"expected_input_revision": 2, "action": "replace_document", "document_id": document_id},
+    )
+    understanding_id = _v3_data(
+        client.post(
+            "/api/v3/understandings",
+            headers={**headers, "Idempotency-Key": "und-1"},
+            json={
+                "schema_version": "understanding_v3.1",
+                "session_id": session_id,
+                "inputs": [
+                    {
+                        "source_id": "src_1",
+                        "source_type": "document",
+                        "processing_status": "ready",
+                        "text_ref": document_id,
+                        "captured_at": "2026-01-01T00:00:00Z",
+                    }
+                ],
+            },
+        )
+    )["understanding_id"]
+
+    confirm_body = {
+        "schema_version": "understanding_v3.1",
+        "expected_revision": 1,
+        "expected_input_revision": 3,
+        "decision": "confirm",
+    }
+    first = client.post(
+        f"/api/v3/understandings/{understanding_id}/confirmations",
+        headers={**headers, "Idempotency-Key": "confirm-1"},
+        json=confirm_body,
+    )
+    assert first.status_code == 201
+    assert _v3_data(first)["input_revision"] == 4
+
+    # A later transition advances the session input_revision.
+    _transition(
+        headers, session_id, "disc-1",
+        {"expected_input_revision": 4, "action": "discard_document"},
+    )
+
+    replay = client.post(
+        f"/api/v3/understandings/{understanding_id}/confirmations",
+        headers={**headers, "Idempotency-Key": "confirm-1"},
+        json=confirm_body,
+    )
+    assert replay.status_code == 200
+    data = _v3_data(replay)
+    assert data["revision"] == 2
+    assert data["input_revision"] == 4  # first success's, not the later 5
+    assert data["understanding"]["revision"] == 2
+    assert data["understanding"]["status"] == "confirmed"
 
 
 def test_v31_rejects_legacy_reject_and_cannot_confirm():

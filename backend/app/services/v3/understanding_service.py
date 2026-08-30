@@ -494,20 +494,17 @@ def confirm_understanding(
         if record.request_hash != request_hash:
             raise IdempotencyConflict
         if record.status == "succeeded" and record.resource_id:
-            previous_revision = _revision_from_record(record.resource_id)
+            previous_revision, previous_input_revision = _confirmation_from_record(
+                record.resource_id
+            )
             if previous_revision is not None:
                 revision_row = _revision(db, understanding_id, previous_revision)
                 if revision_row is not None:
-                    session_row = (
-                        db.query(SessionModel)
-                        .filter(SessionModel.id == run.session_row_id)
-                        .one_or_none()
-                    )
-                    input_revision = (
-                        session_row.input_revision if session_row is not None else None
-                    )
                     return _result_from_revision(
-                        db, run, revision_row, input_revision=input_revision
+                        db,
+                        run,
+                        revision_row,
+                        input_revision=previous_input_revision,
                     ), True
 
     if request.expected_revision != run.current_revision:
@@ -604,7 +601,10 @@ def confirm_understanding(
         )
         db.add(record)
     record.resource_type = "understanding_revision"
-    record.resource_id = f"{understanding_id}:{_REVISION_RECORD_PREFIX}{next_revision}"
+    resource_id = f"{understanding_id}:{_REVISION_RECORD_PREFIX}{next_revision}"
+    if new_input_revision is not None:
+        resource_id += f":in:{new_input_revision}"
+    record.resource_id = resource_id
     record.status = "succeeded"
     record.response_code = 201
     db.commit()
@@ -647,10 +647,10 @@ def _apply_full_text_edit(
     case_summary = json.loads(json.dumps(base))
     case_summary["summary"] = request.edited_summary_text
     case_summary["status"] = "confirmed"
-    # Re-extract facts from the edited text through the controlled
-    # Understanding provider. The edit is recorded as a user_correction so it
-    # never impersonates the OCR source; facts are re-derived from the edited
-    # summary, not copied from the old Evidence.
+    # A full-text edit must re-derive facts from the edited summary, not copy
+    # the old Evidence. When no Understanding provider is configured the edit
+    # cannot be confirmed: publishing empty facts as a confirmed revision would
+    # fabricate a clean result.
     affected_fact_ids = _re_extract_facts(request.edited_summary_text)
     return case_summary, ["chg_summary_edit"], affected_fact_ids
 
@@ -658,15 +658,18 @@ def _apply_full_text_edit(
 def _re_extract_facts(edited_text: str) -> list[str]:
     """Controlled fact re-extraction hook for the edited summary.
 
-    Returns the fact IDs affected by the full-text edit. This must re-run the
-    Understanding provider over ``edited_text`` against the approved claim
-    dictionary. The backend does not yet have an approved claim dictionary or
-    a configured provider (see docs/sprint5 provider-decision-record-*), so
-    this returns [] honestly rather than fabricating facts — the summary text
-    is still updated and published atomically.
+    Must re-run the Understanding provider over ``edited_text`` against the
+    approved claim dictionary and return the affected fact IDs. The backend
+    does not yet have an approved claim dictionary or a configured provider,
+    so a full-text edit cannot produce facts — raise a stable error and keep
+    the old revision rather than publish an empty-facts confirmed revision.
+    Real extraction reuses PR #91's Understanding Provider once merged.
     """
     del edited_text
-    return []
+    raise InvalidChange(
+        "FACT_EXTRACTION_UNAVAILABLE",
+        "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
+    )
 
 
 def _apply_changes(
@@ -746,7 +749,11 @@ def _result_from_revision(
         applied_changes=list(presentation.get("applied_changes") or []),
         affected_fact_ids=list(presentation.get("affected_fact_ids") or []),
         input_revision=input_revision,
-        understanding=_read_model(db, run),
+        # Reconstruct from the recorded revision so an idempotent replay returns
+        # the first success's snapshot, not the session's later state.
+        understanding=_read_model(
+            db, run, revision_row=revision_row, for_revision=True
+        ),
     )
 
 
@@ -793,17 +800,29 @@ def _cas_bind_understanding(
     return next_input_revision
 
 
-def _revision_from_record(resource_id: str) -> int | None:
-    prefix = f"{_REVISION_RECORD_PREFIX}"
-    if ":" not in resource_id or prefix not in resource_id:
-        return None
-    marker = resource_id.split(":", 1)[1]
-    if not marker.startswith(prefix):
-        return None
+def _confirmation_from_record(resource_id: str) -> tuple[int | None, int | None]:
+    """Parse (revision, input_revision) from a confirmation record resource_id.
+
+    Format: ``{understanding_id}:rev:{revision}`` or
+    ``{understanding_id}:rev:{revision}:in:{input_revision}``.
+    """
+    prefix = _REVISION_RECORD_PREFIX
+    if prefix not in resource_id:
+        return None, None
+    tail = resource_id.split(prefix, 1)[1]
+    revision_str = tail
+    input_revision = None
+    if ":in:" in tail:
+        revision_str, input_str = tail.split(":in:", 1)
+        try:
+            input_revision = int(input_str)
+        except ValueError:
+            input_revision = None
     try:
-        return int(marker[len(prefix):])
+        revision = int(revision_str)
     except ValueError:
-        return None
+        revision = None
+    return revision, input_revision
 
 
 def _owned_run(

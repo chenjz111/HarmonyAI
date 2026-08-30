@@ -74,6 +74,9 @@ class AssessmentInputNotReady(RuntimeError):
 
 
 _QUESTIONNAIRE_COMPLETE = 10
+_QUESTIONNAIRE_QUESTION_IDS = frozenset(
+    f"q{index:02d}" for index in range(1, _QUESTIONNAIRE_COMPLETE + 1)
+)
 
 
 def _utc_now() -> datetime:
@@ -364,6 +367,25 @@ def _cas_apply_transition(
     return expected + 1
 
 
+def _approved_questionnaire_manifest() -> dict | None:
+    """Read the canonical approved questionnaire manifest (PR #89 medical
+    signoff). It is the single source of truth for schema_id / manifest_version
+    / content_checksum — no local copy of the checksum is maintained. Returns
+    None until PR #89's knowledge/v3/questionnaire-v3.0.json is merged."""
+    from pathlib import Path
+
+    manifest_path = (
+        Path(__file__).resolve().parents[4]
+        / "knowledge" / "v3" / "questionnaire-v3.0.json"
+    )
+    if not manifest_path.is_file():
+        return None
+    try:
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def validate_assessment_input_readiness(
     db: Session,
     session_row: SessionModel,
@@ -437,18 +459,43 @@ def validate_assessment_input_readiness(
         raise AssessmentInputNotReady(
             "QUESTIONNAIRE_NOT_OWNED", "问卷提交不属于当前会话。"
         )
-    if submission.schema_id != "questionnaire_v3":
+    # A complete submission must answer all 10 unique canonical question IDs
+    # (q01..q10); a longer array of duplicated IDs is not a valid submission.
+    answer_ids = {
+        item.get("question_id")
+        for item in (submission.answers_json or [])
+        if isinstance(item, dict)
+    }
+    if answer_ids != _QUESTIONNAIRE_QUESTION_IDS:
         raise AssessmentInputNotReady(
-            "QUESTIONNAIRE_INVALID_SCHEMA", "问卷版本无效。"
+            "QUESTIONNAIRE_INCOMPLETE", "需要完整提交10道状态问卷（唯一题号）。"
         )
-    if not (submission.content_checksum or "").startswith("sha256:"):
-        raise AssessmentInputNotReady(
-            "QUESTIONNAIRE_INVALID_CHECKSUM", "问卷内容校验无效。"
-        )
-    if len(submission.answers_json or []) != _QUESTIONNAIRE_COMPLETE:
-        raise AssessmentInputNotReady(
-            "QUESTIONNAIRE_INCOMPLETE", "需要完整提交10道状态问卷。"
-        )
+    # Precise schema/manifest/checksum validation against the canonical
+    # approved manifest (PR #89). Until it merges, fall back to structural
+    # checks — never maintain a local copy of the checksum constant.
+    manifest = _approved_questionnaire_manifest()
+    if manifest is not None:
+        if submission.schema_id != manifest.get("schema_id"):
+            raise AssessmentInputNotReady(
+                "QUESTIONNAIRE_INVALID_SCHEMA", "问卷 schema 无效。"
+            )
+        if submission.manifest_version != manifest.get("manifest_version"):
+            raise AssessmentInputNotReady(
+                "QUESTIONNAIRE_INVALID_MANIFEST", "问卷 manifest 版本无效。"
+            )
+        if submission.content_checksum != manifest.get("content_checksum"):
+            raise AssessmentInputNotReady(
+                "QUESTIONNAIRE_INVALID_CHECKSUM", "问卷内容校验无效。"
+            )
+    else:
+        if submission.schema_id != "questionnaire_v3":
+            raise AssessmentInputNotReady(
+                "QUESTIONNAIRE_INVALID_SCHEMA", "问卷版本无效。"
+            )
+        if not (submission.content_checksum or "").startswith("sha256:"):
+            raise AssessmentInputNotReady(
+                "QUESTIONNAIRE_INVALID_CHECKSUM", "问卷内容校验无效。"
+            )
 
 
 def _revision_from_record(resource_id: str) -> int | None:
