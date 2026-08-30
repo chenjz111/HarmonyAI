@@ -75,12 +75,24 @@ class SourceNoValidText(RuntimeError):
     """Source OCR did not produce usable text."""
 
 
+class SourceOcrFailed(RuntimeError):
+    """Server-side OCR record shows a failed/degraded result."""
+
+
 class SourceNotReady(RuntimeError):
     """Source processing status is not ready."""
 
 
 class InvalidSourceType(RuntimeError):
-    """Only document sources are accepted by the v3.1 run flow."""
+    """Source type is not accepted by the v3.1 run flow."""
+
+
+class VoiceTranscriptNotEnabled(RuntimeError):
+    """ASR persistence is not enabled yet; voice sources stay disabled."""
+
+
+class NoFactsExtracted(RuntimeError):
+    """Provider produced no facts; no usable summary can be shown."""
 
 
 def _utc_now() -> datetime:
@@ -154,6 +166,10 @@ def _fact_from_provider(
     )
 
 
+_VALID_OCR_CONFIDENCE = {"high", "medium", "low"}
+_DEACTIVATED_DOCUMENT_STATUS = {"ocr_failed", "deleted", "skipped"}
+
+
 def _validate_document_source(
     db: Session,
     principal: AuthPrincipal,
@@ -164,12 +180,12 @@ def _validate_document_source(
 ) -> str:
     """Validate a document source and return the authoritative OCR text.
 
-    Forged, stale, discarded, or un-OCR'd documents never reach the
-    Provider/Agent1: the OCR text is read from the server-side Document
-    record, not from the client payload.
+    Forged, stale, discarded, or failed/degraded OCR never reaches the
+    Provider/Agent1. The document upload API persists ``status='uploaded'``
+    even when OCR fails, so the server-side OCR record (error_code,
+    confidence, result payload, text) is the authority — not the client
+    ``processing_status`` or the Document.status column.
     """
-    if source.source_type != SourceType.document:
-        raise InvalidSourceType
     if source.processing_status != "ready":
         raise SourceNotReady
     if source.source_id != activity.active_document_id:
@@ -185,13 +201,41 @@ def _validate_document_source(
     )
     if document is None:
         raise SourceNotOwned
+    if document.status in _DEACTIVATED_DOCUMENT_STATUS:
+        raise SourceNoValidText
+    if document.ocr_error_code:
+        raise SourceOcrFailed
+    if document.ocr_confidence not in _VALID_OCR_CONFIDENCE:
+        raise SourceOcrFailed
+    if not document.ocr_result_json:
+        raise SourceOcrFailed
     ocr_text = (document.ocr_text or "").strip()
-    if (
-        not ocr_text
-        or document.status in {"ocr_failed", "deleted", "skipped"}
-    ):
+    if not ocr_text:
         raise SourceNoValidText
     return ocr_text
+
+
+def _validate_narrative_source(source: UnderstandingSource) -> str:
+    """Accept the current user's free-text narrative for this session.
+
+    Narratives are user-typed input with no server-side authoritative copy,
+    so the submitted text is used after basic readiness/emptiness gates.
+    """
+    if source.processing_status != "ready":
+        raise SourceNotReady
+    text = (source.text or "").strip()
+    if not text:
+        raise SourceNoValidText
+    return text
+
+
+def _validate_voice_transcript_source() -> None:
+    """Voice transcripts stay disabled until ASR persistence exists.
+
+    We deliberately refuse rather than trust client-supplied transcript
+    text: a forged transcript must never reach the Provider.
+    """
+    raise VoiceTranscriptNotEnabled
 
 
 def _build_case_summary(
@@ -220,15 +264,62 @@ def _build_case_summary(
     ).model_dump(mode="json")
 
 
+_SEVERITY_ZH = {
+    "none": "无",
+    "mild": "轻度",
+    "moderate": "中度",
+    "severe": "重度",
+    "unknown": "不清楚",
+}
+_FREQUENCY_ZH = {
+    0: "无",
+    1: "偶尔",
+    2: "有时",
+    3: "经常",
+    4: "几乎每天",
+}
+_BOOLEAN_ZH = {True: "有", False: "无"}
+# Common coded_text values from the approved claim dictionary (中文文案).
+_CODED_TEXT_ZH = {
+    "worse": "加重",
+    "same": "不变",
+    "better": "好转",
+    "unrefreshing": "未恢复",
+}
+
+
+def _user_facing_value(fact) -> str | None:
+    """Map internal fact values to user-facing Chinese copy.
+
+    Returns None when the value has no safe public rendering, so the
+    summary falls back to the display name only (no enum leakage).
+    """
+    raw = fact.value.value
+    if hasattr(raw, "value"):
+        raw = raw.value
+    if fact.value.type == "severity":
+        return _SEVERITY_ZH.get(str(raw), str(raw))
+    if fact.value.type == "boolean":
+        return _BOOLEAN_ZH.get(bool(raw))
+    if fact.value.type == "frequency_0_4":
+        return _FREQUENCY_ZH.get(int(raw))
+    if fact.value.type == "number":
+        return str(raw)
+    if fact.value.type == "coded_text":
+        return _CODED_TEXT_ZH.get(str(raw))
+    return None
+
+
 def _summary_from_facts(facts: list) -> str:
     if not facts:
         return ""
     parts = []
     for fact in facts:
-        raw = fact.value.value
-        if hasattr(raw, "value"):
-            raw = raw.value
-        parts.append(f"{fact.display_name}（{raw}）")
+        value = _user_facing_value(fact)
+        if value is None:
+            parts.append(fact.display_name)
+        else:
+            parts.append(f"{fact.display_name}（{value}）")
     return "资料中提到：" + "、".join(parts) + "。"
 
 
@@ -261,13 +352,21 @@ def run_understanding_v31(
     all_facts: list = []
     try:
         for source in request.inputs:
-            ocr_text = _validate_document_source(
-                db,
-                principal,
-                session_id=request.session_id,
-                activity=activity,
-                source=source,
-            )
+            if source.source_type == SourceType.document:
+                source_text = _validate_document_source(
+                    db,
+                    principal,
+                    session_id=request.session_id,
+                    activity=activity,
+                    source=source,
+                )
+            elif source.source_type == SourceType.narrative:
+                source_text = _validate_narrative_source(source)
+            elif source.source_type == SourceType.voice_transcript:
+                _validate_voice_transcript_source()
+                raise AssertionError("unreachable")
+            else:
+                raise InvalidSourceType
             provider_request = UnderstandingProviderRequest(
                 request_id=_uid("req"),
                 schema_version="understanding_provider_v3.0",
@@ -277,7 +376,7 @@ def run_understanding_v31(
                     "source_type": source.source_type.value,
                     "subject_hint": "unknown",
                     "time_window": "past_7_days",
-                    "text": ocr_text,
+                    "text": source_text,
                 },
                 allowed_claim_dictionary_version="medical_v3.0",
                 max_facts=30,
@@ -311,6 +410,8 @@ def run_understanding_v31(
             raise MedicalAssetUnavailable from None
         raise
 
+    if not all_facts:
+        raise NoFactsExtracted
     summary_text = _summary_from_facts(all_facts)
     content = UnderstandingV31Response(
         schema_version="understanding_v3.1",
