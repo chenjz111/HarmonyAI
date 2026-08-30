@@ -11,14 +11,26 @@
  *  3. 后端失败走友好降级文案，不白屏
  *  4. mock 数据全部为虚构脱敏内容，不含任何真实用户信息
  *
- * 说明：后端 /api/v3 尚未部署（依赖 Issue #79 / #78），
- * 当前 USE_MOCK 默认开启，按 Read Model 形状返回 fixture，
- * 联调时切换 USE_MOCK=false 即走真实接口。
+ * 说明：后端 /api/v3 渐进交付中（Issue #79 / #78），
+ * 通过 MODE 切换 mock / hybrid / real 三种模式：
+ *  - mock：全 fixture（默认）
+ *  - hybrid：auth/guest + sessions 走真实后端，其余 mock（联调期）
+ *  - real：全部真实（后端交付完成后）
  */
 
 // ===== 配置 =====
 
-const USE_MOCK = true // 联调时改为 false；勿在真实联调分支提交 true
+// 联调模式（渐进接入 #79/#78 后端，2026-08-31 起）：
+//  - "mock"  : 全部走本地 fixture（默认；node --test 与无后端环境使用）
+//  - "hybrid": 后端已交付接口走真实服务，其余仍走 mock。
+//              当前 #79 仅合并 PR #83（auth/session）与 PR #86（music provider 地基），
+//              input-transitions / understanding / assessment / music 路由尚未交付。
+//  - "real"  : 全部走真实后端（#79/#78 完整交付后启用）。
+// 环境变量 HARMONYAI_V3_MODE 可覆盖（仅供本地/CI 调试，勿依赖其做生产行为）。
+const MODE = "mock"
+const USE_MOCK = MODE !== "real"
+// hybrid/real 模式下，这三个接口走真实后端（PR #83 已交付）：
+const REAL_SESSION_APIS = MODE !== "mock"
 
 const BASE_URL = "http://localhost:8000"
 
@@ -41,7 +53,8 @@ function realRequest(path, { method = "GET", data = null, headers = {} } = {}) {
       data: data || undefined,
       header: Object.assign({ "Content-Type": "application/json" }, authHeaders(), headers),
       success(res) {
-        // Read Model envelope: { data, error }
+        // V3 envelope：成功 { ok:true, data, request_id, schema_version }
+        //            失败 { ok:false, error:{ code, message, retryable, next_actions } }
         const body = res.data || {}
         if (res.statusCode >= 200 && res.statusCode < 300 && body.data !== undefined) {
           resolve(body.data)
@@ -50,6 +63,8 @@ function realRequest(path, { method = "GET", data = null, headers = {} } = {}) {
           reject(Object.assign(new Error(err.message || "请求失败"), {
             code: err.code || "REQUEST_FAILED",
             status: res.statusCode,
+            retryable: !!err.retryable,
+            nextActions: err.next_actions || [],
           }))
         }
       },
@@ -604,19 +619,70 @@ function stripInternal(obj) {
 
 // ===== 对外接口 =====
 
+// ===== hybrid 模式状态同步 =====
+// 真实会话创建成功后，把真实 session_id 写进 mock 状态机，
+// 让尚未交付接口（input-transitions 等）的 mock 流程能继续走通。
+// 联调渐进过渡专用；real 模式下不经过此函数。
+function syncMockFromRealEntry(entry) {
+  if (entry && entry.session_id) {
+    MOCK.session = {
+      session_id: entry.session_id,
+      flow_contract_version: "v3-owner-flow-1",
+      input_mode: null,
+      input_revision: 1,
+      active_document_id: null,
+      understanding_ref: null,
+      questionnaire_ref: null,
+    }
+    MOCK.document = null
+    MOCK.understanding = null
+    MOCK.questionnaireSubmission = null
+    MOCK.assessment = null
+    MOCK.basis = null
+    MOCK.musicTask = null
+    MOCK.music = null
+    MOCK.feedbackDone = false
+    try { uni.setStorageSync("v3_session_id", entry.session_id) } catch (e) { /* ignore */ }
+  }
+  return entry
+}
+
 export const apiV3 = {
   USE_MOCK,
+  MODE,
 
   guestAuth() {
-    return USE_MOCK ? mockApi.guestAuth() : realRequest("/api/v3/auth/guest", { method: "POST" })
+    if (!REAL_SESSION_APIS) return mockApi.guestAuth()
+    // 后端契约（PR #83）：POST /api/v3/auth/guest → GuestAuthResponse
+    // { access_token, token_type:"Bearer", expires_at, public_user_id }
+    return realRequest("/api/v3/auth/guest", { method: "POST" }).then((data) => {
+      try {
+        uni.setStorageSync("v3_access_token", data.access_token)
+        uni.setStorageSync("v3_public_user_id", data.public_user_id)
+      } catch (e) { /* H5/小程序差异忽略 */ }
+      return data
+    })
   },
   createSession() {
-    return USE_MOCK
-      ? mockApi.createSession()
-      : realRequest("/api/v3/sessions", { method: "POST", data: { flow_contract_version: "v3-owner-flow-1" } })
+    if (!REAL_SESSION_APIS) return mockApi.createSession()
+    // 后端契约（PR #83）：POST /api/v3/sessions
+    //  - Header：Authorization Bearer + Idempotency-Key（必填，缺失 → 400 IDEMPOTENCY_KEY_REQUIRED）
+    //  - Body 仅允许空对象或 { user_id }；携带其他字段（如 flow_contract_version）→ 422
+    //  - 成功返回 EntryReadModel（首次 201 / 同键重放 200）
+    return realRequest("/api/v3/sessions", {
+      method: "POST",
+      data: {},
+      headers: { "Idempotency-Key": idempotencyKey() },
+    }).then((entry) => syncMockFromRealEntry(entry))
   },
   getSession() {
-    return USE_MOCK ? mockApi.getSession() : realRequest("/api/v3/sessions/current")
+    if (!REAL_SESSION_APIS) return mockApi.getSession()
+    // 后端契约（PR #83）：GET /api/v3/sessions/{session_id}（路径参数，无 /current）
+    const sessionId = uni.getStorageSync("v3_session_id") || ""
+    if (!sessionId) {
+      return Promise.reject(Object.assign(new Error("会话未创建"), { code: "SESSION_NOT_FOUND" }))
+    }
+    return realRequest("/api/v3/sessions/" + encodeURIComponent(sessionId))
   },
   selectMode(inputMode) {
     return USE_MOCK
