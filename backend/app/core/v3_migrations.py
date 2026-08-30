@@ -91,6 +91,20 @@ def _has_session_owner_created_index(engine: Engine) -> bool:
     )
 
 
+def _has_idempotency_response_json(engine: Engine) -> bool:
+    """True when idempotency_records already has the response_json column.
+
+    The table may have been created from the ORM model (create_all) with the
+    column already present, in which case the 0002 ALTER must be skipped.
+    """
+    inspector = inspect(engine)
+    if "idempotency_records" not in inspector.get_table_names():
+        return False
+    return "response_json" in {
+        column["name"] for column in inspector.get_columns("idempotency_records")
+    }
+
+
 def _enable_sqlite_foreign_keys(engine: Engine) -> None:
     if getattr(engine, "_harmonyai_v3_fk_listener", False):
         return
@@ -153,6 +167,10 @@ def _apply_sqlite_version(
             )
             if has_flow_version and has_user_fk:
                 rendered = _remove_marked_block(rendered, "V3_SESSION_UPGRADE")
+        elif version == V3_ACTIVITY_VERSION and _has_idempotency_response_json(engine):
+            rendered = _remove_marked_block(
+                rendered, "V3_IDEMPOTENCY_RESPONSE_JSON"
+            )
         raw.executescript(rendered)
         cursor.execute(
             "INSERT INTO schema_migrations (version, checksum) VALUES (?, ?)",
@@ -205,6 +223,10 @@ def _apply_mysql_version(
                 rendered = _remove_marked_block(rendered, "V3_SESSION_FK")
             if _has_session_owner_created_index(engine):
                 rendered = _remove_marked_block(rendered, "V3_SESSION_OWNER_INDEX")
+        elif version == V3_ACTIVITY_VERSION and _has_idempotency_response_json(engine):
+            rendered = _remove_marked_block(
+                rendered, "V3_IDEMPOTENCY_RESPONSE_JSON"
+            )
         statements = [item.strip() for item in rendered.split(";") if item.strip()]
         for statement in statements:
             connection.exec_driver_sql(statement)

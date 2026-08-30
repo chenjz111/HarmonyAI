@@ -197,6 +197,29 @@ def test_sqlite_understanding_snapshot_session_foreign_key(tmp_workspace):
             )
 
 
+def test_v3_migrations_tolerate_orm_create_all_first(tmp_workspace):
+    """Reproduces the CI failure on f5a08df: when Base.metadata.create_all
+    (ORM model) already created idempotency_records WITH response_json,
+    the 0002 ALTER must be skipped instead of raising
+    ``duplicate column name: response_json``."""
+    from backend.app.core.database import Base
+
+    engine = create_engine(f"sqlite:///{tmp_workspace / 'orm-first.db'}")
+    Base.metadata.create_all(bind=engine)
+
+    result = apply_v3_migrations(engine)
+
+    assert "0002_v3_session_activity" in result["applied_versions"]
+    columns = [
+        column["name"]
+        for column in inspect(engine).get_columns("idempotency_records")
+    ]
+    assert columns.count("response_json") == 1
+    # and the new tables exist exactly once
+    assert "v3_session_activities" in inspect(engine).get_table_names()
+    assert "v3_understanding_snapshots" in inspect(engine).get_table_names()
+
+
 def test_sqlite_foreign_key_enforcement_rejects_new_orphan_session(tmp_workspace):
     engine = create_engine(f"sqlite:///{tmp_workspace / 'fk.db'}")
     _create_legacy_foundation(engine)
