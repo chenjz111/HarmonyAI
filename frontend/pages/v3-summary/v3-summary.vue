@@ -4,11 +4,11 @@
  * 合同依据：frontend-read-model-contract-v3.md §4 Case Summary Page
  *          harmonyai-v3-owner-flow-amendment-001.md §3.2 / §3.3
  *
- * 四个操作（Amendment §3.2）：
- *  1. 主按钮：内容基本准确，继续
+ * 四个操作（Sprint 5 组长指令，覆盖 Amendment §3.2 旧措辞）：
+ *  1. 主按钮：资料摘要基本无误
  *  2. 次按钮：修改资料摘要（进入同页编辑状态）
  *  3. 次按钮：重新上传资料
- *  4. 弱按钮：改用描述与问卷
+ *  4. 弱按钮：暂不使用这份资料，继续评估
  *
  * 编辑状态（Amendment §3.3）：
  *  - 只编辑通俗摘要文本，不展示 OCR 原文/置信度/Provider/revision
@@ -43,7 +43,7 @@ export default {
         this.loading = false
       }
     },
-    // 操作1：内容基本准确，继续
+    // 操作1：资料摘要基本无误（decision=confirm，不触发重提取）
     async confirmOk() {
       if (this.submitting) return
       this.submitting = true
@@ -90,7 +90,16 @@ export default {
         uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
       } catch (e) {
         // 失败保留编辑输入、停留本页，旧摘要不变
-        uni.showToast({ title: e.message || "保存失败，请重试", icon: "none" })
+        if (e.code === "FACT_EXTRACTION_UNAVAILABLE") {
+          // 后端不支持编辑后重提取：提示可返回按原摘要继续，不丢弃用户输入
+          uni.showToast({
+            title: e.message || "当前暂不支持修改摘要后重新解析，你可以按原摘要继续。",
+            icon: "none",
+            duration: 3000,
+          })
+        } else {
+          uni.showToast({ title: e.message || "保存失败，请重试", icon: "none" })
+        }
       } finally {
         this.submitting = false
       }
@@ -104,7 +113,7 @@ export default {
     reupload() {
       uni.redirectTo({ url: "/pages/v3-material/v3-material" })
     },
-    // 操作4：改用描述与问卷（服务端切换无资料模式）
+    // 操作4：暂不使用这份资料，继续评估（必须调用后端 Input Transition discard_document）
     async switchToQuestionnaire() {
       if (this.submitting) return
       this.submitting = true
@@ -148,7 +157,7 @@ export default {
 
       <view class="actions">
         <view class="btn-primary" :class="{ 'btn-disabled': submitting }" @click="confirmOk">
-          <text class="btn-primary-text">内容基本准确，继续</text>
+          <text class="btn-primary-text">资料摘要基本无误</text>
         </view>
         <view class="btn-secondary" @click="startEdit">
           <text class="btn-secondary-text">修改资料摘要</text>
@@ -157,7 +166,7 @@ export default {
           <text class="btn-secondary-text">重新上传资料</text>
         </view>
         <view class="btn-link" @click="switchToQuestionnaire">
-          <text class="btn-link-text">改用描述与问卷</text>
+          <text class="btn-link-text">暂不使用这份资料，继续评估</text>
         </view>
       </view>
     </view>

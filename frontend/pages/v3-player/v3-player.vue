@@ -7,6 +7,8 @@
  * - source_label 区分"AI生成音乐"与"审核曲库匹配音乐"（不伪装实时生成）
  * - 不展示任何目标类字段（该概念已在 V3 删除，Amendment §5）
  * - 保留非诊断/非治疗免责声明
+ * - 收藏走真实 Favorites API（music_ref），mock/hybrid 由 facade 本地记录
+ * - hybrid 模式显示"演示数据"标识
  */
 import { apiV3 } from "../../common/api-v3.js"
 
@@ -19,16 +21,15 @@ export default {
       playing: false,
       audioCtx: null,
       favorite: false,
+      favBusy: false,
+      simulated: false, // hybrid：演示数据标识
     }
   },
   computed: {
     audioSrc() {
       if (!this.music || !this.music.stream_url) return ""
-      // mock：/static 前缀为前端本地示例音频；真实模式为后端流地址
-      if (this.music.stream_url.indexOf("/static/") === 0) {
-        return this.music.stream_url
-      }
-      return this.music.stream_url
+      // 相对路径（/api/...）补全后端地址；本地 /static 与绝对地址原样使用
+      return apiV3.musicStreamUrl(this.music.stream_url)
     },
   },
   onLoad() {
@@ -44,8 +45,14 @@ export default {
       try {
         this.music = await apiV3.getMusic()
         this.favorite = !!this.music.favorite
+        this.simulated = !!apiV3.AGENT_SIMULATED
       } catch (e) {
-        this.error = e.message || "音乐加载失败，请重试"
+        if (e.agentPending) {
+          // real 模式：音乐生成依赖 PR #91，明确等待状态，不伪造音乐
+          this.error = e.message
+        } else {
+          this.error = e.message || "音乐加载失败，请重试"
+        }
       } finally {
         this.loading = false
       }
@@ -83,9 +90,30 @@ export default {
       }
       this.playing = false
     },
-    toggleFavorite() {
-      this.favorite = !this.favorite
-      uni.showToast({ title: this.favorite ? "已收藏" : "已取消收藏", icon: "none" })
+    // 收藏：走真实 Favorites API（music_ref.music_id + source_type）
+    async toggleFavorite() {
+      if (this.favBusy) return
+      const ref = this.music.music_ref || {}
+      const musicId = ref.music_id
+      if (!musicId) {
+        uni.showToast({ title: "收藏失败：缺少音乐标识", icon: "none" })
+        return
+      }
+      this.favBusy = true
+      const target = !this.favorite
+      try {
+        if (target) {
+          await apiV3.addFavorite(musicId, ref.source_type)
+        } else {
+          await apiV3.removeFavorite(musicId)
+        }
+        this.favorite = target
+        uni.showToast({ title: target ? "已收藏" : "已取消收藏", icon: "none" })
+      } catch (e) {
+        uni.showToast({ title: e.message || "操作失败，请重试", icon: "none" })
+      } finally {
+        this.favBusy = false
+      }
     },
     formatDuration(sec) {
       const m = Math.floor(sec / 60)
@@ -94,7 +122,8 @@ export default {
     },
     goFeedback() {
       this.stopAudio()
-      uni.redirectTo({ url: "/pages/feedback-v2/feedback-v2" })
+      // V3 流程进入 V3 反馈页（feedback_v3.0），不再复用 V2 反馈页
+      uni.redirectTo({ url: "/pages/v3-feedback/v3-feedback" })
     },
   },
 }
@@ -117,6 +146,11 @@ export default {
     </view>
 
     <view v-else class="player-card">
+      <!-- hybrid 演示标识 -->
+      <view v-if="simulated" class="demo-banner">
+        <text class="demo-banner-text">演示模式：当前音乐为模拟数据</text>
+      </view>
+
       <!-- 唱片 -->
       <view class="disc" :class="{ 'disc-spinning': playing }">
         <view class="disc-inner">
@@ -260,4 +294,12 @@ export default {
 .error-text { font-size: 28rpx; color: #b0574f; margin-bottom: 32rpx; }
 .btn-retry { padding: 20rpx 64rpx; background: #4a6b5c; border-radius: 44rpx; }
 .btn-retry-text { color: #fff; font-size: 28rpx; }
+.demo-banner { display: flex; justify-content: center; margin-bottom: 24rpx; width: 100%; }
+.demo-banner-text {
+  font-size: 22rpx;
+  color: #8a6d3b;
+  background: #f5eddc;
+  border-radius: 8rpx;
+  padding: 8rpx 20rpx;
+}
 </style>

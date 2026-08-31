@@ -3,9 +3,11 @@
  * V3 资料上传页（有资料流程第一步）
  * 合同依据：frontend-read-model-contract-v3.md §3.2 SourceStatusReadModel
  *          harmonyai-v3-owner-flow-amendment-001.md §3.1（OCR 失败标准文案）
+ *          Sprint 5 组长指令：OCR 失败按钮二固定为"暂不使用资料，通过描述和问卷继续"
  *
- * 状态机：idle → uploading/processing → ready（去摘要确认）| failed（失败分流）
+ * 状态机：idle → uploading/processing → ready（去摘要确认）| failed（OCR 失败分流）| network_error（网络/服务错误，可重试）
  *  - 失败页文案严格按 Amendment §3.1：标题"资料暂未识别成功"
+ *  - OCR 失败与网络错误是两种状态：网络错误展示具体错误信息与重试入口，不冒充 OCR 失败固定文案
  *  - 失败不得进入摘要确认或后续 Agent 页面
  *  - 不展示 OCR Provider、原始置信度或内部异常
  *
@@ -16,11 +18,12 @@ import { apiV3 } from "../../common/api-v3.js"
 export default {
   data() {
     return {
-      state: "idle", // idle | processing | ready | failed
+      state: "idle", // idle | processing | ready | failed | network_error
       filePath: "",
       fileName: "",
       isImage: false,
       error: "",
+      discarding: false,
     }
   },
   methods: {
@@ -56,7 +59,9 @@ export default {
           }, 600)
         }
       } catch (e) {
-        this.state = "failed"
+        // 网络/服务错误与 OCR 失败分流：这里只是上传或服务调用失败，
+        // 资料本身是否识别成功由后端 ocr_status 决定，不冒用 OCR 失败固定文案
+        this.state = "network_error"
         this.error = e.message || "上传失败，请重试"
       }
     },
@@ -66,15 +71,23 @@ export default {
       this.filePath = ""
       this.fileName = ""
     },
+    retryFromNetworkError() {
+      this.error = ""
+      this.retry()
+    },
     async switchToQuestionnaire() {
-      // 改用描述与问卷（Amendment §3.1 按钮二）
-      // 必须服务端切换为无资料模式（discard_document），不是前端隐藏卡片
+      // 暂不使用资料，通过描述和问卷继续（Sprint 5 组长指令按钮二）
+      // 必须调用后端 Input Transition（discard_document）切换为无资料模式，不是前端隐藏卡片
+      if (this.discarding) return
+      this.discarding = true
       try {
         const session = await apiV3.discardDocument()
         apiV3.rememberSession(session)
         uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
       } catch (e) {
         uni.showToast({ title: e.message || "切换失败，请重试", icon: "none" })
+      } finally {
+        this.discarding = false
       }
     },
   },
@@ -110,7 +123,7 @@ export default {
       <text class="status-msg">正在为你整理资料摘要…</text>
     </view>
 
-    <!-- OCR 失败页：文案严格按 Amendment §3.1 -->
+    <!-- OCR 失败页：文案严格按 Amendment §3.1 + Sprint 5 组长指令按钮二 -->
     <view v-if="state === 'failed'" class="fail-card">
       <view class="fail-icon"><text class="fail-icon-text">!</text></view>
       <text class="fail-title">资料暂未识别成功</text>
@@ -121,9 +134,22 @@ export default {
           <text class="btn-primary-text">重新上传资料</text>
         </view>
         <view class="btn-secondary" @click="switchToQuestionnaire">
-          <text class="btn-secondary-text">改用描述与问卷</text>
+          <text class="btn-secondary-text">{{ discarding ? "正在切换…" : "暂不使用资料，通过描述和问卷继续" }}</text>
         </view>
         <text class="fail-note">自由描述可以跳过，10道状态问卷需要完成。</text>
+      </view>
+    </view>
+
+    <!-- 网络/服务错误：展示具体错误与重试，不冒充 OCR 失败固定文案 -->
+    <view v-if="state === 'network_error'" class="fail-card">
+      <view class="fail-icon"><text class="fail-icon-text">!</text></view>
+      <text class="fail-title">资料暂时没有上传成功</text>
+      <text class="fail-desc">{{ error || "网络或服务暂时不可用，请稍后重试。" }}</text>
+
+      <view class="fail-actions">
+        <view class="btn-primary" @click="retryFromNetworkError">
+          <text class="btn-primary-text">重新上传资料</text>
+        </view>
       </view>
     </view>
 

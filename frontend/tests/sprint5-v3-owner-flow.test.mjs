@@ -2,11 +2,18 @@
  * Sprint 5 V3 owner-flow-1 前端契约测试
  * 依据：docs/contracts/harmonyai-v3-owner-flow-amendment-001.md
  *      docs/contracts/frontend-read-model-contract-v3.md
+ *      backend/app/schemas/v3/feedback.py（feedback_v3.0 冻结契约）
+ *
+ * 重要：mock 必须显式开启（HARMONYAI_V3_MODE=mock），默认 real。
+ * 本文件在顶部显式设置 mock 后再动态 import api-v3.js。
  */
 import assert from "node:assert/strict"
 import { readFileSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
 import test from "node:test"
+
+// mock 必须显式开启：在首次 import api-v3.js 之前设置
+process.env.HARMONYAI_V3_MODE = "mock"
 
 const frontendRoot = resolve(import.meta.dirname, "..")
 const pagesConfig = JSON.parse(readFileSync(resolve(frontendRoot, "pages.json"), "utf8"))
@@ -16,6 +23,19 @@ function readPage(name) {
   const file = resolve(frontendRoot, "pages", name)
   assert.ok(existsSync(file), `missing page file: ${name}`)
   return readFileSync(file, "utf8")
+}
+
+// 构造符合权威清单题型的答案（频率题 0-4 整数；多选题非空 option_code 数组）
+function buildFullAnswers(schema) {
+  const answers = {}
+  schema.questions.forEach((q) => {
+    if (q.answer_type === "frequency_0_4") {
+      answers[q.question_id] = 2
+    } else {
+      answers[q.question_id] = [q.options[0].option_code]
+    }
+  })
+  return answers
 }
 
 // ===== 路由注册 =====
@@ -30,6 +50,7 @@ test("V3 owner-flow pages are all registered", () => {
     "pages/v3-confirm/v3-confirm",
     "pages/v3-basis/v3-basis",
     "pages/v3-player/v3-player",
+    "pages/v3-feedback/v3-feedback",
   ]
   for (const route of v3Routes) {
     assert.ok(routes.includes(route), `missing V3 route: ${route}`)
@@ -56,7 +77,7 @@ test("Sprint 3/4 legacy routes remain (compatibility not removed)", () => {
   }
 })
 
-// ===== Owner Amendment 文案约束 =====
+// ===== Owner Amendment 文案约束（Sprint 5 组长指令版本） =====
 
 test("entry page uses the approved dual-entry wording", () => {
   const entry = readPage("entry/entry.vue")
@@ -66,24 +87,31 @@ test("entry page uses the approved dual-entry wording", () => {
   assert.ok(!entry.includes("无近期材料"), "obsolete wording must not appear")
 })
 
-test("OCR failure page follows Amendment 3.1 standard wording", () => {
+test("OCR failure page follows Amendment 3.1 + Sprint 5 wording", () => {
   const material = readPage("v3-material/v3-material.vue")
   assert.ok(material.includes("资料暂未识别成功"), "failure title")
   assert.ok(material.includes("重新上传资料"), "primary action")
-  assert.ok(material.includes("改用描述与问卷"), "secondary action")
+  assert.ok(material.includes("暂不使用资料，通过描述和问卷继续"), "secondary action (Sprint 5 wording)")
   assert.ok(material.includes("自由描述可以跳过，10道状态问卷需要完成"), "side note")
+  // 暂不使用资料必须调用后端 Input Transition（discard_document），不是前端隐藏
+  assert.ok(material.includes("discardDocument"), "must call backend input transition")
+  // 网络错误与 OCR 失败分流
+  assert.ok(material.includes("network_error"), "must distinguish network error from OCR failure")
 })
 
-test("summary page exposes the four approved actions", () => {
+test("summary page exposes the four approved actions (Sprint 5 wording)", () => {
   const summary = readPage("v3-summary/v3-summary.vue")
-  assert.ok(summary.includes("内容基本准确，继续"), "primary action")
+  assert.ok(summary.includes("资料摘要基本无误"), "primary action")
   assert.ok(summary.includes("修改资料摘要"), "edit action")
   assert.ok(summary.includes("重新上传资料"), "reupload action")
-  assert.ok(summary.includes("改用描述与问卷"), "discard action")
+  assert.ok(summary.includes("暂不使用这份资料，继续评估"), "discard action")
   assert.ok(summary.includes("保存修改并继续"), "editor save")
   assert.ok(summary.includes("取消修改"), "editor cancel")
   assert.ok(summary.includes("edited_summary_text"), "editor must submit edited_summary_text")
   assert.ok(summary.includes("reprocess_requested"), "editor must set reprocess_requested")
+  assert.ok(summary.includes("discardDocument"), "discard must call backend input transition")
+  // FACT_EXTRACTION_UNAVAILABLE 友好处理
+  assert.ok(summary.includes("FACT_EXTRACTION_UNAVAILABLE"), "must handle FACT_EXTRACTION_UNAVAILABLE")
 })
 
 test("V3 pages do not leak internal fields to users", () => {
@@ -93,6 +121,7 @@ test("V3 pages do not leak internal fields to users", () => {
     "v3-confirm/v3-confirm.vue",
     "v3-basis/v3-basis.vue",
     "v3-player/v3-player.vue",
+    "v3-feedback/v3-feedback.vue",
   ]) {
     const src = readPage(page)
     // 模板区域不得出现内部技术字段名
@@ -113,6 +142,7 @@ test("no music goal wording or fields in V3 flow", () => {
     "v3-confirm/v3-confirm.vue",
     "v3-basis/v3-basis.vue",
     "v3-player/v3-player.vue",
+    "v3-feedback/v3-feedback.vue",
   ]) {
     const src = readPage(page)
     for (const forbidden of ["音乐目标", "music_goal", "user_goal", "MusicGoal"]) {
@@ -130,17 +160,85 @@ test("single final confirmation: assessment confirm page has exactly one primary
   assert.ok(!confirm.includes("再次确认"), "no double confirmation")
 })
 
-test("player only renders backend-provided asset and keeps disclaimer", () => {
+test("player only renders backend-provided asset, wires favorites and V3 feedback", () => {
   const player = readPage("v3-player/v3-player.vue")
   assert.ok(player.includes("stream_url"), "player must use backend stream_url")
+  assert.ok(player.includes("musicStreamUrl"), "player must resolve stream url via api")
   assert.ok(player.includes("source_label"), "player must show source label from backend")
   assert.ok(player.includes("music.disclaimer"), "player must render backend disclaimer text")
+  assert.ok(player.includes("addFavorite"), "favorites must use backend API")
+  assert.ok(player.includes("/pages/v3-feedback/v3-feedback"), "feedback entry must route to V3 feedback page")
+  assert.ok(!player.includes("/pages/feedback-v2/feedback-v2"), "V3 flow must not reuse V2 feedback page")
 })
 
-// ===== api-v3 mock 状态机行为 =====
+// ===== V3 反馈页（feedback_v3.0） =====
+
+test("feedback page: required 2x2 change cards with deep-green selected state", () => {
+  const feedback = readPage("v3-feedback/v3-feedback.vue")
+  // 2×2 必填状态变化卡片：四个 change label
+  for (const label of ["much_better", "slightly_better", "no_change", "worse"]) {
+    assert.ok(feedback.includes(label), `feedback must include change label: ${label}`)
+  }
+  // 深绿色选中态（#2f5d43）+ 白字 + ✓
+  assert.ok(feedback.includes("#2f5d43"), "selected state must use deep green")
+  assert.ok(feedback.includes("change-card-active"), "change cards need active state")
+  assert.ok(feedback.includes("change-label-active"), "active label must turn white")
+  assert.ok(feedback.includes("change-check"), "active card must show check mark")
+  // 必填标识
+  assert.ok(feedback.includes("必填"), "change selection must be marked required")
+  assert.ok(feedback.includes("post_state"), "must submit post_state.change_label")
+})
+
+test("feedback page: mutex adjustment groups match backend contract", () => {
+  const feedback = readPage("v3-feedback/v3-feedback.vue")
+  // 后端 FeedbackV3 校验的互斥对
+  assert.ok(feedback.includes('["slower_tempo", "faster_tempo"]'), "tempo mutex group")
+  assert.ok(feedback.includes('["shorter_duration", "longer_duration"]'), "duration mutex group")
+  assert.ok(feedback.includes("MUTEX_GROUPS"), "mutex groups defined")
+  // 调整项全集与后端 AdjustmentPreference 一致
+  for (const adj of [
+    "slower_tempo",
+    "faster_tempo",
+    "change_instruments",
+    "adjust_volume",
+    "adjust_ambient",
+    "shorter_duration",
+    "longer_duration",
+  ]) {
+    assert.ok(feedback.includes(`"${adj}"`), `feedback must include adjustment option: ${adj}`)
+  }
+  assert.ok(feedback.includes("adjustment_preferences"), "must submit adjustment_preferences")
+  assert.ok(feedback.includes("continue_use"), "must submit continue_use")
+  assert.ok(feedback.includes("liked_features"), "must submit liked_features")
+})
+
+// ===== 问卷题型（权威清单） =====
+
+test("questionnaire page renders frequency questions from the canonical manifest", () => {
+  const page = readPage("v3-questionnaire/v3-questionnaire.vue")
+  assert.ok(page.includes("FREQUENCY_OPTIONS"), "page must import FREQUENCY_OPTIONS")
+  assert.ok(page.includes("frequency_0_4"), "page must branch on frequency question type")
+  assert.ok(page.includes("answer_type"), "page must dispatch by answer_type")
+})
+
+test("manifest matches the authoritative questionnaire structure", async () => {
+  const { apiV3, FREQUENCY_OPTIONS } = await import("../common/api-v3.js")
+  const schema = await apiV3.getQuestionnaireSchema()
+  assert.equal(schema.questions.length, 10)
+  const freq = schema.questions.filter((q) => q.answer_type === "frequency_0_4")
+  const multi = schema.questions.filter((q) => q.answer_type === "multi_choice_evidence")
+  assert.equal(freq.length, 5, "q01-q05 are frequency questions")
+  assert.equal(multi.length, 5, "q06-q10 are multi-choice questions")
+  assert.equal(FREQUENCY_OPTIONS.length, 5, "5 frequency labels (0..4)")
+  assert.ok(schema.content_checksum, "manifest checksum required")
+  assert.equal(schema.schema_id, "questionnaire_v3")
+})
+
+// ===== api-v3 mock 状态机行为（显式 mock 模式） =====
 
 test("api-v3 mock: without-document flow requires full questionnaire", async () => {
   const { apiV3 } = await import("../common/api-v3.js")
+  assert.equal(apiV3.MODE, "mock", "mock must be explicitly enabled via env")
   await apiV3.guestAuth()
   const session = await apiV3.createSession()
   assert.equal(session.flow_contract_version, "v3-owner-flow-1")
@@ -208,7 +306,25 @@ test("api-v3 mock: discard_document switches to without-document mode", async ()
   assert.equal(session.active_document_id, null)
 })
 
-test("api-v3 mock: full questionnaire submission succeeds with 10 answers", async () => {
+test("api-v3 mock: frequency answers validate by type (frequency=number, multi=array)", async () => {
+  const { apiV3 } = await import("../common/api-v3.js")
+  await apiV3.guestAuth()
+  await apiV3.createSession()
+  await apiV3.selectMode("without_document")
+
+  // 频率题传数组必须被拒绝
+  const bad = {}
+  const schema = await apiV3.getQuestionnaireSchema()
+  schema.questions.forEach((q) => {
+    bad[q.question_id] = q.answer_type === "frequency_0_4" ? [0] : ["x"]
+  })
+  await assert.rejects(
+    () => apiV3.submitQuestionnaire(bad),
+    (e) => e.code === "QUESTIONNAIRE_INCOMPLETE",
+  )
+})
+
+test("api-v3 mock: full questionnaire submission succeeds with typed answers", async () => {
   const { apiV3 } = await import("../common/api-v3.js")
   await apiV3.guestAuth()
   await apiV3.createSession()
@@ -216,8 +332,7 @@ test("api-v3 mock: full questionnaire submission succeeds with 10 answers", asyn
 
   const schema = await apiV3.getQuestionnaireSchema()
   assert.equal(schema.questions.length, 10, "questionnaire must have exactly 10 questions")
-  const answers = {}
-  schema.questions.forEach((q) => { answers[q.question_id] = ["none"] })
+  const answers = buildFullAnswers(schema)
   const submission = await apiV3.submitQuestionnaire(answers)
   assert.ok(submission.questionnaire_submission_id)
   assert.equal(submission.schema_id, "questionnaire_v3")
@@ -256,6 +371,7 @@ test("api-v3 mock: confirmed assessment unlocks music basis and generation", asy
   const music = await apiV3.getMusic()
   assert.ok(music.stream_url, "player needs stream_url")
   assert.ok(music.disclaimer.includes("不能替代专业"))
+  assert.ok(music.music_ref && music.music_ref.music_id, "favorites need music_ref.music_id")
 })
 
 test("api-v3 mock: revision conflict rejected on understanding confirm", async () => {
@@ -270,6 +386,60 @@ test("api-v3 mock: revision conflict rejected on understanding confirm", async (
     () => apiV3.confirmUnderstanding({ expected_revision: 99, decision: "confirm", changes: [] }),
     (e) => e.code === "REVISION_CONFLICT",
   )
+})
+
+test("api-v3 mock: feedback submission accepts feedback_v3.0 payload", async () => {
+  const { apiV3 } = await import("../common/api-v3.js")
+  await apiV3.guestAuth()
+  await apiV3.createSession()
+  const result = await apiV3.submitFeedback({
+    post_state: { change_label: "slightly_better" },
+    continue_use: "maybe",
+    liked_features: ["melody"],
+    adjustment_preferences: ["slower_tempo", "longer_duration"],
+  })
+  assert.ok(result)
+})
+
+// ===== real 模式网关（默认模式：Agent 段 AGENT_PENDING，不伪造） =====
+
+test("api-v3 real mode (default): agent functions return AGENT_PENDING without faking", async () => {
+  // 清除显式 mock 设置，用缓存穿透 query 导入独立实例
+  const prev = process.env.HARMONYAI_V3_MODE
+  delete process.env.HARMONYAI_V3_MODE
+  try {
+    const { apiV3 } = await import("../common/api-v3.js?mode=real")
+    assert.equal(apiV3.MODE, "real", "default mode must be real (mock requires explicit opt-in)")
+    assert.equal(apiV3.AGENT_SIMULATED, false, "real mode must not claim simulated data")
+
+    // Agent1/Agent2 能力（PR #91 未合并）：明确等待状态
+    for (const fn of ["submitQuestionnaire", "createAssessment", "getAssessment", "getMusicBasis"]) {
+      await assert.rejects(
+        () => apiV3[fn](),
+        (e) => e.code === "AGENT_PENDING" && e.agentPending === true,
+        `${fn} must reject with AGENT_PENDING in real mode`,
+      )
+    }
+    await assert.rejects(
+      () => apiV3.startMusicGeneration(),
+      (e) => e.code === "AGENT_PENDING",
+      "music generation needs prescription (PR #91)",
+    )
+  } finally {
+    process.env.HARMONYAI_V3_MODE = prev
+  }
+})
+
+test("api-v3 real mode: guest auth and session creation use real endpoints", async () => {
+  const prev = process.env.HARMONYAI_V3_MODE
+  delete process.env.HARMONYAI_V3_MODE
+  try {
+    const { apiV3 } = await import("../common/api-v3.js?mode=real-endpoints")
+    // 无后端运行时应抛网络错误，而不是静默返回 mock 数据
+    await assert.rejects(() => apiV3.guestAuth(), (e) => e.code === "NETWORK_ERROR" || e.code === "REQUEST_FAILED")
+  } finally {
+    process.env.HARMONYAI_V3_MODE = prev
+  }
 })
 
 // ===== Safety 暂缓兼容 =====

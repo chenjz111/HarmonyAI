@@ -8,17 +8,20 @@
  * - 生成状态：queued | running | succeeded | matched_fallback | failed | cancelled
  * - Provider 未报告真实进度时显示不定进度，不伪造百分比
  * - 不显示候选分数、规则 ID 或任何目标类字段（该概念已在 V3 删除，Amendment §5）
+ * - real 模式下依据/生成属于 Agent2 能力（PR #91 未合并）：
+ *   遇 AGENT_PENDING 进入明确等待状态，不伪造依据或生成结果
  */
 import { apiV3 } from "../../common/api-v3.js"
 
 export default {
   data() {
     return {
-      phase: "loading", // loading | basis | generating | done | cancelled
+      phase: "loading", // loading | basis | generating | done | cancelled | pending
       error: "",
       basis: null,
       task: null,
       pollTimer: null,
+      simulated: false, // hybrid：演示数据标识
     }
   },
   computed: {
@@ -51,11 +54,17 @@ export default {
       this.error = ""
       try {
         this.basis = await apiV3.getMusicBasis()
+        this.simulated = !!apiV3.AGENT_SIMULATED
         this.phase = "basis"
       } catch (e) {
-        this.error = e.message || "加载失败，请重试"
-        this.phase = "basis"
-        this.basis = null
+        if (e.agentPending) {
+          // real 模式：Agent2（prescription）未接入（PR #91），明确等待，不伪造依据
+          this.phase = "pending"
+        } else {
+          this.error = e.message || "加载失败，请重试"
+          this.phase = "basis"
+          this.basis = null
+        }
       }
     },
     // 发起生成
@@ -65,6 +74,11 @@ export default {
         this.task = await apiV3.startMusicGeneration()
         this.schedulePoll()
       } catch (e) {
+        if (e.agentPending) {
+          // real 模式：音乐生成需要 prescription（PR #91），明确等待，不伪造进度
+          this.phase = "pending"
+          return
+        }
         uni.showToast({ title: e.message || "生成发起失败，请重试", icon: "none" })
         this.phase = "basis"
       }
@@ -136,8 +150,21 @@ export default {
       <view class="btn-retry" @click="load"><text class="btn-retry-text">重试</text></view>
     </view>
 
+    <!-- real 模式：Agent2（PR #91）未接入，明确等待状态，不伪造依据与生成 -->
+    <view v-else-if="phase === 'pending'" class="pending-card">
+      <view class="pending-icon"><text class="pending-icon-text">…</text></view>
+      <text class="pending-title">正在等待音乐服务接入</text>
+      <text class="pending-desc">音乐生成依据与生成任务依赖后端 Agent 服务（PR #91 尚未合并）。当前处于真实接口模式，前端不会使用模拟数据替代。待服务接入后，即可查看依据并发起生成。</text>
+      <view class="btn-retry" @click="load"><text class="btn-retry-text">重新加载</text></view>
+    </view>
+
     <!-- 依据页（Read Model §10） -->
     <view v-else-if="phase === 'basis' || phase === 'generating' || phase === 'cancelled'" class="basis-card">
+      <!-- hybrid 演示标识 -->
+      <view v-if="simulated" class="demo-banner">
+        <text class="demo-banner-text">演示模式：以下依据与生成过程为模拟数据</text>
+      </view>
+
       <view class="tendency-box">
         <text class="tendency-label">{{ basis.tendency.label }}</text>
         <text class="tendency-disclaimer">{{ basis.tendency.disclaimer }}</text>
@@ -326,4 +353,40 @@ export default {
 .error-text { font-size: 28rpx; color: #b0574f; margin-bottom: 32rpx; }
 .btn-retry { padding: 20rpx 64rpx; background: #4a6b5c; border-radius: 44rpx; }
 .btn-retry-text { color: #fff; font-size: 28rpx; }
+.demo-banner { display: flex; justify-content: center; margin-bottom: 24rpx; }
+.demo-banner-text {
+  font-size: 22rpx;
+  color: #8a6d3b;
+  background: #f5eddc;
+  border-radius: 8rpx;
+  padding: 8rpx 20rpx;
+}
+.pending-card {
+  background: #fffefa;
+  border: 2rpx solid #e8e2d4;
+  border-radius: 24rpx;
+  padding: 64rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.pending-icon {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #eef0ea;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28rpx;
+}
+.pending-icon-text { font-size: 48rpx; color: #4a6b5c; font-weight: 600; }
+.pending-title { font-size: 34rpx; font-weight: 600; color: #2f3d35; margin-bottom: 20rpx; }
+.pending-desc {
+  font-size: 26rpx;
+  color: #7a8078;
+  line-height: 1.7;
+  margin-bottom: 48rpx;
+  text-align: center;
+}
 </style>

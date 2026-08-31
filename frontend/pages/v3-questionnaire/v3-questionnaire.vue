@@ -1,15 +1,17 @@
 <script>
 /**
- * V3 五脏状态问卷页（10 题）
+ * V3 五脏状态问卷页（10 题：q01-q05 频率题 + q06-q10 多选题）
  * 合同依据：frontend-read-model-contract-v3.md §6 QuestionnaireReadModel
  *          harmonyai-v3-owner-flow-amendment-001.md §2 / §4.3
+ *          knowledge/v3/questionnaire-v3.0.json（权威清单，前端不内置另一套题目）
  *
- * - 题目数据来自 GET /api/v3/questionnaire/schema，前端不内置另一套题目
+ * - 题目数据来自权威清单模块（与后端同源），频率题渲染 FREQUENCY_OPTIONS
  * - 无资料模式：必填，全部 10 题完成才能提交（不能跳过）
  * - 有资料模式：整份选填，可跳过；一旦提交必须完整 10 题
- * - V3 普通页面不显示 Q19/Q20（Safety 暂缓，Amendment §6）
+ * - real 模式下提交/评估属于 Agent1 能力（PR #91 未合并）：
+ *   捕获 AGENT_PENDING 后进入明确等待状态，不伪造结果、不静默失败
  */
-import { apiV3 } from "../../common/api-v3.js"
+import { apiV3, FREQUENCY_OPTIONS } from "../../common/api-v3.js"
 
 export default {
   data() {
@@ -19,9 +21,12 @@ export default {
       schema: null,
       required: false, // 无资料模式=true
       current: 0, // 当前题索引
-      answers: {}, // { question_id: [option_code, ...] }
+      answers: {}, // { question_id: number | [option_code, ...] }
       submitting: false,
       submittingAssessment: false,
+      agentPending: false, // real 模式：等待后端 Agent1 接入（PR #91）
+      simulated: false, // hybrid/mock：演示数据标识
+      frequencyOptions: FREQUENCY_OPTIONS,
     }
   },
   computed: {
@@ -29,14 +34,38 @@ export default {
       if (!this.schema || !this.schema.questions) return null
       return this.schema.questions[this.current]
     },
+    isFrequency() {
+      return !!this.question && this.question.answer_type === "frequency_0_4"
+    },
     total() {
       return this.schema ? this.schema.question_count : 0
     },
     answeredCount() {
-      return Object.keys(this.answers).filter((k) => this.answers[k] && this.answers[k].length).length
+      // 频率题答案是 0..4 整数（0 是有效答案，不能用 truthy 判断）
+      if (!this.schema || !this.schema.questions) return 0
+      return this.schema.questions.filter((q) => {
+        const a = this.answers[q.question_id]
+        if (q.answer_type === "frequency_0_4") {
+          return typeof a === "number"
+        }
+        return !!(a && a.length)
+      }).length
     },
     currentAnswer() {
-      return this.question ? (this.answers[this.question.question_id] || []) : []
+      if (!this.question) return []
+      return this.answers[this.question.question_id] || []
+    },
+    currentFrequencyValue() {
+      if (!this.question) return null
+      const a = this.answers[this.question.question_id]
+      return typeof a === "number" ? a : null
+    },
+    hasCurrentAnswer() {
+      if (!this.question) return false
+      if (this.question.answer_type === "frequency_0_4") {
+        return typeof this.currentFrequencyValue === "number"
+      }
+      return this.currentAnswer.length > 0
     },
     canSubmit() {
       return this.total > 0 && this.answeredCount >= this.total
@@ -52,13 +81,21 @@ export default {
       try {
         this.schema = await apiV3.getQuestionnaireSchema()
         this.required = !!this.schema.required_for_flow
+        this.simulated = !!apiV3.AGENT_SIMULATED
       } catch (e) {
         this.error = e.message || "问卷加载失败，请重试"
       } finally {
         this.loading = false
       }
     },
-    // 选项点击：处理"无以上情况"互斥（exclusive_with: ["*"]）
+    // 频率题：单选 0..4（再点一次同选项可取消）
+    selectFrequency(option) {
+      if (!this.question) return
+      const qid = this.question.question_id
+      const cur = this.answers[qid]
+      this.answers[qid] = typeof cur === "number" && cur === option.value ? null : option.value
+    },
+    // 多选题：处理"都很少出现"互斥（is_none + exclusive_with）
     toggleOption(option) {
       if (!this.question) return
       const qid = this.question.question_id
@@ -73,7 +110,8 @@ export default {
         list.splice(idx, 1)
       } else {
         // 移除"无"选项；校验 max_selections
-        const noneIdx = list.indexOf("none")
+        const noneOpt = (this.question.options || []).find((o) => o.is_none)
+        const noneIdx = noneOpt ? list.indexOf(noneOpt.option_code) : -1
         if (noneIdx !== -1) list.splice(noneIdx, 1)
         if (this.question.max_selections && list.length >= this.question.max_selections) {
           uni.showToast({ title: "最多选择 " + this.question.max_selections + " 项", icon: "none" })
@@ -87,8 +125,8 @@ export default {
       if (this.current > 0) this.current -= 1
     },
     next() {
-      if (!this.currentAnswer.length) {
-        uni.showToast({ title: "请至少选择一项", icon: "none" })
+      if (!this.hasCurrentAnswer) {
+        uni.showToast({ title: this.isFrequency ? "请选择一个频率" : "请至少选择一项", icon: "none" })
         return
       }
       if (this.current < this.total - 1) this.current += 1
@@ -100,7 +138,7 @@ export default {
         await apiV3.submitQuestionnaire(this.answers)
         await this.goAssessment()
       } catch (e) {
-        uni.showToast({ title: e.message || "提交失败，请重试", icon: "none" })
+        this.handleAgentPending(e) || uni.showToast({ title: e.message || "提交失败，请重试", icon: "none" })
       } finally {
         this.submitting = false
       }
@@ -121,11 +159,24 @@ export default {
         await apiV3.createAssessment()
         uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
       } catch (e) {
+        if (e.agentPending) {
+          // real 模式：Agent1 未接入（PR #91），进入明确等待状态，不伪造评估
+          this.agentPending = true
+          return
+        }
         uni.showToast({ title: e.message || "评估失败，请重试", icon: "none" })
         throw e
       } finally {
         this.submittingAssessment = false
       }
+    },
+    // submit 阶段的 AGENT_PENDING：同样进入等待状态
+    handleAgentPending(e) {
+      if (e && e.agentPending) {
+        this.agentPending = true
+        return true
+      }
+      return false
     },
   },
 }
@@ -155,7 +206,20 @@ export default {
       <text class="loading-sub">请稍候，通常需要几秒钟</text>
     </view>
 
+    <!-- real 模式：Agent1（PR #91）未接入，明确等待状态，不伪造评估 -->
+    <view v-else-if="agentPending" class="pending-card">
+      <view class="pending-icon"><text class="pending-icon-text">…</text></view>
+      <text class="pending-title">正在等待评估服务接入</text>
+      <text class="pending-desc">问卷提交与综合评估依赖后端 Agent 服务（PR #91 尚未合并）。当前处于真实接口模式，前端不会使用模拟数据替代。你的作答已保留在本页，待服务接入后可直接提交。</text>
+      <view class="btn-retry" @click="agentPending = false"><text class="btn-retry-text">返回问卷</text></view>
+    </view>
+
     <view v-else>
+      <!-- hybrid 演示标识 -->
+      <view v-if="simulated" class="demo-banner">
+        <text class="demo-banner-text">演示模式：评估与音乐部分为模拟数据</text>
+      </view>
+
       <!-- 进度 -->
       <view class="progress-row">
         <view class="progress-bar">
@@ -168,7 +232,25 @@ export default {
       <view class="q-card" :key="question.question_id">
         <text class="q-index">第 {{ current + 1 }} 题 · 共 {{ total }} 题</text>
         <text class="q-prompt">{{ question.prompt }}</text>
-        <view class="q-options">
+
+        <!-- 频率题（q01-q05）：单选 0..4 -->
+        <view v-if="isFrequency" class="q-options">
+          <view
+            v-for="opt in frequencyOptions"
+            :key="'f' + opt.value"
+            class="q-option"
+            :class="{ 'q-option-active': currentFrequencyValue === opt.value }"
+            @click="selectFrequency(opt)"
+          >
+            <view class="q-radio" :class="{ 'q-radio-active': currentFrequencyValue === opt.value }">
+              <view v-if="currentFrequencyValue === opt.value" class="q-radio-dot"></view>
+            </view>
+            <text class="q-option-label">{{ opt.label }}</text>
+          </view>
+        </view>
+
+        <!-- 多选题（q06-q10） -->
+        <view v-else class="q-options">
           <view
             v-for="opt in question.options"
             :key="opt.option_code"
@@ -192,7 +274,7 @@ export default {
         <view
           v-if="current < total - 1"
           class="nav-btn nav-primary"
-          :class="{ 'nav-disabled': !currentAnswer.length }"
+          :class="{ 'nav-disabled': !hasCurrentAnswer }"
           @click="next"
         >
           <text class="nav-btn-text nav-primary-text">下一题</text>
@@ -317,4 +399,44 @@ export default {
 .error-text { font-size: 28rpx; color: #b0574f; margin-bottom: 32rpx; }
 .btn-retry { padding: 20rpx 64rpx; background: #4a6b5c; border-radius: 44rpx; }
 .btn-retry-text { color: #fff; font-size: 28rpx; }
+.demo-banner {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24rpx;
+}
+.demo-banner-text {
+  font-size: 22rpx;
+  color: #8a6d3b;
+  background: #f5eddc;
+  border-radius: 8rpx;
+  padding: 8rpx 20rpx;
+}
+.pending-card {
+  background: #fffefa;
+  border: 2rpx solid #e8e2d4;
+  border-radius: 24rpx;
+  padding: 64rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.pending-icon {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #eef0ea;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28rpx;
+}
+.pending-icon-text { font-size: 48rpx; color: #4a6b5c; font-weight: 600; }
+.pending-title { font-size: 34rpx; font-weight: 600; color: #2f3d35; margin-bottom: 20rpx; }
+.pending-desc {
+  font-size: 26rpx;
+  color: #7a8078;
+  line-height: 1.7;
+  margin-bottom: 48rpx;
+  text-align: center;
+}
 </style>

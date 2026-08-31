@@ -8,6 +8,8 @@
  * - 确认只有一次；可带修正（changes[]）提交，返回 revision+1
  * - 不展示 evidence_coverage、provider_metadata、内部 enum、置信度等禁止字段
  * - Safety policy/状态不显示（deferred_v3 / not_run 为内部字段）
+ * - real 模式下评估属于 Agent1 能力（PR #91 未合并）：
+ *   加载/确认遇 AGENT_PENDING 进入明确等待状态，不伪造评估结果
  */
 import { apiV3 } from "../../common/api-v3.js"
 
@@ -18,6 +20,8 @@ export default {
       error: "",
       model: null,
       confirming: false,
+      agentPending: false, // real 模式：等待后端 Agent1 接入（PR #91）
+      simulated: false, // hybrid：演示数据标识
       // 修正状态
       correcting: false,
       draftSeverity: {}, // { target_id: severity }
@@ -40,10 +44,17 @@ export default {
     async load() {
       this.loading = true
       this.error = ""
+      this.agentPending = false
       try {
         this.model = await apiV3.getAssessment()
+        this.simulated = !!apiV3.AGENT_SIMULATED
       } catch (e) {
-        this.error = e.message || "评估加载失败，请重试"
+        if (e.agentPending) {
+          // real 模式：Agent1 未接入（PR #91），进入明确等待状态，不伪造评估
+          this.agentPending = true
+        } else {
+          this.error = e.message || "评估加载失败，请重试"
+        }
       } finally {
         this.loading = false
       }
@@ -128,7 +139,20 @@ export default {
       <view class="btn-retry" @click="load"><text class="btn-retry-text">重试</text></view>
     </view>
 
+    <!-- real 模式：Agent1（PR #91）未接入，明确等待状态，不伪造评估 -->
+    <view v-else-if="agentPending" class="pending-card">
+      <view class="pending-icon"><text class="pending-icon-text">…</text></view>
+      <text class="pending-title">正在等待评估服务接入</text>
+      <text class="pending-desc">综合评估依赖后端 Agent 服务（PR #91 尚未合并）。当前处于真实接口模式，前端不会使用模拟数据替代。待服务接入后，本页将展示你的评估结果。</text>
+      <view class="btn-retry" @click="load"><text class="btn-retry-text">重新加载</text></view>
+    </view>
+
     <view v-else-if="!correcting" class="confirm-card">
+      <!-- hybrid 演示标识 -->
+      <view v-if="simulated" class="demo-banner">
+        <text class="demo-banner-text">演示模式：以下评估内容为模拟数据</text>
+      </view>
+
       <view class="summary-box">
         <text class="summary-text">{{ model.summary }}</text>
       </view>
@@ -293,4 +317,40 @@ export default {
 .error-text { font-size: 28rpx; color: #b0574f; margin-bottom: 32rpx; }
 .btn-retry { padding: 20rpx 64rpx; background: #4a6b5c; border-radius: 44rpx; }
 .btn-retry-text { color: #fff; font-size: 28rpx; }
+.demo-banner { display: flex; justify-content: center; margin-bottom: 24rpx; }
+.demo-banner-text {
+  font-size: 22rpx;
+  color: #8a6d3b;
+  background: #f5eddc;
+  border-radius: 8rpx;
+  padding: 8rpx 20rpx;
+}
+.pending-card {
+  background: #fffefa;
+  border: 2rpx solid #e8e2d4;
+  border-radius: 24rpx;
+  padding: 64rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.pending-icon {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #eef0ea;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28rpx;
+}
+.pending-icon-text { font-size: 48rpx; color: #4a6b5c; font-weight: 600; }
+.pending-title { font-size: 34rpx; font-weight: 600; color: #2f3d35; margin-bottom: 20rpx; }
+.pending-desc {
+  font-size: 26rpx;
+  color: #7a8078;
+  line-height: 1.7;
+  margin-bottom: 48rpx;
+  text-align: center;
+}
 </style>
