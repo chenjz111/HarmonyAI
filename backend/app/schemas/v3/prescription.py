@@ -104,6 +104,16 @@ class PrescriptionV3Request(V3BaseModel):
     preference_snapshot: PreferenceSnapshot | None
 
 
+class PrescriptionV31Request(V3BaseModel):
+    """Owner Flow Amendment 001 prescription input — no music goal; parameters
+    come from the confirmed assessment and the server-side preference snapshot,
+    never a fabricated per-request goal."""
+
+    schema_version: Literal["prescription_v3.1"]
+    diagnosis_id: NonEmptyString
+    preference_snapshot: PreferenceSnapshot | None
+
+
 class GenerationStructure(V3BaseModel):
     intro_seconds: Annotated[int, Field(ge=0)]
     main_seconds: Annotated[int, Field(ge=0)]
