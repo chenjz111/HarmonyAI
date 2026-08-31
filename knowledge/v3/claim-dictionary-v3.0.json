@@ -1,0 +1,600 @@
+{
+  "schema_id": "claim_dictionary_v3",
+  "schema_version": "3.0.0",
+  "manifest_version": "medical_v3.0",
+  "review_status": "approved",
+  "content_checksum": "sha256:9a20931048e775fbf1b4c02861e02c912d26b3b8d409bee33428efaded1f77b9",
+  "entries": [
+    {
+      "claim_code": "anger_tendency",
+      "display_name": "烦躁易怒倾向",
+      "category": "emotional_state",
+      "value_type": "frequency_0_4",
+      "allowed_values": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "questionnaire_option_refs": [
+        "q01"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "agitation_tendency",
+      "display_name": "兴奋激动倾向",
+      "category": "emotional_state",
+      "value_type": "frequency_0_4",
+      "allowed_values": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "questionnaire_option_refs": [
+        "q02"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "overthinking_tendency",
+      "display_name": "思虑过度倾向",
+      "category": "emotional_state",
+      "value_type": "frequency_0_4",
+      "allowed_values": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "questionnaire_option_refs": [
+        "q03"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "sadness_tendency",
+      "display_name": "低落悲伤倾向",
+      "category": "emotional_state",
+      "value_type": "frequency_0_4",
+      "allowed_values": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "questionnaire_option_refs": [
+        "q04"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "fear_tendency",
+      "display_name": "紧张恐惧倾向",
+      "category": "emotional_state",
+      "value_type": "frequency_0_4",
+      "allowed_values": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "questionnaire_option_refs": [
+        "q05"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "flank_discomfort",
+      "display_name": "胁肋胀闷不适",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q06:flank_discomfort"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "tendon_stiffness",
+      "display_name": "筋脉拘紧",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q06:tendon_stiffness"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "muscle_cramp",
+      "display_name": "肢体抽筋",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q06:muscle_cramp"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "eye_discomfort",
+      "display_name": "目干眼涩",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q06:eye_discomfort"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "palpitation_at_rest",
+      "display_name": "静息心悸",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q07:palpitation_at_rest"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "palpitation_after_activity",
+      "display_name": "活动后心悸",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q07:palpitation_after_activity"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "palpitation_night",
+      "display_name": "夜间心悸",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q07:palpitation_night"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "tongue_tip_discomfort",
+      "display_name": "舌尖不适",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q07:tongue_tip_discomfort"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "poor_appetite",
+      "display_name": "食欲不振",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q08:poor_appetite"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "postmeal_bloating",
+      "display_name": "餐后腹胀",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q08:postmeal_bloating"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "loose_stool",
+      "display_name": "大便溏稀",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q08:loose_stool"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "postmeal_heaviness",
+      "display_name": "餐后困重",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q08:postmeal_heaviness"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "throat_cough",
+      "display_name": "咽喉不适咳嗽",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q09:throat_cough"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "exertional_breathlessness",
+      "display_name": "活动后气短",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q09:exertional_breathlessness"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "nasal_discomfort",
+      "display_name": "鼻塞不适",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q09:nasal_discomfort"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "voice_change",
+      "display_name": "声音嘶哑",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q09:voice_change"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "lower_back_knee_weakness",
+      "display_name": "腰膝酸软",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q10:lower_back_knee_weakness"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "tinnitus",
+      "display_name": "耳鸣",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q10:tinnitus"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "nocturia",
+      "display_name": "夜尿频多",
+      "category": "physical_signal",
+      "value_type": "boolean",
+      "allowed_values": [
+        true,
+        false
+      ],
+      "questionnaire_option_refs": [
+        "q10:nocturia"
+      ],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "sleep_disturbance",
+      "display_name": "睡眠障碍",
+      "category": "physical_signal",
+      "value_type": "severity",
+      "allowed_values": [
+        "none",
+        "mild",
+        "moderate",
+        "severe"
+      ],
+      "questionnaire_option_refs": [],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "unrefreshing_sleep",
+      "display_name": "睡眠不解乏",
+      "category": "physical_signal",
+      "value_type": "severity",
+      "allowed_values": [
+        "none",
+        "mild",
+        "moderate",
+        "severe"
+      ],
+      "questionnaire_option_refs": [],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "low_energy",
+      "display_name": "精力不足",
+      "category": "physical_signal",
+      "value_type": "severity",
+      "allowed_values": [
+        "none",
+        "mild",
+        "moderate",
+        "severe"
+      ],
+      "questionnaire_option_refs": [],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "worry_control",
+      "display_name": "担忧控制困难",
+      "category": "cognitive_state",
+      "value_type": "severity",
+      "allowed_values": [
+        "none",
+        "mild",
+        "moderate",
+        "severe"
+      ],
+      "questionnaire_option_refs": [],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "concentration_decline",
+      "display_name": "注意力下降",
+      "category": "cognitive_state",
+      "value_type": "severity",
+      "allowed_values": [
+        "none",
+        "mild",
+        "moderate",
+        "severe"
+      ],
+      "questionnaire_option_refs": [],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "social_withdrawal",
+      "display_name": "社交退缩",
+      "category": "behavioral_state",
+      "value_type": "severity",
+      "allowed_values": [
+        "none",
+        "mild",
+        "moderate",
+        "severe"
+      ],
+      "questionnaire_option_refs": [],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "daily_impact",
+      "display_name": "日常影响程度",
+      "category": "functional_state",
+      "value_type": "severity",
+      "allowed_values": [
+        "none",
+        "mild",
+        "moderate",
+        "severe"
+      ],
+      "questionnaire_option_refs": [],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    },
+    {
+      "claim_code": "emotional_recovery_slowness",
+      "display_name": "情绪恢复缓慢",
+      "category": "emotional_state",
+      "value_type": "severity",
+      "allowed_values": [
+        "none",
+        "mild",
+        "moderate",
+        "severe"
+      ],
+      "questionnaire_option_refs": [],
+      "organ_mapping_allowed": true,
+      "medical_review": {
+        "status": "approved",
+        "review_version": "medical_v3.0"
+      }
+    }
+  ]
+}
