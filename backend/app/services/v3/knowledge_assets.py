@@ -17,17 +17,22 @@ from backend.app.schemas.v3.common import ClaimDictionaryEntry
 
 
 def _asset_root() -> Path:
-    return Path(__file__).resolve().parents[2] / "knowledge" / "v3"
+    return Path(__file__).resolve().parents[4] / "knowledge" / "v3"
 
 
 def _load_checked(filename: str) -> dict:
     path = _asset_root() / filename
-    raw = path.read_bytes()
-    payload = json.loads(raw.decode("utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
     declared = payload.get("content_checksum", "")
     if not declared.startswith("sha256:"):
         raise ValueError(f"{filename}: missing sha256 content_checksum")
-    actual = f"sha256:{sha256(raw).hexdigest()}"
+    # Canonical hash rule (PR #89, repository-wide): remove the top-level
+    # content_checksum, then sha256 of the compact sorted JSON.
+    data = {key: value for key, value in payload.items() if key != "content_checksum"}
+    serialized = json.dumps(
+        data, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    actual = f"sha256:{sha256(serialized.encode('utf-8')).hexdigest()}"
     if actual != declared:
         raise ValueError(
             f"{filename}: checksum mismatch declared={declared} actual={actual}"

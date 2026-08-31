@@ -36,6 +36,7 @@ from backend.app.routers import (
     assessment_v2_router,
     workflow_v2_router,
 )
+from backend.app.routers.v3 import assessment_router as assessment_v3_router
 from backend.app.routers.v3 import auth_router as auth_v3_router
 from backend.app.routers.v3 import feedback_router as feedback_v3_router
 from backend.app.routers.v3 import generation_router as generation_v3_router
@@ -107,6 +108,7 @@ app.include_router(workflow_v2_router.router, prefix="/api/v2", tags=["Sprint 3 
 app.include_router(auth_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Auth"])
 app.include_router(session_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Session"])
 app.include_router(understanding_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Understanding"])
+app.include_router(assessment_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Assessment"])
 app.include_router(generation_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Music Generation"])
 app.include_router(feedback_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Feedback"])
 app.add_exception_handler(V3APIError, v3_api_error_handler)
