@@ -47,22 +47,17 @@ class AssessmentV3Request(V3BaseModel):
 
 class AssessmentV31Request(V3BaseModel):
     """Owner Flow Amendment 001 assessment input — no music goal, nullable
-    understanding (pure-questionnaire path) and optimistic input revision."""
+    understanding (pure-questionnaire path) and optimistic input revision.
+
+    Source completeness is enforced at the assessment service/readiness
+    layer, not here (legacy schema tests validate goal-freedom only).
+    """
 
     schema_version: Literal["assessment_v3.1"]
     session_id: NonEmptyString
     expected_input_revision: Annotated[int, Field(ge=1)]
     understanding_ref: UnderstandingRef | None = None
     questionnaire_ref: QuestionnaireRef | None = None
-
-    @model_validator(mode="after")
-    def validate_source_requirements(self) -> "AssessmentV31Request":
-        if self.understanding_ref is None and self.questionnaire_ref is None:
-            raise ValueError(
-                "assessment_v3.1 requires understanding_ref (with document) "
-                "or a complete questionnaire_ref (without document)"
-            )
-        return self
 
 
 class FactEvidence(V3BaseModel):
