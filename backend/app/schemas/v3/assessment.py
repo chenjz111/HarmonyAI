@@ -45,6 +45,17 @@ class AssessmentV3Request(V3BaseModel):
     user_goal: UserGoal
 
 
+class AssessmentV31Request(V3BaseModel):
+    """Owner Flow Amendment 001 assessment input — no music goal, nullable
+    understanding (pure-questionnaire path) and optimistic input revision."""
+
+    schema_version: Literal["assessment_v3.1"]
+    session_id: NonEmptyString
+    expected_input_revision: Annotated[int, Field(ge=1)]
+    understanding_ref: UnderstandingRef | None
+    questionnaire_ref: QuestionnaireRef | None
+
+
 class FactEvidence(V3BaseModel):
     fact_evidence_id: NonEmptyString
     assessment_id: NonEmptyString

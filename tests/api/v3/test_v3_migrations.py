@@ -49,7 +49,11 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
     first = apply_v3_migrations(engine)
     second = apply_v3_migrations(engine)
 
-    assert first["applied_versions"] == ["0001_v3_foundation"]
+    assert first["applied_versions"] == [
+        "0001_v3_foundation",
+        "0002_v3_business",
+        "0003_v3_owner_flow",
+    ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)
     assert status["applied"] is True
@@ -101,6 +105,61 @@ def test_mysql_v3_migration_scripts_have_equivalent_foundation_constraints():
     assert "DROP TABLE" not in up.upper()
     assert "DROP TABLE IF EXISTS user_identities" in down
     assert "DROP INDEX ix_sessions_user_created ON sessions" in down
+
+    # 0002_v3_business tables and constraints are present and ordered.
+    for table in (
+        "understanding_runs",
+        "understanding_sources",
+        "understanding_revisions",
+        "normalized_facts",
+        "fact_source_refs",
+        "questionnaire_submissions_v3",
+        "assessment_v3",
+        "assessment_revisions_v3",
+        "fact_evidence",
+        "organ_evidence",
+        "diagnosis_runs",
+        "diagnosis_candidates",
+        "diagnosis_candidate_evidence",
+        "knowledge_manifests",
+        "knowledge_chunks_v3",
+        "rag_retrieval_runs",
+        "rag_retrieval_hits",
+        "ai_provider_runs",
+        "prescription_v3",
+        "music_assets",
+        "generation_tasks",
+        "feedback_v3",
+        "user_music_preferences",
+        "user_music_preference_versions",
+        "user_preference_items",
+        "preference_events",
+        "favorites",
+    ):
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in up
+        assert f"DROP TABLE IF EXISTS {table}" in down
+    assert up.index("CREATE TABLE IF NOT EXISTS music_assets") < up.index(
+        "CREATE TABLE IF NOT EXISTS generation_tasks"
+    )
+    assert up.index("CREATE TABLE IF NOT EXISTS generation_tasks") < up.index(
+        "CREATE TABLE IF NOT EXISTS feedback_v3"
+    )
+    # Score01 columns use MySQL DECIMAL(6,5).
+    assert "evidence_coverage DECIMAL(6,5) NOT NULL" in up
+    assert "link_strength DECIMAL(6,5) NOT NULL" in up
+    assert "retrieval_score DECIMAL(6,5) NOT NULL" in up
+    # Circular music_assets <-> generation_tasks FK is closed via ALTER.
+    assert "fk_music_assets_generation_task" in up
+    assert "REFERENCES generation_tasks(task_id)" in up
+
+    # 0003_v3_owner_flow: session activity columns, nullable relaxation and
+    # the session_input_revisions audit table are present.
+    assert "CREATE TABLE IF NOT EXISTS session_input_revisions" in up
+    assert "DROP TABLE IF EXISTS session_input_revisions" in down
+    assert "ADD COLUMN flow_contract_version" in up
+    assert "MODIFY COLUMN user_goal_json JSON NULL" in up
+    assert "MODIFY COLUMN safety_status VARCHAR(32) NULL" in up
+    assert "MODIFY COLUMN understanding_revision INTEGER NULL" in up
 
 
 def test_sqlite_foreign_key_enforcement_rejects_new_orphan_session(tmp_path):
