@@ -54,7 +54,7 @@ class UnderstandingSource(V3BaseModel):
 
 
 class UnderstandingV3Request(V3BaseModel):
-    schema_version: Literal["understanding_v3.0"]
+    schema_version: Literal["understanding_v3.0", "understanding_v3.1"]
     session_id: NonEmptyString
     inputs: Annotated[list[UnderstandingSource], Field(min_length=1)]
 
@@ -230,7 +230,7 @@ class SourceStatus(V3BaseModel):
 
 
 class UnderstandingV3Response(V3BaseModel):
-    schema_version: Literal["understanding_v3.0"]
+    schema_version: Literal["understanding_v3.0", "understanding_v3.1"]
     understanding_id: NonEmptyString
     revision: Annotated[int, Field(ge=1)]
     status: UnderstandingStatus
@@ -238,7 +238,7 @@ class UnderstandingV3Response(V3BaseModel):
     voice_transcripts: list[VoiceTranscript]
     normalized_facts: list[NormalizedFact]
     source_statuses: list[SourceStatus]
-    safety_status: SafetyStatus
+    safety_status: SafetyStatus | None
     safety_signal_refs: list[NonEmptyString]
     degradation: Degradation
 
@@ -267,17 +267,42 @@ class RevisionChange(V3BaseModel):
 
 
 class UnderstandingConfirmationRequest(V3BaseModel):
+    schema_version: Literal["understanding_v3.0", "understanding_v3.1"] = "understanding_v3.0"
     expected_revision: Annotated[int, Field(ge=1)]
+    expected_input_revision: Annotated[int, Field(ge=1)] | None = None
     decision: Literal["confirm", "confirm_with_changes", "reject_source", "cannot_confirm"]
     changes: list[RevisionChange] = Field(default_factory=list)
     reprocess_requested: bool = False
+    edited_summary_text: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=2000),
+    ] | None = None
 
     @model_validator(mode="after")
     def validate_decision_changes(self) -> "UnderstandingConfirmationRequest":
-        if self.decision == "confirm_with_changes" and not self.changes:
-            raise ValueError("confirm_with_changes requires at least one change")
-        if self.decision != "confirm_with_changes" and self.changes:
+        has_changes = bool(self.changes)
+        has_edit = self.edited_summary_text is not None
+        if self.decision == "confirm_with_changes" and not (has_changes or has_edit):
+            raise ValueError("confirm_with_changes requires changes or edited_summary_text")
+        if self.decision != "confirm_with_changes" and has_changes:
             raise ValueError("changes are only allowed for confirm_with_changes")
+        if self.decision != "confirm_with_changes" and has_edit:
+            raise ValueError("edited_summary_text is only allowed for confirm_with_changes")
+        if has_edit:
+            if has_changes:
+                raise ValueError("edited_summary_text and changes are mutually exclusive")
+            if not self.reprocess_requested:
+                raise ValueError("edited_summary_text requires reprocess_requested")
+        if self.schema_version == "understanding_v3.1" and self.expected_input_revision is None:
+            raise ValueError("understanding_v3.1 requires expected_input_revision")
+        if (
+            self.schema_version == "understanding_v3.1"
+            and self.decision in {"reject_source", "cannot_confirm"}
+        ):
+            raise ValueError(
+                "understanding_v3.1 only allows confirm / confirm_with_changes; "
+                "discard or re-upload goes through input-transitions"
+            )
         return self
 
 
@@ -332,6 +357,10 @@ class UnderstandingRevisionResult(V3BaseModel):
     status: Literal["confirmed", "needs_confirmation", "rejected"]
     applied_changes: list[NonEmptyString]
     affected_fact_ids: list[NonEmptyString]
+    # Owner Flow Amendment 001 §4.2: the confirmation also returns the latest
+    # Understanding Read Model and the new input_revision in the same response.
+    input_revision: Annotated[int, Field(ge=1)] | None = None
+    understanding: UnderstandingV3Response | None = None
 
     @model_validator(mode="after")
     def revision_must_advance_once(self) -> "UnderstandingRevisionResult":

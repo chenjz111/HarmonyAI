@@ -10,27 +10,52 @@ from sqlalchemy.engine import Engine
 
 
 V3_FOUNDATION_VERSION = "0001_v3_foundation"
-V3_ACTIVITY_VERSION = "0002_v3_session_activity"
+V3_MIGRATION_VERSIONS = [
+    "0001_v3_foundation",
+    "0002_v3_business",
+    "0003_v3_owner_flow",
+]
+
 _REQUIRED_TABLES = {
+    # 0001 foundation
     "user_identities",
     "user_profiles",
     "idempotency_records",
-    "v3_session_activities",
+    # 0002 business (information understanding)
+    "understanding_runs",
+    "understanding_sources",
+    "understanding_revisions",
+    "normalized_facts",
+    "fact_source_refs",
+    "questionnaire_submissions_v3",
+    # 0002 business (assessment)
+    "assessment_v3",
+    "assessment_revisions_v3",
+    "fact_evidence",
+    "organ_evidence",
+    # 0002 business (diagnosis / rag)
+    "diagnosis_runs",
+    "diagnosis_candidates",
+    "diagnosis_candidate_evidence",
+    "knowledge_manifests",
+    "knowledge_chunks_v3",
+    "rag_retrieval_runs",
+    "rag_retrieval_hits",
+    "ai_provider_runs",
+    # 0002 business (prescription / music)
+    "prescription_v3",
+    "generation_tasks",
+    "music_assets",
+    # 0002 business (feedback / preference / favorite)
+    "feedback_v3",
+    "user_music_preferences",
+    "user_music_preference_versions",
+    "user_preference_items",
+    "preference_events",
+    "favorites",
+    # 0003 owner flow amendment (session activity audit)
+    "session_input_revisions",
 }
-
-# (version, up filename, down filename) applied in order.
-MIGRATION_SPECS: list[tuple[str, str, str]] = [
-    (
-        V3_FOUNDATION_VERSION,
-        "0001_v3_foundation_up.sql",
-        "0001_v3_foundation_down.sql",
-    ),
-    (
-        V3_ACTIVITY_VERSION,
-        "0002_v3_session_activity_up.sql",
-        "0002_v3_session_activity_down.sql",
-    ),
-]
 
 
 class MigrationChecksumMismatch(RuntimeError):
@@ -91,17 +116,14 @@ def _has_session_owner_created_index(engine: Engine) -> bool:
     )
 
 
-def _has_idempotency_response_json(engine: Engine) -> bool:
-    """True when idempotency_records already has the response_json column.
-
-    The table may have been created from the ORM model (create_all) with the
-    column already present, in which case the 0002 ALTER must be skipped.
-    """
+def _has_owner_flow_session_columns(engine: Engine) -> bool:
+    """True when sessions already carries the v3-owner-flow-1 columns (e.g. a
+    fresh create_all schema), so 0003 must not re-ADD them."""
     inspector = inspect(engine)
-    if "idempotency_records" not in inspector.get_table_names():
+    if "sessions" not in inspector.get_table_names():
         return False
-    return "response_json" in {
-        column["name"] for column in inspector.get_columns("idempotency_records")
+    return "flow_contract_version" in {
+        column["name"] for column in inspector.get_columns("sessions")
     }
 
 
@@ -120,23 +142,14 @@ def _enable_sqlite_foreign_keys(engine: Engine) -> None:
         connection.exec_driver_sql("PRAGMA foreign_keys=ON")
 
 
-def _sqlite_applied_version(
-    raw,
-    version: str,
-) -> str | None:
-    cursor = raw.cursor()
-    row = cursor.execute(
-        "SELECT checksum FROM schema_migrations WHERE version = ?",
-        (version,),
-    ).fetchone()
-    return row[0] if row is not None else None
-
-
-def _apply_sqlite_version(
+def _apply_sqlite_migration(
     engine: Engine,
     version: str,
     sql: str,
     checksum: str,
+    *,
+    session_upgrade: bool,
+    session_owner_flow: bool = False,
 ) -> bool:
     _enable_sqlite_foreign_keys(engine)
     raw = engine.raw_connection()
@@ -148,9 +161,12 @@ def _apply_sqlite_version(
             "checksum VARCHAR(96) NOT NULL, "
             "applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
         )
-        existing = _sqlite_applied_version(raw, version)
-        if existing is not None:
-            if existing != checksum:
+        row = cursor.execute(
+            "SELECT checksum FROM schema_migrations WHERE version = ?",
+            (version,),
+        ).fetchone()
+        if row is not None:
+            if row[0] != checksum:
                 raise MigrationChecksumMismatch(
                     f"applied migration {version} checksum changed"
                 )
@@ -159,18 +175,16 @@ def _apply_sqlite_version(
             return False
 
         rendered = sql
-        if version == V3_FOUNDATION_VERSION:
+        if session_upgrade:
             has_flow_version, has_user_fk = _session_contract(engine)
-            rendered = sql.replace(
+            rendered = rendered.replace(
                 "{{FLOW_VERSION_SELECT}}",
                 "flow_version" if has_flow_version else "NULL",
             )
             if has_flow_version and has_user_fk:
                 rendered = _remove_marked_block(rendered, "V3_SESSION_UPGRADE")
-        elif version == V3_ACTIVITY_VERSION and _has_idempotency_response_json(engine):
-            rendered = _remove_marked_block(
-                rendered, "V3_IDEMPOTENCY_RESPONSE_JSON"
-            )
+        if session_owner_flow and _has_owner_flow_session_columns(engine):
+            rendered = _remove_marked_block(rendered, "V3_OWNER_FLOW_SESSION")
         raw.executescript(rendered)
         cursor.execute(
             "INSERT INTO schema_migrations (version, checksum) VALUES (?, ?)",
@@ -190,11 +204,14 @@ def _apply_sqlite_version(
         raw.close()
 
 
-def _apply_mysql_version(
+def _apply_mysql_migration(
     engine: Engine,
     version: str,
     sql: str,
     checksum: str,
+    *,
+    session_upgrade: bool,
+    session_owner_flow: bool = False,
 ) -> bool:
     with engine.begin() as connection:
         connection.exec_driver_sql(
@@ -215,7 +232,7 @@ def _apply_mysql_version(
             return False
 
         rendered = sql
-        if version == V3_FOUNDATION_VERSION:
+        if session_upgrade:
             has_flow_version, has_user_fk = _session_contract(engine)
             if has_flow_version:
                 rendered = _remove_marked_block(rendered, "V3_SESSION_FLOW")
@@ -223,10 +240,8 @@ def _apply_mysql_version(
                 rendered = _remove_marked_block(rendered, "V3_SESSION_FK")
             if _has_session_owner_created_index(engine):
                 rendered = _remove_marked_block(rendered, "V3_SESSION_OWNER_INDEX")
-        elif version == V3_ACTIVITY_VERSION and _has_idempotency_response_json(engine):
-            rendered = _remove_marked_block(
-                rendered, "V3_IDEMPOTENCY_RESPONSE_JSON"
-            )
+        if session_owner_flow and _has_owner_flow_session_columns(engine):
+            rendered = _remove_marked_block(rendered, "V3_OWNER_FLOW_SESSION")
         statements = [item.strip() for item in rendered.split(";") if item.strip()]
         for statement in statements:
             connection.exec_driver_sql(statement)
@@ -242,30 +257,43 @@ def apply_v3_migrations(
     *,
     migrations_root: Path | None = None,
 ) -> dict[str, object]:
-    """Apply the ordered V3 migrations once and reject changed applied SQL."""
+    """Apply all pending V3 migrations in order and reject changed applied SQL."""
 
     dialect = engine.dialect.name
     if dialect not in {"sqlite", "mysql"}:
         raise RuntimeError(f"unsupported V3 migration dialect: {dialect}")
     applied: list[str] = []
-    current_version = V3_FOUNDATION_VERSION
-    for version, _up, _down in MIGRATION_SPECS:
+    last_checksum = ""
+    for version in V3_MIGRATION_VERSIONS:
         sql = _read_migration(dialect, version, "up", migrations_root)
         checksum = _checksum(sql)
-        was_applied = (
-            _apply_sqlite_version(engine, version, sql, checksum)
-            if dialect == "sqlite"
-            else _apply_mysql_version(engine, version, sql, checksum)
-        )
-        if was_applied:
+        last_checksum = checksum
+        session_upgrade = version == V3_FOUNDATION_VERSION
+        session_owner_flow = version == "0003_v3_owner_flow"
+        if dialect == "sqlite":
+            applied_version = _apply_sqlite_migration(
+                engine,
+                version,
+                sql,
+                checksum,
+                session_upgrade=session_upgrade,
+                session_owner_flow=session_owner_flow,
+            )
+        else:
+            applied_version = _apply_mysql_migration(
+                engine,
+                version,
+                sql,
+                checksum,
+                session_upgrade=session_upgrade,
+                session_owner_flow=session_owner_flow,
+            )
+        if applied_version:
             applied.append(version)
-        current_version = version
     return {
         "applied_versions": applied,
-        "current_version": current_version,
-        "checksum": _checksum(
-            _read_migration(dialect, V3_FOUNDATION_VERSION, "up", migrations_root)
-        ),
+        "current_version": V3_MIGRATION_VERSIONS[-1],
+        "checksum": last_checksum,
     }
 
 
@@ -292,8 +320,6 @@ def v3_migration_status(engine: Engine) -> dict[str, object]:
         "missing_tables": missing_tables,
         "sessions_flow_version": has_flow_version,
         "sessions_user_fk": has_user_fk,
-        "session_activity_present": "v3_session_activities" in tables,
-        "understanding_snapshots_present": "v3_understanding_snapshots" in tables,
         "foreign_keys_enabled": foreign_keys_enabled,
     }
 
@@ -301,9 +327,14 @@ def v3_migration_status(engine: Engine) -> dict[str, object]:
 def mysql_migration_sql(
     migrations_root: Path | None = None,
 ) -> tuple[str, str]:
-    """Expose MySQL SQL for credential-free structural validation."""
+    """Expose the concatenated MySQL SQL for credential-free structural validation."""
 
-    return (
-        _read_migration("mysql", V3_FOUNDATION_VERSION, "up", migrations_root),
-        _read_migration("mysql", V3_FOUNDATION_VERSION, "down", migrations_root),
+    up = "\n".join(
+        _read_migration("mysql", version, "up", migrations_root)
+        for version in V3_MIGRATION_VERSIONS
     )
+    down = "\n".join(
+        _read_migration("mysql", version, "down", migrations_root)
+        for version in reversed(V3_MIGRATION_VERSIONS)
+    )
+    return up, down

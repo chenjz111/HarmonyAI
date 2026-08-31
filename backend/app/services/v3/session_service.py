@@ -1,4 +1,4 @@
-"""Authenticated V3 session creation, replay, and ownership checks."""
+﻿"""Authenticated V3 session creation, replay, and ownership checks."""
 
 from __future__ import annotations
 
@@ -10,14 +10,16 @@ import uuid
 from sqlalchemy.orm import Session
 
 from backend.app.models.session import Session as SessionModel
-from backend.app.models.v3.activity import V3SessionActivity
-from backend.app.models.v3.session import V3IdempotencyRecord
-from backend.app.schemas.v3.activity import SUPPORTED_FLOW_CONTRACT_VERSION
+from backend.app.models.v3.session import (
+    SessionInputRevision,
+    V3IdempotencyRecord,
+)
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.session import EntryChoice, EntryReadModel
 
 
 _OPERATION = "create_v3_session"
+FLOW_CONTRACT_V3_OWNER = "v3-owner-flow-1"
 
 
 class IdempotencyConflict(RuntimeError):
@@ -29,7 +31,9 @@ class OwnedResourceNotFound(RuntimeError):
 
 
 class FlowContractUnsupported(RuntimeError):
-    pass
+    def __init__(self, version: str) -> None:
+        super().__init__(f"unsupported flow contract version: {version}")
+        self.version = version
 
 
 def _utc_now() -> datetime:
@@ -79,8 +83,17 @@ def create_v3_session(
     *,
     idempotency_key: str,
     payload: dict[str, object],
+    flow_contract_version: str | None = None,
 ) -> tuple[EntryReadModel, bool]:
-    request_hash = _request_hash(payload)
+    if (
+        flow_contract_version is not None
+        and flow_contract_version != FLOW_CONTRACT_V3_OWNER
+    ):
+        raise FlowContractUnsupported(flow_contract_version)
+
+    request_hash = _request_hash(
+        {**payload, "flow_contract_version": flow_contract_version}
+    )
     record = db.query(V3IdempotencyRecord).filter(
         V3IdempotencyRecord.internal_user_pk == principal.internal_user_pk,
         V3IdempotencyRecord.operation == _OPERATION,
@@ -101,11 +114,6 @@ def create_v3_session(
             if session is not None:
                 return _entry_read_model(session.session_id), True
 
-    flow_contract_version = payload.get("flow_contract_version")
-    if flow_contract_version is not None:
-        if flow_contract_version != SUPPORTED_FLOW_CONTRACT_VERSION:
-            raise FlowContractUnsupported
-
     session_id = f"sess_{uuid.uuid4().hex}"
     if record is None:
         record = V3IdempotencyRecord(
@@ -125,22 +133,23 @@ def create_v3_session(
         current_agent="entry",
         flow_version="v3",
     )
+    is_new_flow = flow_contract_version == FLOW_CONTRACT_V3_OWNER
+    if is_new_flow:
+        session.flow_contract_version = FLOW_CONTRACT_V3_OWNER
+        session.safety_policy = "deferred_v3"
+        session.input_revision = 1
     db.add(session)
-    if flow_contract_version is not None:
-        db.add(
-            V3SessionActivity(
-                session_id=session_id,
-                internal_user_pk=principal.internal_user_pk,
-                flow_contract_version=SUPPORTED_FLOW_CONTRACT_VERSION,
-                input_mode=None,
-                input_revision=1,
-                active_document_id=None,
-                understanding_ref=None,
-                questionnaire_ref=None,
-            )
-        )
     try:
         db.flush()
+        if is_new_flow:
+            db.add(
+                SessionInputRevision(
+                    session_row_id=session.id,
+                    input_revision=1,
+                    input_mode=None,
+                    action="create",
+                )
+            )
         record.resource_type = "session"
         record.resource_id = session_id
         record.status = "succeeded"
@@ -165,3 +174,19 @@ def get_owned_v3_session(
     if session is None:
         raise OwnedResourceNotFound
     return _entry_read_model(session.session_id)
+
+
+def get_owned_session_row(
+    db: Session,
+    principal: AuthPrincipal,
+    session_id: str,
+) -> SessionModel:
+    """Return the owned session row (any V3 flow) or raise."""
+    session = db.query(SessionModel).filter(
+        SessionModel.session_id == session_id,
+        SessionModel.user_id == principal.internal_user_pk,
+        SessionModel.flow_version == "v3",
+    ).one_or_none()
+    if session is None:
+        raise OwnedResourceNotFound
+    return session
