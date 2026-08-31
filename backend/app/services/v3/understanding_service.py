@@ -1,54 +1,78 @@
-"""V3 Understanding run, immutable snapshots, and v3.1 confirmation.
+"""V3 information-understanding ingestion, confirmation and revision service.
 
-Owner Flow Amendment 001 §3.3 / §4.2: confirmations produce a new immutable
-revision atomically; plain `confirm` never calls the LLM; full-text edits
-require `reprocess_requested=true` and go through the understanding provider;
-structured changes apply a strict field whitelist. Medical content (approved
-claim dictionary / AI summary production) stays gated behind Issue #77.
+Non-conflicting Section A surface:
+
+  * POST /api/v3/understandings            — multi-source ingestion; OCR failures
+                                             are surfaced explicitly as source
+                                             status = failed and never become a
+                                             confirmed reference.
+  * GET  /api/v3/understandings/{id}       — read model (owned only).
+  * POST /api/v3/understandings/{id}/confirmations
+                                           — optimistic-revision confirmation /
+                                             correction, always materializing a
+                                             new immutable revision.
+
+Source text is never persisted or logged in plaintext (no at-rest key is
+configured): only an irreversible sha256 hash is stored. Raw provider errors
+are never returned to clients.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 import json
 import uuid
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from backend.ai_engine.v3.understanding_provider import (
-    ProviderFailureV3,
-    UnderstandingProviderChain,
-)
+from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
-from backend.app.models.session import Session as SessionModel
-from backend.app.models.v3.activity import V3SessionActivity
-from backend.app.models.v3.understanding import V3UnderstandingSnapshot
-from backend.app.schemas.v3.activity import SUPPORTED_FLOW_CONTRACT_VERSION
-from backend.app.schemas.v3.common import AuthPrincipal, SourceType
+from backend.app.models.v3.session import (
+    SessionInputRevision,
+    V3IdempotencyRecord,
+)
+from backend.app.models.v3.understanding import (
+    QuestionnaireSubmissionV3,
+    UnderstandingRevision,
+    UnderstandingRun,
+    UnderstandingSource,
+)
+from backend.app.schemas.v3.common import (
+    AuthPrincipal,
+    Degradation,
+    SourceType,
+)
 from backend.app.schemas.v3.understanding import (
     CaseSummary,
-    EditableField,
-    FactExtraction,
-    NormalizedFact,
     SourceStatus,
-    UnderstandingProviderRequest,
+    UnderstandingConfirmationRequest,
     UnderstandingRevisionResult,
-    UnderstandingSource,
-    UnderstandingV31ConfirmationRequest,
-    UnderstandingV31ConfirmationResult,
-    UnderstandingV31Request,
-    UnderstandingV31Response,
-    VoiceTranscript,
-)
-from backend.app.services.v3.activity_service import (
-    FlowContractUnsupported,
-    InputRevisionConflict,
-    OwnedResourceNotFound,
-    update_understanding_ref,
+    UnderstandingSource as UnderstandingSourceSchema,
+    UnderstandingV3Request,
+    UnderstandingV3Response,
 )
 
+_OPERATION_CREATE = "create_v3_understanding"
+_OPERATION_CONFIRM_PREFIX = "confirm_v3_understanding"
 
-class UnderstandingNotFound(RuntimeError):
+_RUN_STATUSES = (
+    "needs_confirmation",
+    "confirmed",
+    "degraded",
+    "failed",
+)
+_DOCUMENT_SOURCE_TYPES = frozenset({"document", "case_summary"})
+_WITH_DOCUMENT_TYPES = frozenset(
+    {"document", "case_summary", "voice_transcript"}
+)
+_SUMMARY_MAX_CHARS = 140
+_REVISION_RECORD_PREFIX = "rev:"
+
+
+class OwnedResourceNotFound(RuntimeError):
     pass
 
 
@@ -56,727 +80,831 @@ class RevisionConflict(RuntimeError):
     pass
 
 
-class MedicalAssetUnavailable(RuntimeError):
+class InputRevisionConflict(RuntimeError):
     pass
 
 
-class ChangeNotAllowed(RuntimeError):
+class IdempotencyConflict(RuntimeError):
     pass
 
 
-class SourceNotActive(RuntimeError):
-    """Source does not match the session's active document."""
+class InvalidChange(RuntimeError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
 
 
-class SourceNotOwned(RuntimeError):
-    """Source is not owned by this user/session."""
-
-
-class SourceNoValidText(RuntimeError):
-    """Source OCR did not produce usable text."""
-
-
-class SourceOcrFailed(RuntimeError):
-    """Server-side OCR record shows a failed/degraded result."""
-
-
-class SourceNotReady(RuntimeError):
-    """Source processing status is not ready."""
-
-
-class InvalidSourceType(RuntimeError):
-    """Source type is not accepted by the v3.1 run flow."""
-
-
-class VoiceTranscriptNotEnabled(RuntimeError):
-    """ASR persistence is not enabled yet; voice sources stay disabled."""
-
-
-class NoFactsExtracted(RuntimeError):
-    """Provider produced no facts; no usable summary can be shown."""
+_FLOW_CONTRACT_V3_OWNER = "v3-owner-flow-1"
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _uid(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex}"
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
-def _load_owned_session(
+def _text_hash(text: str) -> str:
+    return f"sha256:{sha256(text.strip().encode('utf-8')).hexdigest()}"
+
+
+def _request_hash(payload: dict[str, object]) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+def _derive_input_mode(inputs: list[UnderstandingSourceSchema]) -> str:
+    for source in inputs:
+        if source.source_type.value in _WITH_DOCUMENT_TYPES:
+            return "with_document"
+    return "without_document"
+
+
+@dataclass(frozen=True)
+class _ResolvedSource:
+    source: UnderstandingSourceSchema
+    processing_status: str
+    text: str | None = None
+    document_id: str | None = None
+    questionnaire_submission_id: str | None = None
+    failure_reason: str | None = None
+
+
+def _resolve_document(
     db: Session,
     principal: AuthPrincipal,
-    session_id: str,
-) -> SessionModel:
-    session = db.query(SessionModel).filter(
-        SessionModel.session_id == session_id,
-        SessionModel.user_id == principal.internal_user_pk,
-        SessionModel.flow_version == "v3",
-    ).one_or_none()
-    if session is None:
-        raise OwnedResourceNotFound
-    return session
-
-
-def _load_activity(
-    db: Session,
-    session_id: str,
-) -> V3SessionActivity | None:
-    return db.query(V3SessionActivity).filter(
-        V3SessionActivity.session_id == session_id
-    ).one_or_none()
-
-
-def _require_owner_flow(activity: V3SessionActivity | None) -> V3SessionActivity:
-    if (
-        activity is None
-        or activity.flow_contract_version != SUPPORTED_FLOW_CONTRACT_VERSION
-    ):
-        raise FlowContractUnsupported
-    return activity
-
-
-def _fact_from_provider(
-    understanding_id: str,
-    source: UnderstandingSource,
-    fact,
-    *,
-    extraction_method: str,
-) -> NormalizedFact:
-    return NormalizedFact(
-        fact_id=f"fact_{uuid.uuid4().hex}",
-        fact_code=fact.claim_code,
-        display_name=fact.display_name,
-        category=fact.category,
-        value=fact.value,
-        time_window=fact.time_window,
-        negated=fact.negated,
-        subject=fact.subject,
-        source_refs=[
-            {
-                "source_id": source.source_id,
-                "source_type": source.source_type.value,
-            }
-        ],
-        confirmation_status="unconfirmed",
-        extraction=FactExtraction(
-            method=extraction_method,
-            confidence=fact.extraction_confidence,
-        ),
-    )
-
-
-_VALID_OCR_CONFIDENCE = {"high", "medium", "low"}
-_DEACTIVATED_DOCUMENT_STATUS = {"ocr_failed", "deleted", "skipped"}
-
-
-def _validate_document_source(
-    db: Session,
-    principal: AuthPrincipal,
-    *,
-    session_id: str,
-    activity: V3SessionActivity,
-    source: UnderstandingSource,
-) -> str:
-    """Validate a document source and return the authoritative OCR text.
-
-    Forged, stale, discarded, or failed/degraded OCR never reaches the
-    Provider/Agent1. The document upload API persists ``status='uploaded'``
-    even when OCR fails, so the server-side OCR record (error_code,
-    confidence, result payload, text) is the authority — not the client
-    ``processing_status`` or the Document.status column.
-    """
-    if source.processing_status != "ready":
-        raise SourceNotReady
-    if source.source_id != activity.active_document_id:
-        raise SourceNotActive
+    session_row: SessionModel,
+    source: UnderstandingSourceSchema,
+) -> _ResolvedSource:
+    document_id = source.text_ref
     document = (
         db.query(Document)
         .filter(
-            Document.document_id == source.source_id,
+            Document.document_id == document_id,
             Document.user_id == principal.internal_user_pk,
-            Document.session_id == session_id,
+            Document.session_id == session_row.session_id,
+            Document.status != "deleted",
         )
         .one_or_none()
     )
     if document is None:
-        raise SourceNotOwned
-    if document.status in _DEACTIVATED_DOCUMENT_STATUS:
-        raise SourceNoValidText
-    if document.ocr_error_code:
-        raise SourceOcrFailed
-    if document.ocr_confidence not in _VALID_OCR_CONFIDENCE:
-        raise SourceOcrFailed
-    if not document.ocr_result_json:
-        raise SourceOcrFailed
-    ocr_text = (document.ocr_text or "").strip()
-    if not ocr_text:
-        raise SourceNoValidText
-    return ocr_text
+        return _ResolvedSource(source, "failed", failure_reason="DOCUMENT_NOT_FOUND")
+    if document.ocr_error_code or not (document.ocr_text or "").strip():
+        return _ResolvedSource(
+            source,
+            "failed",
+            document_id=document_id,
+            failure_reason="OCR_FAILED",
+        )
+    return _ResolvedSource(
+        source,
+        "ready",
+        text=document.ocr_text,
+        document_id=document_id,
+    )
 
 
-def _validate_narrative_source(source: UnderstandingSource) -> str:
-    """Accept the current user's free-text narrative for this session.
+def _resolve_questionnaire(
+    db: Session,
+    principal: AuthPrincipal,
+    source: UnderstandingSourceSchema,
+) -> _ResolvedSource:
+    submission_id = source.text_ref
+    submission = (
+        db.query(QuestionnaireSubmissionV3)
+        .filter(
+            QuestionnaireSubmissionV3.questionnaire_submission_id == submission_id,
+            QuestionnaireSubmissionV3.internal_user_pk
+            == principal.internal_user_pk,
+        )
+        .one_or_none()
+    )
+    if submission is None:
+        return _ResolvedSource(
+            source,
+            "failed",
+            questionnaire_submission_id=submission_id,
+            failure_reason="QUESTIONNAIRE_SUBMISSION_NOT_FOUND",
+        )
+    return _ResolvedSource(
+        source,
+        "ready",
+        questionnaire_submission_id=submission_id,
+        text=json.dumps(
+            submission.answers_json,
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+    )
 
-    Narratives are user-typed input with no server-side authoritative copy,
-    so the submitted text is used after basic readiness/emptiness gates.
-    """
-    if source.processing_status != "ready":
-        raise SourceNotReady
+
+def _resolve_inline(
+    source: UnderstandingSourceSchema,
+) -> _ResolvedSource:
     text = (source.text or "").strip()
     if not text:
-        raise SourceNoValidText
-    return text
+        return _ResolvedSource(source, "failed", failure_reason="EMPTY_SOURCE_TEXT")
+    return _ResolvedSource(source, "ready", text=text)
 
 
-def _validate_voice_transcript_source() -> None:
-    """Voice transcripts stay disabled until ASR persistence exists.
+def _resolve_source(
+    db: Session,
+    principal: AuthPrincipal,
+    session_row: SessionModel,
+    source: UnderstandingSourceSchema,
+) -> _ResolvedSource:
+    if source.source_type.value == "questionnaire":
+        if source.text_ref is None:
+            return _ResolvedSource(
+                source,
+                "failed",
+                failure_reason="QUESTIONNAIRE_REQUIRES_REF",
+            )
+        return _resolve_questionnaire(db, principal, source)
+    if source.source_type.value in _DOCUMENT_SOURCE_TYPES:
+        if source.text_ref is None:
+            return _ResolvedSource(
+                source,
+                "failed",
+                failure_reason="DOCUMENT_REQUIRES_REF",
+            )
+        return _resolve_document(db, principal, session_row, source)
+    if source.text is not None:
+        return _resolve_inline(source)
+    return _ResolvedSource(source, "failed", failure_reason="UNRESOLVED_TEXT_REF")
 
-    We deliberately refuse rather than trust client-supplied transcript
-    text: a forged transcript must never reach the Provider.
-    """
-    raise VoiceTranscriptNotEnabled
+
+def _run_status_and_reasons(
+    resolved: list[_ResolvedSource],
+) -> tuple[str, list[str]]:
+    reasons = [
+        item.failure_reason
+        for item in resolved
+        if item.failure_reason is not None
+    ]
+    usable = [item for item in resolved if item.processing_status == "ready"]
+    if not usable:
+        return "failed", reasons or ["NO_USABLE_SOURCE"]
+    if len(usable) < len(resolved):
+        return "degraded", reasons
+    return "needs_confirmation", reasons
 
 
 def _build_case_summary(
-    *,
-    source_document_ids: list[str],
-    summary_text: str,
+    resolved: list[_ResolvedSource],
     revision: int,
-) -> dict[str, object]:
+) -> dict[str, object] | None:
+    documents = [
+        item
+        for item in resolved
+        if item.processing_status == "ready"
+        and item.source.source_type.value in _DOCUMENT_SOURCE_TYPES
+    ]
+    if not documents:
+        return None
+    summary_text = (documents[0].text or "").strip()
+    truncated = summary_text[:_SUMMARY_MAX_CHARS]
+    if len(summary_text) > _SUMMARY_MAX_CHARS:
+        truncated = f"{truncated}…"
     return CaseSummary(
-        case_summary_id=_uid("summary"),
-        source_document_ids=source_document_ids,
+        case_summary_id=f"summary_{uuid.uuid4().hex}",
+        source_document_ids=[
+            item.document_id or item.source.source_id for item in documents
+        ],
         revision=revision,
         status="needs_confirmation",
         title="材料内容摘要",
-        summary=summary_text,
-        editable_fields=[
-            EditableField(
-                field_id="summary",
-                label="资料摘要",
-                value=summary_text,
-                value_type="text",
-                required=True,
-            )
-        ],
+        summary=truncated or "已成功识别材料内容。",
+        editable_fields=[],
         warnings=[],
     ).model_dump(mode="json")
 
 
-_SEVERITY_ZH = {
-    "none": "无",
-    "mild": "轻度",
-    "moderate": "中度",
-    "severe": "重度",
-    "unknown": "不清楚",
-}
-_FREQUENCY_ZH = {
-    0: "无",
-    1: "偶尔",
-    2: "有时",
-    3: "经常",
-    4: "几乎每天",
-}
-_BOOLEAN_ZH = {True: "有", False: "无"}
-# Common coded_text values from the approved claim dictionary (中文文案).
-_CODED_TEXT_ZH = {
-    "worse": "加重",
-    "same": "不变",
-    "better": "好转",
-    "unrefreshing": "未恢复",
-}
+def _revision_status_for(run_status: str) -> str:
+    if run_status == "failed":
+        return "degraded"
+    return run_status
 
 
-def _user_facing_value(fact) -> str | None:
-    """Map internal fact values to user-facing Chinese copy.
-
-    Returns None when the value has no safe public rendering, so the
-    summary falls back to the display name only (no enum leakage).
-    """
-    raw = fact.value.value
-    if hasattr(raw, "value"):
-        raw = raw.value
-    if fact.value.type == "severity":
-        return _SEVERITY_ZH.get(str(raw), str(raw))
-    if fact.value.type == "boolean":
-        return _BOOLEAN_ZH.get(bool(raw))
-    if fact.value.type == "frequency_0_4":
-        return _FREQUENCY_ZH.get(int(raw))
-    if fact.value.type == "number":
-        return str(raw)
-    if fact.value.type == "coded_text":
-        return _CODED_TEXT_ZH.get(str(raw))
-    return None
-
-
-def _summary_from_facts(facts: list) -> str:
-    if not facts:
-        return ""
-    parts = []
-    for fact in facts:
-        value = _user_facing_value(fact)
-        if value is None:
-            parts.append(fact.display_name)
-        else:
-            parts.append(f"{fact.display_name}（{value}）")
-    return "资料中提到：" + "、".join(parts) + "。"
-
-
-def run_understanding_v31(
+def _persist_run(
     db: Session,
+    *,
     principal: AuthPrincipal,
-    request: UnderstandingV31Request,
-    provider_chain: UnderstandingProviderChain | None,
-) -> UnderstandingV31Response:
-    """Run the v3.1 understanding flow and persist an immutable revision 1.
+    session_row: SessionModel,
+    resolved: list[_ResolvedSource],
+    idempotency_key: str,
+) -> tuple[UnderstandingRun, list[UnderstandingSource]]:
+    understanding_id = f"und_{uuid.uuid4().hex}"
+    run_status, reason_codes = _run_status_and_reasons(resolved)
+    is_new_flow = session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
+    run = UnderstandingRun(
+        understanding_id=understanding_id,
+        internal_user_pk=principal.internal_user_pk,
+        session_row_id=session_row.id,
+        current_revision=1,
+        status=run_status,
+        # New-flow sessions defer V3 safety (deferred_v3 / not_run / null);
+        # legacy sessions keep a concrete safety status.
+        safety_status=None if is_new_flow else "clear",
+        flow_contract_version=session_row.flow_contract_version,
+        input_revision=session_row.input_revision,
+        safety_policy="deferred_v3" if is_new_flow else None,
+        safety_evaluation_status="not_run" if is_new_flow else None,
+        degradation_json={
+            "active": run_status in {"degraded", "failed"},
+            "reason_codes": reason_codes,
+        },
+    )
+    db.add(run)
+    db.flush()
 
-    Validates every document source against the session's active input
-    (ownership, active_document_id, OCR success, readiness, input_revision)
-    and always produces a confirmable, editable CaseSummary. Returns
-    MEDICAL_ASSET_UNAVAILABLE via :class:`MedicalAssetUnavailable` when no
-    approved claim dictionary / provider is available (Issue #77).
-    """
-    _load_owned_session(db, principal, request.session_id)
-    activity = _require_owner_flow(_load_activity(db, request.session_id))
-    if activity.input_revision != request.expected_input_revision:
-        raise InputRevisionConflict
-    if provider_chain is None:
-        raise MedicalAssetUnavailable
-
-    understanding_id = _uid("und")
-    normalized_facts: list[NormalizedFact] = []
-    source_statuses: list[SourceStatus] = []
-    source_document_ids: list[str] = []
-    provider_kind = "rule"
-    all_facts: list = []
-    document_facts: list = []
-    try:
-        for source in request.inputs:
-            if source.source_type == SourceType.document:
-                source_text = _validate_document_source(
-                    db,
-                    principal,
-                    session_id=request.session_id,
-                    activity=activity,
-                    source=source,
-                )
-            elif source.source_type == SourceType.narrative:
-                source_text = _validate_narrative_source(source)
-            elif source.source_type == SourceType.voice_transcript:
-                _validate_voice_transcript_source()
-                raise AssertionError("unreachable")
-            else:
-                raise InvalidSourceType
-            provider_request = UnderstandingProviderRequest(
-                request_id=_uid("req"),
-                schema_version="understanding_provider_v3.0",
-                prompt_version="understanding_v3.1",
-                source={
-                    "source_id": source.source_id,
-                    "source_type": source.source_type.value,
-                    "subject_hint": "unknown",
-                    "time_window": "past_7_days",
-                    "text": source_text,
-                },
-                allowed_claim_dictionary_version="medical_v3.0",
-                max_facts=30,
+    source_rows: list[UnderstandingSource] = []
+    for item in resolved:
+        source_rows.append(
+            UnderstandingSource(
+                source_id=item.source.source_id,
+                understanding_id=understanding_id,
+                source_type=item.source.source_type.value,
+                processing_status=item.processing_status,
+                document_id=item.document_id,
+                audio_id=None,
+                questionnaire_submission_id=item.questionnaire_submission_id,
+                text_ciphertext=None,
+                text_hash=_text_hash(item.text) if item.text else None,
+                captured_at=_as_utc(item.source.captured_at),
             )
-            response = provider_chain.complete_json(provider_request)
-            provider_kind = provider_chain.last_provider_kind or provider_kind
-            method = "qwen" if provider_kind == "cloud" else "rule"
-            for fact in response.facts:
-                normalized_facts.append(
-                    _fact_from_provider(
-                        understanding_id,
-                        source,
-                        fact,
-                        extraction_method=method,
-                    )
-                )
-                all_facts.append(fact)
-                if source.source_type == SourceType.document:
-                    document_facts.append(fact)
-            if source.source_type == SourceType.document:
-                # CaseSummary.source_document_ids must only ever hold real
-                # document IDs; narrative IDs stay in fact source_refs.
-                source_document_ids.append(source.source_id)
-            source_statuses.append(
-                SourceStatus(
-                    source_id=source.source_id,
-                    source_type=source.source_type,
-                    status="ready",
-                )
-            )
-    except ProviderFailureV3 as error:
-        if error.error_code in {
-            "MEDICAL_ASSET_UNAVAILABLE",
-            "SOURCE_TOO_LONG",
-        }:
-            raise MedicalAssetUnavailable from None
-        raise
-
-    if not all_facts:
-        raise NoFactsExtracted
-
-    # A CaseSummary is a *document* summary. Narrative-only runs must not
-    # fabricate a material summary, must not show "材料内容摘要"/"资料中提到",
-    # and must not introduce a document-confirmation step. P1: a narrative
-    # is the user's own 最近情况 input, so a narrative-only run is born
-    # confirmed — no extra confirmation page, and the facts are immediately
-    # consumable by Agent 1.
-    if source_document_ids:
-        case_summary = _build_case_summary(
-            source_document_ids=source_document_ids,
-            summary_text=_summary_from_facts(document_facts),
-            revision=1,
         )
-        understanding_status = "needs_confirmation"
-        snapshot_status = "needs_confirmation"
-    else:
-        case_summary = None
-        understanding_status = "confirmed"
-        snapshot_status = "confirmed"
-        for fact in normalized_facts:
-            fact.confirmation_status = "confirmed"
-    content = UnderstandingV31Response(
-        schema_version="understanding_v3.1",
+    db.add_all(source_rows)
+
+    case_summary = _build_case_summary(resolved, revision=1)
+    revision = UnderstandingRevision(
         understanding_id=understanding_id,
         revision=1,
-        status=understanding_status,
-        case_summary=case_summary,
-        voice_transcripts=[],
-        normalized_facts=normalized_facts,
-        source_statuses=source_statuses,
-        safety_status=None,
-        safety_signal_refs=[],
-        degradation={"active": False, "reason_codes": []},
-        flow_contract_version="v3-owner-flow-1",
-        safety_policy="deferred_v3",
-        safety_evaluation_status="not_run",
-    ).model_dump(mode="json")
-
-    db.add(
-        V3UnderstandingSnapshot(
-            understanding_id=understanding_id,
-            revision=1,
-            session_id=request.session_id,
-            internal_user_pk=principal.internal_user_pk,
-            status=snapshot_status,
-            snapshot_json=json.dumps(content, ensure_ascii=False),
-            safety_policy="deferred_v3",
-            safety_evaluation_status="not_run",
-            safety_status=None,
-        )
+        previous_revision=None,
+        status=_revision_status_for(run_status),
+        case_summary_json=case_summary,
+        presentation_json={
+            "case_summary": case_summary,
+            "sources": [
+                {
+                    "source_id": row.source_id,
+                    "source_type": row.source_type,
+                    "processing_status": row.processing_status,
+                }
+                for row in source_rows
+            ],
+            "applied_changes": [],
+            "affected_fact_ids": [],
+        },
+        confirmation_decision=None,
+        confirmed_at=None,
     )
-    if source_document_ids:
-        db.commit()
-    else:
-        # Bind the confirmed narrative understanding to the session so it is
-        # immediately usable by Agent 1; the CAS still uses the request's
-        # expected_input_revision so a racing transition cannot be
-        # overwritten.
-        try:
-            update_understanding_ref(
-                db,
-                principal,
-                request.session_id,
-                understanding_id=understanding_id,
-                revision=1,
-                expected_input_revision=request.expected_input_revision,
-                commit=False,
-            )
-            db.commit()
-        except InputRevisionConflict:
-            db.rollback()
-            raise
-    return UnderstandingV31Response.model_validate(content)
+    db.add(revision)
+    return run, source_rows
 
 
-def _latest_snapshot(
+def create_understanding(
     db: Session,
     principal: AuthPrincipal,
-    understanding_id: str,
-) -> V3UnderstandingSnapshot:
-    snapshot = (
-        db.query(V3UnderstandingSnapshot)
+    request: UnderstandingV3Request,
+    idempotency_key: str,
+) -> tuple[UnderstandingV3Response, bool]:
+    session_row = (
+        db.query(SessionModel)
         .filter(
-            V3UnderstandingSnapshot.understanding_id == understanding_id,
-            V3UnderstandingSnapshot.internal_user_pk == principal.internal_user_pk,
+            SessionModel.session_id == request.session_id,
+            SessionModel.user_id == principal.internal_user_pk,
         )
-        .order_by(V3UnderstandingSnapshot.revision.desc())
-        .first()
+        .one_or_none()
     )
-    if snapshot is None:
-        raise UnderstandingNotFound
-    return snapshot
+    if session_row is None:
+        raise OwnedResourceNotFound
+
+    request_hash = _request_hash(request.model_dump(mode="json"))
+    record = (
+        db.query(V3IdempotencyRecord)
+        .filter(
+            V3IdempotencyRecord.internal_user_pk == principal.internal_user_pk,
+            V3IdempotencyRecord.operation == _OPERATION_CREATE,
+            V3IdempotencyRecord.idempotency_key == idempotency_key,
+        )
+        .one_or_none()
+    )
+    if record is not None and _as_utc(record.expires_at) <= _utc_now():
+        db.delete(record)
+        db.flush()
+        record = None
+    if record is not None:
+        if record.request_hash != request_hash:
+            raise IdempotencyConflict
+        if record.status == "succeeded" and record.resource_id:
+            run = _owned_run(db, principal, record.resource_id)
+            if run is not None:
+                return _read_model(db, run), True
+
+    resolved = [_resolve_source(db, principal, session_row, src) for src in request.inputs]
+    run, source_rows = _persist_run(
+        db,
+        principal=principal,
+        session_row=session_row,
+        resolved=resolved,
+        idempotency_key=idempotency_key,
+    )
+
+    # Persist the flow input mode derived from the material sources.
+    session_row.input_mode = _derive_input_mode(request.inputs)
+
+    if record is None:
+        record = V3IdempotencyRecord(
+            idempotency_record_id=f"idem_{uuid.uuid4().hex}",
+            internal_user_pk=principal.internal_user_pk,
+            operation=_OPERATION_CREATE,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            status="processing",
+            expires_at=_utc_now() + timedelta(hours=24),
+        )
+        db.add(record)
+    record.resource_type = "understanding"
+    record.resource_id = run.understanding_id
+    record.status = "succeeded"
+    record.response_code = 201
+    db.commit()
+    return _read_model(db, run), False
 
 
-def get_understanding_read_model(
+def get_understanding(
     db: Session,
     principal: AuthPrincipal,
     understanding_id: str,
-) -> UnderstandingV31Response:
-    snapshot = _latest_snapshot(db, principal, understanding_id)
-    content = json.loads(snapshot.snapshot_json)
-    return UnderstandingV31Response.model_validate(content)
+    *,
+    revision: int | None = None,
+) -> UnderstandingV3Response:
+    run = _owned_run(db, principal, understanding_id)
+    if run is None:
+        raise OwnedResourceNotFound
+    target = None
+    for_revision = False
+    if revision is not None:
+        if revision < 1 or revision > run.current_revision:
+            raise OwnedResourceNotFound
+        target = _revision(db, understanding_id, revision)
+        if target is None:
+            raise OwnedResourceNotFound
+        for_revision = True
+    return _read_model(db, run, revision_row=target, for_revision=for_revision)
 
 
-_STRUCTURED_FIELD_WHITELIST = {
-    "normalized_fact": {"value", "negated", "subject", "time_window"},
-    "case_summary": {"summary", "title"},
-    "voice_transcript": {"text"},
-    "source": set(),
-}
+def confirm_understanding(
+    db: Session,
+    principal: AuthPrincipal,
+    understanding_id: str,
+    request: UnderstandingConfirmationRequest,
+    idempotency_key: str,
+) -> tuple[UnderstandingRevisionResult, bool]:
+    run = _owned_run(db, principal, understanding_id)
+    if run is None:
+        raise OwnedResourceNotFound
+
+    operation = f"{_OPERATION_CONFIRM_PREFIX}:{understanding_id}"
+    request_hash = _request_hash(request.model_dump(mode="json"))
+    record = (
+        db.query(V3IdempotencyRecord)
+        .filter(
+            V3IdempotencyRecord.internal_user_pk == principal.internal_user_pk,
+            V3IdempotencyRecord.operation == operation,
+            V3IdempotencyRecord.idempotency_key == idempotency_key,
+        )
+        .one_or_none()
+    )
+    if record is not None and _as_utc(record.expires_at) <= _utc_now():
+        db.delete(record)
+        db.flush()
+        record = None
+    if record is not None:
+        if record.request_hash != request_hash:
+            raise IdempotencyConflict
+        if record.status == "succeeded" and record.resource_id:
+            previous_revision, previous_input_revision = _confirmation_from_record(
+                record.resource_id
+            )
+            if previous_revision is not None:
+                revision_row = _revision(db, understanding_id, previous_revision)
+                if revision_row is not None:
+                    return _result_from_revision(
+                        db,
+                        run,
+                        revision_row,
+                        input_revision=previous_input_revision,
+                    ), True
+
+    if request.expected_revision != run.current_revision:
+        raise RevisionConflict
+    session_row = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == run.session_row_id)
+        .one_or_none()
+    )
+    if session_row is None:
+        raise OwnedResourceNotFound
+    if (
+        request.schema_version == "understanding_v3.1"
+        and request.decision in {"reject_source", "cannot_confirm"}
+    ):
+        raise InvalidChange(
+            "UNSUPPORTED_DECISION",
+            "该流程版本请通过输入切换丢弃或重新上传资料。",
+        )
+    if request.reprocess_requested and request.edited_summary_text is None:
+        raise InvalidChange(
+            "REPROCESS_NOT_SUPPORTED",
+            "重新处理需要提供修改后的摘要文本。",
+        )
+
+    current = _revision(db, understanding_id, run.current_revision)
+    if current is None:
+        raise OwnedResourceNotFound
+    sources = (
+        db.query(UnderstandingSource)
+        .filter(UnderstandingSource.understanding_id == understanding_id)
+        .all()
+    )
+
+    next_revision = run.current_revision + 1
+    case_summary, applied_changes, affected_fact_ids = _apply_decision(
+        request,
+        current,
+    )
+    if request.decision == "reject_source":
+        # There is no 'rejected' source status; the closest contract value for
+        # a user-rejected material source is 'skipped'.
+        for source_row in sources:
+            source_row.processing_status = "skipped"
+    new_status = _new_revision_status(request.decision, run.status)
+    revision_row = UnderstandingRevision(
+        understanding_id=understanding_id,
+        revision=next_revision,
+        previous_revision=run.current_revision,
+        status=new_status,
+        case_summary_json=case_summary,
+        presentation_json={
+            "case_summary": case_summary,
+            "sources": [
+                {
+                    "source_id": row.source_id,
+                    "source_type": row.source_type,
+                    "processing_status": row.processing_status,
+                }
+                for row in sources
+            ],
+            "applied_changes": applied_changes,
+            "affected_fact_ids": affected_fact_ids,
+        },
+        confirmation_decision=request.decision,
+        confirmed_at=_utc_now() if new_status == "confirmed" else None,
+    )
+    db.add(revision_row)
+    run.current_revision = next_revision
+    run.status = _run_status_for_revision(new_status, request.decision)
+
+    new_input_revision: int | None = None
+    if (
+        new_status == "confirmed"
+        and session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
+    ):
+        new_input_revision = _cas_bind_understanding(
+            db,
+            session_row,
+            understanding_id,
+            next_revision,
+            request.expected_input_revision,
+        )
+
+    if record is None:
+        record = V3IdempotencyRecord(
+            idempotency_record_id=f"idem_{uuid.uuid4().hex}",
+            internal_user_pk=principal.internal_user_pk,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            status="processing",
+            expires_at=_utc_now() + timedelta(hours=24),
+        )
+        db.add(record)
+    record.resource_type = "understanding_revision"
+    resource_id = f"{understanding_id}:{_REVISION_RECORD_PREFIX}{next_revision}"
+    if new_input_revision is not None:
+        resource_id += f":in:{new_input_revision}"
+    record.resource_id = resource_id
+    record.status = "succeeded"
+    record.response_code = 201
+    db.commit()
+    return (
+        _result_from_revision(
+            db, run, revision_row, input_revision=new_input_revision
+        ),
+        False,
+    )
 
 
-def _apply_structured_changes(
-    content: dict[str, object],
-    changes,
-) -> tuple[list[str], list[str]]:
+def _apply_decision(
+    request: UnderstandingConfirmationRequest,
+    current: UnderstandingRevision,
+) -> tuple[dict[str, object] | None, list[str], list[str]]:
+    decision = request.decision
+    if decision == "confirm":
+        return (
+            current.case_summary_json,
+            [],
+            [],
+        )
+    if decision == "confirm_with_changes":
+        if request.edited_summary_text is not None:
+            return _apply_full_text_edit(current, request)
+        return _apply_changes(current, request)
+    if decision == "reject_source":
+        return None, [], []
+    # cannot_confirm: keep the materialized snapshot undecided.
+    return current.case_summary_json, [], []
+
+
+def _apply_full_text_edit(
+    current: UnderstandingRevision,
+    request: UnderstandingConfirmationRequest,
+) -> tuple[dict[str, object] | None, list[str], list[str]]:
+    base = current.case_summary_json
+    if base is None:
+        raise InvalidChange("NO_CASE_SUMMARY", "当前没有可确认的材料摘要。")
+    case_summary = json.loads(json.dumps(base))
+    case_summary["summary"] = request.edited_summary_text
+    case_summary["status"] = "confirmed"
+    # A full-text edit must re-derive facts from the edited summary, not copy
+    # the old Evidence. When no Understanding provider is configured the edit
+    # cannot be confirmed: publishing empty facts as a confirmed revision would
+    # fabricate a clean result.
+    affected_fact_ids = _re_extract_facts(request.edited_summary_text)
+    return case_summary, ["chg_summary_edit"], affected_fact_ids
+
+
+def _re_extract_facts(edited_text: str) -> list[str]:
+    """Controlled fact re-extraction hook for the edited summary.
+
+    Must re-run the Understanding provider over ``edited_text`` against the
+    approved claim dictionary and return the affected fact IDs. The backend
+    does not yet have an approved claim dictionary or a configured provider,
+    so a full-text edit cannot produce facts — raise a stable error and keep
+    the old revision rather than publish an empty-facts confirmed revision.
+    Real extraction reuses PR #91's Understanding Provider once merged.
+    """
+    del edited_text
+    raise InvalidChange(
+        "FACT_EXTRACTION_UNAVAILABLE",
+        "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
+    )
+
+
+def _apply_changes(
+    current: UnderstandingRevision,
+    request: UnderstandingConfirmationRequest,
+) -> tuple[dict[str, object] | None, list[str], list[str]]:
+    base = current.case_summary_json
+    if base is None:
+        raise InvalidChange("NO_CASE_SUMMARY", "当前没有可确认的材料摘要。")
+    case_summary = json.loads(json.dumps(base))
     applied: list[str] = []
     affected: list[str] = []
-    facts = content.get("normalized_facts")
-    for change in changes:
-        allowed = _STRUCTURED_FIELD_WHITELIST.get(change.target_type)
-        if allowed is None or change.field not in allowed:
-            raise ChangeNotAllowed
-        applied.append(_uid("chg"))
+    for index, change in enumerate(request.changes, start=1):
+        change_id = f"chg_{index}"
+        if change.target_type == "case_summary":
+            if change.target_id != case_summary.get("case_summary_id"):
+                raise InvalidChange("CASE_SUMMARY_NOT_FOUND", "摘要与修正目标不匹配。")
+            if change.field not in {"title", "summary"}:
+                raise InvalidChange(
+                    "UNSUPPORTED_FIELD",
+                    "该摘要字段不支持在线修正。",
+                )
+            if not isinstance(change.new_value, str):
+                raise InvalidChange("INVALID_VALUE", "摘要修正值必须是文本。")
+            case_summary[change.field] = change.new_value
+            applied.append(change_id)
+            continue
         if change.target_type == "normalized_fact":
-            for fact in facts or []:
-                if fact["fact_id"] == change.target_id:
-                    fact[change.field] = change.new_value
-                    fact["confirmation_status"] = "confirmed"
-                    fact["extraction"] = {
-                        "method": "user_correction",
-                        "confidence": fact.get("extraction", {}).get("confidence"),
-                    }
-                    affected.append(change.target_id)
-                    break
-            else:
-                raise ChangeNotAllowed
-        elif change.target_type == "case_summary":
-            summary = content.get("case_summary")
-            if not isinstance(summary, dict):
-                raise ChangeNotAllowed
-            summary[change.field] = change.new_value
-            affected.append(change.target_id)
-        elif change.target_type == "voice_transcript":
-            for transcript in content.get("voice_transcripts") or []:
-                if transcript["transcript_id"] == change.target_id:
-                    transcript[change.field] = change.new_value
-                    affected.append(change.target_id)
-                    break
-            else:
-                raise ChangeNotAllowed
-    return applied, affected
-
-
-def _reprocess_edited_summary(
-    *,
-    session_id: str,
-    source_id: str,
-    edited_summary_text: str,
-    provider_chain: UnderstandingProviderChain | None,
-) -> tuple[list[NormalizedFact], str]:
-    if provider_chain is None:
-        raise MedicalAssetUnavailable
-    provider_request = UnderstandingProviderRequest(
-        request_id=_uid("req"),
-        schema_version="understanding_provider_v3.0",
-        prompt_version="understanding_v3.1",
-        source={
-            "source_id": source_id,
-            "source_type": SourceType.user_correction.value,
-            "subject_hint": "unknown",
-            "time_window": "past_7_days",
-            "text": edited_summary_text,
-        },
-        allowed_claim_dictionary_version="medical_v3.0",
-        max_facts=30,
-    )
-    try:
-        response = provider_chain.complete_json(provider_request)
-    except ProviderFailureV3 as error:
-        if error.error_code in {
-            "MEDICAL_ASSET_UNAVAILABLE",
-            "SOURCE_TOO_LONG",
-        }:
-            raise MedicalAssetUnavailable from None
-        raise
-    method = (
-        "qwen"
-        if (provider_chain.last_provider_kind or "rule") == "cloud"
-        else "rule"
-    )
-    facts: list[NormalizedFact] = []
-    for fact in response.facts:
-        facts.append(
-            NormalizedFact(
-                fact_id=f"fact_{uuid.uuid4().hex}",
-                fact_code=fact.claim_code,
-                display_name=fact.display_name,
-                category=fact.category,
-                value=fact.value,
-                time_window=fact.time_window,
-                negated=fact.negated,
-                subject=fact.subject,
-                source_refs=[
-                    {
-                        "source_id": source_id,
-                        "source_type": SourceType.user_correction.value,
-                    }
-                ],
-                confirmation_status="confirmed",
-                extraction=FactExtraction(
-                    method=method,
-                    confidence=fact.extraction_confidence,
-                ),
+            raise InvalidChange(
+                "FACT_NOT_FOUND",
+                "当前理解尚未包含可修正的事实条目。",
             )
+        raise InvalidChange(
+            "UNSUPPORTED_CHANGE",
+            "该修正目标类型暂不支持。",
         )
-    return facts, method
+    return case_summary, applied, affected
 
 
-def _finalize_confirmed_content(
-    content: dict[str, object],
-    new_revision: int,
-) -> None:
-    """Shared confirmation closure for confirm and confirm_with_changes.
+def _new_revision_status(decision: str, _run_status: str) -> str:
+    if decision == "confirm":
+        return "confirmed"
+    if decision == "confirm_with_changes":
+        return "confirmed"
+    if decision == "reject_source":
+        return "degraded"
+    return "needs_confirmation"
 
-    Guarantees the outer status, the CaseSummary (status + revision) and
-    every normalized fact are confirmed together, so Agent 1 always reads a
-    coherent confirmed snapshot no matter which decision path ran.
+
+def _run_status_for_revision(revision_status: str, decision: str) -> str:
+    if decision == "reject_source":
+        return "failed"
+    return revision_status
+
+
+def _result_status(decision: str | None) -> str:
+    if decision == "reject_source":
+        return "rejected"
+    if decision in {"confirm", "confirm_with_changes"}:
+        return "confirmed"
+    return "needs_confirmation"
+
+
+def _result_from_revision(
+    db: Session,
+    run: UnderstandingRun,
+    revision_row: UnderstandingRevision,
+    *,
+    input_revision: int | None = None,
+) -> UnderstandingRevisionResult:
+    presentation = revision_row.presentation_json or {}
+    return UnderstandingRevisionResult(
+        understanding_id=revision_row.understanding_id,
+        previous_revision=revision_row.previous_revision or 1,
+        revision=revision_row.revision,
+        status=_result_status(revision_row.confirmation_decision),
+        applied_changes=list(presentation.get("applied_changes") or []),
+        affected_fact_ids=list(presentation.get("affected_fact_ids") or []),
+        input_revision=input_revision,
+        # Reconstruct from the recorded revision so an idempotent replay returns
+        # the first success's snapshot, not the session's later state.
+        understanding=_read_model(
+            db, run, revision_row=revision_row, for_revision=True
+        ),
+    )
+
+
+def _cas_bind_understanding(
+    db: Session,
+    session_row: SessionModel,
+    understanding_id: str,
+    revision: int,
+    expected: int | None,
+) -> int:
+    """Atomically CAS the session input_revision and bind the confirmed
+    understanding reference. Fails with InputRevisionConflict if the session's
+    input_revision no longer matches ``expected`` (no read-then-write race)."""
+    if expected is None:
+        raise InvalidChange("INPUT_REVISION_REQUIRED", "该流程需要输入版本。")
+    result = db.execute(
+        update(SessionModel)
+        .where(
+            SessionModel.id == session_row.id,
+            SessionModel.input_revision == expected,
+        )
+        .values(
+            input_revision=expected + 1,
+            active_understanding_id=understanding_id,
+            active_understanding_revision=revision,
+        )
+        .execution_options(synchronize_session="fetch")
+    )
+    if result.rowcount != 1:
+        raise InputRevisionConflict
+    next_input_revision = expected + 1
+    db.add(
+        SessionInputRevision(
+            session_row_id=session_row.id,
+            input_revision=next_input_revision,
+            input_mode=session_row.input_mode,
+            active_document_id=session_row.active_document_id,
+            active_understanding_id=understanding_id,
+            active_understanding_revision=revision,
+            active_questionnaire_submission_id=session_row.active_questionnaire_submission_id,
+            action="confirm_source",
+        )
+    )
+    return next_input_revision
+
+
+def _confirmation_from_record(resource_id: str) -> tuple[int | None, int | None]:
+    """Parse (revision, input_revision) from a confirmation record resource_id.
+
+    Format: ``{understanding_id}:rev:{revision}`` or
+    ``{understanding_id}:rev:{revision}:in:{input_revision}``.
     """
-    content["status"] = "confirmed"
-    content["revision"] = new_revision
-    case_summary = content.get("case_summary")
-    if isinstance(case_summary, dict):
-        case_summary["status"] = "confirmed"
-        case_summary["revision"] = new_revision
-    for fact in content.get("normalized_facts") or []:
-        fact["confirmation_status"] = "confirmed"
+    prefix = _REVISION_RECORD_PREFIX
+    if prefix not in resource_id:
+        return None, None
+    tail = resource_id.split(prefix, 1)[1]
+    revision_str = tail
+    input_revision = None
+    if ":in:" in tail:
+        revision_str, input_str = tail.split(":in:", 1)
+        try:
+            input_revision = int(input_str)
+        except ValueError:
+            input_revision = None
+    try:
+        revision = int(revision_str)
+    except ValueError:
+        revision = None
+    return revision, input_revision
 
 
-def confirm_understanding_v3_1(
+def _owned_run(
     db: Session,
     principal: AuthPrincipal,
     understanding_id: str,
-    request: UnderstandingV31ConfirmationRequest,
-    provider_chain: UnderstandingProviderChain | None,
-) -> UnderstandingRevisionResult:
-    snapshot = _latest_snapshot(db, principal, understanding_id)
-    content = json.loads(snapshot.snapshot_json)
-    if content["revision"] != request.expected_revision:
-        raise RevisionConflict
-
-    activity = _require_owner_flow(_load_activity(db, snapshot.session_id))
-    if activity.input_revision != request.expected_input_revision:
-        raise InputRevisionConflict
-
-    previous_revision = int(content["revision"])
-    new_revision = previous_revision + 1
-    applied_changes: list[str] = []
-    affected_fact_ids: list[str] = []
-    summary_sources = content.get("source_statuses") or []
-    document_source_ids = [
-        item.get("source_id")
-        for item in summary_sources
-        if item.get("source_type") == SourceType.document.value
-    ]
-
-    if request.decision == "confirm":
-        # No content change; the shared confirmation closure below handles
-        # the outer status, CaseSummary and facts.
-        pass
-    elif request.edited_summary_text is not None:
-        # Full-text summary edits belong to the with-document flow only:
-        # a narrative-only run has no material summary to edit, and we
-        # must not fabricate one (nor place a narrative ID in
-        # source_document_ids).
-        if not document_source_ids:
-            raise ChangeNotAllowed
-        source_id = document_source_ids[0]
-        facts, _method = _reprocess_edited_summary(
-            session_id=snapshot.session_id,
-            source_id=source_id,
-            edited_summary_text=request.edited_summary_text,
-            provider_chain=provider_chain,
+) -> UnderstandingRun | None:
+    return (
+        db.query(UnderstandingRun)
+        .filter(
+            UnderstandingRun.understanding_id == understanding_id,
+            UnderstandingRun.internal_user_pk == principal.internal_user_pk,
         )
-        content["normalized_facts"] = [
-            fact.model_dump(mode="json") for fact in facts
-        ]
-        content["case_summary"] = CaseSummary(
-            case_summary_id=_uid("summary"),
-            source_document_ids=document_source_ids,
-            revision=new_revision,
-            status="confirmed",
-            title="材料内容摘要",
-            summary=request.edited_summary_text,
-            editable_fields=[
-                EditableField(
-                    field_id="summary",
-                    label="资料摘要",
-                    value=request.edited_summary_text,
-                    value_type="text",
-                    required=True,
-                )
-            ],
-            warnings=[],
-        ).model_dump(mode="json")
-        applied_changes = [_uid("chg")]
-        affected_fact_ids = [
-            item["fact_id"] for item in content["normalized_facts"]
+        .one_or_none()
+    )
+
+
+def _revision(
+    db: Session,
+    understanding_id: str,
+    revision: int,
+) -> UnderstandingRevision | None:
+    return (
+        db.query(UnderstandingRevision)
+        .filter(
+            UnderstandingRevision.understanding_id == understanding_id,
+            UnderstandingRevision.revision == revision,
+        )
+        .one_or_none()
+    )
+
+
+def _read_model(
+    db: Session,
+    run: UnderstandingRun,
+    *,
+    revision_row: UnderstandingRevision | None = None,
+    for_revision: bool = False,
+) -> UnderstandingV3Response:
+    if revision_row is None:
+        revision_row = _revision(db, run.understanding_id, run.current_revision)
+    sources = (
+        db.query(UnderstandingSource)
+        .filter(UnderstandingSource.understanding_id == run.understanding_id)
+        .all()
+    )
+    snapshot_sources = None
+    if revision_row is not None:
+        snapshot_sources = (revision_row.presentation_json or {}).get("sources")
+    case_summary = None
+    if revision_row is not None and revision_row.case_summary_json is not None:
+        case_summary = CaseSummary.model_validate(revision_row.case_summary_json)
+    if isinstance(snapshot_sources, list) and snapshot_sources:
+        source_statuses = [
+            SourceStatus(
+                source_id=item["source_id"],
+                source_type=item["source_type"],
+                status=item["processing_status"],
+            )
+            for item in snapshot_sources
         ]
     else:
-        applied_changes, affected_fact_ids = _apply_structured_changes(
-            content,
-            request.changes,
-        )
-
-    # Shared final confirmation closure: outer status + CaseSummary + all
-    # facts are confirmed together for every decision path.
-    _finalize_confirmed_content(content, new_revision)
-
-    db.add(
-        V3UnderstandingSnapshot(
-            understanding_id=understanding_id,
-            revision=new_revision,
-            session_id=snapshot.session_id,
-            internal_user_pk=principal.internal_user_pk,
-            status="confirmed",
-            snapshot_json=json.dumps(content, ensure_ascii=False),
-            safety_policy="deferred_v3",
-            safety_evaluation_status="not_run",
-            safety_status=None,
-        )
-    )
-    try:
-        update_understanding_ref(
-            db,
-            principal,
-            snapshot.session_id,
-            understanding_id=understanding_id,
-            revision=new_revision,
-            expected_input_revision=request.expected_input_revision,
-            commit=False,
-        )
-        new_input_revision = request.expected_input_revision + 1
-        db.commit()
-    except InputRevisionConflict:
-        # The session moved on (e.g. discard/replace raced with this
-        # confirmation). Roll the whole transaction back so no half-made
-        # snapshot revision is persisted and the deactivated source is
-        # never re-referenced.
-        db.rollback()
-        raise
-    return UnderstandingV31ConfirmationResult(
-        understanding_id=understanding_id,
-        previous_revision=previous_revision,
-        revision=new_revision,
-        status="confirmed",
-        applied_changes=applied_changes,
-        affected_fact_ids=affected_fact_ids,
-        input_revision=new_input_revision,
-        understanding=UnderstandingV31Response.model_validate(content),
+        source_statuses = [
+            SourceStatus(
+                source_id=row.source_id,
+                source_type=row.source_type,
+                status=row.processing_status,
+            )
+            for row in sources
+        ]
+    return UnderstandingV3Response(
+        schema_version="understanding_v3.0",
+        understanding_id=run.understanding_id,
+        revision=run.current_revision
+        if revision_row is None
+        else revision_row.revision,
+        status=revision_row.status if for_revision else run.status,
+        case_summary=case_summary,
+        voice_transcripts=[],
+        normalized_facts=[],
+        source_statuses=source_statuses,
+        safety_status=run.safety_status,
+        safety_signal_refs=[],
+        degradation=Degradation.model_validate(run.degradation_json),
     )

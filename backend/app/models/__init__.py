@@ -16,8 +16,13 @@ from backend.app.models.assessment_evidence import AssessmentEvidence
 from backend.app.models.assessment_followup import AssessmentFollowUp
 from backend.app.models.assessment_revision import AssessmentRevision
 
+# Sprint 5 V3 business persistence models (registered so Base.metadata
+# create_all / migrations see them regardless of import order).
+from backend.app.models.v3 import *  # noqa: F401,F403
+from backend.app.models.v3 import __all__ as _v3_all
+
 __all__ = [
     "User", "Session", "EmotionAssessment", "SyndromeDiagnosis",
     "Prescription", "Feedback", "Document",
     "AICallLog", "AssessmentEvidence", "AssessmentFollowUp", "AssessmentRevision",
-]
+] + _v3_all

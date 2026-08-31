@@ -1,10 +1,11 @@
-"""V3 session activity state transitions (Amendment 001 §4.1).
+"""Owner Flow Amendment 001 session active-input transitions (蔡子鑫 #79).
 
-Implements select_mode / replace_document / discard_document with
-ownership, idempotency, and database-level input_revision optimistic
-concurrency: the revision is advanced with a single atomic
-``UPDATE ... WHERE input_revision = expected`` so two requests carrying
-the same stale revision cannot both succeed.
+Implements `POST /api/v3/sessions/{id}/input-transitions` with the three
+actions (select_mode / replace_document / discard_document), each guarded by
+authentication, Idempotency-Key, ownership, and an optimistic
+expected_input_revision CAS. Every accepted transition bumps input_revision
+and writes an immutable `session_input_revisions` snapshot in the same
+transaction as the live pointer update.
 """
 
 from __future__ import annotations
@@ -14,26 +15,37 @@ from hashlib import sha256
 import json
 import uuid
 
-from sqlalchemy import update as sa_update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from backend.app.models.document import Document
 from backend.app.models.session import Session as SessionModel
-from backend.app.models.v3.activity import V3SessionActivity
-from backend.app.models.v3.session import V3IdempotencyRecord
-from backend.app.schemas.v3.activity import (
-    SUPPORTED_FLOW_CONTRACT_VERSION,
-    InputTransitionRequest,
-    InputTransitionResult,
-    SessionActivityState,
+from backend.app.models.v3.session import (
+    SessionInputRevision,
+    V3IdempotencyRecord,
 )
+from backend.app.models.v3.understanding import (
+    QuestionnaireSubmissionV3,
+    UnderstandingRevision,
+    UnderstandingRun,
+)
+from backend.app.schemas.v3.assessment import QuestionnaireRef, UnderstandingRef
 from backend.app.schemas.v3.common import AuthPrincipal
+from backend.app.schemas.v3.session import (
+    InputTransitionRequest,
+    SessionActivityReadModel,
+)
+from backend.app.services.v3.session_service import (
+    FLOW_CONTRACT_V3_OWNER,
+    OwnedResourceNotFound,
+    get_owned_session_row,
+)
 
 
-_TRANSITION_OPERATION = "input_transition"
+_OPERATION_PREFIX = "transition_v3_session"
 
 
-class FlowContractUnsupported(RuntimeError):
+class IdempotencyConflict(RuntimeError):
     pass
 
 
@@ -41,20 +53,30 @@ class InputRevisionConflict(RuntimeError):
     pass
 
 
-class TransitionNotAllowed(RuntimeError):
+class InvalidTransition(RuntimeError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+class FlowContractMismatch(RuntimeError):
     pass
 
 
-class IdempotencyConflict(RuntimeError):
-    pass
+class AssessmentInputNotReady(RuntimeError):
+    """Raised when a new-flow session lacks valid assessment inputs."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
 
 
-class OwnedResourceNotFound(RuntimeError):
-    pass
-
-
-class DocumentNotOwned(RuntimeError):
-    pass
+_QUESTIONNAIRE_COMPLETE = 10
+_QUESTIONNAIRE_QUESTION_IDS = frozenset(
+    f"q{index:02d}" for index in range(1, _QUESTIONNAIRE_COMPLETE + 1)
+)
 
 
 def _utc_now() -> datetime:
@@ -77,94 +99,141 @@ def _request_hash(payload: dict[str, object]) -> str:
     return f"sha256:{sha256(encoded).hexdigest()}"
 
 
-def _parse_ref(value: str | None) -> dict[str, object] | None:
-    if value is None:
-        return None
-    try:
-        parsed = json.loads(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if isinstance(parsed, dict) else None
-
-
-def _activity_to_state(
-    activity: V3SessionActivity | None,
-    session_id: str,
-) -> SessionActivityState:
-    if activity is None:
-        return SessionActivityState(
-            session_id=session_id,
-            flow_contract_version=None,
-            input_mode=None,
-            input_revision=1,
-            active_document_id=None,
-            understanding_ref=None,
-            questionnaire_ref=None,
+def build_activity_read_model(
+    db: Session,
+    session_row: SessionModel,
+    *,
+    input_mode: str | None,
+    input_revision: int,
+    active_document_id: str | None,
+    active_understanding_id: str | None,
+    active_understanding_revision: int | None,
+    active_questionnaire_submission_id: str | None,
+) -> SessionActivityReadModel:
+    understanding_ref = None
+    if active_understanding_id is not None and active_understanding_revision is not None:
+        understanding_ref = UnderstandingRef(
+            understanding_id=active_understanding_id,
+            revision=active_understanding_revision,
         )
-    return SessionActivityState(
-        session_id=activity.session_id,
-        flow_contract_version=activity.flow_contract_version,
-        input_mode=activity.input_mode,
-        input_revision=activity.input_revision,
-        active_document_id=activity.active_document_id,
-        understanding_ref=_parse_ref(activity.understanding_ref),
-        questionnaire_ref=_parse_ref(activity.questionnaire_ref),
+    questionnaire_ref = None
+    if active_questionnaire_submission_id is not None:
+        submission = (
+            db.query(QuestionnaireSubmissionV3)
+            .filter(
+                QuestionnaireSubmissionV3.questionnaire_submission_id
+                == active_questionnaire_submission_id
+            )
+            .one_or_none()
+        )
+        if submission is not None:
+            questionnaire_ref = QuestionnaireRef(
+                questionnaire_submission_id=submission.questionnaire_submission_id,
+                schema_id=submission.schema_id,
+                schema_version=submission.schema_version,
+                manifest_version=submission.manifest_version,
+                content_checksum=submission.content_checksum,
+            )
+    return SessionActivityReadModel(
+        session_id=session_row.session_id,
+        flow_contract_version=FLOW_CONTRACT_V3_OWNER,
+        input_mode=input_mode,
+        input_revision=input_revision,
+        active_document_id=active_document_id,
+        understanding_ref=understanding_ref,
+        questionnaire_ref=questionnaire_ref,
     )
 
 
-def _load_owned_session(
+def _from_snapshot(
     db: Session,
-    principal: AuthPrincipal,
-    session_id: str,
-) -> SessionModel:
-    session = db.query(SessionModel).filter(
-        SessionModel.session_id == session_id,
-        SessionModel.user_id == principal.internal_user_pk,
-        SessionModel.flow_version == "v3",
-    ).one_or_none()
-    if session is None:
-        raise OwnedResourceNotFound
-    return session
+    session_row: SessionModel,
+    snapshot: SessionInputRevision,
+) -> SessionActivityReadModel:
+    return build_activity_read_model(
+        db,
+        session_row,
+        input_mode=snapshot.input_mode,
+        input_revision=snapshot.input_revision,
+        active_document_id=snapshot.active_document_id,
+        active_understanding_id=snapshot.active_understanding_id,
+        active_understanding_revision=snapshot.active_understanding_revision,
+        active_questionnaire_submission_id=snapshot.active_questionnaire_submission_id,
+    )
 
 
-def _load_activity(
-    db: Session,
-    session_id: str,
-) -> V3SessionActivity | None:
-    return db.query(V3SessionActivity).filter(
-        V3SessionActivity.session_id == session_id
-    ).one_or_none()
-
-
-def _require_owner_flow(activity: V3SessionActivity | None) -> V3SessionActivity:
-    if (
-        activity is None
-        or activity.flow_contract_version != SUPPORTED_FLOW_CONTRACT_VERSION
-    ):
-        raise FlowContractUnsupported
-    return activity
+def _from_live(db: Session, session_row: SessionModel) -> SessionActivityReadModel:
+    return build_activity_read_model(
+        db,
+        session_row,
+        input_mode=session_row.input_mode,
+        input_revision=session_row.input_revision or 1,
+        active_document_id=session_row.active_document_id,
+        active_understanding_id=session_row.active_understanding_id,
+        active_understanding_revision=session_row.active_understanding_revision,
+        active_questionnaire_submission_id=session_row.active_questionnaire_submission_id,
+    )
 
 
 def get_session_activity(
     db: Session,
     principal: AuthPrincipal,
     session_id: str,
-) -> SessionActivityState:
-    _load_owned_session(db, principal, session_id)
-    return _activity_to_state(_load_activity(db, session_id), session_id)
+) -> SessionActivityReadModel:
+    session_row = get_owned_session_row(db, principal, session_id)
+    if session_row.flow_contract_version != FLOW_CONTRACT_V3_OWNER:
+        raise FlowContractMismatch
+    return _from_live(db, session_row)
 
 
-def _transition_result(
+def _validate_document(
     db: Session,
-    session_id: str,
-    action: str,
-) -> InputTransitionResult:
-    state = _activity_to_state(_load_activity(db, session_id), session_id)
-    return InputTransitionResult(
-        action=action,
-        input_revision=state.input_revision,
-        state=state,
+    principal: AuthPrincipal,
+    session_row: SessionModel,
+    document_id: str,
+) -> None:
+    document = (
+        db.query(Document)
+        .filter(
+            Document.document_id == document_id,
+            Document.user_id == principal.internal_user_pk,
+            Document.session_id == session_row.session_id,
+            Document.status != "deleted",
+        )
+        .one_or_none()
     )
+    if document is None:
+        raise InvalidTransition(
+            "DOCUMENT_NOT_FOUND",
+            "未找到可用的上传资料，请重新上传。",
+        )
+    if document.ocr_error_code or not (document.ocr_text or "").strip():
+        raise InvalidTransition(
+            "DOCUMENT_OCR_NOT_READY",
+            "资料尚未成功识别，请重新上传或改用描述与问卷。",
+        )
+
+
+def _next_state(
+    db: Session,
+    principal: AuthPrincipal,
+    session_row: SessionModel,
+    request: InputTransitionRequest,
+) -> tuple[str, str | None, str | None, int | None, str | None]:
+    """Return (input_mode, active_document_id, active_understanding_id,
+    active_understanding_revision, active_questionnaire_submission_id)."""
+    if request.action == "select_mode":
+        if session_row.input_mode is not None:
+            raise InvalidTransition(
+                "INPUT_MODE_ALREADY_SELECTED",
+                "入口已选择，无法重复选择。",
+            )
+        return request.input_mode, None, None, None, None
+    if request.action == "replace_document":
+        _validate_document(db, principal, session_row, request.document_id)
+        return "with_document", request.document_id, None, None, None
+    # discard_document
+    return "without_document", None, None, None, None
 
 
 def apply_input_transition(
@@ -172,27 +241,23 @@ def apply_input_transition(
     principal: AuthPrincipal,
     session_id: str,
     request: InputTransitionRequest,
-    *,
     idempotency_key: str,
-) -> tuple[InputTransitionResult, bool]:
-    _load_owned_session(db, principal, session_id)
-    activity = _require_owner_flow(_load_activity(db, session_id))
+) -> tuple[SessionActivityReadModel, bool]:
+    session_row = get_owned_session_row(db, principal, session_id)
+    if session_row.flow_contract_version != FLOW_CONTRACT_V3_OWNER:
+        raise FlowContractMismatch
 
-    payload = {
-        "session_id": session_id,
-        "action": request.action,
-        "expected_input_revision": request.expected_input_revision,
-        "input_mode": request.input_mode,
-        "document_id": request.document_id,
-    }
-    request_hash = _request_hash(payload)
-    operation = f"{_TRANSITION_OPERATION}:{request.action}"
-
-    record = db.query(V3IdempotencyRecord).filter(
-        V3IdempotencyRecord.internal_user_pk == principal.internal_user_pk,
-        V3IdempotencyRecord.operation == operation,
-        V3IdempotencyRecord.idempotency_key == idempotency_key,
-    ).one_or_none()
+    operation = f"{_OPERATION_PREFIX}:{session_id}"
+    request_hash = _request_hash(request.model_dump(mode="json"))
+    record = (
+        db.query(V3IdempotencyRecord)
+        .filter(
+            V3IdempotencyRecord.internal_user_pk == principal.internal_user_pk,
+            V3IdempotencyRecord.operation == operation,
+            V3IdempotencyRecord.idempotency_key == idempotency_key,
+        )
+        .one_or_none()
+    )
     if record is not None and _as_utc(record.expires_at) <= _utc_now():
         db.delete(record)
         db.flush()
@@ -200,74 +265,27 @@ def apply_input_transition(
     if record is not None:
         if record.request_hash != request_hash:
             raise IdempotencyConflict
-        if record.status == "succeeded":
-            if record.response_json:
-                # Exact replay: same key + same request must return the
-                # identical stored result even if later transitions moved
-                # the session state forward.
-                stored = InputTransitionResult.model_validate(
-                    json.loads(record.response_json)
+        if record.status == "succeeded" and record.resource_id:
+            revision = _revision_from_record(record.resource_id)
+            snapshot = (
+                db.query(SessionInputRevision)
+                .filter(
+                    SessionInputRevision.session_row_id == session_row.id,
+                    SessionInputRevision.input_revision == revision,
                 )
-                db.rollback()
-                return stored, True
-            # Fallback for legacy records without a stored payload.
-            result = _transition_result(db, session_id, request.action)
-            db.rollback()
-            return result, True
-        # A non-terminal record means the previous attempt never completed;
-        # drop it and run the transition fresh.
-        db.delete(record)
-        db.flush()
-        record = None
+                .one_or_none()
+            )
+            if snapshot is not None:
+                return _from_snapshot(db, session_row, snapshot), True
 
-    if activity.input_revision != request.expected_input_revision:
-        db.rollback()
-        raise InputRevisionConflict
+    (
+        input_mode,
+        active_document_id,
+        active_understanding_id,
+        active_understanding_revision,
+        active_questionnaire_submission_id,
+    ) = _next_state(db, principal, session_row, request)
 
-    if request.action == "select_mode":
-        if activity.input_mode is not None:
-            db.rollback()
-            raise TransitionNotAllowed
-        new_mode = request.input_mode
-        new_document = activity.active_document_id
-        new_understanding_ref = activity.understanding_ref
-    elif request.action == "replace_document":
-        document = db.query(Document).filter(
-            Document.document_id == request.document_id,
-            Document.user_id == principal.internal_user_pk,
-            Document.session_id == session_id,
-        ).one_or_none()
-        if document is None:
-            db.rollback()
-            raise DocumentNotOwned
-        new_mode = "with_document"
-        new_document = request.document_id
-        new_understanding_ref = None
-    else:  # discard_document
-        new_mode = "without_document"
-        new_document = None
-        new_understanding_ref = None
-
-    # Atomic compare-and-set: only one request carrying the same
-    # expected_input_revision can win the revision bump.
-    updated = db.execute(
-        sa_update(V3SessionActivity)
-        .where(
-            V3SessionActivity.session_id == session_id,
-            V3SessionActivity.input_revision == request.expected_input_revision,
-        )
-        .values(
-            input_revision=request.expected_input_revision + 1,
-            input_mode=new_mode,
-            active_document_id=new_document,
-            understanding_ref=new_understanding_ref,
-        )
-    )
-    if updated.rowcount != 1:
-        db.rollback()
-        raise InputRevisionConflict
-
-    result = _transition_result(db, session_id, request.action)
     if record is None:
         record = V3IdempotencyRecord(
             idempotency_record_id=f"idem_{uuid.uuid4().hex}",
@@ -279,66 +297,216 @@ def apply_input_transition(
             expires_at=_utc_now() + timedelta(hours=24),
         )
         db.add(record)
-    try:
-        db.flush()
-        record.resource_type = "session"
-        record.resource_id = session_id
-        record.status = "succeeded"
-        record.response_code = 200
-        record.response_json = json.dumps(
-            result.model_dump(mode="json"),
-            ensure_ascii=False,
-            separators=(",", ":"),
+
+    # Atomic compare-and-swap: bump input_revision and swap the active refs in
+    # one UPDATE guarded by the expected revision (no read-then-write race).
+    next_revision = _cas_apply_transition(
+        db,
+        session_row,
+        request.expected_input_revision,
+        input_mode=input_mode,
+        active_document_id=active_document_id,
+        active_understanding_id=active_understanding_id,
+        active_understanding_revision=active_understanding_revision,
+        active_questionnaire_submission_id=active_questionnaire_submission_id,
+    )
+    db.add(
+        SessionInputRevision(
+            session_row_id=session_row.id,
+            input_revision=next_revision,
+            input_mode=input_mode,
+            active_document_id=active_document_id,
+            active_understanding_id=active_understanding_id,
+            active_understanding_revision=active_understanding_revision,
+            active_questionnaire_submission_id=active_questionnaire_submission_id,
+            action=request.action,
         )
+    )
+
+    record.resource_type = "session_input_revision"
+    record.resource_id = f"{session_id}:rev:{next_revision}"
+    record.status = "succeeded"
+    record.response_code = 201
+    try:
         db.commit()
     except Exception:
         db.rollback()
         raise
-    return result, False
+    return _from_live(db, session_row), False
 
 
-def update_understanding_ref(
+def _cas_apply_transition(
     db: Session,
-    principal: AuthPrincipal,
-    session_id: str,
+    session_row: SessionModel,
+    expected: int,
     *,
-    understanding_id: str,
-    revision: int,
-    expected_input_revision: int,
-    commit: bool = True,
+    input_mode: str | None,
+    active_document_id: str | None,
+    active_understanding_id: str | None,
+    active_understanding_revision: int | None,
+    active_questionnaire_submission_id: str | None,
 ) -> int:
-    """Record the confirmed Understanding reference and bump input_revision.
-
-    The compare-and-set uses the caller's original ``expected_input_revision``
-    — never a freshly re-read value — so a confirmation that raced with
-    discard/replace cannot resurrect a deactivated source: if the session
-    moved on, the atomic UPDATE matches zero rows and
-    :class:`InputRevisionConflict` is raised with the whole transaction
-    rolled back (including any pending Understanding snapshot).
-    Returns the new input_revision. When ``commit=False`` the caller owns
-    the transaction.
-    """
-    _load_owned_session(db, principal, session_id)
-    _require_owner_flow(_load_activity(db, session_id))
-    ref_json = json.dumps(
-        {"understanding_id": understanding_id, "revision": revision},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    updated = db.execute(
-        sa_update(V3SessionActivity)
+    result = db.execute(
+        update(SessionModel)
         .where(
-            V3SessionActivity.session_id == session_id,
-            V3SessionActivity.input_revision == expected_input_revision,
+            SessionModel.id == session_row.id,
+            SessionModel.input_revision == expected,
         )
         .values(
-            input_revision=expected_input_revision + 1,
-            understanding_ref=ref_json,
+            input_revision=expected + 1,
+            input_mode=input_mode,
+            active_document_id=active_document_id,
+            active_understanding_id=active_understanding_id,
+            active_understanding_revision=active_understanding_revision,
+            active_questionnaire_submission_id=active_questionnaire_submission_id,
         )
+        .execution_options(synchronize_session="fetch")
     )
-    if updated.rowcount != 1:
-        db.rollback()
+    if result.rowcount != 1:
         raise InputRevisionConflict
-    if commit:
-        db.commit()
-    return expected_input_revision + 1
+    return expected + 1
+
+
+def _approved_questionnaire_manifest() -> dict | None:
+    """Read the canonical approved questionnaire manifest (PR #89 medical
+    signoff) — the single source of truth for schema_id / schema_version /
+    manifest_version / content_checksum. No local copy of any constant is
+    maintained. Returns None only if the knowledge assets are absent from the
+    deployment (which the caller treats as not-ready)."""
+    from pathlib import Path
+
+    manifest_path = (
+        Path(__file__).resolve().parents[4]
+        / "knowledge" / "v3" / "questionnaire-v3.0.json"
+    )
+    if not manifest_path.is_file():
+        return None
+    try:
+        return json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def validate_assessment_input_readiness(
+    db: Session,
+    session_row: SessionModel,
+) -> None:
+    """Enforce the v3-owner-flow-1 input rules before creating an assessment.
+
+    with_document → a confirmed, session-owned case summary must be active;
+    without_document → a complete, session-owned, approved-schema 10-question
+    submission must be active. Legacy sessions are not subject to these rules.
+    This is the backend gate the future Agent 1 must call — it must not rely
+    on the frontend hiding buttons.
+    """
+    if session_row.flow_contract_version != FLOW_CONTRACT_V3_OWNER:
+        return
+    if session_row.input_mode is None:
+        raise AssessmentInputNotReady(
+            "INPUT_MODE_NOT_SELECTED", "尚未选择输入方式。"
+        )
+    if session_row.input_mode == "with_document":
+        if (
+            session_row.active_understanding_id is None
+            or session_row.active_understanding_revision is None
+        ):
+            raise AssessmentInputNotReady(
+                "UNDERSTANDING_NOT_CONFIRMED", "资料摘要尚未确认。"
+            )
+        revision = (
+            db.query(UnderstandingRevision)
+            .filter(
+                UnderstandingRevision.understanding_id
+                == session_row.active_understanding_id,
+                UnderstandingRevision.revision
+                == session_row.active_understanding_revision,
+            )
+            .one_or_none()
+        )
+        if revision is None or revision.status != "confirmed":
+            raise AssessmentInputNotReady(
+                "UNDERSTANDING_NOT_CONFIRMED", "资料摘要尚未确认。"
+            )
+        run = (
+            db.query(UnderstandingRun)
+            .filter(
+                UnderstandingRun.understanding_id
+                == session_row.active_understanding_id,
+                UnderstandingRun.session_row_id == session_row.id,
+                UnderstandingRun.internal_user_pk == session_row.user_id,
+            )
+            .one_or_none()
+        )
+        if run is None:
+            raise AssessmentInputNotReady(
+                "UNDERSTANDING_NOT_OWNED", "资料摘要不属于当前会话。"
+            )
+        return
+    submission_id = session_row.active_questionnaire_submission_id
+    if submission_id is None:
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_REQUIRED", "请先完成10道状态问卷。"
+        )
+    submission = (
+        db.query(QuestionnaireSubmissionV3)
+        .filter(
+            QuestionnaireSubmissionV3.questionnaire_submission_id == submission_id,
+            QuestionnaireSubmissionV3.internal_user_pk == session_row.user_id,
+            QuestionnaireSubmissionV3.session_row_id == session_row.id,
+        )
+        .one_or_none()
+    )
+    if submission is None:
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_NOT_OWNED", "问卷提交不属于当前会话。"
+        )
+    # A complete submission must answer exactly 10 unique canonical question
+    # IDs (q01..q10); duplicates, missing or unknown/old-V2 questions are all
+    # rejected (a longer array with a duplicated ID is not a valid submission).
+    answers = submission.answers_json or []
+    if len(answers) != _QUESTIONNAIRE_COMPLETE:
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INCOMPLETE", "需要完整提交10道状态问卷。"
+        )
+    answer_ids = {
+        item.get("question_id") for item in answers if isinstance(item, dict)
+    }
+    if answer_ids != _QUESTIONNAIRE_QUESTION_IDS:
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INCOMPLETE", "需要完整提交10道状态问卷（唯一题号）。"
+        )
+    # Precise schema/version/manifest/checksum validation against the canonical
+    # approved manifest (PR #89). Reject if the manifest is unavailable rather
+    # than skip validation — a checksum is never hard-coded locally.
+    manifest = _approved_questionnaire_manifest()
+    if manifest is None:
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_MANIFEST_UNAVAILABLE", "问卷清单暂不可用。"
+        )
+    if submission.schema_id != manifest.get("schema_id"):
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INVALID_SCHEMA", "问卷 schema 无效。"
+        )
+    if submission.schema_version != manifest.get("schema_version"):
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INVALID_SCHEMA_VERSION", "问卷 schema 版本无效。"
+        )
+    if submission.manifest_version != manifest.get("manifest_version"):
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INVALID_MANIFEST", "问卷 manifest 版本无效。"
+        )
+    if submission.content_checksum != manifest.get("content_checksum"):
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INVALID_CHECKSUM", "问卷内容校验无效。"
+        )
+
+
+def _revision_from_record(resource_id: str) -> int | None:
+    prefix = "rev:"
+    if prefix not in resource_id:
+        return None
+    marker = resource_id.split(prefix, 1)[1]
+    try:
+        return int(marker)
+    except ValueError:
+        return None

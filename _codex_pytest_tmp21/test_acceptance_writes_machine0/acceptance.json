@@ -1,0 +1,56 @@
+{
+  "asset_summary": {
+    "case_count": 55,
+    "errors": [],
+    "question_count": 20,
+    "questionnaire_schema_version": "questionnaire_v2.1",
+    "safety_case_count": 5,
+    "total_case_count": 60
+  },
+  "commands": [],
+  "evaluation": {
+    "case_count": 55,
+    "metrics": {
+      "safety_recall": 0.0,
+      "schema_pass_rate": 0.0
+    },
+    "prediction_reason_codes": [
+      "PREDICTION_PROVIDER_REQUIRED"
+    ],
+    "safety_case_count": 5,
+    "unavailable_count": 1
+  },
+  "gates": {
+    "Gate 1 - assets": "passed",
+    "Gate 2 - predictions": "blocked",
+    "Gate 3 - evaluation": "blocked",
+    "Gate 4 - release": "blocked",
+    "Gate 5 - commands": "passed"
+  },
+  "metrics": {
+    "safety_recall": 0.0,
+    "schema_pass_rate": 0.0
+  },
+  "release": {
+    "asset_summary": {
+      "case_count": 55,
+      "question_count": 20,
+      "questionnaire_schema_version": "questionnaire_v2.1",
+      "safety_case_count": 5,
+      "total_case_count": 60
+    },
+    "metrics": {
+      "safety_recall": 0.0,
+      "schema_pass_rate": 0.0
+    },
+    "p0_failures": [
+      "schema_pass_rate_below_100_percent",
+      "safety_recall_below_100_percent",
+      "prediction_provider_unavailable",
+      "PREDICTION_PROVIDER_REQUIRED"
+    ],
+    "p1_failures": [],
+    "status": "blocked"
+  },
+  "status": "blocked"
+}

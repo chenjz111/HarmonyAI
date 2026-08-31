@@ -105,16 +105,13 @@ class PrescriptionV3Request(V3BaseModel):
 
 
 class PrescriptionV31Request(V3BaseModel):
-    """Owner Flow Amendment 001 §4.4 / §5 — Agent 3 input without user_goal.
-
-    Parameters come only from the confirmed state, reviewed mapping/fallback
-    and history preferences; no goal may be invented or defaulted. Any goal
-    field is rejected by ``extra=forbid``.
-    """
+    """Owner Flow Amendment 001 prescription input — no music goal; parameters
+    come from the confirmed assessment and the server-side preference snapshot,
+    never a fabricated per-request goal."""
 
     schema_version: Literal["prescription_v3.1"]
     diagnosis_id: NonEmptyString
-    preference_snapshot: PreferenceSnapshot | None = None
+    preference_snapshot: PreferenceSnapshot | None
 
 
 class GenerationStructure(V3BaseModel):

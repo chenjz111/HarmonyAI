@@ -46,11 +46,8 @@ class AssessmentV3Request(V3BaseModel):
 
 
 class AssessmentV31Request(V3BaseModel):
-    """Owner Flow Amendment 001 §4.3 — new flow input discriminator.
-
-    `user_goal` is intentionally absent: any goal field is rejected by
-    ``extra=forbid`` instead of being silently accepted or defaulted.
-    """
+    """Owner Flow Amendment 001 assessment input — no music goal, nullable
+    understanding (pure-questionnaire path) and optimistic input revision."""
 
     schema_version: Literal["assessment_v3.1"]
     session_id: NonEmptyString

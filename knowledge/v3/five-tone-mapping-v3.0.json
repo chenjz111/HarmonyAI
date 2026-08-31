@@ -1,0 +1,127 @@
+{
+  "schema_id": "five_tone_mapping_v3",
+  "schema_version": "3.0.0",
+  "manifest_version": "medical_v3.0",
+  "review_status": "approved",
+  "content_checksum": "sha256:8f6bd8b91a5989201bc5605d6ddc55ac76162ad566f932bd89a901f19c4fe36e",
+  "scope": "五脏/五行证据 → 五音（jiao/zhi/gong/shang/yu）映射边界；为 Music Agent 处方参数提供医学依据。输出只称'音乐调养参考'，不构成诊断或治疗。",
+  "organ_tone_table": [
+    {
+      "organ": "liver",
+      "element": "wood",
+      "tone": "jiao",
+      "tone_cn": "角调",
+      "mi_fa": "Mi",
+      "nature": "属木，生机条达",
+      "source": "《乐记》五音配五行；《灵枢·五音五味》角音属木",
+      "note": "角调舒展条达，应肝之疏泄"
+    },
+    {
+      "organ": "heart",
+      "element": "fire",
+      "tone": "zhi",
+      "tone_cn": "徵调",
+      "mi_fa": "Sol",
+      "nature": "属火，热烈明快",
+      "source": "《乐记》五音配五行；《灵枢·五音五味》徵音属火",
+      "note": "徵调欢快升发，应心之阳热"
+    },
+    {
+      "organ": "spleen",
+      "element": "earth",
+      "tone": "gong",
+      "tone_cn": "宫调",
+      "mi_fa": "Do",
+      "nature": "属土，厚重中和",
+      "source": "《乐记》五音配五行；《灵枢·五音五味》宫音属土",
+      "note": "宫调沉稳中和，应脾之运化"
+    },
+    {
+      "organ": "lung",
+      "element": "metal",
+      "tone": "shang",
+      "tone_cn": "商调",
+      "mi_fa": "Re",
+      "nature": "属金，清肃收敛",
+      "source": "《乐记》五音配五行；《灵枢·五音五味》商音属金",
+      "note": "商调清越肃降，应肺之宣肃"
+    },
+    {
+      "organ": "kidney",
+      "element": "water",
+      "tone": "yu",
+      "tone_cn": "羽调",
+      "mi_fa": "La",
+      "nature": "属水，柔润下行",
+      "source": "《乐记》五音配五行；《灵枢·五音五味》羽音属水",
+      "note": "羽调柔润静谧，应肾之藏精"
+    }
+  ],
+  "organ_tone_weights": {
+    "rule": "五脏证据倾向 → 对应调式为主调（weight 高），五行生克关系可作辅助调式",
+    "primary": {
+      "liver": {
+        "jiao": 0.7,
+        "shang": 0.15,
+        "zhi": 0.15
+      },
+      "heart": {
+        "zhi": 0.7,
+        "gong": 0.15,
+        "yu": 0.15
+      },
+      "spleen": {
+        "gong": 0.7,
+        "zhi": 0.15,
+        "shang": 0.15
+      },
+      "lung": {
+        "shang": 0.7,
+        "gong": 0.15,
+        "jiao": 0.15
+      },
+      "kidney": {
+        "yu": 0.7,
+        "gong": 0.15,
+        "shang": 0.15
+      }
+    },
+    "note": "主调权重由医学侧给定；Music Agent 按权重匹配曲库（source_type=matched）。五行生克：肝木克脾土（jiao 强时 gong 为辅）、心火生脾土、脾土生肺金、肺金生肾水、肾水生肝木。"
+  },
+  "contraindication_boundaries": [
+    {
+      "rule": "no_tonic_promotion",
+      "note": "不得以任何调式宣称'治疗/治愈/补益某脏'，只称'音乐调养参考'；急性身体风险（如严重胸痛、呼吸困难、自伤）不进音乐流程（Safety 优先，Sprint4 后端 Safety 能力保留）"
+    },
+    {
+      "rule": "no_single_organ_determination",
+      "note": "单脏证据不足（无候选脏：distinct claim 数 < combination_rules.min_count 或 organ_net < 0.75）时不强行给主调，返回 insufficient/abstain，可给通用舒缓曲目兜底（统一语义见 organ-mapping-v3.0.json thresholds/scoring_spec）"
+    },
+    {
+      "rule": "multi_organ_balance",
+      "note": "多脏倾向并存时按 organ_tone_weights 主调+辅助调加权混合，不单一聚焦某调式"
+    },
+    {
+      "rule": "user_goal_not_medical",
+      "note": "疗愈诉求（如助眠/放松）仅作为环境/节奏参数参考，不改变五脏→五音映射本身（注：UserGoal 已按 Owner Flow Amendment 从 V3 移除，本规则保留为未来边界说明）"
+    },
+    {
+      "rule": "no_generation_without_approval",
+      "note": "音乐 Provider 能力不足时不得以模型生成内容替代本 approved mapping（Issue #77 API 调研补充）"
+    }
+  ],
+  "references": [
+    {
+      "source": "《乐记》",
+      "note": "五音-五行对应经典来源"
+    },
+    {
+      "source": "《灵枢·五音五味》",
+      "note": "五音-五脏对应（角肝/徵心/宫脾/商肺/羽肾）"
+    },
+    {
+      "source": "《素问·阴阳应象大论》",
+      "note": "五志-五脏对应（怒肝/喜心/思脾/悲肺/恐肾）"
+    }
+  ]
+}
