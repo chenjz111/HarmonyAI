@@ -47,6 +47,7 @@ from backend.app.schemas.v3.common import (
 )
 from backend.app.schemas.v3.understanding import (
     CaseSummary,
+    NormalizedFact as NormalizedFactSchema,
     SourceStatus,
     UnderstandingConfirmationRequest,
     UnderstandingRevisionResult,
@@ -54,6 +55,13 @@ from backend.app.schemas.v3.understanding import (
     UnderstandingV3Request,
     UnderstandingV3Response,
 )
+from backend.app.services.v3.understanding_extraction import (
+    build_provider_chain,
+    extract_facts_for_sources,
+    persist_normalized_facts,
+    re_extract_facts,
+)
+from backend.ai_engine.v3.understanding_provider import ProviderFailureV3
 
 _OPERATION_CREATE = "create_v3_understanding"
 _OPERATION_CONFIRM_PREFIX = "confirm_v3_understanding"
@@ -362,6 +370,7 @@ def _persist_run(
                 }
                 for row in source_rows
             ],
+            "normalized_facts": [],
             "applied_changes": [],
             "affected_fact_ids": [],
         },
@@ -369,7 +378,7 @@ def _persist_run(
         confirmed_at=None,
     )
     db.add(revision)
-    return run, source_rows
+    return run, source_rows, revision
 
 
 def create_understanding(
@@ -412,12 +421,30 @@ def create_understanding(
                 return _read_model(db, run), True
 
     resolved = [_resolve_source(db, principal, session_row, src) for src in request.inputs]
-    run, source_rows = _persist_run(
+    run, source_rows, revision = _persist_run(
         db,
         principal=principal,
         session_row=session_row,
         resolved=resolved,
         idempotency_key=idempotency_key,
+    )
+
+    # AI fact extraction: OCR/Narrative text through the Understanding
+    # Provider against the approved claim dictionary. An unavailable provider
+    # or an empty result leaves normalized_facts empty — never fabricated.
+    fact_dicts, _extraction_reasons = extract_facts_for_sources(
+        build_provider_chain(),
+        resolved,
+    )
+    presentation = dict(revision.presentation_json or {})
+    presentation["normalized_facts"] = fact_dicts
+    revision.presentation_json = presentation
+    persist_normalized_facts(
+        db,
+        understanding_id=run.understanding_id,
+        understanding_revision=1,
+        fact_dicts=fact_dicts,
+        source_rows=source_rows,
     )
 
     # Persist the flow input mode derived from the material sources.
@@ -550,6 +577,12 @@ def confirm_understanding(
         for source_row in sources:
             source_row.processing_status = "skipped"
     new_status = _new_revision_status(request.decision, run.status)
+    # On a successful confirmation the CaseSummary is confirmed and its
+    # revision aligns with the new Understanding revision (no inner state
+    # left behind on the old revision / needs_confirmation).
+    if new_status == "confirmed" and isinstance(case_summary, dict):
+        case_summary["status"] = "confirmed"
+        case_summary["revision"] = next_revision
     revision_row = UnderstandingRevision(
         understanding_id=understanding_id,
         revision=next_revision,
@@ -566,6 +599,14 @@ def confirm_understanding(
                 }
                 for row in sources
             ],
+            # Carry the normalized facts forward; a full-text edit replaces
+            # them via _apply_full_text_edit on the current revision. On a
+            # successful confirmation every fact is confirmed together with
+            # the outer status so Agent 1 consumes a coherent snapshot.
+            "normalized_facts": _confirmed_facts_for(
+                (current.presentation_json or {}).get("normalized_facts") or [],
+                confirmed=new_status == "confirmed",
+            ),
             "applied_changes": applied_changes,
             "affected_fact_ids": affected_fact_ids,
         },
@@ -616,6 +657,19 @@ def confirm_understanding(
     )
 
 
+def _confirmed_facts_for(
+    fact_dicts: list[dict],
+    *,
+    confirmed: bool,
+) -> list[dict]:
+    """Return normalized fact dicts with the confirmation status applied."""
+    result = [dict(item) for item in fact_dicts]
+    if confirmed:
+        for fact in result:
+            fact["confirmation_status"] = "confirmed"
+    return result
+
+
 def _apply_decision(
     request: UnderstandingConfirmationRequest,
     current: UnderstandingRevision,
@@ -648,28 +702,43 @@ def _apply_full_text_edit(
     case_summary["summary"] = request.edited_summary_text
     case_summary["status"] = "confirmed"
     # A full-text edit must re-derive facts from the edited summary, not copy
-    # the old Evidence. When no Understanding provider is configured the edit
-    # cannot be confirmed: publishing empty facts as a confirmed revision would
-    # fabricate a clean result.
-    affected_fact_ids = _re_extract_facts(request.edited_summary_text)
+    # the old Evidence. When the Understanding provider is unavailable the
+    # edit cannot be confirmed: publishing empty facts as a confirmed
+    # revision would fabricate a clean result.
+    fact_dicts, affected_fact_ids = _re_extract_facts(request.edited_summary_text)
+    presentation = dict(current.presentation_json or {})
+    presentation["normalized_facts"] = fact_dicts
+    current.presentation_json = presentation
     return case_summary, ["chg_summary_edit"], affected_fact_ids
 
 
-def _re_extract_facts(edited_text: str) -> list[str]:
-    """Controlled fact re-extraction hook for the edited summary.
+def _re_extract_facts(edited_text: str) -> tuple[list[dict], list[str]]:
+    """Controlled fact re-extraction over the edited summary text.
 
-    Must re-run the Understanding provider over ``edited_text`` against the
-    approved claim dictionary and return the affected fact IDs. The backend
-    does not yet have an approved claim dictionary or a configured provider,
-    so a full-text edit cannot produce facts — raise a stable error and keep
-    the old revision rather than publish an empty-facts confirmed revision.
-    Real extraction reuses PR #91's Understanding Provider once merged.
+    Re-runs the Understanding provider against the approved claim dictionary
+    and returns (new fact dicts, affected fact ids). When the provider is
+    unavailable the edit cannot be confirmed: a stable error is raised and
+    the old revision is kept instead of publishing empty facts.
     """
-    del edited_text
-    raise InvalidChange(
-        "FACT_EXTRACTION_UNAVAILABLE",
-        "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
-    )
+    chain = build_provider_chain()
+    if chain is None:
+        raise InvalidChange(
+            "FACT_EXTRACTION_UNAVAILABLE",
+            "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
+        )
+    try:
+        fact_dicts, affected_ids = re_extract_facts(chain, edited_text)
+    except ProviderFailureV3:
+        raise InvalidChange(
+            "FACT_EXTRACTION_UNAVAILABLE",
+            "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
+        ) from None
+    if not fact_dicts:
+        raise InvalidChange(
+            "FACT_EXTRACTION_UNAVAILABLE",
+            "暂无法从修改后的摘要中提取有效事实，请稍后重试。",
+        )
+    return fact_dicts, affected_ids
 
 
 def _apply_changes(
@@ -893,6 +962,11 @@ def _read_model(
             )
             for row in sources
         ]
+    normalized_facts: list[NormalizedFactSchema] = []
+    if revision_row is not None:
+        presentation = revision_row.presentation_json or {}
+        for item in presentation.get("normalized_facts") or []:
+            normalized_facts.append(NormalizedFactSchema.model_validate(item))
     return UnderstandingV3Response(
         schema_version="understanding_v3.0",
         understanding_id=run.understanding_id,
@@ -902,7 +976,7 @@ def _read_model(
         status=revision_row.status if for_revision else run.status,
         case_summary=case_summary,
         voice_transcripts=[],
-        normalized_facts=[],
+        normalized_facts=normalized_facts,
         source_statuses=source_statuses,
         safety_status=run.safety_status,
         safety_signal_refs=[],

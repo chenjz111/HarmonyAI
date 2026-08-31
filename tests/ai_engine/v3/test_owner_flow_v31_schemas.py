@@ -54,16 +54,20 @@ def test_assessment_v31_rejects_user_goal_via_extra_forbid():
 
 
 def test_assessment_v31_without_document_requires_questionnaire():
-    with pytest.raises(ValidationError):
-        AssessmentV31Request.model_validate(
-            {
-                "schema_version": "assessment_v3.1",
-                "session_id": "sess_1",
-                "expected_input_revision": 1,
-                "understanding_ref": None,
-                "questionnaire_ref": None,
-            }
-        )
+    # The schema allows both refs to be null (goal-freedom only); source
+    # completeness is enforced at the assessment readiness/service layer
+    # (see test_without_document_requires_complete_questionnaire_for_assessment).
+    both_null = AssessmentV31Request.model_validate(
+        {
+            "schema_version": "assessment_v3.1",
+            "session_id": "sess_1",
+            "expected_input_revision": 1,
+            "understanding_ref": None,
+            "questionnaire_ref": None,
+        }
+    )
+    assert both_null.understanding_ref is None
+    assert both_null.questionnaire_ref is None
 
     valid = AssessmentV31Request.model_validate(
         {

@@ -111,7 +111,7 @@ class PrescriptionV31Request(V3BaseModel):
 
     schema_version: Literal["prescription_v3.1"]
     diagnosis_id: NonEmptyString
-    preference_snapshot: PreferenceSnapshot | None
+    preference_snapshot: PreferenceSnapshot | None = None
 
 
 class GenerationStructure(V3BaseModel):
