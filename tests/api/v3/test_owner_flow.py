@@ -529,35 +529,43 @@ def test_without_document_requires_complete_questionnaire_for_assessment():
             validate_assessment_input_readiness(session, row)
         assert exc2.value.code == "QUESTIONNAIRE_INCOMPLETE"
 
-        # A complete 10-answer submission satisfies the gate.
-        complete = QuestionnaireSubmissionV3(
-            questionnaire_submission_id=f"qsub_{uuid.uuid4().hex}",
-            internal_user_pk=user_pk,
+        # A complete 10-answer submission with the canonical manifest values
+        # satisfies the gate.
+        complete = _make_submission(
+            session,
+            user_pk=user_pk,
             session_row_id=row.id,
-            schema_id="questionnaire_v3",
-            schema_version="3.0.0",
-            manifest_version="medical_v3.0",
-            content_checksum="sha256:complete",
-            time_window_days=7,
             answers_json=[{"question_id": f"q{i:02d}"} for i in range(1, 11)],
-            idempotency_key=f"idem-{uuid.uuid4().hex}",
-            submitted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
-        session.add(complete)
-        session.flush()
         row.active_questionnaire_submission_id = complete.questionnaire_submission_id
         validate_assessment_input_readiness(session, row)
 
 
-def _make_submission(session, *, user_pk, session_row_id, answers_json):
+def _approved_manifest() -> dict:
+    """The canonical approved questionnaire manifest (PR #89) — single source
+    of truth for schema_id / schema_version / manifest_version / checksum."""
+    from pathlib import Path
+
+    return json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "knowledge" / "v3" / "questionnaire-v3.0.json"
+        ).read_text(encoding="utf-8")
+    )
+
+
+def _make_submission(session, *, user_pk, session_row_id, answers_json, content_checksum=None):
+    manifest = _approved_manifest()
     submission = QuestionnaireSubmissionV3(
         questionnaire_submission_id=f"qsub_{uuid.uuid4().hex}",
         internal_user_pk=user_pk,
         session_row_id=session_row_id,
-        schema_id="questionnaire_v3",
-        schema_version="3.0.0",
-        manifest_version="medical_v3.0",
-        content_checksum="sha256:test",
+        schema_id=manifest["schema_id"],
+        schema_version=manifest["schema_version"],
+        manifest_version=manifest["manifest_version"],
+        content_checksum=(
+            manifest["content_checksum"] if content_checksum is None else content_checksum
+        ),
         time_window_days=7,
         answers_json=answers_json,
         idempotency_key=f"idem-{uuid.uuid4().hex}",
@@ -621,6 +629,37 @@ def test_readiness_rejects_duplicate_missing_unknown_and_old_v2_questions():
         with pytest.raises(AssessmentInputNotReady) as exc:
             validate_assessment_input_readiness(session, row)
         assert exc.value.code == "QUESTIONNAIRE_NOT_OWNED"
+
+
+def test_readiness_rejects_wrong_checksum_and_schema_identity():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers, session_id, "sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+    )
+    canonical = [{"question_id": f"q{i:02d}"} for i in range(1, 11)]
+
+    with _seed_db() as session:
+        row = session.query(SessionModel).filter(SessionModel.session_id == session_id).one()
+        user_pk = _user_pk(session, headers["Authorization"])
+
+        # Wrong checksum (correct sha256 prefix, wrong value) must be rejected.
+        bad_checksum = _make_submission(
+            session, user_pk=user_pk, session_row_id=row.id, answers_json=canonical,
+            content_checksum="sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        )
+        row.active_questionnaire_submission_id = bad_checksum.questionnaire_submission_id
+        with pytest.raises(AssessmentInputNotReady) as exc:
+            validate_assessment_input_readiness(session, row)
+        assert exc.value.code == "QUESTIONNAIRE_INVALID_CHECKSUM"
+
+        # A valid submission with the canonical manifest values passes.
+        good = _make_submission(
+            session, user_pk=user_pk, session_row_id=row.id, answers_json=canonical
+        )
+        row.active_questionnaire_submission_id = good.questionnaire_submission_id
+        validate_assessment_input_readiness(session, row)
 
 
 def test_confirmation_returns_read_model_and_input_revision():

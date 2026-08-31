@@ -369,9 +369,10 @@ def _cas_apply_transition(
 
 def _approved_questionnaire_manifest() -> dict | None:
     """Read the canonical approved questionnaire manifest (PR #89 medical
-    signoff). It is the single source of truth for schema_id / manifest_version
-    / content_checksum — no local copy of the checksum is maintained. Returns
-    None until PR #89's knowledge/v3/questionnaire-v3.0.json is merged."""
+    signoff) — the single source of truth for schema_id / schema_version /
+    manifest_version / content_checksum. No local copy of any constant is
+    maintained. Returns None only if the knowledge assets are absent from the
+    deployment (which the caller treats as not-ready)."""
     from pathlib import Path
 
     manifest_path = (
@@ -475,43 +476,29 @@ def validate_assessment_input_readiness(
             "QUESTIONNAIRE_INCOMPLETE", "需要完整提交10道状态问卷（唯一题号）。"
         )
     # Precise schema/version/manifest/checksum validation against the canonical
-    # approved manifest (PR #89). Until it merges, fall back to the known
-    # structural identities below — the checksum is never hard-coded locally.
+    # approved manifest (PR #89). Reject if the manifest is unavailable rather
+    # than skip validation — a checksum is never hard-coded locally.
     manifest = _approved_questionnaire_manifest()
-    if manifest is not None:
-        if submission.schema_id != manifest.get("schema_id"):
-            raise AssessmentInputNotReady(
-                "QUESTIONNAIRE_INVALID_SCHEMA", "问卷 schema 无效。"
-            )
-        if submission.schema_version != manifest.get("schema_version"):
-            raise AssessmentInputNotReady(
-                "QUESTIONNAIRE_INVALID_SCHEMA_VERSION", "问卷 schema 版本无效。"
-            )
-        if submission.manifest_version != manifest.get("manifest_version"):
-            raise AssessmentInputNotReady(
-                "QUESTIONNAIRE_INVALID_MANIFEST", "问卷 manifest 版本无效。"
-            )
-        if submission.content_checksum != manifest.get("content_checksum"):
-            raise AssessmentInputNotReady(
-                "QUESTIONNAIRE_INVALID_CHECKSUM", "问卷内容校验无效。"
-            )
-    else:
-        if submission.schema_id != "questionnaire_v3":
-            raise AssessmentInputNotReady(
-                "QUESTIONNAIRE_INVALID_SCHEMA", "问卷版本无效。"
-            )
-        if submission.schema_version != "3.0.0":
-            raise AssessmentInputNotReady(
-                "QUESTIONNAIRE_INVALID_SCHEMA_VERSION", "问卷 schema 版本无效。"
-            )
-        if submission.manifest_version != "medical_v3.0":
-            raise AssessmentInputNotReady(
-                "QUESTIONNAIRE_INVALID_MANIFEST", "问卷 manifest 版本无效。"
-            )
-        if not (submission.content_checksum or "").startswith("sha256:"):
-            raise AssessmentInputNotReady(
-                "QUESTIONNAIRE_INVALID_CHECKSUM", "问卷内容校验无效。"
-            )
+    if manifest is None:
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_MANIFEST_UNAVAILABLE", "问卷清单暂不可用。"
+        )
+    if submission.schema_id != manifest.get("schema_id"):
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INVALID_SCHEMA", "问卷 schema 无效。"
+        )
+    if submission.schema_version != manifest.get("schema_version"):
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INVALID_SCHEMA_VERSION", "问卷 schema 版本无效。"
+        )
+    if submission.manifest_version != manifest.get("manifest_version"):
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INVALID_MANIFEST", "问卷 manifest 版本无效。"
+        )
+    if submission.content_checksum != manifest.get("content_checksum"):
+        raise AssessmentInputNotReady(
+            "QUESTIONNAIRE_INVALID_CHECKSUM", "问卷内容校验无效。"
+        )
 
 
 def _revision_from_record(resource_id: str) -> int | None:
