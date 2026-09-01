@@ -413,4 +413,5 @@ yu    (羽调)      → 58   → 箫、古琴
 - Agent2 仅定位为基础框架/降级实现（`BLOCKED_BY_MEDICAL_ASSET`），不应描述为 Agent2 已完整完成或 `REAL_RAG_QWEN`。
 - 真实 RAG + Qwen 仍待后续医学资产任务：已批准的 RAG ingestion manifest、Retriever 索引/版本配置、syndrome whitelist/规则资产，以及对应 Qwen Provider 凭据、模型/超时配置。当前没有启用条件，因此保持诚实降级，不伪造医学命中或证型。
 - Assessment/Diagnosis 幂等占位已前移到业务写入之前；唯一约束竞争时回滚并回查胜者结果。相同 key + 相同 payload 返回首次结果（HTTP 200 replay），不同 payload 返回 `IDEMPOTENCY_KEY_REUSED`，不会因唯一约束泄漏 500 或新增业务记录。
-- 源码已检索并清理 PR #91 未合并类状态表述；PR #91 当前 HEAD 为 `0aa5e0e57fdcffe3da0a66844c3c402a5d435785`，目标为 `integration/sprint4-real-input`。
+- 源码已检索并清理 PR #91 未合并类状态表述；PR #91 当前 HEAD 为 `5be4d762a0740b55e8da65c5e36ea72d2599ae7a`，目标为 `integration/sprint4-real-input`。
+- 并发回归：Assessment/Diagnosis 相同 payload 均为一条 201 + 一条 200 replay、无重复业务记录；不同 payload 均返回 `IDEMPOTENCY_KEY_REUSED`，无 500。GitHub Tests #137：SUCCESS。
