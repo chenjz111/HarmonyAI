@@ -12,6 +12,7 @@ from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.services.v3.assessment_service import (
     AssessmentInputNotReady,
+    IdempotencyConflict,
     InputRevisionConflict,
     OwnedResourceNotFound,
     create_assessment,
@@ -60,6 +61,12 @@ def create_run(
             409,
             "ASSESSMENT_INPUT_NOT_READY",
             "评估输入尚未就绪：请先确认资料摘要或提交完整问卷。",
+        ) from None
+    except IdempotencyConflict:
+        raise V3APIError(
+            422,
+            "IDEMPOTENCY_KEY_REUSED",
+            "相同的幂等键已被不同的请求使用。",
         ) from None
     if replayed:
         response.status_code = 200

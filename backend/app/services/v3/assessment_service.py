@@ -13,7 +13,7 @@ frontend/Agent2 consume it as a degradation, never as fake confidence.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 import uuid
@@ -32,6 +32,7 @@ from backend.app.models.v3.understanding import (
     NormalizedFact as NormalizedFactRow,
     UnderstandingRevision,
 )
+from backend.app.models.v3.session import V3IdempotencyRecord
 from backend.app.schemas.v3.assessment import (
     AssessmentV31Presentation,
     AssessmentV31Request,
@@ -63,8 +64,21 @@ class InputRevisionConflict(RuntimeError):
     pass
 
 
+class IdempotencyConflict(RuntimeError):
+    pass
+
+
+_OPERATION = "create_v3_assessment"
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _request_hash(payload: dict[str, object]) -> str:
@@ -206,7 +220,26 @@ def create_assessment(
     *,
     idempotency_key: str,
 ) -> tuple[AssessmentV31Response, bool]:
-    del idempotency_key
+    request_hash = _request_hash(request.model_dump(mode="json"))
+    record = (
+        db.query(V3IdempotencyRecord)
+        .filter(
+            V3IdempotencyRecord.internal_user_pk == principal.internal_user_pk,
+            V3IdempotencyRecord.operation == _OPERATION,
+            V3IdempotencyRecord.idempotency_key == idempotency_key,
+        )
+        .one_or_none()
+    )
+    if record is not None and _as_utc(record.expires_at) <= _utc_now():
+        db.delete(record)
+        db.flush()
+        record = None
+    if record is not None:
+        if record.request_hash != request_hash:
+            raise IdempotencyConflict
+        if record.status == "succeeded" and record.resource_id and record.response_json:
+            return AssessmentV31Response.model_validate_json(record.response_json), True
+
     session_row = (
         db.query(SessionModel)
         .filter(
@@ -378,5 +411,21 @@ def create_assessment(
                 explanation_summary=link.explanation_summary,
             )
         )
+    if record is None:
+        record = V3IdempotencyRecord(
+            idempotency_record_id=f"idem_{uuid.uuid4().hex}",
+            internal_user_pk=principal.internal_user_pk,
+            operation=_OPERATION,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            status="processing",
+            expires_at=_utc_now() + timedelta(hours=24),
+        )
+        db.add(record)
+    record.resource_type = "assessment"
+    record.resource_id = assessment_id
+    record.status = "succeeded"
+    record.response_code = 201
+    record.response_json = response.model_dump_json()
     db.commit()
     return response, False
