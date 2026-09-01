@@ -164,6 +164,7 @@ def run_diagnosis(
             AssessmentV3.internal_user_pk == principal.internal_user_pk,
             SessionModel.user_id == principal.internal_user_pk,
             SessionModel.session_id == request.session_id,
+            SessionModel.input_revision == ref.input_revision,
             AssessmentV3.current_revision == ref.revision,
             AssessmentV3.input_revision == ref.input_revision,
             AssessmentRevisionV3.input_revision == ref.input_revision,
