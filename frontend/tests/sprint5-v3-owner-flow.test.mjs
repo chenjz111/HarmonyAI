@@ -168,11 +168,59 @@ test("P0-1: narrative voice input never fabricates transcripts outside explicit 
   assert.ok(src.includes("演示数据"), "simulated transcript must be labeled as demo data")
 })
 
-test("P1-1: narrative page states pending-save semantics, not claimed submission", () => {
+test("P1-1: with-document narrative keeps honest local-save wording (backend gap)", () => {
   const src = readPage("v3-narrative/v3-narrative.vue")
   assert.ok(
     src.includes("保存在本机"),
-    "real mode must tell users the text is saved locally pending submission",
+    "with-document path must tell users the text is saved locally (append-source is a backend gap)",
+  )
+  // 本机暂存提示只能出现在有资料路径（无资料路径为真实提交，不得使用暂存话术）
+  assert.ok(
+    /v-if="!voiceSimulated && withDocument"/.test(src),
+    "local-save note must be scoped to the with-document path",
+  )
+})
+
+test("narrative real submission: without-document path submits on continue (Sprint 5 review fix)", () => {
+  const src = readPage("v3-narrative/v3-narrative.vue")
+  // 无资料路径必须调用真实提交（narrative 源 → Understanding → 确认绑定会话）
+  assert.ok(src.includes("apiV3.submitNarrative"), "narrative page must call the real submission API")
+  // 提交失败必须如实报错并停留本页（不静默当作已提交）
+  assert.ok(src.includes("提交失败"), "submission failure must surface an honest error and stay on page")
+  // API 层必须存在真实提交实现（POST /api/v3/understandings + narrative inline text + confirm）
+  const apiSrc = readFileSync(resolve(frontendRoot, "common/api-v3.js"), "utf8")
+  assert.ok(
+    /async submitNarrative[\s\S]*?source_type: "narrative"[\s\S]*?decision: "confirm"/.test(apiSrc),
+    "api-v3 must implement real narrative submission (create + auto-confirm)",
+  )
+  // 有资料路径后端缺口必须如实报错，不把本机暂存伪装成已提交
+  assert.ok(
+    apiSrc.includes("NARRATIVE_APPEND_UNSUPPORTED"),
+    "with-document append must fail honestly instead of faking submission",
+  )
+})
+
+test("api-v3 mock: without-document narrative submission creates and binds an understanding", async () => {
+  const { apiV3 } = await import("../common/api-v3.js")
+  await apiV3.guestAuth()
+  await apiV3.createSession()
+  await apiV3.selectMode("without_document")
+
+  const und = await apiV3.submitNarrative("最近两周入睡偏慢，白天容易疲惫。")
+  assert.ok(und.understanding_id, "narrative submission returns an understanding")
+  const session = await apiV3.getSession()
+  assert.ok(session.understanding_ref, "confirmed narrative binds the session understanding ref")
+  assert.equal(session.understanding_ref.understanding_id, und.understanding_id)
+
+  // 有资料路径：后端暂不支持向已确认摘要追加描述源 → 如实报错
+  await apiV3.__resetForTest()
+  await apiV3.guestAuth()
+  await apiV3.createSession()
+  await apiV3.selectMode("with_document")
+  await apiV3.uploadDocument(null, "资料.jpg")
+  await assert.rejects(
+    () => apiV3.submitNarrative("补充描述"),
+    (e) => e.code === "NARRATIVE_APPEND_UNSUPPORTED",
   )
 })
 
@@ -230,11 +278,23 @@ test("P1-2: V3 pages and API errors use stable user copy without internal dev in
     ]) {
       assert.ok(!template.includes(forbidden), `${page} template leaks internal dev info: ${forbidden}`)
     }
+    // Sprint 5 复审追加：整个源文件（含注释）也不得携带内部开发术语
+    for (const forbidden of ["PR #", "Agent1", "Agent2", "prescription", "尚未合并", "待补齐"]) {
+      assert.ok(!src.includes(forbidden), `${page} source leaks internal dev info: ${forbidden}`)
+    }
   }
   // API 层用户可见错误文案同样不泄漏内部开发信息
   const apiSrc = readFileSync(resolve(frontendRoot, "common/api-v3.js"), "utf8")
   assert.ok(!apiSrc.includes("后端访客上传接口待补齐"), "friendly errors must not leak backend status")
   assert.ok(!/agentPendingError[\s\S]{0,200}尚未合并/.test(apiSrc), "AGENT_PENDING copy must not mention PR state")
+  // Sprint 5 复审追加：api-v3.js 源码不得引用内部开发术语
+  // （prescription_id 为后端 Read Model §10 契约字段名，出现在 mock 数据中属合法，不在扫描之列）
+  for (const forbidden of ["PR #", "Agent1", "Agent2", "尚未合并", "待补齐"]) {
+    assert.ok(!apiSrc.includes(forbidden), `api-v3.js source leaks internal dev info: ${forbidden}`)
+  }
+  // 权威清单模块同样不携带 PR 引用
+  const manifestSrc = readFileSync(resolve(frontendRoot, "common/questionnaire-v3-manifest.js"), "utf8")
+  assert.ok(!manifestSrc.includes("PR #"), "manifest must not reference PR numbers")
 })
 
 test("no music goal wording or fields in V3 flow", () => {
@@ -518,7 +578,7 @@ test("api-v3 real mode (default): agent functions return AGENT_PENDING without f
     assert.equal(apiV3.AGENT_SIMULATED, false, "real mode must not claim simulated data")
     assert.equal(apiV3.INPUT_SIMULATED, false, "real mode must not simulate input (voice transcript)")
 
-    // Agent1/Agent2 能力（PR #91 未合并）：明确等待状态
+    // 智能化能力（后端尚未交付）：明确等待状态
     for (const fn of ["submitQuestionnaire", "createAssessment", "getAssessment", "getMusicBasis"]) {
       await assert.rejects(
         () => apiV3[fn](),
@@ -529,7 +589,7 @@ test("api-v3 real mode (default): agent functions return AGENT_PENDING without f
     await assert.rejects(
       () => apiV3.startMusicGeneration(),
       (e) => e.code === "AGENT_PENDING",
-      "music generation needs prescription (PR #91)",
+      "music generation depends on the syndrome-analysis capability (not yet delivered)",
     )
   } finally {
     process.env.HARMONYAI_V3_MODE = prev

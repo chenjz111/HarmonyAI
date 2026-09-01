@@ -4,21 +4,21 @@
  * 合同依据：
  *  - docs/contracts/harmonyai-v3-owner-flow-amendment-001.md（Owner 修正案，权威）
  *  - docs/contracts/frontend-read-model-contract-v3.md（前端 Read Model）
- *  - 后端真实接口（PR #88 已合并）：
+ *  - 后端已交付接口：
  *      POST /api/v3/auth/guest
  *      POST /api/v3/sessions                          {flow_contract_version}
  *      GET  /api/v3/sessions/{session_id}
  *      POST /api/v3/sessions/{session_id}/input-transitions   (select_mode/replace_document/discard_document)
- *      POST /api/v3/understandings                    (multi-source ingestion)
+ *      POST /api/v3/understandings                    (multi-source ingestion，narrative 源支持 inline text)
  *      GET  /api/v3/understandings/{understanding_id}
  *      POST /api/v3/understandings/{understanding_id}/confirmations
- *      POST /api/v3/music/generations                 (需要 prescription_id，依赖 PR #91)
+ *      POST /api/v3/music/generations                 (依赖辨证处方能力，见下方已知后端缺口)
  *      GET  /api/v3/music/generations/{task_id}
  *      POST /api/v3/music/generations/{task_id}/cancel
  *      GET  /api/v3/music/assets/{music_id}/stream
  *      POST /api/v3/feedback
  *      GET/PUT/DELETE /api/v3/favorites…, GET /api/v3/me/history, GET /api/v3/me/preferences
- *    文件上传复用 V2：POST /api/v2/documents（multipart，见下方 ownership 说明）
+ *    文件上传复用 V2：POST /api/v2/documents（multipart，归属限制见下方已知后端缺口）
  *
  * 设计原则：
  *  1. 页面只渲染后端返回的 Read Model，不在前端构造后端对象
@@ -27,9 +27,9 @@
  *  4. mock 数据全部为虚构脱敏内容，不含任何真实用户信息
  *
  * 模式（mock 只能显式开启，默认 real）：
- *  - "real"（默认）：全部走真实后端。PR #91（Agent1/Agent2）未合并的能力
- *    （问卷提交→综合评估、辨证处方、音乐生成）返回 AGENT_PENDING 错误，
- *    页面显示明确的"等待后端接入"状态，绝不伪造成功。
+ *  - "real"（默认）：全部走真实后端。后端尚未交付的智能化能力
+ *    （问卷提交→综合评估、辨证、音乐生成）返回 AGENT_PENDING 错误，
+ *    页面显示明确的"服务升级维护中"等待状态，绝不伪造成功。
  *  - "hybrid"（显式）：输入段（鉴权/会话/输入切换/资料上传/资料理解）走真实后端，
  *    Agent 段（评估/辨证/生成）走 mock 演示数据，页面显示"演示数据"标识。
  *  - "mock"（显式）：全 fixture 状态机，供自动测试与本地开发。
@@ -39,10 +39,13 @@
  *  - H5 本地调试：localStorage.setItem("HARMONYAI_V3_MODE", "mock")
  *
  * 已知后端缺口（如实上报，不静默绕过）：
- *  - V2 上传接口 /api/v2/documents 固定写入 user_id=1，而 V3 访客是独立用户，
+ *  - V2 上传接口 /api/v2/documents 固定把资料写入默认用户，而 V3 访客是独立用户，
  *    replace_document/understanding 的归属校验会失败（DOCUMENT_NOT_FOUND）。
- *    有资料流程真实联调需要后端补 V3 上传端点或修复归属。
- *  - POST /api/v3/music/generations 需要 prescription_id（Agent2，PR #91 未合并）。
+ *    有资料流程真实联调需要后端提供与会话绑定的上传端点（owner-aware upload）。
+ *  - 问卷提交端点（POST /api/v3/questionnaire/submissions）与 V3 评估创建端点尚未交付。
+ *  - 音乐生成依赖辨证处方标识，该能力尚未交付。
+ *  - 有资料流程"已确认摘要 + 追加最近情况描述"需要后端支持向已确认
+ *    Understanding 追加源；在此之前有资料路径的描述仅本机暂存（页面如实标注）。
  */
 
 import { QUESTIONNAIRE_MANIFEST, FREQUENCY_OPTIONS } from "./questionnaire-v3-manifest.js"
@@ -71,9 +74,9 @@ function resolveMode() {
 }
 
 const MODE = resolveMode()
-// 输入段（PR #88 已交付）是否走真实后端
+// 输入段（鉴权/会话/资料/理解/最近情况描述）是否走真实后端
 const INPUT_REAL = MODE !== "mock"
-// Agent 段（PR #91 未合并）是否暂用 mock 演示数据（仅 hybrid 显式开启）
+// 智能化能力段（评估/辨证/生成）是否暂用 mock 演示数据（仅 hybrid 显式开启）
 const AGENT_MOCK = MODE !== "real"
 
 const BASE_URL = (() => {
@@ -146,7 +149,7 @@ const FRIENDLY_ERRORS = {
   DOCUMENT_NOT_FOUND: "上传的资料暂时无法关联到当前会话。你可以选择暂不使用这份资料，通过描述和问卷继续评估。",
   DOCUMENT_OCR_NOT_READY: "资料尚未成功识别，请重新上传，或改用最近情况描述和10道状态问卷继续评估。",
   UNAUTHENTICATED: "身份已失效，请重新进入体验。",
-  NETWORK_ERROR: "网络连接失败，请检查后端服务是否已启动后重试。",
+  NETWORK_ERROR: "网络连接失败，请检查网络后重试。",
 }
 
 function apiError(message, code, extra) {
@@ -238,7 +241,7 @@ function realUploadDocument(filePath, fileName) {
   })
 }
 
-// ===== 真实接口（输入段，PR #88 已交付） =====
+// ===== 真实接口（输入段） =====
 
 const realInputApi = {
   async guestAuth() {
@@ -300,13 +303,22 @@ const realInputApi = {
       },
     )
     // input_revision 一律以后端响应为准，前端不猜测
-    saveFlowState({
+    const patch = {
       input_mode: data.input_mode,
       input_revision: data.input_revision,
       active_document_id: data.active_document_id,
       understanding_ref: data.understanding_ref || null,
       questionnaire_ref: data.questionnaire_ref || null,
-    })
+    }
+    if (action === "replace_document") {
+      // 资料替换后旧摘要/理解失效（Amendment §3.4），本机提交状态一并重置
+      patch.understanding_id = null
+      patch.understanding_revision = null
+      patch.understanding_status = null
+      patch.narrative_submitted = false
+      patch.narrative_text = ""
+    }
+    saveFlowState(patch)
     return data
   },
 
@@ -433,6 +445,57 @@ const realInputApi = {
     return data
   },
 
+  // 最近情况描述真实提交（narrative 源，inline text）
+  // 仅用于无资料流程（without_document）：narrative-only 源创建 Understanding 后
+  // 立即确认（decision=confirm），经 CAS 绑定为会话活跃引用并递增 input_revision，
+  // 描述自此真正进入评估输入链（Amendment §4）。
+  // 有资料流程"已确认摘要 + 追加描述源"为后端缺口（见文件头），由页面本机暂存，
+  // 本方法在该路径如实报错，绝不把暂存伪装成已提交。
+  async submitNarrative(text) {
+    const state = loadFlowState()
+    if (!state.session_id) throw apiError("会话未创建", "SESSION_NOT_FOUND")
+    const body = String(text || "").trim()
+    if (!body) throw apiError("请先填写描述内容", "VALIDATION_ERROR")
+    if (state.input_mode === "with_document") {
+      throw apiError(
+        "当前流程暂不支持提交补充描述，内容已保留在本机，不会丢失。",
+        "NARRATIVE_APPEND_UNSUPPORTED",
+      )
+    }
+    const data = await realRequest("/api/v3/understandings", {
+      method: "POST",
+      data: {
+        schema_version: "understanding_v3.1",
+        session_id: state.session_id,
+        inputs: [
+          {
+            source_id: "narrative-" + Date.now(),
+            source_type: "narrative",
+            processing_status: "ready",
+            text: body,
+            captured_at: new Date().toISOString(),
+          },
+        ],
+      },
+      headers: { "Idempotency-Key": idempotencyKey() },
+    })
+    saveFlowState({
+      narrative_submitted: true,
+      narrative_text: body,
+      understanding_id: data.understanding_id,
+      understanding_revision: data.revision,
+      understanding_status: data.status,
+    })
+    // 创建不改变 input_revision（已核实后端语义），随后确认即可绑定会话；
+    // 确认失败如实抛错，页面停留重试，不静默降级为本机暂存。
+    await realInputApi.confirmUnderstanding({
+      expected_revision: data.revision,
+      decision: "confirm",
+      changes: [],
+    })
+    return data
+  },
+
   async submitFeedback(payload) {
     const state = loadFlowState()
     // feedback_v3.0 必填：music_ref 与 pre_state_snapshot 可由 flow state 补全
@@ -479,7 +542,7 @@ const realInputApi = {
     return realRequest("/api/v3/me/preferences")
   },
 
-  // 音乐生成（真实接口已交付，但需要 prescription_id → PR #91）
+  // 音乐生成：后端接口已交付，但依赖辨证处方能力（尚未接入）
   async startMusicGeneration() {
     throw agentPendingError("音乐生成")
   },
@@ -815,6 +878,31 @@ const mockApi = {
     throw apiError("未知确认类型", "VALIDATION_ERROR", { status: 422 })
   },
 
+  // mock：最近情况提交（与真实语义一致——无资料路径创建并绑定 narrative 源理解；
+  // 有资料路径后端缺口同样如实报错）
+  async submitNarrative(text) {
+    await delay(400)
+    ensureMockSession()
+    const s = MOCK.session
+    const body = String(text || "").trim()
+    if (!body) throw apiError("请先填写描述内容", "VALIDATION_ERROR")
+    if (s.input_mode === "with_document") {
+      throw apiError(
+        "当前流程暂不支持提交补充描述，内容已保留在本机，不会丢失。",
+        "NARRATIVE_APPEND_UNSUPPORTED",
+      )
+    }
+    MOCK.understanding = {
+      understanding_id: "und_narrative_" + Date.now(),
+      revision: 1,
+      status: "confirmed",
+      source_type: "narrative",
+      text: body,
+    }
+    s.understanding_ref = { understanding_id: MOCK.understanding.understanding_id, revision: 2 }
+    return clone(MOCK.understanding)
+  },
+
   async getQuestionnaireSchema() {
     await delay(200)
     const schema = buildMockQuestionnaireSchema()
@@ -1003,9 +1091,13 @@ export const apiV3 = {
   confirmUnderstanding(payload) {
     return INPUT_REAL ? realInputApi.confirmUnderstanding(payload) : mockApi.confirmUnderstanding(payload)
   },
+  // 最近情况描述：无资料路径真实提交（narrative 源）并确认绑定会话
+  submitNarrative(text) {
+    return INPUT_REAL ? realInputApi.submitNarrative(text) : mockApi.submitNarrative(text)
+  },
 
   // 问卷：题目为权威清单（前后端同源），三种模式一致，必填性由会话权威模式决定；
-  // 提交属于 Agent1 能力（PR #91）：real 模式返回等待状态，mock/hybrid 走演示状态机
+  // 提交依赖后端综合评估能力（尚未交付）：real 模式返回等待状态，mock/hybrid 走演示状态机
   getQuestionnaireSchema() {
     return mockApi.getQuestionnaireSchema()
   },
@@ -1014,7 +1106,7 @@ export const apiV3 = {
     return mockApi.submitQuestionnaire(answers)
   },
 
-  // 评估（Agent1，PR #91 未合并）
+  // 评估（依赖后端综合评估能力，尚未交付）
   createAssessment() {
     if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估"))
     return mockApi.createAssessment()
@@ -1028,13 +1120,13 @@ export const apiV3 = {
     return mockApi.confirmAssessment(payload)
   },
 
-  // 辨证与生成依据（Agent2/3，PR #91 未合并）
+  // 辨证与生成依据（依赖后端辨证能力，尚未交付）
   getMusicBasis() {
     if (!AGENT_MOCK) return Promise.reject(agentPendingError("辨证与音乐生成依据"))
     return mockApi.getMusicBasis()
   },
 
-  // 音乐生成：真实接口已交付但需要 prescription_id（Agent2）→ real 等待状态；
+  // 音乐生成：后端接口已交付但依赖辨证处方能力（尚未接入）→ real 等待状态；
   // mock/hybrid 走演示状态机
   startMusicGeneration() {
     return AGENT_MOCK ? mockApi.startMusicGeneration() : realInputApi.startMusicGeneration()
@@ -1059,7 +1151,7 @@ export const apiV3 = {
   submitFeedback(payload) {
     return INPUT_REAL && !AGENT_MOCK ? realInputApi.submitFeedback(payload) : mockApi.submitFeedback(payload)
   },
-  // 收藏等个人数据接口（PR #88 已交付）；mock/hybrid 模式下仅本地记录 UI 状态
+  // 收藏等个人数据接口；mock/hybrid 模式下仅本地记录 UI 状态
   addFavorite(musicId, sourceType) {
     if (!INPUT_REAL) return Promise.resolve({ music_ref: { music_id: musicId, source_type: sourceType }, is_favorite: true })
     return realInputApi.addFavorite(musicId, sourceType)

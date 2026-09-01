@@ -4,11 +4,11 @@
  * 合同依据：frontend-read-model-contract-v3.md §8 Final Assessment Confirmation
  *          harmonyai-v3-owner-flow-amendment-001.md §2（唯一最终确认）/ §4.3
  *
- * - Agent1 先产出评估，本页确认后最新已确认 revision 才进入后续流程
+ * - 评估服务先产出评估，本页确认后最新已确认 revision 才进入后续流程
  * - 确认只有一次；可带修正（changes[]）提交，返回 revision+1
  * - 不展示 evidence_coverage、provider_metadata、内部 enum、置信度等禁止字段
  * - Safety policy/状态不显示（deferred_v3 / not_run 为内部字段）
- * - real 模式下评估属于 Agent1 能力（PR #91 未合并）：
+ * - real 模式下评估依赖后端综合评估能力（尚未交付）：
  *   加载/确认遇 AGENT_PENDING 进入明确等待状态，不伪造评估结果
  */
 import { apiV3 } from "../../common/api-v3.js"
@@ -20,7 +20,7 @@ export default {
       error: "",
       model: null,
       confirming: false,
-      agentPending: false, // real 模式：等待后端 Agent1 接入（PR #91）
+      agentPending: false, // real 模式：等待后端综合评估能力接入
       simulated: false, // hybrid：演示数据标识
       // 修正状态
       correcting: false,
@@ -50,7 +50,7 @@ export default {
         this.simulated = !!apiV3.AGENT_SIMULATED
       } catch (e) {
         if (e.agentPending) {
-          // real 模式：Agent1 未接入（PR #91），进入明确等待状态，不伪造评估
+          // real 模式：综合评估能力未接入，进入明确等待状态，不伪造评估
           this.agentPending = true
         } else {
           this.error = e.message || "评估加载失败，请重试"

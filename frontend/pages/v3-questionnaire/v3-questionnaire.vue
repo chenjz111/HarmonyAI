@@ -8,7 +8,7 @@
  * - 题目数据来自权威清单模块（与后端同源），频率题渲染 FREQUENCY_OPTIONS
  * - 无资料模式：必填，全部 10 题完成才能提交（不能跳过）
  * - 有资料模式：整份选填，可跳过；一旦提交必须完整 10 题
- * - real 模式下提交/评估属于 Agent1 能力（PR #91 未合并）：
+ * - real 模式下提交/评估依赖后端综合评估能力（尚未交付）：
  *   捕获 AGENT_PENDING 后进入明确等待状态，不伪造结果、不静默失败
  */
 import { apiV3, FREQUENCY_OPTIONS } from "../../common/api-v3.js"
@@ -24,7 +24,7 @@ export default {
       answers: {}, // { question_id: number | [option_code, ...] }
       submitting: false,
       submittingAssessment: false,
-      agentPending: false, // real 模式：等待后端 Agent1 接入（PR #91）
+      agentPending: false, // real 模式：等待后端综合评估能力接入
       simulated: false, // hybrid/mock：演示数据标识
       frequencyOptions: FREQUENCY_OPTIONS,
     }
@@ -155,12 +155,12 @@ export default {
     async goAssessment() {
       this.submittingAssessment = true
       try {
-        // 触发 Agent1 评估，进入最终确认页
+        // 触发综合评估，进入最终确认页
         await apiV3.createAssessment()
         uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
       } catch (e) {
         if (e.agentPending) {
-          // real 模式：Agent1 未接入（PR #91），进入明确等待状态，不伪造评估
+          // real 模式：综合评估能力未接入，进入明确等待状态，不伪造评估
           this.agentPending = true
           return
         }

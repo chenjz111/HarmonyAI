@@ -8,7 +8,7 @@
  * - 生成状态：queued | running | succeeded | matched_fallback | failed | cancelled
  * - Provider 未报告真实进度时显示不定进度，不伪造百分比
  * - 不显示候选分数、规则 ID 或任何目标类字段（该概念已在 V3 删除，Amendment §5）
- * - real 模式下依据/生成属于 Agent2 能力（PR #91 未合并）：
+ * - real 模式下依据/生成依赖后端辨证能力（尚未交付）：
  *   遇 AGENT_PENDING 进入明确等待状态，不伪造依据或生成结果
  */
 import { apiV3 } from "../../common/api-v3.js"
@@ -58,7 +58,7 @@ export default {
         this.phase = "basis"
       } catch (e) {
         if (e.agentPending) {
-          // real 模式：Agent2（prescription）未接入（PR #91），明确等待，不伪造依据
+          // real 模式：辨证能力未接入，明确等待，不伪造依据
           this.phase = "pending"
         } else {
           this.error = e.message || "加载失败，请重试"
@@ -75,7 +75,7 @@ export default {
         this.schedulePoll()
       } catch (e) {
         if (e.agentPending) {
-          // real 模式：音乐生成需要 prescription（PR #91），明确等待，不伪造进度
+          // real 模式：音乐生成依赖辨证处方能力（未接入），明确等待，不伪造进度
           this.phase = "pending"
           return
         }

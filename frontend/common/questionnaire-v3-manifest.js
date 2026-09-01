@@ -1,5 +1,5 @@
 /**
- * 五脏状态问卷 V3.0 权威清单（PR #89 医学审核批准版本）
+ * 五脏状态问卷 V3.0 权威清单（医学审核批准版本）
  * 来源：knowledge/v3/questionnaire-v3.0.json（单一事实来源，前端逐字同步）
  * - review_status=approved，content_checksum 与后端一致
  * - q01-q05 为频率题（frequency_0_4，值 0..4 整数）

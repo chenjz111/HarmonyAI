@@ -48,7 +48,7 @@ export default {
         this.simulated = !!apiV3.AGENT_SIMULATED
       } catch (e) {
         if (e.agentPending) {
-          // real 模式：音乐生成依赖 PR #91，明确等待状态，不伪造音乐
+          // real 模式：音乐生成能力未接入，明确等待状态，不伪造音乐
           this.error = e.message
         } else {
           this.error = e.message || "音乐加载失败，请重试"

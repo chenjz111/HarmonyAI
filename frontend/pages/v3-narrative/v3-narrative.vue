@@ -9,8 +9,10 @@
  *
  * P0-1：语音转写仅在显式 mock 模式提供模拟数据（并明确标注演示）；
  * real/hybrid 模式没有真实 ASR 时，语音入口显示"暂不可用"，绝不注入虚构 transcript。
- * P1-1：real 模式下描述文本暂存本机（评估服务开通后随问卷一起提交），
- * 页面明确告知"已保存待提交"，不声称已实时提交。
+ * P1-1：有资料路径的描述文本暂存本机（后端暂不支持向已确认摘要追加描述源），
+ * 页面明确告知"已保存待提交"，不声称已实时提交；
+ * 无资料路径在"继续"时通过 narrative 源真实提交并确认绑定会话（进入评估输入链），
+ * 提交失败如实报错并停留本页，可重试或暂不填写继续。
  */
 import { apiV3 } from "../../common/api-v3.js"
 
@@ -95,11 +97,19 @@ export default {
       if (this.submitting) return
       this.submitting = true
       try {
-        // 文字/语音均选填；直接进入问卷（有资料=选填 / 无资料=必填）
-        if (this.text && this.text.trim()) {
-          try { uni.setStorageSync("v3_narrative_text", this.text.trim()) } catch (e) { /* ignore */ }
+        // 文字/语音均选填（有资料=选填 / 无资料=选填，无资料流程由问卷必填兜底）
+        const text = (this.text || "").trim()
+        if (text && this.withDocument) {
+          // 有资料路径：后端暂不支持向已确认摘要追加描述源 → 本机暂存（页面如实标注）
+          try { uni.setStorageSync("v3_narrative_text", text) } catch (e) { /* ignore */ }
+        } else if (text) {
+          // 无资料路径：narrative 源真实提交 + 确认绑定会话，进入评估输入链
+          await apiV3.submitNarrative(text)
         }
         uni.redirectTo({ url: "/pages/v3-questionnaire/v3-questionnaire" })
+      } catch (e) {
+        // 提交失败：如实报错并停留本页，用户可重试或选择"暂不填写，继续"
+        uni.showToast({ title: (e && e.message) || "提交失败，请稍后重试", icon: "none" })
       } finally {
         this.submitting = false
       }
@@ -131,9 +141,13 @@ export default {
       <view class="text-count"><text class="text-count-text">{{ (text || '').length }} / 2000</text></view>
     </view>
 
-    <!-- P1-1：real 模式下描述文本为"已保存待提交"，不声称已实时提交 -->
-    <view v-if="!voiceSimulated" class="save-note">
-      <text class="save-note-text">你填写的内容会先保存在本机，评估服务开通后与问卷作答一起提交，不会丢失。</text>
+    <!-- 有资料路径：描述本机暂存（后端追加源能力缺失），如实标注"待提交"；
+         无资料路径：点击"继续"即真实提交，不使用暂存话术 -->
+    <view v-if="!voiceSimulated && withDocument" class="save-note">
+      <text class="save-note-text">你填写的内容会先保存在本机，待服务支持后随评估一并提交，不会丢失。</text>
+    </view>
+    <view v-else-if="!voiceSimulated" class="save-note">
+      <text class="save-note-text">你填写的内容将在点击"继续"时提交，作为生成评估的参考。</text>
     </view>
 
     <!-- 语音输入（P0-1：仅显式 mock 演示模式提供模拟转写；real/hybrid 明确暂不可用） -->
