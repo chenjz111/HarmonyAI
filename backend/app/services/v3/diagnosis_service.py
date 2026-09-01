@@ -1,19 +1,18 @@
-"""Agent 2 — Diagnosis V3.
+"""Agent 2 — Diagnosis V3 foundation/degraded gate.
 
-Pipeline: Assessment -> Query Builder -> RAG Retriever -> Qwen ->
-Schema Validation -> Medical Rule Check -> Diagnosis Output.
+Implemented pipeline: owner-scoped confirmed Assessment gate -> deterministic
+ElementProfile derivation -> honest abstain or medical-asset block.
 
-Per the approved knowledge manifest, production RAG ingestion (embedding
-index) is NOT yet approved, so the retriever returns an honest
-degraded/empty result and never fake hits. Syndrome candidates may only
-come from an approved syndrome whitelist; with no approved whitelist the
-diagnosis abstains (insufficient element profile) or reports the medical
-asset as unavailable instead of fabricating syndromes.
+Production Query Builder, RAG Retriever and Qwen diagnosis execution are not
+enabled because the approved RAG ingestion manifest and syndrome whitelist are
+not available. The service never fabricates RAG hits or syndrome candidates:
+insufficient element evidence abstains, while available element evidence
+returns MEDICAL_ASSET_UNAVAILABLE.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 import uuid
@@ -21,12 +20,13 @@ import uuid
 from sqlalchemy.orm import Session
 
 from backend.app.models import Session as SessionModel
-from backend.app.models.v3.assessment import AssessmentRevisionV3
+from backend.app.models.v3.assessment import AssessmentRevisionV3, AssessmentV3
 from backend.app.models.v3.diagnosis import (
     DiagnosisCandidateEvidence,
     DiagnosisCandidate as DiagnosisCandidateRow,
     DiagnosisRun,
 )
+from backend.app.models.v3.session import V3IdempotencyRecord
 from backend.app.schemas.v3.assessment import AssessmentRefV31
 from backend.app.schemas.v3.common import (
     AuthPrincipal,
@@ -49,16 +49,25 @@ class OwnedResourceNotFound(RuntimeError):
     pass
 
 
-class InputRevisionConflict(RuntimeError):
-    pass
-
-
 class MedicalAssetUnavailable(RuntimeError):
     pass
 
 
+class IdempotencyConflict(RuntimeError):
+    pass
+
+
+_OPERATION = "create_v3_diagnosis"
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _request_hash(payload: dict[str, object]) -> str:
@@ -121,34 +130,56 @@ def run_diagnosis(
     *,
     idempotency_key: str,
 ) -> tuple[DiagnosisV3, bool]:
-    del idempotency_key
-    ref: AssessmentRefV31 = request.assessment_ref
-    if ref.confirmation_status != "confirmed":
-        raise OwnedResourceNotFound
-    if ref.safety_policy != "deferred_v3" or ref.safety_status is not None:
-        raise OwnedResourceNotFound
-
-    session_row = (
-        db.query(SessionModel)
+    request_hash = _request_hash(request.model_dump(mode="json"))
+    record = (
+        db.query(V3IdempotencyRecord)
         .filter(
-            SessionModel.user_id == principal.internal_user_pk,
-            SessionModel.input_revision == ref.input_revision,
-        )
-        .first()
-    )
-    if session_row is None:
-        raise InputRevisionConflict
-
-    assessment_revision = (
-        db.query(AssessmentRevisionV3)
-        .filter(
-            AssessmentRevisionV3.assessment_id == ref.assessment_id,
-            AssessmentRevisionV3.revision == ref.revision,
+            V3IdempotencyRecord.internal_user_pk == principal.internal_user_pk,
+            V3IdempotencyRecord.operation == _OPERATION,
+            V3IdempotencyRecord.idempotency_key == idempotency_key,
         )
         .one_or_none()
     )
-    if assessment_revision is None:
+    if record is not None and _as_utc(record.expires_at) <= _utc_now():
+        db.delete(record)
+        db.flush()
+        record = None
+    if record is not None:
+        if record.request_hash != request_hash:
+            raise IdempotencyConflict
+        if record.status == "succeeded" and record.resource_id and record.response_json:
+            return DiagnosisV3.model_validate_json(record.response_json), True
+
+    ref: AssessmentRefV31 = request.assessment_ref
+    owned_input = (
+        db.query(AssessmentV3, AssessmentRevisionV3, SessionModel)
+        .join(SessionModel, AssessmentV3.session_row_id == SessionModel.id)
+        .join(
+            AssessmentRevisionV3,
+            (AssessmentRevisionV3.assessment_id == AssessmentV3.assessment_id)
+            & (AssessmentRevisionV3.revision == ref.revision),
+        )
+        .filter(
+            AssessmentV3.assessment_id == ref.assessment_id,
+            AssessmentV3.internal_user_pk == principal.internal_user_pk,
+            SessionModel.user_id == principal.internal_user_pk,
+            SessionModel.session_id == request.session_id,
+            AssessmentV3.current_revision == ref.revision,
+            AssessmentV3.input_revision == ref.input_revision,
+            AssessmentRevisionV3.input_revision == ref.input_revision,
+            AssessmentV3.status == "confirmed",
+            AssessmentRevisionV3.status == "confirmed",
+            AssessmentRevisionV3.confirmation_status == "confirmed",
+            AssessmentV3.flow_contract_version == "v3-owner-flow-1",
+            AssessmentV3.safety_policy == "deferred_v3",
+            AssessmentV3.safety_status.is_(None),
+            AssessmentV3.safety_evaluation_status == "not_run",
+        )
+        .one_or_none()
+    )
+    if owned_input is None:
         raise OwnedResourceNotFound
+    _assessment, assessment_revision, session_row = owned_input
 
     element_profile = _element_profile_from_organ(
         assessment_revision.organ_profile_json
@@ -222,5 +253,21 @@ def run_diagnosis(
             rag_run_id=None,
         )
     )
+    if record is None:
+        record = V3IdempotencyRecord(
+            idempotency_record_id=f"idem_{uuid.uuid4().hex}",
+            internal_user_pk=principal.internal_user_pk,
+            operation=_OPERATION,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+            status="processing",
+            expires_at=_utc_now() + timedelta(hours=24),
+        )
+        db.add(record)
+    record.resource_type = "diagnosis"
+    record.resource_id = diagnosis_id
+    record.status = "succeeded"
+    record.response_code = 201
+    record.response_json = result.model_dump_json()
     db.commit()
     return result, False

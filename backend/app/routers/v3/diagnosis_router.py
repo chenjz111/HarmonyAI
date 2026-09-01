@@ -12,7 +12,7 @@ from backend.app.schemas.v3.diagnosis import DiagnosisV3, DiagnosisV31Input
 from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.services.v3.auth_service import get_current_v3_principal
 from backend.app.services.v3.diagnosis_service import (
-    InputRevisionConflict,
+    IdempotencyConflict,
     MedicalAssetUnavailable,
     OwnedResourceNotFound,
     run_diagnosis,
@@ -49,11 +49,11 @@ def create_run(
         )
     except OwnedResourceNotFound:
         raise V3APIError(404, "RESOURCE_NOT_FOUND", "未找到对应资源。") from None
-    except InputRevisionConflict:
+    except IdempotencyConflict:
         raise V3APIError(
-            409,
-            "INPUT_REVISION_CONFLICT",
-            "输入版本已变化，请刷新后重试。",
+            422,
+            "IDEMPOTENCY_KEY_REUSED",
+            "相同的幂等键已被不同的请求使用。",
         ) from None
     except MedicalAssetUnavailable:
         raise V3APIError(
