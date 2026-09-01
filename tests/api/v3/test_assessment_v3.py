@@ -2,9 +2,12 @@
 
 import base64
 import json
+from concurrent.futures import ThreadPoolExecutor
+import threading
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 
 from backend.ai_engine.v3.understanding_provider import (
     MockUnderstandingProvider,
@@ -323,6 +326,134 @@ def test_assessment_reused_key_with_different_payload_conflicts_without_duplicat
     assert conflict.status_code == 422, conflict.text
     assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
     assert _assessment_count(db_session_factory, headers) == 1
+
+
+def test_assessment_concurrent_same_key_replays_without_duplicate(
+    monkeypatch, concurrent_api_database
+):
+    session_factory, engine = concurrent_api_database
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = session_factory()
+    understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
+    db.close()
+
+    body = _assessment_body(session_id, understanding_id, 2)
+    key = f"asmt-concurrent-{uuid.uuid4().hex}"
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    lookup_count = 0
+
+    def synchronize_initial_lookups(
+        _conn, _cursor, statement, _parameters, _context, _executemany
+    ):
+        nonlocal lookup_count
+        if "idempotency_records" not in statement.lower():
+            return
+        with lock:
+            lookup_count += 1
+            should_wait = lookup_count <= 2
+        if should_wait:
+            barrier.wait(timeout=10)
+
+    event.listen(engine, "after_cursor_execute", synchronize_initial_lookups)
+    try:
+        def post_assessment():
+            return client.post(
+                "/api/v3/assessments",
+                headers={**headers, "Idempotency-Key": key},
+                json=body,
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = list(executor.map(lambda _: post_assessment(), range(2)))
+    finally:
+        event.remove(engine, "after_cursor_execute", synchronize_initial_lookups)
+
+    assert sorted(response.status_code for response in responses) == [200, 201]
+    assert _v3_data(responses[0]) == _v3_data(responses[1])
+    assert _assessment_count(session_factory, headers) == 1
+
+
+def test_assessment_concurrent_different_payload_returns_idempotency_conflict(
+    monkeypatch, concurrent_api_database
+):
+    session_factory, engine = concurrent_api_database
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, first_session_id = _setup_guest()
+    db = session_factory()
+    first_understanding_id = _confirmed_understanding(
+        headers, first_session_id, db, facts=None
+    )
+    db.close()
+
+    second_session_response = client.post(
+        "/api/v3/sessions",
+        headers={
+            **headers,
+            "Idempotency-Key": f"sess-{uuid.uuid4().hex}",
+        },
+        json={"flow_contract_version": "v3-owner-flow-1"},
+    )
+    assert second_session_response.status_code == 201, second_session_response.text
+    second_session_id = _v3_data(second_session_response)["session_id"]
+    db = session_factory()
+    second_understanding_id = _confirmed_understanding(
+        headers, second_session_id, db, facts=None
+    )
+    db.close()
+
+    key = f"asmt-concurrent-conflict-{uuid.uuid4().hex}"
+    bodies = [
+        _assessment_body(first_session_id, first_understanding_id, 2),
+        _assessment_body(second_session_id, second_understanding_id, 2),
+    ]
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    lookup_count = 0
+
+    def synchronize_initial_lookups(
+        _conn, _cursor, statement, _parameters, _context, _executemany
+    ):
+        nonlocal lookup_count
+        if "idempotency_records" not in statement.lower():
+            return
+        with lock:
+            lookup_count += 1
+            should_wait = lookup_count <= 2
+        if should_wait:
+            barrier.wait(timeout=10)
+
+    event.listen(engine, "after_cursor_execute", synchronize_initial_lookups)
+    try:
+        def post_assessment(body):
+            return client.post(
+                "/api/v3/assessments",
+                headers={**headers, "Idempotency-Key": key},
+                json=body,
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = list(executor.map(post_assessment, bodies))
+    finally:
+        event.remove(engine, "after_cursor_execute", synchronize_initial_lookups)
+
+    assert sorted(response.status_code for response in responses) == [201, 422]
+    conflict = next(response for response in responses if response.status_code == 422)
+    assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert _assessment_count(session_factory, headers) == 1
 
 
 def test_assessment_requires_confirmed_understanding(monkeypatch, db_session_factory):

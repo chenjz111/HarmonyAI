@@ -2,11 +2,13 @@
 syndromes without an approved syndrome whitelist."""
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
+import threading
 import uuid
 
 from fastapi.testclient import TestClient
-from sqlalchemy import null
+from sqlalchemy import event, null
 
 from backend.app.main import app
 from backend.app.models import Session as SessionModel
@@ -388,5 +390,141 @@ def test_diagnosis_replay_and_conflict_do_not_duplicate_records(db_session_facto
         assert len(records) == 1
         assert records[0].status == "succeeded"
         assert records[0].operation == "create_v3_diagnosis"
+    finally:
+        db.close()
+
+
+def test_diagnosis_concurrent_same_key_replays_without_duplicate(
+    concurrent_api_database,
+):
+    session_factory, engine = concurrent_api_database
+    headers = _guest_headers()
+    db = session_factory()
+    session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    assessment_id = _seed_confirmed_assessment(
+        db,
+        user_pk=user_pk,
+        session_row=session_row,
+        organ_profile_json={
+            "status": "insufficient",
+            "weights": None,
+            "score_semantics": "relative_evidence_distribution",
+        },
+    )
+    db.close()
+
+    body = _diagnosis_body(session_id, assessment_id, 1)
+    key = f"diag-concurrent-{uuid.uuid4().hex}"
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    lookup_count = 0
+
+    def synchronize_initial_lookups(
+        _conn, _cursor, statement, _parameters, _context, _executemany
+    ):
+        nonlocal lookup_count
+        if "idempotency_records" not in statement.lower():
+            return
+        with lock:
+            lookup_count += 1
+            should_wait = lookup_count <= 2
+        if should_wait:
+            barrier.wait(timeout=10)
+
+    event.listen(engine, "after_cursor_execute", synchronize_initial_lookups)
+    try:
+        def post_diagnosis():
+            return client.post(
+                "/api/v3/diagnoses",
+                headers={**headers, "Idempotency-Key": key},
+                json=body,
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = list(executor.map(lambda _: post_diagnosis(), range(2)))
+    finally:
+        event.remove(engine, "after_cursor_execute", synchronize_initial_lookups)
+
+    assert sorted(response.status_code for response in responses) == [200, 201]
+    assert _v3_data(responses[0]) == _v3_data(responses[1])
+    db = session_factory()
+    try:
+        assert db.query(DiagnosisRun).count() == 1
+        records = (
+            db.query(V3IdempotencyRecord)
+            .filter(V3IdempotencyRecord.idempotency_key == key)
+            .all()
+        )
+        assert len(records) == 1
+        assert records[0].status == "succeeded"
+    finally:
+        db.close()
+
+
+def test_diagnosis_concurrent_different_payload_returns_idempotency_conflict(
+    concurrent_api_database,
+):
+    session_factory, engine = concurrent_api_database
+    headers = _guest_headers()
+    db = session_factory()
+    session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    assessment_id = _seed_confirmed_assessment(
+        db,
+        user_pk=user_pk,
+        session_row=session_row,
+        organ_profile_json={
+            "status": "insufficient",
+            "weights": None,
+            "score_semantics": "relative_evidence_distribution",
+        },
+    )
+    db.close()
+
+    first_body = _diagnosis_body(session_id, assessment_id, 1)
+    second_body = {**first_body, "diagnosis_id": "diag-concurrent-different"}
+    key = f"diag-concurrent-conflict-{uuid.uuid4().hex}"
+    bodies = [first_body, second_body]
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    lookup_count = 0
+
+    def synchronize_initial_lookups(
+        _conn, _cursor, statement, _parameters, _context, _executemany
+    ):
+        nonlocal lookup_count
+        if "idempotency_records" not in statement.lower():
+            return
+        with lock:
+            lookup_count += 1
+            should_wait = lookup_count <= 2
+        if should_wait:
+            barrier.wait(timeout=10)
+
+    event.listen(engine, "after_cursor_execute", synchronize_initial_lookups)
+    try:
+        def post_diagnosis(body):
+            return client.post(
+                "/api/v3/diagnoses",
+                headers={**headers, "Idempotency-Key": key},
+                json=body,
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = list(executor.map(post_diagnosis, bodies))
+    finally:
+        event.remove(engine, "after_cursor_execute", synchronize_initial_lookups)
+
+    assert sorted(response.status_code for response in responses) == [201, 422]
+    conflict = next(response for response in responses if response.status_code == 422)
+    assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+    db = session_factory()
+    try:
+        assert db.query(DiagnosisRun).count() == 1
+        records = (
+            db.query(V3IdempotencyRecord)
+            .filter(V3IdempotencyRecord.idempotency_key == key)
+            .all()
+        )
+        assert len(records) == 1
     finally:
         db.close()

@@ -12,7 +12,6 @@ returns MEDICAL_ASSET_UNAVAILABLE.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 import uuid
@@ -26,7 +25,6 @@ from backend.app.models.v3.diagnosis import (
     DiagnosisCandidate as DiagnosisCandidateRow,
     DiagnosisRun,
 )
-from backend.app.models.v3.session import V3IdempotencyRecord
 from backend.app.schemas.v3.assessment import AssessmentRefV31
 from backend.app.schemas.v3.common import (
     AuthPrincipal,
@@ -43,6 +41,11 @@ from backend.app.schemas.v3.diagnosis import (
     ExecutionVersions,
 )
 from backend.app.services.v3.knowledge_assets import load_organ_mapping
+from backend.app.services.v3.idempotency import (
+    IdempotencyConflict,
+    IdempotencyInProgress,
+    reserve_v3_idempotency,
+)
 
 
 class OwnedResourceNotFound(RuntimeError):
@@ -53,21 +56,7 @@ class MedicalAssetUnavailable(RuntimeError):
     pass
 
 
-class IdempotencyConflict(RuntimeError):
-    pass
-
-
 _OPERATION = "create_v3_diagnosis"
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _as_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
 
 
 def _request_hash(payload: dict[str, object]) -> str:
@@ -131,24 +120,15 @@ def run_diagnosis(
     idempotency_key: str,
 ) -> tuple[DiagnosisV3, bool]:
     request_hash = _request_hash(request.model_dump(mode="json"))
-    record = (
-        db.query(V3IdempotencyRecord)
-        .filter(
-            V3IdempotencyRecord.internal_user_pk == principal.internal_user_pk,
-            V3IdempotencyRecord.operation == _OPERATION,
-            V3IdempotencyRecord.idempotency_key == idempotency_key,
-        )
-        .one_or_none()
+    record, replayed = reserve_v3_idempotency(
+        db,
+        internal_user_pk=principal.internal_user_pk,
+        operation=_OPERATION,
+        idempotency_key=idempotency_key,
+        request_hash=request_hash,
     )
-    if record is not None and _as_utc(record.expires_at) <= _utc_now():
-        db.delete(record)
-        db.flush()
-        record = None
-    if record is not None:
-        if record.request_hash != request_hash:
-            raise IdempotencyConflict
-        if record.status == "succeeded" and record.resource_id and record.response_json:
-            return DiagnosisV3.model_validate_json(record.response_json), True
+    if replayed:
+        return DiagnosisV3.model_validate_json(record.response_json), True
 
     ref: AssessmentRefV31 = request.assessment_ref
     owned_input = (
@@ -254,17 +234,6 @@ def run_diagnosis(
             rag_run_id=None,
         )
     )
-    if record is None:
-        record = V3IdempotencyRecord(
-            idempotency_record_id=f"idem_{uuid.uuid4().hex}",
-            internal_user_pk=principal.internal_user_pk,
-            operation=_OPERATION,
-            idempotency_key=idempotency_key,
-            request_hash=request_hash,
-            status="processing",
-            expires_at=_utc_now() + timedelta(hours=24),
-        )
-        db.add(record)
     record.resource_type = "diagnosis"
     record.resource_id = diagnosis_id
     record.status = "succeeded"
