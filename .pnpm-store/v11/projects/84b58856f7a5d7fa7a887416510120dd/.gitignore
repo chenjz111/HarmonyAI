@@ -1,8 +1,0 @@
-node_modules/
-unpackage/
-dist/
-.DS_Store
-*.log
-.idea/
-.vscode/
-*.local
