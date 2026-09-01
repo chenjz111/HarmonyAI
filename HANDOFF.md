@@ -373,7 +373,7 @@ yu    (羽调)      → 58   → 箫、古琴
 
 - 权威业务基线：`origin/integration/sprint4-real-input@08ac591c58edb611c784f673edf61b134b9aedbb`。
 - Contract PR：#75，分支 `docs/sprint5-v3-contract-draft3`，包含计划检查点 `ad01157b9ccaff4b56306cee1d8110995debb176`；该检查点 CI PASS、PR MERGEABLE。
-- Owner 已确认双门禁；三份 V3 合同在 PR #75 分支标记为 `FROZEN`，**尚未合并到 integration**。
+- Owner 已确认双门禁；三份 V3 合同在 PR #75 分支标记为 `FROZEN`（该历史检查点当时尚未合并到 integration，后续已完成合并）。
 - 已完成 Owner-authorized AI / Backend proxy review closure；不得将其表述为钟睿宸或蔡子鑫本人签字。
 - 医学内容门禁保持独立：肖宇翔仍须批准最终10题、Claim、Organ、Five-Tone 与 Knowledge Manifest；获批前不得启用 production 医学链路。
 - Sprint 5 可执行计划：`docs/superpowers/plans/2026-08-24-harmonyai-v3-sprint5.md`。
@@ -406,3 +406,11 @@ yu    (羽调)      → 58   → 箫、古琴
 - Not implemented: production Query Builder, approved RAG Retriever, Qwen diagnosis Provider, syndrome whitelist validation。
 - Reason: repository中没有已批准的 RAG ingestion manifest 或 syndrome whitelist；本 PR 不伪造医学资产或 Provider 执行结果。
 - PR #91 同时补齐 Agent1/Agent2 V3 幂等重放与冲突保护，以及 Diagnosis 的 Assessment、Revision、Session 归属校验。
+
+### PR #91 final review follow-up（2026-09-02）
+
+- 当前范围明确为：**基础能力完成，真实 Provider 集成待后续任务**。
+- Agent2 仅定位为基础框架/降级实现（`BLOCKED_BY_MEDICAL_ASSET`），不应描述为 Agent2 已完整完成或 `REAL_RAG_QWEN`。
+- 真实 RAG + Qwen 仍待后续医学资产任务：已批准的 RAG ingestion manifest、Retriever 索引/版本配置、syndrome whitelist/规则资产，以及对应 Qwen Provider 凭据、模型/超时配置。当前没有启用条件，因此保持诚实降级，不伪造医学命中或证型。
+- Assessment/Diagnosis 幂等占位已前移到业务写入之前；唯一约束竞争时回滚并回查胜者结果。相同 key + 相同 payload 返回首次结果（HTTP 200 replay），不同 payload 返回 `IDEMPOTENCY_KEY_REUSED`，不会因唯一约束泄漏 500 或新增业务记录。
+- 源码已检索并清理 PR #91 未合并类状态表述；PR #91 当前 HEAD 为 `0aa5e0e57fdcffe3da0a66844c3c402a5d435785`，目标为 `integration/sprint4-real-input`。

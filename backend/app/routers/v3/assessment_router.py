@@ -13,6 +13,7 @@ from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.services.v3.assessment_service import (
     AssessmentInputNotReady,
     IdempotencyConflict,
+    IdempotencyInProgress,
     InputRevisionConflict,
     OwnedResourceNotFound,
     create_assessment,
@@ -67,6 +68,13 @@ def create_run(
             422,
             "IDEMPOTENCY_KEY_REUSED",
             "相同的幂等键已被不同的请求使用。",
+        ) from None
+    except IdempotencyInProgress:
+        raise V3APIError(
+            409,
+            "IDEMPOTENCY_IN_PROGRESS",
+            "相同幂等键的请求仍在处理中，请稍后重试。",
+            retryable=True,
         ) from None
     if replayed:
         response.status_code = 200
