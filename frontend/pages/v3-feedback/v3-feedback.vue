@@ -116,7 +116,8 @@ export default {
       }
     },
     goHome() {
-      uni.reLaunch({ url: "/pages/index/index" })
+      // P1-3：反馈完成后回到 V3 入口页，不再进入 Sprint 3 旧首页
+      uni.reLaunch({ url: "/pages/entry/entry" })
     },
   },
 }

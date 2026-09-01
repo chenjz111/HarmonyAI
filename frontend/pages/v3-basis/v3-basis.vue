@@ -121,7 +121,8 @@ export default {
       this.generate()
     },
     goPlayer() {
-      uni.redirectTo({ url: "/pages/v3-player/v3-player" })
+      // v3-player 已是 tabBar 页面（播放 tab），redirectTo 无法打开 tab 页
+      uni.switchTab({ url: "/pages/v3-player/v3-player" })
     },
     formatDuration(sec) {
       const m = Math.floor(sec / 60)
@@ -150,11 +151,11 @@ export default {
       <view class="btn-retry" @click="load"><text class="btn-retry-text">重试</text></view>
     </view>
 
-    <!-- real 模式：Agent2（PR #91）未接入，明确等待状态，不伪造依据与生成 -->
+    <!-- real 模式：音乐服务未接入，明确等待状态，不伪造依据与生成（P1-2：稳定用户文案） -->
     <view v-else-if="phase === 'pending'" class="pending-card">
       <view class="pending-icon"><text class="pending-icon-text">…</text></view>
       <text class="pending-title">正在等待音乐服务接入</text>
-      <text class="pending-desc">音乐生成依据与生成任务依赖后端 Agent 服务（PR #91 尚未合并）。当前处于真实接口模式，前端不会使用模拟数据替代。待服务接入后，即可查看依据并发起生成。</text>
+      <text class="pending-desc">音乐生成服务正在升级维护中，暂时无法查看依据或发起生成。服务恢复后即可继续，你的评估结果已保存。</text>
       <view class="btn-retry" @click="load"><text class="btn-retry-text">重新加载</text></view>
     </view>
 

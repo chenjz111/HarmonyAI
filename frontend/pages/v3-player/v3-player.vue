@@ -64,20 +64,28 @@ export default {
         this.play()
       }
     },
-    play() {
-      if (!this.audioSrc) return
-      if (!this.audioCtx) {
-        this.audioCtx = uni.createInnerAudioContext()
-        this.audioCtx.src = this.audioSrc
-        this.audioCtx.onError(() => {
-          // 播放失败：安全降级文案，不暴露原始错误
-          this.playing = false
-          uni.showToast({ title: "播放失败，请稍后重试", icon: "none" })
-        })
-        this.audioCtx.onEnded(() => { this.playing = false })
+    async play() {
+      if (!this.audioSrc || this.playing) return
+      try {
+        // P0-3：后端音频流要求 Bearer 头，audio 标签无法携带；
+        // 先经带鉴权的 downloadFile 拉取为本地临时文件再播放，失败如实提示
+        const src = await apiV3.fetchAuthorizedAudio(this.music.stream_url)
+        if (!this.audioCtx) {
+          this.audioCtx = uni.createInnerAudioContext()
+          this.audioCtx.onError(() => {
+            // 播放失败：安全降级文案，不暴露原始错误
+            this.playing = false
+            uni.showToast({ title: "播放失败，请稍后重试", icon: "none" })
+          })
+          this.audioCtx.onEnded(() => { this.playing = false })
+        }
+        this.audioCtx.src = src
+        this.audioCtx.play()
+        this.playing = true
+      } catch (e) {
+        this.playing = false
+        uni.showToast({ title: e.message || "播放失败，请稍后重试", icon: "none" })
       }
-      this.audioCtx.play()
-      this.playing = true
     },
     pause() {
       if (this.audioCtx) this.audioCtx.pause()
@@ -123,7 +131,8 @@ export default {
     goFeedback() {
       this.stopAudio()
       // V3 流程进入 V3 反馈页（feedback_v3.0），不再复用 V2 反馈页
-      uni.redirectTo({ url: "/pages/v3-feedback/v3-feedback" })
+      // 本页是 tabBar 页面，用 navigateTo 跳转非 tab 页
+      uni.navigateTo({ url: "/pages/v3-feedback/v3-feedback" })
     },
   },
 }

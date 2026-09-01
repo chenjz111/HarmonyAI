@@ -143,7 +143,7 @@ const FRIENDLY_ERRORS = {
   FACT_EXTRACTION_UNAVAILABLE: "当前暂不支持修改摘要后重新解析。你可以先按现有摘要继续，或重新上传资料。",
   INPUT_REVISION_CONFLICT: "输入状态已更新，请重新进入本页后再试。",
   REVISION_CONFLICT: "内容已更新，请刷新后重试。",
-  DOCUMENT_NOT_FOUND: "上传的资料暂时无法关联到当前访客会话（后端访客上传接口待补齐）。你可以选择暂不使用这份资料，通过描述和问卷继续。",
+  DOCUMENT_NOT_FOUND: "上传的资料暂时无法关联到当前会话。你可以选择暂不使用这份资料，通过描述和问卷继续评估。",
   DOCUMENT_OCR_NOT_READY: "资料尚未成功识别，请重新上传，或改用最近情况描述和10道状态问卷继续评估。",
   UNAUTHENTICATED: "身份已失效，请重新进入体验。",
   NETWORK_ERROR: "网络连接失败，请检查后端服务是否已启动后重试。",
@@ -153,10 +153,11 @@ function apiError(message, code, extra) {
   return Object.assign(new Error(message), Object.assign({ code: code || "REQUEST_FAILED" }, extra || {}))
 }
 
-// AGENT_PENDING：PR #91 未合并的统一等待状态（页面据此显示"等待后端接入"）
+// AGENT_PENDING：Agent 能力未接入时的统一等待状态（页面据此显示等待卡）
+// P1-2：文案为稳定用户文案，不暴露 PR 编号等内部开发信息
 function agentPendingError(what) {
   return apiError(
-    what + "依赖后端 Agent 服务（PR #91 尚未合并），暂时无法真实调用。页面保持等待状态，不会伪造结果。",
+    what + "服务正在升级维护中，暂时无法使用。页面保持等待状态，不会影响你已填写的内容。",
     "AGENT_PENDING",
     { agentPending: true },
   )
@@ -480,7 +481,7 @@ const realInputApi = {
 
   // 音乐生成（真实接口已交付，但需要 prescription_id → PR #91）
   async startMusicGeneration() {
-    throw agentPendingError("音乐生成需要辨证处方（prescription），")
+    throw agentPendingError("音乐生成")
   },
   async pollMusicGeneration(taskId) {
     const state = loadFlowState()
@@ -975,6 +976,8 @@ export const apiV3 = {
   MODE,
   // hybrid 模式下 Agent 段为 mock 演示数据：页面需显示"演示数据"标识
   AGENT_SIMULATED: MODE === "hybrid",
+  // mock 模式下输入段（含语音转写）为模拟数据：real/hybrid 不得产生虚构 transcript
+  INPUT_SIMULATED: MODE === "mock",
 
   guestAuth() {
     return INPUT_REAL ? realInputApi.guestAuth() : mockApi.guestAuth()
@@ -1007,27 +1010,27 @@ export const apiV3 = {
     return mockApi.getQuestionnaireSchema()
   },
   submitQuestionnaire(answers) {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("问卷提交与综合评估（Agent1）"))
+    if (!AGENT_MOCK) return Promise.reject(agentPendingError("问卷提交与综合评估"))
     return mockApi.submitQuestionnaire(answers)
   },
 
   // 评估（Agent1，PR #91 未合并）
   createAssessment() {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估（Agent1）"))
+    if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估"))
     return mockApi.createAssessment()
   },
   getAssessment() {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估（Agent1）"))
+    if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估"))
     return mockApi.getAssessment()
   },
   confirmAssessment(payload) {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估（Agent1）"))
+    if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估"))
     return mockApi.confirmAssessment(payload)
   },
 
   // 辨证与生成依据（Agent2/3，PR #91 未合并）
   getMusicBasis() {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("辨证与音乐生成依据（Agent2）"))
+    if (!AGENT_MOCK) return Promise.reject(agentPendingError("辨证与音乐生成依据"))
     return mockApi.getMusicBasis()
   },
 
@@ -1080,6 +1083,43 @@ export const apiV3 = {
     if (!streamUrl) return ""
     if (streamUrl.indexOf("/api/") === 0) return BASE_URL + streamUrl
     return streamUrl
+  },
+
+  // 播放鉴权（P0-3 前端侧）：后端音频流要求 Bearer 头，audio 标签无法携带。
+  // 对后端地址先用带鉴权的 downloadFile 拉取为本地临时文件，再交给播放器；
+  // 本地资源与外部直链原样返回。失败时如实报错，不降级为无鉴权直连。
+  fetchAuthorizedAudio(streamUrl) {
+    if (!streamUrl) return Promise.resolve("")
+    const absolute = this.musicStreamUrl(streamUrl)
+    if (absolute.indexOf(BASE_URL) !== 0) {
+      return Promise.resolve(absolute)
+    }
+    return new Promise((resolve, reject) => {
+      let downloadFile = null
+      try {
+        downloadFile = uni.downloadFile
+      } catch (e) {
+        downloadFile = null // uni 不可用（Node 测试环境）
+      }
+      if (!downloadFile) {
+        reject(apiError(FRIENDLY_ERRORS.NETWORK_ERROR, "NETWORK_ERROR"))
+        return
+      }
+      downloadFile({
+        url: absolute,
+        header: authHeaders(),
+        success: (res) => {
+          if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
+            resolve(res.tempFilePath)
+          } else {
+            reject(apiError("音频加载失败，请稍后重试", "AUDIO_FETCH_FAILED"))
+          }
+        },
+        fail: () => {
+          reject(apiError(FRIENDLY_ERRORS.NETWORK_ERROR, "NETWORK_ERROR"))
+        },
+      })
+    })
   },
 
   // 会话辅助：页面间共享 session id（真实模式存于 v3_flow_state）

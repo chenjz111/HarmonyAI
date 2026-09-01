@@ -206,11 +206,11 @@ export default {
       <text class="loading-sub">请稍候，通常需要几秒钟</text>
     </view>
 
-    <!-- real 模式：Agent1（PR #91）未接入，明确等待状态，不伪造评估 -->
+    <!-- real 模式：评估服务未接入，明确等待状态，不伪造评估（P1-2：稳定用户文案） -->
     <view v-else-if="agentPending" class="pending-card">
       <view class="pending-icon"><text class="pending-icon-text">…</text></view>
       <text class="pending-title">正在等待评估服务接入</text>
-      <text class="pending-desc">问卷提交与综合评估依赖后端 Agent 服务（PR #91 尚未合并）。当前处于真实接口模式，前端不会使用模拟数据替代。你的作答已保留在本页，待服务接入后可直接提交。</text>
+      <text class="pending-desc">评估服务正在升级维护中，暂时无法提交。你的作答已保留在本页，不会丢失，服务恢复后可直接提交。</text>
       <view class="btn-retry" @click="agentPending = false"><text class="btn-retry-text">返回问卷</text></view>
     </view>
 

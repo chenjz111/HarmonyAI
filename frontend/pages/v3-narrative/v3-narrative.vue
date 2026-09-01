@@ -7,8 +7,10 @@
  * 两条路径此步均为选填、可整步跳过；跳过不创建空 Understanding。
  * 转写结果先展示给用户确认后才有效；ASR 不可用时文字输入始终可用。
  *
- * mock 说明：录音后以 fixture 转写文本模拟 ASR 结果（虚构脱敏内容），
- * 真实 ASR 由 #79 后端部署后接入。
+ * P0-1：语音转写仅在显式 mock 模式提供模拟数据（并明确标注演示）；
+ * real/hybrid 模式没有真实 ASR 时，语音入口显示"暂不可用"，绝不注入虚构 transcript。
+ * P1-1：real 模式下描述文本暂存本机（评估服务开通后随问卷一起提交），
+ * 页面明确告知"已保存待提交"，不声称已实时提交。
  */
 import { apiV3 } from "../../common/api-v3.js"
 
@@ -19,6 +21,8 @@ export default {
     return {
       withDocument: false, // 有资料模式（显示步骤标签差异）
       text: "",
+      // 仅显式 mock 模式提供模拟语音转写；real/hybrid 语音入口显示暂不可用
+      voiceSimulated: apiV3.INPUT_SIMULATED,
       recording: false,
       recordSeconds: 0,
       recordTimer: null,
@@ -37,9 +41,9 @@ export default {
     this.stopRecordTimer()
   },
   methods: {
-    // ---- 录音（mock ASR） ----
+    // ---- 录音（仅 mock 演示模式可用；real/hybrid 无真实 ASR，不伪造转写） ----
     async toggleRecord() {
-      if (!this.voiceAvailable) return
+      if (!this.voiceSimulated || !this.voiceAvailable) return
       if (this.recording) {
         this.stopRecording()
       } else {
@@ -59,7 +63,7 @@ export default {
     stopRecording() {
       this.stopRecordTimer()
       this.recording = false
-      // mock ASR：返回虚构转写文本（需用户确认后才作为输入）
+      // 模拟 ASR（仅 mock 演示模式可达）：返回演示转写文本，需用户确认后才作为输入
       this.transcript = {
         text: "最近一段时间事情比较多，晚上躺下后脑子停不下来，入睡比较慢，白天容易累。",
         confirmed: false,
@@ -127,35 +131,48 @@ export default {
       <view class="text-count"><text class="text-count-text">{{ (text || '').length }} / 2000</text></view>
     </view>
 
-    <!-- 语音输入 -->
+    <!-- P1-1：real 模式下描述文本为"已保存待提交"，不声称已实时提交 -->
+    <view v-if="!voiceSimulated" class="save-note">
+      <text class="save-note-text">你填写的内容会先保存在本机，评估服务开通后与问卷作答一起提交，不会丢失。</text>
+    </view>
+
+    <!-- 语音输入（P0-1：仅显式 mock 演示模式提供模拟转写；real/hybrid 明确暂不可用） -->
     <view class="voice-card">
       <view class="voice-head">
         <text class="voice-title">语音描述</text>
-        <text class="voice-limit">最长 3 分钟</text>
+        <text v-if="voiceSimulated" class="voice-limit">最长 3 分钟 · 演示数据</text>
       </view>
 
-      <view v-if="!recording" class="voice-idle" @click="toggleRecord">
-        <view class="voice-mic"><text class="mic-icon">🎤</text></view>
-        <text class="voice-idle-text">点击开始录音</text>
-      </view>
-
-      <view v-else class="voice-recording">
-        <view class="rec-dot"></view>
-        <text class="rec-time">{{ formatSec(recordSeconds) }}</text>
-        <view class="rec-stop" @click="toggleRecord"><text class="rec-stop-text">停止</text></view>
-      </view>
-
-      <!-- 转写结果：先确认后生效 -->
-      <view v-if="transcript && !transcript.confirmed" class="transcript-card">
-        <text class="transcript-title">语音转写结果</text>
-        <text class="transcript-text">{{ transcript.text }}</text>
-        <view class="transcript-actions">
-          <view class="ts-btn ts-primary" @click="confirmTranscript"><text class="ts-btn-text ts-primary-text">使用这段文字</text></view>
-          <view class="ts-btn" @click="cancelTranscript"><text class="ts-btn-text">重新录制</text></view>
+      <template v-if="voiceSimulated">
+        <view v-if="!recording" class="voice-idle" @click="toggleRecord">
+          <view class="voice-mic"><text class="mic-icon">🎤</text></view>
+          <text class="voice-idle-text">点击开始录音</text>
         </view>
-      </view>
-      <view v-else-if="transcript && transcript.confirmed" class="transcript-done">
-        <text class="transcript-done-text">✓ 已确认使用语音转写内容</text>
+
+        <view v-else class="voice-recording">
+          <view class="rec-dot"></view>
+          <text class="rec-time">{{ formatSec(recordSeconds) }}</text>
+          <view class="rec-stop" @click="toggleRecord"><text class="rec-stop-text">停止</text></view>
+        </view>
+
+        <!-- 转写结果：先确认后生效 -->
+        <view v-if="transcript && !transcript.confirmed" class="transcript-card">
+          <text class="transcript-title">语音转写结果（演示数据）</text>
+          <text class="transcript-text">{{ transcript.text }}</text>
+          <view class="transcript-actions">
+            <view class="ts-btn ts-primary" @click="confirmTranscript"><text class="ts-btn-text ts-primary-text">使用这段文字</text></view>
+            <view class="ts-btn" @click="cancelTranscript"><text class="ts-btn-text">重新录制</text></view>
+          </view>
+        </view>
+        <view v-else-if="transcript && transcript.confirmed" class="transcript-done">
+          <text class="transcript-done-text">✓ 已确认使用语音转写内容</text>
+        </view>
+      </template>
+
+      <view v-else class="voice-unavailable">
+        <view class="voice-mic"><text class="mic-icon">🎤</text></view>
+        <text class="voice-unavailable-title">语音描述暂不可用</text>
+        <text class="voice-unavailable-desc">当前版本暂不支持语音输入，你可以使用上方文字填写，内容会一并保留。</text>
       </view>
     </view>
 
@@ -205,6 +222,13 @@ export default {
 }
 .text-count { display: flex; justify-content: flex-end; margin-top: 12rpx; }
 .text-count-text { font-size: 22rpx; color: #b3ac9c; }
+.save-note {
+  background: #f6f3ea;
+  border-radius: 16rpx;
+  padding: 20rpx 28rpx;
+  margin-bottom: 32rpx;
+}
+.save-note-text { font-size: 24rpx; color: #8a9188; line-height: 1.6; }
 .voice-card {
   background: #fffefa;
   border: 2rpx solid #e8e2d4;
@@ -284,6 +308,14 @@ export default {
   justify-content: center;
 }
 .transcript-done-text { font-size: 26rpx; color: #4a6b5c; }
+.voice-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40rpx 0 28rpx;
+}
+.voice-unavailable-title { font-size: 28rpx; color: #2f3d35; font-weight: 500; margin-bottom: 12rpx; }
+.voice-unavailable-desc { font-size: 24rpx; color: #9c9585; line-height: 1.6; text-align: center; }
 .actions { display: flex; flex-direction: column; }
 .btn-primary {
   background: #4a6b5c;

@@ -95,8 +95,9 @@ export default {
   methods: {
     async goNext() {
       // V3 owner-flow-1：进入双入口选择页（api-v3 内部完成 guest auth + session 创建）
+      // entry 已是 tabBar 页面（首页 tab），navigateTo 无法打开 tab 页，须用 reLaunch
       try {
-        uni.navigateTo({ url: '/pages/entry/entry' })
+        uni.reLaunch({ url: '/pages/entry/entry' })
       } catch (error) {
         uni.showToast({ title: error.message || '无法开始评估', icon: 'none' })
       }

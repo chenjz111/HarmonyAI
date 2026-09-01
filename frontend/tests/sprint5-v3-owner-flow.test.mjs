@@ -132,6 +132,111 @@ test("V3 pages do not leak internal fields to users", () => {
   }
 })
 
+// ===== PR #92 Review 修复回归（P0-1/P0-2/P0-3/P1-1/P1-2/P1-3） =====
+
+test("P1-3: tabBar and feedback go-home route to V3 pages, never Sprint 3", () => {
+  const tabs = pagesConfig.tabBar.list.map((t) => t.pagePath)
+  assert.equal(tabs.length, 2, "tabBar keeps two items")
+  assert.equal(tabs[0], "pages/entry/entry", "home tab must be the V3 entry page")
+  assert.equal(tabs[1], "pages/v3-player/v3-player", "player tab must align with the V3 player entry")
+  for (const legacy of ["pages/index/index", "pages/player/player"]) {
+    assert.ok(!tabs.includes(legacy), `tabBar must not point to Sprint 3 page: ${legacy}`)
+  }
+
+  const feedback = readPage("v3-feedback/v3-feedback.vue")
+  assert.ok(feedback.includes('"/pages/entry/entry"'), "feedback goHome must reLaunch to V3 entry")
+  assert.ok(!feedback.includes("/pages/index/index"), "feedback must not route back to Sprint 3 home")
+
+  // tab 页面入口必须使用合法导航方式（navigateTo/redirectTo 打不开 tab 页）
+  const welcome = readPage("welcome/welcome.vue")
+  assert.ok(welcome.includes("reLaunch"), "welcome must use reLaunch to open the tab page entry")
+  const basis = readPage("v3-basis/v3-basis.vue")
+  assert.ok(basis.includes("switchTab"), "basis must use switchTab to open the tab page v3-player")
+
+  // Sprint 3 旧页面保留用于兼容（页面文件与路由不删）
+  assert.ok(routes.includes("pages/index/index"), "legacy home page remains for compatibility")
+  assert.ok(routes.includes("pages/player/player"), "legacy player page remains for compatibility")
+})
+
+test("P0-1: narrative voice input never fabricates transcripts outside explicit mock", () => {
+  const src = readPage("v3-narrative/v3-narrative.vue")
+  // 语音入口按显式 mock 模式分流：INPUT_SIMULATED 才提供模拟转写
+  assert.ok(src.includes("voiceSimulated: apiV3.INPUT_SIMULATED"), "voice must be gated by explicit mock mode")
+  assert.ok(src.includes('v-if="voiceSimulated"'), "recording UI must be inside the simulated branch")
+  assert.ok(src.includes("语音描述暂不可用"), "non-mock mode must show voice-unavailable notice")
+  // 模拟转写必须标注演示数据，不得伪装成真实 ASR 结果
+  assert.ok(src.includes("演示数据"), "simulated transcript must be labeled as demo data")
+})
+
+test("P1-1: narrative page states pending-save semantics, not claimed submission", () => {
+  const src = readPage("v3-narrative/v3-narrative.vue")
+  assert.ok(
+    src.includes("保存在本机"),
+    "real mode must tell users the text is saved locally pending submission",
+  )
+})
+
+test("P0-3: backend audio streams are fetched with auth headers before playback", async () => {
+  const { apiV3 } = await import("../common/api-v3.js")
+  // 本地/直链资源不需要鉴权，原样返回
+  assert.equal(await apiV3.fetchAuthorizedAudio("/static/demo.mp3"), "/static/demo.mp3")
+  // 后端流地址必须走带鉴权的下载通道；无下载通道时如实报错，不降级为无鉴权直连
+  await assert.rejects(
+    () => apiV3.fetchAuthorizedAudio("/api/v3/music/assets/m_1/stream"),
+    (e) => e.code === "NETWORK_ERROR" || e.code === "AUDIO_FETCH_FAILED",
+    "backend stream must go through the authorized fetch path",
+  )
+  // 播放页必须经授权拉取后再播放（audio 标签无法携带 Bearer 头）
+  const player = readPage("v3-player/v3-player.vue")
+  assert.ok(player.includes("fetchAuthorizedAudio"), "player must play audio via authorized fetch")
+  const apiSrc = readFileSync(resolve(frontendRoot, "common/api-v3.js"), "utf8")
+  assert.ok(apiSrc.includes("downloadFile"), "authorized fetch must use downloadFile")
+  assert.ok(
+    /header:\s*authHeaders\(\)/.test(apiSrc),
+    "authorized fetch must attach auth headers",
+  )
+})
+
+test("P0-2: upload failures still offer the describe-and-questionnaire path", () => {
+  const material = readPage("v3-material/v3-material.vue")
+  // network_error 分支必须提供"暂不使用资料"出口（不能只有重试，避免用户被卡死）
+  const networkCard = (material.match(/state === 'network_error'[\s\S]*?<\/view>\s*<\/view>/) || [""])[0]
+  assert.ok(
+    networkCard.includes("暂不使用资料，通过描述和问卷继续"),
+    "network error card must also offer the continue-without-material action",
+  )
+  assert.ok(
+    networkCard.includes("switchToQuestionnaire"),
+    "the action must call the backend input transition",
+  )
+})
+
+test("P1-2: V3 pages and API errors use stable user copy without internal dev info", () => {
+  for (const page of [
+    "entry/entry.vue",
+    "v3-material/v3-material.vue",
+    "v3-summary/v3-summary.vue",
+    "v3-narrative/v3-narrative.vue",
+    "v3-questionnaire/v3-questionnaire.vue",
+    "v3-confirm/v3-confirm.vue",
+    "v3-basis/v3-basis.vue",
+    "v3-player/v3-player.vue",
+    "v3-feedback/v3-feedback.vue",
+  ]) {
+    const src = readPage(page)
+    const template = (src.match(/<template>[\s\S]*?<\/template>/) || [""])[0]
+    for (const forbidden of [
+      "PR #", "尚未合并", "待补齐", "真实接口模式", "Agent 服务", "Agent1", "Agent2", "prescription",
+    ]) {
+      assert.ok(!template.includes(forbidden), `${page} template leaks internal dev info: ${forbidden}`)
+    }
+  }
+  // API 层用户可见错误文案同样不泄漏内部开发信息
+  const apiSrc = readFileSync(resolve(frontendRoot, "common/api-v3.js"), "utf8")
+  assert.ok(!apiSrc.includes("后端访客上传接口待补齐"), "friendly errors must not leak backend status")
+  assert.ok(!/agentPendingError[\s\S]{0,200}尚未合并/.test(apiSrc), "AGENT_PENDING copy must not mention PR state")
+})
+
 test("no music goal wording or fields in V3 flow", () => {
   for (const page of [
     "entry/entry.vue",
@@ -411,13 +516,14 @@ test("api-v3 real mode (default): agent functions return AGENT_PENDING without f
     const { apiV3 } = await import("../common/api-v3.js?mode=real")
     assert.equal(apiV3.MODE, "real", "default mode must be real (mock requires explicit opt-in)")
     assert.equal(apiV3.AGENT_SIMULATED, false, "real mode must not claim simulated data")
+    assert.equal(apiV3.INPUT_SIMULATED, false, "real mode must not simulate input (voice transcript)")
 
     // Agent1/Agent2 能力（PR #91 未合并）：明确等待状态
     for (const fn of ["submitQuestionnaire", "createAssessment", "getAssessment", "getMusicBasis"]) {
       await assert.rejects(
         () => apiV3[fn](),
-        (e) => e.code === "AGENT_PENDING" && e.agentPending === true,
-        `${fn} must reject with AGENT_PENDING in real mode`,
+        (e) => e.code === "AGENT_PENDING" && e.agentPending === true && !e.message.includes("PR"),
+        `${fn} must reject with AGENT_PENDING (stable user copy) in real mode`,
       )
     }
     await assert.rejects(

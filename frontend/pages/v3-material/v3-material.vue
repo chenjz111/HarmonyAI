@@ -150,6 +150,11 @@ export default {
         <view class="btn-primary" @click="retryFromNetworkError">
           <text class="btn-primary-text">重新上传资料</text>
         </view>
+        <!-- P0-2 前端桥接：资料无法关联会话等场景下，用户仍可走描述+问卷路径，
+             不会被卡死在重试；归属问题的根治需后端 V3 owner-aware 上传接口 -->
+        <view class="btn-secondary" @click="switchToQuestionnaire">
+          <text class="btn-secondary-text">{{ discarding ? "正在切换…" : "暂不使用资料，通过描述和问卷继续" }}</text>
+        </view>
       </view>
     </view>
 

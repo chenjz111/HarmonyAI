@@ -139,11 +139,11 @@ export default {
       <view class="btn-retry" @click="load"><text class="btn-retry-text">重试</text></view>
     </view>
 
-    <!-- real 模式：Agent1（PR #91）未接入，明确等待状态，不伪造评估 -->
+    <!-- real 模式：评估服务未接入，明确等待状态，不伪造评估（P1-2：稳定用户文案） -->
     <view v-else-if="agentPending" class="pending-card">
       <view class="pending-icon"><text class="pending-icon-text">…</text></view>
       <text class="pending-title">正在等待评估服务接入</text>
-      <text class="pending-desc">综合评估依赖后端 Agent 服务（PR #91 尚未合并）。当前处于真实接口模式，前端不会使用模拟数据替代。待服务接入后，本页将展示你的评估结果。</text>
+      <text class="pending-desc">评估服务正在升级维护中，暂时无法生成结果。服务恢复后，本页将展示你的评估结果。</text>
       <view class="btn-retry" @click="load"><text class="btn-retry-text">重新加载</text></view>
     </view>
 
