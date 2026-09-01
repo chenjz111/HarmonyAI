@@ -1,1 +1,0 @@
-{"case_id": "case-001", "predicted": {"status": "success", "evidence_items": [{"source_ref": "narrative:sentence_1"}], "candidate_tendencies": [{"supporting_evidence_ids": ["ev-1"]}], "abstained": false, "safety_flags": []}, "gold": {"source_refs": ["narrative:sentence_1"], "abstained": false, "safety_blocked": false}}
