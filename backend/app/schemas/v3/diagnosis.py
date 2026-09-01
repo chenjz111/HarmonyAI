@@ -51,6 +51,7 @@ class DiagnosisV31Input(V3BaseModel):
     """
 
     schema_version: Literal["diagnosis_v3.1"]
+    session_id: NonEmptyString
     diagnosis_id: NonEmptyString
     assessment_ref: AssessmentRefV31
     organ_profile: OrganProfile

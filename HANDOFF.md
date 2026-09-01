@@ -398,3 +398,11 @@ yu    (羽调)      → 58   → 箫、古琴
 - 新增计划内Owner文件：`docs/sprint5/sprint5-acceptance-report.md`、`docs/sprint5/sprint5-manual-gates.md`。当前只允许 `PREPARATION_IN_PROGRESS`，不是最终验收。
 - #77 医学production content仍BLOCKED；#78～#80和#81保持OPEN。Agent1/2/3生产实现、真实Music Provider、Feedback闭环、V3前端和Five-Agent E2E均未完成。
 - NEXT_ACTION：先让肖宇翔完成#77审核资产；可并行继续不依赖医学内容的Generation persistence/API与Feedback persistence基础。全部功能线会师前不运行Sprint5 final full gate，不合并integration→dev。
+
+### PR #91 final review checkpoint（2026-09-01）
+
+- Agent2 capability: `BLOCKED_BY_MEDICAL_ASSET`。
+- Implemented: owner/session/confirmed-assessment gate, deterministic ElementProfile derivation, insufficient-evidence abstention, `MEDICAL_ASSET_UNAVAILABLE` gate。
+- Not implemented: production Query Builder, approved RAG Retriever, Qwen diagnosis Provider, syndrome whitelist validation。
+- Reason: repository中没有已批准的 RAG ingestion manifest 或 syndrome whitelist；本 PR 不伪造医学资产或 Provider 执行结果。
+- PR #91 同时补齐 Agent1/Agent2 V3 幂等重放与冲突保护，以及 Diagnosis 的 Assessment、Revision、Session 归属校验。

@@ -238,6 +238,7 @@ def _organ_profile_available():
 def test_diagnosis_v31_replaces_legacy_safety_gate_with_policy():
     base = {
         "schema_version": "diagnosis_v3.1",
+        "session_id": "sess_1",
         "diagnosis_id": "diag_1",
         "assessment_ref": {
             "assessment_id": "asmt_1",
@@ -264,6 +265,7 @@ def test_diagnosis_v31_rejects_legacy_clear_safety_ref():
         DiagnosisV31Input.model_validate(
             {
                 "schema_version": "diagnosis_v3.1",
+                "session_id": "sess_1",
                 "diagnosis_id": "diag_1",
                 "assessment_ref": {
                     "assessment_id": "asmt_1",
