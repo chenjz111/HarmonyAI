@@ -12,7 +12,9 @@ from backend.ai_engine.v3.understanding_provider import (
 )
 from backend.app.main import app
 from backend.app.models.document import Document
+from backend.app.models.v3.assessment import AssessmentV3
 from backend.app.models.v3.identity import UserIdentity
+from backend.app.models.v3.session import V3IdempotencyRecord
 from backend.app.schemas.v3.understanding import (
     TextSpan,
     UnderstandingProviderFact,
@@ -155,6 +157,19 @@ def _assessment_body(session_id, understanding_id, expected_input_revision):
     }
 
 
+def _assessment_count(db_session_factory, headers):
+    db = db_session_factory()
+    try:
+        user_pk = _user_pk(db, headers)
+        return (
+            db.query(AssessmentV3)
+            .filter(AssessmentV3.internal_user_pk == user_pk)
+            .count()
+        )
+    finally:
+        db.close()
+
+
 def test_assessment_available_from_two_liver_claims(monkeypatch, db_session_factory):
     monkeypatch.setattr(
         understanding_service,
@@ -221,6 +236,93 @@ def test_assessment_insufficient_single_claim(monkeypatch, db_session_factory):
     assert assessment["organ_profile"]["weights"] is None
     assert assessment["degradation"]["active"] is True
     assert "INSUFFICIENT_EVIDENCE" in assessment["degradation"]["reason_codes"]
+
+
+def test_assessment_replays_same_key_and_payload_without_duplicate(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
+    db.close()
+
+    body = _assessment_body(session_id, understanding_id, 2)
+    key = f"asmt-replay-{uuid.uuid4().hex}"
+    first = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": key},
+        json=body,
+    )
+    replay = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": key},
+        json=body,
+    )
+
+    assert first.status_code == 201, first.text
+    assert replay.status_code == 200, replay.text
+    assert _v3_data(replay) == _v3_data(first)
+    assert _v3_data(replay)["assessment_id"] == _v3_data(first)["assessment_id"]
+    assert _assessment_count(db_session_factory, headers) == 1
+
+    db = db_session_factory()
+    try:
+        records = (
+            db.query(V3IdempotencyRecord)
+            .filter(
+                V3IdempotencyRecord.internal_user_pk
+                == _user_pk(db, headers),
+                V3IdempotencyRecord.idempotency_key == key,
+            )
+            .all()
+        )
+        assert len(records) == 1
+        assert records[0].status == "succeeded"
+        assert records[0].operation == "create_v3_assessment"
+    finally:
+        db.close()
+
+
+def test_assessment_reused_key_with_different_payload_conflicts_without_duplicate(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
+    db.close()
+
+    key = f"asmt-conflict-{uuid.uuid4().hex}"
+    first_body = _assessment_body(session_id, understanding_id, 2)
+    conflict_body = _assessment_body(session_id, understanding_id, 1)
+    first = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": key},
+        json=first_body,
+    )
+    conflict = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": key},
+        json=conflict_body,
+    )
+
+    assert first.status_code == 201, first.text
+    assert conflict.status_code == 422, conflict.text
+    assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert _assessment_count(db_session_factory, headers) == 1
 
 
 def test_assessment_requires_confirmed_understanding(monkeypatch, db_session_factory):
