@@ -132,7 +132,7 @@ export default {
 </script>
 
 <template>
-  <view class="container">
+  <view class="container v3-visual-page v3-one-screen-page">
     <view class="header">
       <text class="step-tag">有资料流程 · 第 2 步</text>
       <text class="page-title">请确认资料摘要</text>
@@ -149,7 +149,7 @@ export default {
     </view>
 
     <!-- 确认态 -->
-    <view v-else-if="!editing" class="summary-card">
+    <view v-else-if="!editing" class="summary-card v3-density-card">
       <text class="source-notice">{{ summaryModel.source_notice }}</text>
       <view class="summary-body">
         <text class="summary-text">{{ summaryModel.summary }}</text>
@@ -195,7 +195,8 @@ export default {
   </view>
 </template>
 
-<style>
+<style lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: #f7f3eb;
@@ -291,4 +292,20 @@ export default {
 }
 .edit-count { display: flex; justify-content: flex-end; margin: 12rpx 0 32rpx; }
 .edit-count-text { font-size: 22rpx; color: #b3ac9c; }
+/* Phase 3A visual migration */
+.container { @include v3.v3-one-screen; max-width: v3.$v3-flow-max-width; margin: 0 auto; }
+.header { margin-bottom: v3.$v3-space-6; }
+.step-tag { color:v3.$v3-primary; background:rgba(78,116,104,.09); border-radius:v3.$v3-radius-pill; font-family:v3.$v3-font-family; }
+.page-title { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; font-size:clamp(30px,8vw,38px); font-weight:640; letter-spacing:-.025em; }
+.summary-card,.edit-card,.loading-wrap,.error-wrap { @include v3.v3-surface-card; }
+.summary-card,.edit-card { padding:clamp(22px,5vw,34px); }
+.source-notice { color:v3.$v3-accent; background:rgba(185,155,99,.1); border-radius:v3.$v3-radius-sm; }
+.summary-body { border-left:3px solid rgba(78,116,104,.35); background:v3.$v3-background; }
+.summary-text,.edit-title { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; }
+.edit-hint,.edit-count-text { color:v3.$v3-text-secondary; font-family:v3.$v3-font-family; }
+.edit-textarea { border:1px solid v3.$v3-border; border-radius:v3.$v3-radius-md; background:v3.$v3-background; font-family:v3.$v3-font-family; }
+.btn-primary { @include v3.v3-primary-action; }
+.btn-secondary { min-height:52px; border:1px solid v3.$v3-border; border-radius:v3.$v3-radius-pill; background:v3.$v3-surface; }
+.btn-link { min-height:44px; align-items:center; }
+@media (max-height:760px){.summary-card,.edit-card{padding:20px}.summary-body{padding:18px}.actions{gap:10px}.header{margin-bottom:18px}}
 </style>

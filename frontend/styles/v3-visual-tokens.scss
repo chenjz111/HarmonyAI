@@ -1,0 +1,113 @@
+// HarmonyAI Visual Language V1 — shared by the complete V3 flow.
+$v3-background: #F6F7F3;
+$v3-surface: #FFFFFF;
+$v3-primary: #4E7468;
+$v3-primary-dark: #36584F;
+$v3-accent: #B99B63;
+$v3-text-primary: #25312D;
+$v3-text-secondary: #69756F;
+$v3-text-muted: #98A29E;
+$v3-border: #E3E7E2;
+$v3-danger: #A8645E;
+
+$v3-font-family: "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+$v3-flow-max-width: 720px;
+
+$v3-space-1: 4px;
+$v3-space-2: 8px;
+$v3-space-3: 12px;
+$v3-space-4: 16px;
+$v3-space-5: 20px;
+$v3-space-6: 24px;
+$v3-space-8: 32px;
+$v3-space-10: 40px;
+$v3-space-12: 48px;
+
+$v3-radius-sm: 12px;
+$v3-radius-md: 18px;
+$v3-radius-lg: 24px;
+$v3-radius-pill: 999px;
+$v3-shadow-soft: 0 8px 24px rgba(37, 49, 45, 0.055);
+$v3-shadow-raised: 0 14px 36px rgba(54, 88, 79, 0.095);
+$v3-motion-fast: 160ms;
+$v3-motion-base: 260ms;
+
+@mixin v3-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: $v3-background;
+  color: $v3-text-primary;
+  font-family: $v3-font-family;
+  padding-top: calc(#{$v3-space-8} + env(safe-area-inset-top));
+  padding-right: max(#{$v3-space-5}, env(safe-area-inset-right));
+  padding-bottom: calc(#{$v3-space-10} + env(safe-area-inset-bottom));
+  padding-left: max(#{$v3-space-5}, env(safe-area-inset-left));
+}
+
+@mixin v3-one-screen {
+  @include v3-page;
+  min-height: 100dvh;
+  overflow: visible;
+}
+
+@mixin v3-scroll-page {
+  @include v3-page;
+  min-height: 100dvh;
+  overflow: visible;
+  padding-bottom: calc(#{$v3-space-12} + env(safe-area-inset-bottom));
+}
+
+@mixin v3-surface-card {
+  border: 1px solid $v3-border;
+  border-radius: $v3-radius-lg;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: $v3-shadow-soft;
+}
+
+// Compact-height reduces only decorative space; body type and touch targets stay intact.
+@media (max-height: 760px) {
+  .v3-visual-page {
+    padding-top: calc(#{$v3-space-5} + env(safe-area-inset-top));
+    padding-bottom: calc(#{$v3-space-6} + env(safe-area-inset-bottom));
+  }
+  .v3-visual-page .header { margin-bottom: $v3-space-5; }
+  .v3-visual-page .v3-density-card { padding: $v3-space-5; }
+  .v3-visual-page .v3-density-section { margin-bottom: $v3-space-4; }
+}
+
+@mixin v3-flow-shell {
+  width: 100%;
+  max-width: $v3-flow-max-width;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+@mixin v3-focusable {
+  transition: transform $v3-motion-fast ease, border-color $v3-motion-fast ease,
+    background-color $v3-motion-fast ease, box-shadow $v3-motion-fast ease;
+
+  &:active {
+    transform: scale(0.985);
+  }
+}
+
+@mixin v3-primary-action {
+  min-height: 52px;
+  border-radius: $v3-radius-pill;
+  background: $v3-primary;
+  color: $v3-surface;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(78, 116, 104, 0.14);
+  @include v3-focusable;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v3-visual-page,
+  .v3-visual-page * {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

@@ -134,7 +134,7 @@ export default {
 </script>
 
 <template>
-  <view class="container">
+  <view class="container v3-visual-page v3-scroll-page">
     <view class="header">
       <text class="step-tag">音乐生成</text>
       <text class="page-title">本次音乐生成依据</text>
@@ -166,13 +166,8 @@ export default {
         <text class="demo-banner-text">演示模式：以下依据与生成过程为模拟数据</text>
       </view>
 
-      <view class="tendency-box">
-        <text class="tendency-label">{{ basis.tendency.label }}</text>
-        <text class="tendency-disclaimer">{{ basis.tendency.disclaimer }}</text>
-      </view>
-
-      <view class="basis-section">
-        <text class="section-title">主要依据</text>
+      <view class="basis-section explanation-step v3-density-section">
+        <text class="section-title">状态依据</text>
         <view class="basis-items">
           <view v-for="(b, idx) in basis.basis_summaries" :key="idx" class="basis-item">
             <view class="item-dot"></view>
@@ -181,15 +176,23 @@ export default {
         </view>
       </view>
 
-      <view class="basis-section">
-        <text class="section-title">音调方案</text>
+      <view class="basis-section explanation-step v3-density-section">
+        <text class="section-title">五脏与五行相关解释</text>
+        <view class="tendency-box">
+          <text class="tendency-label">{{ basis.tendency.label }}</text>
+          <text class="tendency-disclaimer">{{ basis.tendency.disclaimer }}</text>
+        </view>
+      </view>
+
+      <view class="basis-section explanation-step v3-density-section">
+        <text class="section-title">五音方案</text>
         <view class="tone-box">
           <text class="tone-main">{{ basis.tone_profile.dominant_label }}为主</text>
           <text class="tone-sub">{{ basis.tone_profile.summary }}</text>
         </view>
       </view>
 
-      <view class="basis-section">
+      <view class="basis-section explanation-step v3-density-section">
         <text class="section-title">音乐参数</text>
         <view class="params-grid">
           <view class="param-cell"><text class="param-value">{{ basis.music_parameters.bpm }}</text><text class="param-label">节拍 (BPM)</text></view>
@@ -222,7 +225,7 @@ export default {
 
     <!-- 生成完成 -->
     <view v-else-if="phase === 'done'" class="done-card">
-      <view class="done-icon"><text class="done-icon-text">♪</text></view>
+      <view class="done-icon"><view class="done-mark"></view></view>
       <text class="done-title">音乐已生成完成</text>
       <text class="done-sub">已根据本次评估结果为你定制</text>
       <view class="btn-primary" @click="goPlayer">
@@ -232,7 +235,8 @@ export default {
   </view>
 </template>
 
-<style>
+<style lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: #f7f3eb;
@@ -390,4 +394,25 @@ export default {
   margin-bottom: 48rpx;
   text-align: center;
 }
+/* Phase 3A visual migration */
+.container { @include v3.v3-scroll-page; max-width:v3.$v3-flow-max-width; margin:0 auto; }
+.header { margin-bottom:v3.$v3-space-6; }
+.step-tag { color:v3.$v3-primary; background:rgba(78,116,104,.09); border-radius:v3.$v3-radius-pill; font-family:v3.$v3-font-family; }
+.page-title { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; font-size:clamp(28px,7vw,36px); font-weight:640; }
+.basis-card,.pending-card,.done-card,.loading-wrap,.error-wrap { @include v3.v3-surface-card; padding:clamp(22px,5vw,34px); }
+.basis-card { counter-reset:explanation; }
+.explanation-step { position:relative; padding-left:42px; border:0; }
+.explanation-step::before { counter-increment:explanation; content:counter(explanation); position:absolute; left:0; top:0; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:rgba(78,116,104,.1); color:v3.$v3-primary-dark; font-size:13px; font-weight:650; }
+.explanation-step:not(:last-of-type)::after { content:""; position:absolute; left:14px; top:34px; bottom:-10px; width:1px; background:v3.$v3-border; }
+.section-title { color:v3.$v3-accent; font-family:v3.$v3-font-family; font-size:13px; letter-spacing:.06em; }
+.basis-item,.tone-box,.tendency-box,.param-cell { border:1px solid v3.$v3-border; border-radius:v3.$v3-radius-md; background:v3.$v3-background; }
+.basis-item { margin-bottom:8px; padding:12px 14px; }
+.item-dot { background:v3.$v3-primary; }
+.tendency-label,.tone-main,.param-value,.done-title { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; }
+.tendency-disclaimer,.tone-sub,.param-label,.personal-note,.done-sub,.pending-desc { color:v3.$v3-text-secondary; font-family:v3.$v3-font-family; }
+.btn-primary { @include v3.v3-primary-action; }
+.done-icon { position:relative; background:rgba(78,116,104,.1); }
+.done-mark { width:18px; height:10px; border-left:3px solid v3.$v3-primary; border-bottom:3px solid v3.$v3-primary; transform:rotate(-45deg) translate(1px,-2px); }
+.gen-box { border:1px solid v3.$v3-border; border-radius:v3.$v3-radius-lg; background:v3.$v3-background; }
+@media (max-height:760px){.basis-card,.done-card{padding:20px}.basis-section{margin-bottom:18px}.params-grid{gap:10px}}
 </style>

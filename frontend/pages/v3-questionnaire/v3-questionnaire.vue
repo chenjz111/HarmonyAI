@@ -183,11 +183,12 @@ export default {
 </script>
 
 <template>
-  <view class="container">
+  <view class="container v3-visual-page questionnaire-page">
+    <view class="flow-shell">
     <view class="header">
       <text class="step-tag">{{ required ? "无资料流程 · 第 2 步 · 必填" : "有资料流程 · 第 4 步 · 选填" }}</text>
-      <text class="page-title">{{ schema ? schema.title : "五脏状态问卷" }}</text>
-      <text class="page-subtitle">请根据最近 7 天的实际感受作答。</text>
+      <text class="page-title">近期状态问卷</text>
+      <text class="page-subtitle question-support">没有标准答案，请按最近 7 天最接近的实际感受选择。</text>
     </view>
 
     <view v-if="loading" class="loading-wrap">
@@ -229,7 +230,7 @@ export default {
       </view>
 
       <!-- 题目卡片 -->
-      <view class="q-card" :key="question.question_id">
+      <view class="q-card question-shell" :key="question.question_id">
         <text class="q-index">第 {{ current + 1 }} 题 · 共 {{ total }} 题</text>
         <text class="q-prompt">{{ question.prompt }}</text>
 
@@ -267,7 +268,7 @@ export default {
       </view>
 
       <!-- 导航 -->
-      <view class="nav-row">
+      <view class="nav-row bottom-navigation">
         <view class="nav-btn" :class="{ 'nav-hidden': current === 0 }" @click="prev">
           <text class="nav-btn-text">上一题</text>
         </view>
@@ -297,10 +298,12 @@ export default {
         <text class="must-note-text">无资料流程需要完成全部 10 题后才能继续</text>
       </view>
     </view>
+    </view>
   </view>
 </template>
 
-<style>
+<style lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: #f7f3eb;
@@ -439,4 +442,45 @@ export default {
   margin-bottom: 48rpx;
   text-align: center;
 }
+.container { @include v3.v3-page; }
+.flow-shell { @include v3.v3-flow-shell; }
+.header { margin: 0 0 v3.$v3-space-6; }
+.step-tag { margin-bottom: v3.$v3-space-3; padding: 7px 12px; border-radius: v3.$v3-radius-pill; color: v3.$v3-primary-dark; background: rgba(78, 116, 104, .1); font-size: 12px; font-weight: 650; }
+.page-title { margin-bottom: v3.$v3-space-3; color: v3.$v3-text-primary; font-size: clamp(28px, 4.5vw, 36px); font-weight: 680; letter-spacing: -.025em; line-height: 1.25; }
+.question-support { color: v3.$v3-text-secondary; font-size: 15px; line-height: 1.7; }
+.progress-row { gap: v3.$v3-space-4; margin-bottom: v3.$v3-space-5; padding: v3.$v3-space-4 v3.$v3-space-5; border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-md; background: rgba(255, 255, 255, .72); }
+.progress-bar { height: 6px; background: v3.$v3-border; }
+.progress-fill { background: linear-gradient(90deg, v3.$v3-primary, #71958a); }
+.progress-text { min-width: 46px; color: v3.$v3-text-secondary; font-size: 13px; font-variant-numeric: tabular-nums; }
+.question-shell { min-height: 410px; padding: v3.$v3-space-8; border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-lg; background: v3.$v3-surface; box-shadow: v3.$v3-shadow-soft; }
+.q-index { margin-bottom: v3.$v3-space-4; color: v3.$v3-accent; font-size: 12px; font-weight: 700; letter-spacing: .06em; }
+.q-prompt { margin-bottom: v3.$v3-space-6; color: v3.$v3-text-primary; font-size: clamp(20px, 3.4vw, 25px); font-weight: 650; line-height: 1.55; }
+.q-options { gap: v3.$v3-space-3; }
+.q-option { min-height: 56px; padding: v3.$v3-space-4 v3.$v3-space-5; border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-md; background: v3.$v3-surface; @include v3.v3-focusable; }
+.q-option-active { border-color: v3.$v3-primary; background: rgba(78, 116, 104, .09); box-shadow: 0 0 0 1px rgba(78, 116, 104, .12); }
+.q-radio { width: 21px; height: 21px; border: 1.5px solid v3.$v3-border; background: v3.$v3-surface; }
+.q-radio-active { border-color: v3.$v3-primary; background: v3.$v3-primary; }
+.q-radio-dot { width: 7px; height: 7px; background: v3.$v3-surface; }
+.q-option-label { color: v3.$v3-text-primary; font-size: 15px; line-height: 1.55; }
+.bottom-navigation { position: sticky; bottom: max(v3.$v3-space-4, env(safe-area-inset-bottom)); z-index: 5; gap: v3.$v3-space-3; margin-top: v3.$v3-space-5; padding: v3.$v3-space-3; border: 1px solid rgba(227, 231, 226, .92); border-radius: v3.$v3-radius-lg; background: rgba(255, 255, 255, .94); box-shadow: v3.$v3-shadow-raised; backdrop-filter: blur(14px); }
+.nav-btn { min-height: 50px; padding: 0 v3.$v3-space-5; border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-pill; background: v3.$v3-surface; }
+.nav-primary { border-color: v3.$v3-primary; background: v3.$v3-primary; box-shadow: 0 8px 20px rgba(78, 116, 104, .18); }
+.nav-btn-text { color: v3.$v3-text-secondary; font-size: 15px; font-weight: 650; }
+.nav-primary-text { color: v3.$v3-surface; }
+.nav-disabled { opacity: .42; }
+.skip-row, .must-note { margin-top: v3.$v3-space-4; padding: v3.$v3-space-3 v3.$v3-space-4; }
+.skip-text { color: v3.$v3-text-secondary; font-size: 13px; }
+.must-note-text { color: v3.$v3-text-muted; font-size: 12px; }
+.loading-wrap, .error-wrap, .pending-card { border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-lg; background: v3.$v3-surface; box-shadow: v3.$v3-shadow-soft; }
+.loading-ring { border-color: v3.$v3-border; border-top-color: v3.$v3-primary; }
+.error-text { color: v3.$v3-danger; }
+.btn-retry { background: v3.$v3-primary; }
+@media (min-width: 768px) { .container { padding-top: 56px; padding-bottom: 64px; } .question-shell { padding: 36px 40px; } }
+@media (max-width: 420px) { .question-shell { min-height: 380px; padding: v3.$v3-space-6 v3.$v3-space-5; } .bottom-navigation { bottom: max(v3.$v3-space-3, env(safe-area-inset-bottom)); } .nav-btn { min-height: 48px; padding: 0 v3.$v3-space-4; } }
+/* V1.1 restrained tuning */
+.questionnaire-page { padding-bottom: calc(132px + env(safe-area-inset-bottom)); }
+.page-title { font-weight: 620; }
+.q-prompt { font-weight: 600; }
+.q-option { min-height: 50px; padding: 14px v3.$v3-space-5; }
+.q-option-active { border-color: v3.$v3-primary; background: rgba(78, 116, 104, .04); box-shadow: 0 0 0 1px rgba(78, 116, 104, .08); }
 </style>

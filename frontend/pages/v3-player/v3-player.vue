@@ -139,9 +139,12 @@ export default {
 </script>
 
 <template>
-  <view class="container">
+  <view class="container v3-visual-page v3-one-screen-page player-page">
+    <view class="flow-shell">
     <view class="header">
       <text class="step-tag">音乐调养</text>
+      <text class="player-heading">本次生成结果</text>
+      <text class="player-subheading">为当前状态准备的一段安静音乐</text>
     </view>
 
     <view v-if="loading" class="loading-wrap">
@@ -150,8 +153,14 @@ export default {
     </view>
 
     <view v-else-if="error" class="error-wrap">
-      <text class="error-text">{{ error }}</text>
-      <view class="btn-retry" @click="load"><text class="btn-retry-text">重试</text></view>
+      <view class="error-mark" aria-hidden="true"><view class="error-mark-dot"></view></view>
+      <text class="error-title">音乐暂时还没有准备好</text>
+      <text class="error-description">生成服务可能暂时繁忙，你可以重新尝试。</text>
+      <text class="error-detail">{{ error }}</text>
+      <view class="error-actions">
+        <view class="btn-retry" @click="load"><text class="btn-retry-text">重新尝试</text></view>
+      </view>
+      <view class="error-secondary-space" aria-hidden="true"></view>
     </view>
 
     <view v-else class="player-card">
@@ -161,15 +170,22 @@ export default {
       </view>
 
       <!-- 唱片 -->
-      <view class="disc" :class="{ 'disc-spinning': playing }">
+      <view class="disc breathing-artwork" :class="{ 'disc-spinning': playing }">
+        <view class="breathing-ring breathing-ring-one"></view>
+        <view class="breathing-ring breathing-ring-two"></view>
         <view class="disc-inner">
           <text class="disc-tone">{{ music.tone_label ? music.tone_label.substring(0, 1) : "宫" }}</text>
         </view>
       </view>
 
-      <text class="music-title">{{ music.title }}</text>
-      <text class="music-source">{{ music.source_label }} · {{ music.tone_label }}</text>
-      <text class="music-instruments">{{ music.instrument_labels.join(" · ") }}</text>
+      <view class="music-identity">
+        <text class="music-title">{{ music.title }}</text>
+        <text class="music-source">{{ music.source_label }} · {{ music.tone_label }}</text>
+      </view>
+      <view class="music-parameter-summary">
+        <text class="music-instruments">{{ music.instrument_labels.join(" · ") }}</text>
+        <text class="parameter-duration">时长 {{ formatDuration(music.duration_seconds) }}</text>
+      </view>
 
       <!-- 控制区 -->
       <view class="controls">
@@ -177,10 +193,11 @@ export default {
           <text class="ctrl-fav-icon" :class="{ 'fav-active': favorite }">{{ favorite ? "♥" : "♡" }}</text>
         </view>
         <view class="ctrl-play" @click="togglePlay">
-          <text class="ctrl-play-icon">{{ playing ? "⏸" : "▶" }}</text>
+          <view v-if="playing" class="control-icon control-icon--pause"><view></view><view></view></view>
+          <view v-else class="control-icon control-icon--play"></view>
         </view>
         <view class="ctrl-duration">
-          <text class="ctrl-duration-text">{{ formatDuration(music.duration_seconds) }}</text>
+          <text class="ctrl-duration-text">本次</text>
         </view>
       </view>
 
@@ -195,10 +212,12 @@ export default {
         </view>
       </view>
     </view>
+    </view>
   </view>
 </template>
 
-<style>
+<style lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: #f7f3eb;
@@ -311,4 +330,61 @@ export default {
   border-radius: 8rpx;
   padding: 8rpx 20rpx;
 }
+
+.container { @include v3.v3-page; background: radial-gradient(circle at 50% 24%, rgba(78, 116, 104, .11), transparent 34%), v3.$v3-background; }
+.flow-shell { @include v3.v3-flow-shell; }
+.header { margin: 0 0 v3.$v3-space-6; }
+.step-tag { margin-bottom: v3.$v3-space-3; padding: 7px 12px; border-radius: v3.$v3-radius-pill; color: v3.$v3-primary-dark; background: rgba(78, 116, 104, .1); font-size: 12px; font-weight: 650; }
+.player-heading { display: block; margin-bottom: v3.$v3-space-2; color: v3.$v3-text-primary; font-size: clamp(28px, 4.5vw, 36px); font-weight: 680; letter-spacing: -.025em; line-height: 1.25; }
+.player-subheading { display: block; color: v3.$v3-text-secondary; font-size: 14px; line-height: 1.6; }
+.player-card { padding: v3.$v3-space-8; border: 1px solid rgba(227, 231, 226, .9); border-radius: 30px; background: rgba(255, 255, 255, .9); box-shadow: v3.$v3-shadow-raised; backdrop-filter: blur(16px); }
+.breathing-artwork { position: relative; width: min(255px, 62vw); height: min(255px, 62vw); margin: v3.$v3-space-3 0 v3.$v3-space-6; overflow: visible; background: radial-gradient(circle at 38% 32%, #76998f 0%, v3.$v3-primary 40%, v3.$v3-primary-dark 100%); box-shadow: 0 26px 60px rgba(54, 88, 79, .26); }
+.breathing-ring { position: absolute; inset: -12px; border: 1px solid rgba(78, 116, 104, .18); border-radius: 50%; animation: breathe 5.5s ease-in-out infinite; }
+.breathing-ring-two { inset: -26px; opacity: .55; animation-delay: -2.75s; }
+@keyframes breathe { 0%, 100% { transform: scale(.96); opacity: .35; } 50% { transform: scale(1.04); opacity: .82; } }
+.disc-inner { position: relative; z-index: 2; width: 96px; height: 96px; background: rgba(246, 247, 243, .94); box-shadow: inset 0 0 0 1px rgba(78, 116, 104, .12); }
+.disc-tone { color: v3.$v3-primary-dark; font-family: v3.$v3-font-family; font-size: 34px; font-weight: 500; }
+.music-identity { width: 100%; margin-bottom: v3.$v3-space-5; text-align: center; }
+.music-title { display: block; margin-bottom: v3.$v3-space-2; color: v3.$v3-text-primary; font-size: clamp(24px, 4vw, 30px); font-weight: 680; line-height: 1.35; }
+.music-source { display: block; margin: 0; color: v3.$v3-text-secondary; font-size: 14px; }
+.music-parameter-summary { width: 100%; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: v3.$v3-space-2; margin-bottom: v3.$v3-space-6; }
+.music-instruments, .parameter-duration { margin: 0; padding: 8px 12px; border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-pill; background: v3.$v3-background; color: v3.$v3-text-secondary; font-size: 12px; line-height: 1.3; }
+.controls { width: 100%; justify-content: center; gap: clamp(24px, 8vw, 52px); margin-bottom: v3.$v3-space-8; }
+.ctrl-fav, .ctrl-duration { width: 54px; height: 54px; border: 1px solid v3.$v3-border; border-radius: 50%; background: v3.$v3-surface; display: flex; align-items: center; justify-content: center; }
+.ctrl-fav { @include v3.v3-focusable; }
+.ctrl-fav-icon { color: v3.$v3-text-muted; font-size: 27px; }
+.fav-active { color: v3.$v3-danger; }
+.ctrl-play { width: 76px; height: 76px; background: v3.$v3-primary; box-shadow: 0 14px 30px rgba(78, 116, 104, .28); @include v3.v3-focusable; }
+.ctrl-play-icon { color: v3.$v3-surface; font-size: 30px; }
+.control-icon { position: relative; display: block; }
+.control-icon--play { width: 0; height: 0; margin-left: 4px; border-top: 12px solid transparent; border-bottom: 12px solid transparent; border-left: 19px solid v3.$v3-surface; }
+.control-icon--pause { width: 22px; height: 24px; display: flex; justify-content: space-between; }
+.control-icon--pause view { width: 7px; height: 24px; border-radius: 3px; background: v3.$v3-surface; }
+.ctrl-duration-text { color: v3.$v3-text-secondary; font-size: 12px; font-weight: 650; }
+.disclaimer-box { margin-bottom: v3.$v3-space-5; padding: v3.$v3-space-4; border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-md; background: v3.$v3-background; }
+.disclaimer-text { color: v3.$v3-text-secondary; font-size: 12px; line-height: 1.65; }
+.btn-primary { @include v3.v3-primary-action; padding: 0 v3.$v3-space-6; }
+.btn-primary-text { color: v3.$v3-surface; font-size: 15px; font-weight: 650; }
+.loading-wrap, .error-wrap { border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-lg; background: v3.$v3-surface; box-shadow: v3.$v3-shadow-soft; }
+.loading-ring { border-color: v3.$v3-border; border-top-color: v3.$v3-primary; }
+.error-text { color: v3.$v3-danger; }
+.btn-retry { background: v3.$v3-primary; }
+@media (min-width: 768px) { .container { padding-top: 56px; padding-bottom: 64px; } .player-card { padding: 44px 48px; } }
+@media (max-width: 420px) { .player-card { padding: v3.$v3-space-6 v3.$v3-space-5; border-radius: v3.$v3-radius-lg; } .breathing-artwork { margin-top: v3.$v3-space-2; } .controls { gap: v3.$v3-space-6; } .ctrl-play { width: 72px; height: 72px; } }
+/* V1.1 compact error state */
+.error-wrap { min-height: 0; padding: v3.$v3-space-8 v3.$v3-space-6; text-align: center; }
+.error-mark { position: relative; width: 48px; height: 48px; margin-bottom: v3.$v3-space-5; border-radius: 50%; background: rgba(78, 116, 104, .08); }
+.error-mark-dot { position: absolute; width: 8px; height: 8px; left: 50%; top: 50%; border-radius: 50%; background: v3.$v3-primary; transform: translate(-50%, -50%); box-shadow: 0 0 0 7px rgba(78, 116, 104, .08); }
+.error-title { display: block; margin-bottom: v3.$v3-space-2; color: v3.$v3-text-primary; font-size: 21px; font-weight: 620; line-height: 1.45; }
+.error-description { display: block; max-width: 360px; color: v3.$v3-text-secondary; font-size: 14px; line-height: 1.7; }
+.error-detail { display: block; max-width: 420px; margin-top: v3.$v3-space-2; color: v3.$v3-text-muted; font-size: 12px; line-height: 1.6; }
+.error-actions { width: 100%; max-width: 320px; margin-top: v3.$v3-space-6; display: grid; grid-template-columns: minmax(0, 1fr); gap: v3.$v3-space-3; }
+.btn-retry { @include v3.v3-primary-action; width: 100%; padding: 0 v3.$v3-space-6; box-sizing: border-box; }
+.btn-retry-text { color: v3.$v3-surface; font-size: 15px; font-weight: 650; }
+.error-secondary-space { min-height: v3.$v3-space-3; }
+/* Phase 3A viewport and safe-area tuning */
+.container { @include v3.v3-one-screen; padding-bottom:calc(84px + env(safe-area-inset-bottom)); }
+.flow-shell { min-height:calc(100dvh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); display:flex; flex-direction:column; }
+.player-card { flex:1; justify-content:center; }
+@media (max-height:760px){.container{padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(76px + env(safe-area-inset-bottom))}.header{margin-bottom:14px}.player-card{padding:20px}.breathing-artwork{width:min(210px,54vw);height:min(210px,54vw);margin-bottom:16px}.music-parameter-summary{margin-bottom:14px}.controls{margin-bottom:16px}.disclaimer-box{margin-bottom:14px}}
 </style>

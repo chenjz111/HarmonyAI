@@ -113,7 +113,7 @@ export default {
 </script>
 
 <template>
-  <view class="container">
+  <view class="container v3-visual-page v3-scroll-page">
     <view class="header">
       <text class="step-tag">{{ withDocument ? "有资料流程 · 第 3 步 · 选填" : "无资料流程 · 第 1 步 · 选填" }}</text>
       <text class="page-title">说说最近发生了什么</text>
@@ -145,7 +145,7 @@ export default {
 
       <template v-if="voiceSimulated">
         <view v-if="!recording" class="voice-idle" @click="toggleRecord">
-          <view class="voice-mic"><text class="mic-icon">🎤</text></view>
+          <view class="voice-mic"><view class="mic-icon-css"></view></view>
           <text class="voice-idle-text">点击开始录音</text>
         </view>
 
@@ -170,7 +170,7 @@ export default {
       </template>
 
       <view v-else class="voice-unavailable">
-        <view class="voice-mic"><text class="mic-icon">🎤</text></view>
+        <view class="voice-mic"><view class="mic-icon-css"></view></view>
         <text class="voice-unavailable-title">语音描述暂不可用</text>
         <text class="voice-unavailable-desc">当前版本暂不支持语音输入，你可以使用上方文字填写，内容会一并保留。</text>
       </view>
@@ -187,7 +187,8 @@ export default {
   </view>
 </template>
 
-<style>
+<style lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: #f7f3eb;
@@ -329,4 +330,21 @@ export default {
 .btn-link { display: flex; justify-content: center; padding: 12rpx 0; }
 .btn-link-text { color: #8a9188; font-size: 26rpx; text-decoration: underline; }
 .btn-disabled { opacity: 0.6; }
+/* Phase 3A visual migration */
+.container { @include v3.v3-scroll-page; max-width:v3.$v3-flow-max-width; margin:0 auto; }
+.header { margin-bottom:v3.$v3-space-6; }
+.step-tag { color:v3.$v3-primary; background:rgba(78,116,104,.09); border-radius:v3.$v3-radius-pill; font-family:v3.$v3-font-family; }
+.page-title { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; font-size:clamp(30px,8vw,38px); font-weight:640; letter-spacing:-.025em; }
+.page-subtitle,.save-note-text,.voice-limit,.voice-unavailable-desc { color:v3.$v3-text-secondary; font-family:v3.$v3-font-family; }
+.text-card,.voice-card { @include v3.v3-surface-card; padding:clamp(20px,5vw,30px); }
+.text-input { border:0; border-radius:v3.$v3-radius-md; background:v3.$v3-background; font-family:v3.$v3-font-family; }
+.voice-title,.voice-idle-text,.voice-unavailable-title,.transcript-text { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; }
+.voice-mic { background:rgba(78,116,104,.1); }
+.mic-icon-css { position:relative; width:16px; height:23px; border:2px solid v3.$v3-primary; border-radius:10px; box-sizing:border-box; }
+.mic-icon-css::before { content:""; position:absolute; left:50%; bottom:-8px; width:24px; height:13px; border:2px solid v3.$v3-primary; border-top:0; border-radius:0 0 14px 14px; transform:translateX(-50%); }
+.mic-icon-css::after { content:""; position:absolute; left:50%; bottom:-13px; width:2px; height:6px; background:v3.$v3-primary; transform:translateX(-50%); }
+.btn-primary { @include v3.v3-primary-action; }
+.btn-link { min-height:44px; align-items:center; }
+.actions { padding-bottom:calc(v3.$v3-space-2 + env(safe-area-inset-bottom)); }
+@media (max-height:760px){.header{margin-bottom:18px}.text-card,.voice-card{padding:20px}.voice-card{margin-top:16px}}
 </style>
