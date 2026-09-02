@@ -1,10 +1,10 @@
 <script>
 /**
- * V3 最近情况页（文字/语音，选填）
+ * V3 最近情况页（文字/语音）
  * 合同依据：frontend-read-model-contract-v3.md §5 Narrative / Voice Page
  *          harmonyai-v3-owner-flow-amendment-001.md §2
  *
- * 两条路径此步均为选填、可整步跳过；跳过不创建空 Understanding。
+ * 有资料路径选填；无资料路径必填。跳过不创建空 Understanding。
  * 转写结果先展示给用户确认后才有效；ASR 不可用时文字输入始终可用。
  *
  * P0-1：语音转写仅在显式 mock 模式提供模拟数据（并明确标注演示）；
@@ -20,6 +20,7 @@ export default {
   data() {
     return {
       withDocument: false, // 有资料模式（显示步骤标签差异）
+      required: true, // 无资料模式必填；Session 未加载时保持 fail-closed
       text: "",
       // 仅显式 mock 模式提供模拟语音转写；real/hybrid 语音入口显示暂不可用
       voiceSimulated: apiV3.INPUT_SIMULATED,
@@ -35,6 +36,7 @@ export default {
     // 从 session 判断模式（mock：读 api 状态）
     apiV3.getSession().then((s) => {
       this.withDocument = s.input_mode === "with_document"
+      this.required = s.input_mode !== "with_document"
     }).catch(() => {})
   },
   onUnload() {
@@ -93,9 +95,13 @@ export default {
     // ---- 流转 ----
     async next() {
       if (this.submitting) return
+      if (this.required && !this.text.trim()) {
+        uni.showToast({ title: "请先描述最近发生的事情", icon: "none" })
+        return
+      }
       this.submitting = true
       try {
-        // 文字/语音均选填；直接进入问卷（有资料=选填 / 无资料=必填）
+        // 有资料模式可留空；无资料模式已在上方完成必填校验。
         if (this.text && this.text.trim()) {
           try { uni.setStorageSync("v3_narrative_text", this.text.trim()) } catch (e) { /* ignore */ }
         }
@@ -105,6 +111,7 @@ export default {
       }
     },
     skip() {
+      if (this.required || this.submitting) return
       // 整步跳过：不创建空 Understanding（Read Model §5.1）
       uni.redirectTo({ url: "/pages/v3-questionnaire/v3-questionnaire" })
     },
@@ -115,7 +122,7 @@ export default {
 <template>
   <view class="container v3-visual-page v3-scroll-page">
     <view class="header">
-      <text class="step-tag">{{ withDocument ? "有资料流程 · 第 3 步 · 选填" : "无资料流程 · 第 1 步 · 选填" }}</text>
+      <text class="step-tag">{{ required ? "无资料流程 · 第 1 步 · 必填" : "有资料流程 · 第 3 步 · 选填" }}</text>
       <text class="page-title">说说最近发生了什么</text>
       <text class="page-subtitle">可以写下最近的事情、感受、睡眠或身体状态，不需要先判断自己的情绪。</text>
     </view>
@@ -126,7 +133,7 @@ export default {
         class="text-input"
         v-model="text"
         :maxlength="2000"
-        placeholder="自由填写，也可以跳过这一步。"
+        :placeholder="required ? '请填写最近发生的事情、感受或身体状态。' : '自由填写，也可以跳过这一步。'"
       />
       <view class="text-count"><text class="text-count-text">{{ (text || '').length }} / 2000</text></view>
     </view>
@@ -180,7 +187,7 @@ export default {
       <view class="btn-primary" :class="{ 'btn-disabled': submitting }" @click="next">
         <text class="btn-primary-text">继续</text>
       </view>
-      <view class="btn-link" @click="skip">
+      <view v-if="!required" class="btn-link" @click="skip">
         <text class="btn-link-text">暂不填写，继续</text>
       </view>
     </view>
