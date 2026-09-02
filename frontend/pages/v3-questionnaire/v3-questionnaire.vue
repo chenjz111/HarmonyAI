@@ -79,8 +79,9 @@ export default {
       this.loading = true
       this.error = ""
       try {
-        this.schema = await apiV3.getQuestionnaireSchema()
-        this.required = !!this.schema.required_for_flow
+        const [schema, session] = await Promise.all([apiV3.getQuestionnaireSchema(), apiV3.getSession()])
+        this.schema = schema
+        this.required = session.input_mode !== "with_document"
         this.simulated = !!apiV3.AGENT_SIMULATED
       } catch (e) {
         this.error = e.message || "问卷加载失败，请重试"

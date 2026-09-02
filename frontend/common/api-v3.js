@@ -34,9 +34,9 @@
  *    Agent 段（评估/辨证/生成）走 mock 演示数据，页面显示"演示数据"标识。
  *  - "mock"（显式）：全 fixture 状态机，供自动测试与本地开发。
  *  开启方式（三选一，均为显式）：
- *  - 构建环境变量 HARMONYAI_V3_MODE=mock|hybrid|real（Vite import.meta.env）
+ *  - 构建环境变量 VITE_HARMONYAI_V3_MODE=mock|hybrid|real（Vite import.meta.env）
  *  - Node 测试进程环境变量 process.env.HARMONYAI_V3_MODE
- *  - H5 本地调试：localStorage.setItem("HARMONYAI_V3_MODE", "mock")
+ *  - H5 本地调试：localhost/127.0.0.1 使用 ?harmonyai_demo=1
  *
  * 已知后端缺口（如实上报，不静默绕过）：
  *  - V2 上传接口 /api/v2/documents 固定写入 user_id=1，而 V3 访客是独立用户，
@@ -50,21 +50,26 @@ import { QUESTIONNAIRE_MANIFEST, FREQUENCY_OPTIONS } from "./questionnaire-v3-ma
 // ===== 配置 =====
 
 function resolveMode() {
+  // 本机视觉演示：必须通过显式 query 开启，且只允许 localhost/127.0.0.1。
+  // 正式域名即使携带相同参数也不会进入 mock。
+  try {
+    if (typeof location !== "undefined") {
+      const localHost = location.hostname === "127.0.0.1" || location.hostname === "localhost"
+      const demoRequested = new URLSearchParams(location.search).get("harmonyai_demo") === "1"
+      if (localHost && demoRequested) return "mock"
+    }
+  } catch (e) { /* 非浏览器环境 */ }
+
   // 1. Vite 构建注入
   let mode = ""
   try {
-    mode = (import.meta.env && import.meta.env.HARMONYAI_V3_MODE) || ""
+    mode = (import.meta.env && (
+      import.meta.env.VITE_HARMONYAI_V3_MODE || import.meta.env.HARMONYAI_V3_MODE
+    )) || ""
   } catch (e) { /* 非 Vite 环境 */ }
   // 2. Node 测试进程
   if (!mode && typeof process !== "undefined" && process && process.env) {
     mode = process.env.HARMONYAI_V3_MODE || ""
-  }
-  // 3. H5 本地调试（localStorage 显式覆盖，仅开发用）
-  if (!mode) {
-    try {
-      const stored = typeof localStorage !== "undefined" && localStorage.getItem("HARMONYAI_V3_MODE")
-      if (stored === "mock" || stored === "hybrid" || stored === "real") mode = stored
-    } catch (e) { /* 非 H5 环境 */ }
   }
   if (mode === "mock" || mode === "hybrid" || mode === "real") return mode
   return "real" // 默认真实；mock/hybrid 必须显式开启
