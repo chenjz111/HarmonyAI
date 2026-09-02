@@ -1,5 +1,5 @@
 <template>
-  <view class="container">
+  <view class="container v3-visual-page v3-one-screen-page">
     <!-- 顶部水墨首屏 -->
     <view class="hero">
       <!-- 装饰：水墨圆环 -->
@@ -52,17 +52,17 @@
     <view class="footer">
       <view class="meta-card">
         <view class="meta-item">
-          <text class="meta-icon">⏱</text>
+          <view class="meta-mark meta-mark--time"></view>
           <text class="meta-text">2-3 分钟</text>
         </view>
         <view class="meta-divider"></view>
         <view class="meta-item">
-          <text class="meta-icon">✎</text>
+          <view class="meta-mark meta-mark--privacy"></view>
           <text class="meta-text">全程匿名</text>
         </view>
         <view class="meta-divider"></view>
         <view class="meta-item">
-          <text class="meta-icon">♪</text>
+          <view class="meta-mark meta-mark--music"></view>
           <text class="meta-text">AI 处方</text>
         </view>
       </view>
@@ -106,7 +106,8 @@ export default {
 }
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: linear-gradient(180deg, #F0EADC 0%, #F7F3EB 60%, #F7F3EB 100%);
@@ -385,4 +386,34 @@ export default {
   font-size: 28rpx;
   color: #F7F3EB;
 }
+/* Phase 3A visual migration */
+.container { @include v3.v3-one-screen; max-width:v3.$v3-flow-max-width; margin:0 auto; overflow:visible; }
+.hero { padding:24px 0 20px; }
+.ink-ring { width:260px; height:260px; border-color:rgba(78,116,104,.08); }
+.ink-ring-2 { width:360px; height:360px; }
+.logo-wrap { margin-bottom:18px; }
+.logo { width:104px; height:104px; background:linear-gradient(145deg,v3.$v3-primary,v3.$v3-primary-dark); box-shadow:0 16px 38px rgba(54,88,79,.2); }
+.logo-aura { width:128px; height:128px; }
+.logo-text { color:v3.$v3-surface; font-family:v3.$v3-font-family; font-size:46px; font-weight:520; }
+.brand-name { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; font-size:28px; font-weight:650; letter-spacing:.01em; }
+.brand-tagline { color:v3.$v3-text-secondary; font-family:v3.$v3-font-family; font-size:14px; letter-spacing:.12em; }
+.brand-quote { color:v3.$v3-text-muted; font-family:v3.$v3-font-family; font-size:13px; }
+.flow { margin-top:18px; padding:22px; border:1px solid v3.$v3-border; border-radius:v3.$v3-radius-lg; background:rgba(255,255,255,.92); box-shadow:v3.$v3-shadow-soft; }
+.flow-title { margin-bottom:18px; padding-bottom:14px; border-color:v3.$v3-border; }
+.flow-title-text,.timeline-name { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; }
+.flow-title-sub,.timeline-step,.timeline-desc,.meta-text { color:v3.$v3-text-secondary; font-family:v3.$v3-font-family; }
+.timeline-circle { width:40px; height:40px; border:1px solid v3.$v3-border; background:v3.$v3-background; }
+.timeline-icon { color:v3.$v3-primary; font-family:v3.$v3-font-family; font-size:15px; }
+.timeline-content { padding-bottom:18px; }
+.timeline-line { min-height:34px; background:v3.$v3-border; }
+.footer { padding-top:20px; padding-bottom:env(safe-area-inset-bottom); }
+.meta-card { margin-bottom:18px; }
+.meta-mark { position:relative; width:18px; height:18px; border:1.5px solid v3.$v3-accent; border-radius:50%; box-sizing:border-box; }
+.meta-mark--time::before { content:""; position:absolute; left:8px; top:3px; width:1.5px; height:6px; background:v3.$v3-accent; transform-origin:bottom; transform:rotate(-25deg); }
+.meta-mark--privacy::before { content:""; position:absolute; left:4px; top:4px; width:8px; height:8px; border:1.5px solid v3.$v3-accent; border-radius:2px; }
+.meta-mark--music::before,.meta-mark--music::after { content:""; position:absolute; bottom:3px; width:5px; height:5px; border-radius:50%; background:v3.$v3-accent; }
+.meta-mark--music::before { left:2px; }.meta-mark--music::after { right:2px; }
+.start-btn { min-height:54px; height:auto; border-radius:v3.$v3-radius-pill; background:v3.$v3-primary; box-shadow:0 10px 24px rgba(78,116,104,.2); }
+.start-btn-text { color:v3.$v3-surface; font-family:v3.$v3-font-family; font-size:16px; letter-spacing:.02em; }
+@media (max-height:760px){.hero{padding:10px 0 12px}.logo{width:78px;height:78px}.logo-aura{width:96px;height:96px}.logo-text{font-size:36px}.brand-divider,.brand-quote{display:none}.flow{margin-top:10px;padding:16px}.timeline-content{padding-bottom:10px}.footer{padding-top:12px}.meta-card{margin-bottom:12px}}
 </style>

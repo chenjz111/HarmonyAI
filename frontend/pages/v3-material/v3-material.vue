@@ -95,7 +95,7 @@ export default {
 </script>
 
 <template>
-  <view class="container">
+  <view class="container v3-visual-page v3-one-screen-page">
     <view class="header">
       <text class="step-tag">有资料流程 · 第 1 步</text>
       <text class="page-title">上传就诊资料</text>
@@ -103,7 +103,7 @@ export default {
     </view>
 
     <!-- 待上传 -->
-    <view v-if="state === 'idle'" class="upload-card" @click="chooseFile">
+    <view v-if="state === 'idle'" class="upload-card v3-density-card" @click="chooseFile">
       <view class="upload-icon"><text class="upload-plus">+</text></view>
       <text class="upload-title">点击上传文件</text>
       <text class="upload-hint">支持图片、PDF · 仅用于本次评估</text>
@@ -164,7 +164,8 @@ export default {
   </view>
 </template>
 
-<style>
+<style lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: #f7f3eb;
@@ -303,4 +304,19 @@ export default {
 }
 .privacy-note { margin-top: 64rpx; text-align: center; }
 .privacy-note-text { font-size: 22rpx; color: #b3ac9c; }
+/* Phase 3A visual migration */
+.container { @include v3.v3-one-screen; max-width: v3.$v3-flow-max-width; margin: 0 auto; }
+.header { margin-bottom: v3.$v3-space-8; }
+.step-tag { color: v3.$v3-primary; background: rgba(78,116,104,.09); border-radius: v3.$v3-radius-pill; font-family: v3.$v3-font-family; }
+.page-title { color: v3.$v3-text-primary; font-family: v3.$v3-font-family; font-size: clamp(30px,8vw,38px); font-weight: 640; letter-spacing: -.025em; }
+.page-subtitle { color: v3.$v3-text-secondary; font-family: v3.$v3-font-family; }
+.upload-card,.status-card,.fail-card { @include v3.v3-surface-card; }
+.upload-card { min-height: 280px; border-style: dashed; border-color: rgba(78,116,104,.35); }
+.upload-icon { background: rgba(78,116,104,.1); box-shadow: none; }
+.upload-plus,.upload-title,.status-label,.fail-title { color: v3.$v3-primary-dark; font-family: v3.$v3-font-family; }
+.upload-hint,.status-msg,.fail-desc,.fail-note,.privacy-note-text { color: v3.$v3-text-secondary; font-family: v3.$v3-font-family; }
+.btn-primary { @include v3.v3-primary-action; }
+.btn-secondary { min-height: 52px; border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-pill; background: v3.$v3-surface; }
+.privacy-note { margin-top: auto; padding-top: v3.$v3-space-5; padding-bottom: env(safe-area-inset-bottom); }
+@media (max-height:760px){.upload-card{min-height:220px;padding:24px}.fail-card,.status-card{padding:24px}.header{margin-bottom:20px}}
 </style>

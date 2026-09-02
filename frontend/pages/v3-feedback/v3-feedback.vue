@@ -124,7 +124,7 @@ export default {
 </script>
 
 <template>
-  <view class="container">
+  <view class="container v3-visual-page v3-scroll-page">
     <view class="header">
       <text class="step-tag">最后一步 · 反馈</text>
       <text class="page-title">听完后，感觉怎么样？</text>
@@ -143,7 +143,7 @@ export default {
 
     <view v-else>
       <!-- 1. 状态变化（必填，2×2 大卡片） -->
-      <view class="section-card">
+      <view class="section-card v3-density-card">
         <view class="section-head">
           <text class="section-title">听完这段音乐，你的状态变化是？</text>
           <text class="section-required">必填</text>
@@ -234,7 +234,8 @@ export default {
   </view>
 </template>
 
-<style>
+<style lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: #f7f3eb;
@@ -386,4 +387,20 @@ export default {
 .done-title { font-size: 36rpx; font-weight: 600; color: #2f3d35; margin-bottom: 14rpx; }
 .done-sub { font-size: 26rpx; color: #9c9585; margin-bottom: 56rpx; }
 .done-card .btn-primary { width: 100%; margin-top: 0; }
+/* Phase 3A visual migration */
+.container { @include v3.v3-scroll-page; max-width:v3.$v3-flow-max-width; margin:0 auto; }
+.header { margin-bottom:v3.$v3-space-6; }
+.step-tag { color:v3.$v3-primary; background:rgba(78,116,104,.09); border-radius:v3.$v3-radius-pill; font-family:v3.$v3-font-family; }
+.page-title { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; font-size:clamp(28px,7vw,36px); font-weight:640; }
+.page-subtitle,.section-hint,.comment-count-text,.done-sub { color:v3.$v3-text-secondary; font-family:v3.$v3-font-family; }
+.section-card,.done-card { @include v3.v3-surface-card; padding:clamp(20px,5vw,30px); }
+.section-title,.done-title { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; font-weight:620; }
+.section-required { color:v3.$v3-danger; background:rgba(168,100,94,.09); border-radius:v3.$v3-radius-pill; }
+.change-card { min-height:96px; border:1px solid v3.$v3-border; border-radius:v3.$v3-radius-md; background:v3.$v3-surface; }
+.change-card-active { border-color:v3.$v3-primary; background:rgba(78,116,104,.08); box-shadow:none; }
+.radio-chip,.tag-chip { min-height:44px; border:1px solid v3.$v3-border; background:v3.$v3-background; }
+.radio-chip-active,.tag-chip-active { border-color:v3.$v3-primary; background:v3.$v3-primary; }
+.comment-textarea { border:1px solid v3.$v3-border; border-radius:v3.$v3-radius-md; background:v3.$v3-background; font-family:v3.$v3-font-family; }
+.btn-primary { @include v3.v3-primary-action; margin-bottom:env(safe-area-inset-bottom); }
+@media (max-height:760px){.section-card{padding:20px;margin-bottom:16px}.header{margin-bottom:18px}}
 </style>

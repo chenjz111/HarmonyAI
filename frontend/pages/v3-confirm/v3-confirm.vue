@@ -123,7 +123,7 @@ export default {
 </script>
 
 <template>
-  <view class="container">
+  <view class="container v3-visual-page v3-one-screen-page">
     <view class="header">
       <text class="step-tag">最后一步 · 确认</text>
       <text class="page-title">{{ model ? model.title : "确认一下我们对你当前状态的理解" }}</text>
@@ -147,7 +147,7 @@ export default {
       <view class="btn-retry" @click="load"><text class="btn-retry-text">重新加载</text></view>
     </view>
 
-    <view v-else-if="!correcting" class="confirm-card">
+    <view v-else-if="!correcting" class="confirm-card v3-density-card">
       <!-- hybrid 演示标识 -->
       <view v-if="simulated" class="demo-banner">
         <text class="demo-banner-text">演示模式：以下评估内容为模拟数据</text>
@@ -213,7 +213,8 @@ export default {
   </view>
 </template>
 
-<style>
+<style lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: #f7f3eb;
@@ -353,4 +354,21 @@ export default {
   margin-bottom: 48rpx;
   text-align: center;
 }
+/* Phase 3A visual migration */
+.container { @include v3.v3-one-screen; max-width:v3.$v3-flow-max-width; margin:0 auto; }
+.header { margin-bottom:v3.$v3-space-6; }
+.step-tag { color:v3.$v3-primary; background:rgba(78,116,104,.09); border-radius:v3.$v3-radius-pill; font-family:v3.$v3-font-family; }
+.page-title { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; font-size:clamp(28px,7vw,36px); font-weight:640; letter-spacing:-.025em; }
+.confirm-card,.correct-card,.pending-card,.loading-wrap,.error-wrap { @include v3.v3-surface-card; padding:clamp(22px,5vw,34px); }
+.summary-box { border:0; border-left:3px solid rgba(78,116,104,.38); border-radius:v3.$v3-radius-sm; background:v3.$v3-background; }
+.summary-text,.section-title,.correct-title,.correct-label { color:v3.$v3-text-primary; font-family:v3.$v3-font-family; }
+.item-text,.correct-hint,.pending-desc,.disclaimer-text { color:v3.$v3-text-secondary; font-family:v3.$v3-font-family; }
+.section-item { padding:8px 0; }
+.item-dot { background:v3.$v3-primary; }
+.btn-primary { @include v3.v3-primary-action; }
+.btn-secondary { min-height:52px; border:1px solid v3.$v3-border; border-radius:v3.$v3-radius-pill; background:v3.$v3-surface; }
+.severity-btn { min-height:46px; border-color:v3.$v3-border; border-radius:v3.$v3-radius-sm; }
+.severity-active { border-color:v3.$v3-primary; background:rgba(78,116,104,.08); }
+.disclaimer { padding-bottom:env(safe-area-inset-bottom); }
+@media (max-height:760px){.confirm-card,.correct-card{padding:20px}.section{margin-bottom:14px}.actions{gap:10px}.disclaimer{margin-top:18px}}
 </style>

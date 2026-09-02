@@ -64,10 +64,17 @@ export default {
 </script>
 
 <template>
-  <view class="container">
-    <view class="header">
+  <view class="container v3-visual-page entry-page">
+    <view class="flow-shell">
+    <view class="header entry-hero">
+      <view class="hero-mark" aria-hidden="true">
+        <view class="hero-orbit hero-orbit-one"></view>
+        <view class="hero-orbit hero-orbit-two"></view>
+        <view class="hero-core"></view>
+      </view>
+      <text class="hero-eyebrow">HarmonyAI · 个性化音乐</text>
       <text class="page-title">{{ entry ? entry.title : "开始了解你最近的状态" }}</text>
-      <text class="page-subtitle">请选择是否有近期就诊资料。没有资料也可以通过状态问卷开始。</text>
+      <text class="page-subtitle">从你愿意提供的信息开始，我们会一步步整理，并生成本次音乐建议。</text>
     </view>
 
     <view v-if="loading" class="loading-wrap">
@@ -81,31 +88,49 @@ export default {
     </view>
 
     <view v-else class="choices">
+      <text class="section-label">选择开始方式</text>
       <view
         v-for="c in entry.choices"
         :key="c.id"
-        class="choice-card"
+        class="choice-card mode-card"
         :class="{ 'choice-disabled': submitting }"
         @click="choose(c)"
       >
-        <view class="choice-icon">
-          <text class="choice-icon-text">{{ c.id === "with_document" ? "文" : "问" }}</text>
+        <view class="choice-icon mode-card-icon" aria-hidden="true">
+          <view v-if="c.id === 'with_document'" class="document-symbol">
+            <view class="document-line document-line-long"></view>
+            <view class="document-line"></view>
+            <view class="document-line document-line-short"></view>
+          </view>
+          <view v-else class="pulse-symbol">
+            <view class="pulse-path"></view>
+            <view class="pulse-dot pulse-dot-one"></view>
+            <view class="pulse-dot pulse-dot-two"></view>
+            <view class="pulse-dot pulse-dot-three"></view>
+          </view>
         </view>
         <view class="choice-body">
           <text class="choice-label">{{ c.label }}</text>
           <text class="choice-desc">{{ c.desc }}</text>
+          <text class="choice-meta supporting-text">{{ c.id === "with_document" ? "上传 · 识别 · 确认" : "描述可选 · 10题问卷" }}</text>
         </view>
         <view class="choice-arrow"><text class="arrow-text">›</text></view>
       </view>
     </view>
 
-    <view class="foot-note">
-      <text class="foot-note-text">两种方式都会生成音乐调养建议 · 全程数据仅用于本次评估</text>
+    <view class="foot-note privacy-panel privacy-hint">
+      <view class="privacy-symbol" aria-hidden="true"><view class="privacy-keyhole"></view></view>
+      <view class="privacy-copy">
+        <text class="privacy-title">你的信息由你决定</text>
+        <text class="foot-note-text">两种方式都会进入同一评估流程，资料仅用于完成本次体验。</text>
+      </view>
+    </view>
     </view>
   </view>
 </template>
 
-<style>
+<style lang="scss">
+@use "../../styles/v3-visual-tokens.scss" as v3;
 .container {
   min-height: 100vh;
   background: #f7f3eb;
@@ -233,4 +258,58 @@ export default {
   font-size: 22rpx;
   color: #b3ac9c;
 }
+
+.container { @include v3.v3-page; }
+.flow-shell { @include v3.v3-flow-shell; }
+.entry-hero { margin: 0; padding: v3.$v3-space-6 0 v3.$v3-space-10; }
+.hero-mark { position: relative; width: 56px; height: 56px; margin-bottom: v3.$v3-space-6; }
+.hero-orbit { position: absolute; border: 1px solid rgba(78, 116, 104, .34); border-radius: 50%; }
+.hero-orbit-one { inset: 3px 9px; transform: rotate(28deg); }
+.hero-orbit-two { inset: 9px 3px; transform: rotate(-28deg); }
+.hero-core { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: v3.$v3-accent; left: 50%; top: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 7px rgba(185, 155, 99, .12); }
+.hero-eyebrow { display: block; margin-bottom: v3.$v3-space-3; color: v3.$v3-primary; font-size: 11px; font-weight: 700; letter-spacing: 1.6px; }
+.page-title { max-width: 560px; margin-bottom: v3.$v3-space-4; color: v3.$v3-text-primary; font-size: clamp(30px, 5vw, 42px); font-weight: 680; letter-spacing: -.03em; line-height: 1.22; }
+.page-subtitle { max-width: 560px; color: v3.$v3-text-secondary; font-size: 16px; line-height: 1.75; }
+.choices { gap: v3.$v3-space-4; }
+.section-label { display: block; margin-bottom: 0; color: v3.$v3-text-secondary; font-size: 13px; font-weight: 650; letter-spacing: .04em; }
+.mode-card { min-height: 148px; padding: v3.$v3-space-6; border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-lg; background: v3.$v3-surface; box-shadow: v3.$v3-shadow-soft; box-sizing: border-box; @include v3.v3-focusable; }
+.mode-card:active { border-color: rgba(78, 116, 104, .48); box-shadow: v3.$v3-shadow-raised; }
+.choice-disabled { opacity: .56; pointer-events: none; }
+.mode-card-icon { width: 64px; height: 64px; border-radius: 20px; background: rgba(78, 116, 104, .1); }
+.document-symbol { width: 27px; height: 34px; padding: 8px 6px; border: 1.5px solid v3.$v3-primary; border-radius: 6px; box-sizing: border-box; }
+.document-line { width: 80%; height: 2px; margin-bottom: 5px; border-radius: 2px; background: v3.$v3-primary; }
+.document-line-long { width: 100%; }
+.document-line-short { width: 58%; margin-bottom: 0; }
+.pulse-symbol { position: relative; width: 34px; height: 28px; }
+.pulse-path { position: absolute; left: 5px; right: 5px; top: 13px; height: 1px; background: rgba(185, 155, 99, .52); }
+.pulse-dot { position: absolute; z-index: 1; width: 7px; height: 7px; border-radius: 50%; background: v3.$v3-accent; box-shadow: 0 0 0 4px rgba(185, 155, 99, .12); }
+.pulse-dot-one { left: 2px; top: 11px; }
+.pulse-dot-two { left: 14px; top: 4px; }
+.pulse-dot-three { right: 1px; top: 16px; }
+.choice-body { min-width: 0; margin: 0 v3.$v3-space-5; }
+.choice-label { margin-bottom: v3.$v3-space-2; color: v3.$v3-text-primary; font-size: 18px; font-weight: 680; line-height: 1.4; }
+.choice-desc { color: v3.$v3-text-secondary; font-size: 14px; line-height: 1.65; }
+.choice-meta { display: block; margin-top: v3.$v3-space-3; color: v3.$v3-primary; font-size: 12px; font-weight: 600; }
+.choice-arrow { width: 34px; height: 34px; border-radius: 50%; background: v3.$v3-background; display: flex; align-items: center; justify-content: center; }
+.arrow-text { color: v3.$v3-primary-dark; font-size: 26px; line-height: 1; transform: translateY(-1px); }
+.privacy-panel { display: flex; align-items: flex-start; gap: v3.$v3-space-4; margin-top: v3.$v3-space-8; padding: v3.$v3-space-5; border: 1px solid rgba(78, 116, 104, .14); border-radius: v3.$v3-radius-md; background: rgba(255, 255, 255, .62); text-align: left; }
+.privacy-symbol { position: relative; width: 30px; height: 30px; flex-shrink: 0; border: 1px solid rgba(78, 116, 104, .42); border-radius: 50%; }
+.privacy-keyhole { position: absolute; width: 5px; height: 8px; border-radius: 4px; background: v3.$v3-primary; left: 50%; top: 50%; transform: translate(-50%, -42%); }
+.privacy-copy { flex: 1; }
+.privacy-title { display: block; margin-bottom: v3.$v3-space-1; color: v3.$v3-text-primary; font-size: 13px; font-weight: 650; }
+.foot-note-text { color: v3.$v3-text-secondary; font-size: 12px; line-height: 1.65; }
+.loading-wrap, .error-wrap { border: 1px solid v3.$v3-border; border-radius: v3.$v3-radius-lg; background: v3.$v3-surface; box-shadow: v3.$v3-shadow-soft; }
+.loading-ring { border-color: v3.$v3-border; border-top-color: v3.$v3-primary; }
+.loading-text { color: v3.$v3-text-muted; }
+.error-text { color: v3.$v3-danger; }
+.btn-retry { background: v3.$v3-primary; }
+@media (min-width: 768px) { .container { padding-top: 64px; padding-bottom: 64px; } .entry-hero { padding-top: 32px; padding-bottom: 48px; } .mode-card { padding: 28px 30px; } }
+@media (max-width: 420px) { .entry-hero { padding-top: v3.$v3-space-4; padding-bottom: v3.$v3-space-8; } .mode-card { min-height: 132px; padding: v3.$v3-space-5; } .mode-card-icon { width: 54px; height: 54px; border-radius: 17px; } .choice-body { margin: 0 v3.$v3-space-4; } .choice-label { font-size: 17px; } }
+/* V1.1 restrained tuning */
+.hero-eyebrow { color: v3.$v3-text-secondary; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.page-title { font-size: clamp(28px, 4.5vw, 37px); font-weight: 620; line-height: 1.32; }
+.supporting-text { margin-top: v3.$v3-space-2; color: v3.$v3-text-muted; font-size: 11px; font-weight: 500; letter-spacing: .01em; }
+.choice-arrow { width: 28px; height: 28px; background: transparent; }
+.arrow-text { color: v3.$v3-text-muted; font-size: 23px; }
+.privacy-hint { align-items: center; gap: v3.$v3-space-3; margin-top: v3.$v3-space-6; padding: v3.$v3-space-3 0; border: 0; border-radius: 0; background: transparent; }
 </style>
