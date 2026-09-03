@@ -15,6 +15,7 @@ V3_MIGRATION_VERSIONS = [
     "0002_v3_business",
     "0003_v3_owner_flow",
     "0004_v3_multidoc",
+    "0005_v3_relevance",
 ]
 
 _REQUIRED_TABLES = {
@@ -59,6 +60,8 @@ _REQUIRED_TABLES = {
     # 0004 multi-document (document set)
     "document_sets",
     "document_set_items",
+    # 0005 document relevance
+    "document_relevances",
 }
 
 

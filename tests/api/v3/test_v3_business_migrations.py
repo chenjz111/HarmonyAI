@@ -44,6 +44,8 @@ BUSINESS_TABLES = {
     # 0004 multi-document (document set)
     "document_sets",
     "document_set_items",
+    # 0005 document relevance
+    "document_relevances",
 }
 
 
@@ -117,9 +119,10 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0002_v3_business",
         "0003_v3_owner_flow",
         "0004_v3_multidoc",
+        "0005_v3_relevance",
     ]
     assert second["applied_versions"] == []
-    assert second["current_version"] == "0004_v3_multidoc"
+    assert second["current_version"] == "0005_v3_relevance"
 
     tables = set(inspect(engine).get_table_names())
     assert BUSINESS_TABLES <= tables
@@ -135,6 +138,7 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0002_v3_business",
         "0003_v3_owner_flow",
         "0004_v3_multidoc",
+        "0005_v3_relevance",
     }
 
 

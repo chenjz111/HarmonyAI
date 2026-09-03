@@ -11,7 +11,7 @@ from .understanding import (
     UnderstandingSource,
 )
 from .assessment import AssessmentRevisionV3, AssessmentV3, FactEvidence, OrganEvidence
-from .document import DocumentSet, DocumentSetItem
+from .document import DocumentRelevance, DocumentSet, DocumentSetItem
 from .diagnosis import (
     AiProviderRun,
     DiagnosisCandidate,
@@ -50,6 +50,7 @@ __all__ = [
     "OrganEvidence",
     "DocumentSet",
     "DocumentSetItem",
+    "DocumentRelevance",
     "DiagnosisRun",
     "DiagnosisCandidate",
     "DiagnosisCandidateEvidence",

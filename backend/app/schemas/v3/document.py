@@ -61,3 +61,33 @@ class DocumentSetReadModel(V3BaseModel):
     status: Literal["active", "superseded", "discarded"]
     documents: list[DocumentReadModel]
     input_revision: Annotated[int, Field(ge=1)]
+
+
+RelevanceOutcome = Literal["VALID", "INVALID", "IRRELEVANT", "INSUFFICIENT"]
+
+
+class DocumentRelevanceItem(V3BaseModel):
+    document_id: NonEmptyString
+    outcome: RelevanceOutcome
+    reason_codes: list[NonEmptyString] = Field(default_factory=list)
+
+
+class DocumentRelevanceRecordRequest(V3BaseModel):
+    document_set_id: NonEmptyString
+    document_set_revision: Annotated[int, Field(ge=1)]
+    items: Annotated[list[DocumentRelevanceItem], Field(min_length=1)]
+    evaluator: NonEmptyString | None = None
+    evaluator_version: NonEmptyString | None = None
+
+
+class DocumentRelevanceItemRead(V3BaseModel):
+    document_id: NonEmptyString
+    outcome: RelevanceOutcome
+    reason_codes: list[NonEmptyString]
+    evaluated_at: str
+
+
+class DocumentRelevanceReadModel(V3BaseModel):
+    document_set_id: NonEmptyString
+    document_set_revision: Annotated[int, Field(ge=1)]
+    items: list[DocumentRelevanceItemRead]
