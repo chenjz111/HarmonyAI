@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, inspect, text
 
 from backend.app.core.v3_migrations import (
     MigrationChecksumMismatch,
+    V3_MIGRATION_VERSIONS,
     apply_v3_migrations,
     mysql_migration_sql,
     v3_migration_status,
@@ -74,6 +75,18 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
         index["column_names"] == ["user_id", "created_at"]
         for index in session_indexes
     )
+
+
+def test_owner_goal_migration_is_not_registered_or_present():
+    assert V3_MIGRATION_VERSIONS == [
+        "0001_v3_foundation",
+        "0002_v3_business",
+        "0003_v3_owner_flow",
+    ]
+    migration_root = Path(__file__).parents[3] / "backend" / "migrations" / "v3"
+    for dialect in ("sqlite", "mysql"):
+        assert not (migration_root / dialect / "0004_v3_owner_goal_up.sql").exists()
+        assert not (migration_root / dialect / "0004_v3_owner_goal_down.sql").exists()
 
 
 def test_applied_v3_migration_checksum_cannot_change(tmp_path):

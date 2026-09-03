@@ -47,13 +47,23 @@ from backend.app.schemas.v3.common import (
 )
 from backend.app.schemas.v3.understanding import (
     CaseSummary,
+    NormalizedFact as NormalizedFactSchema,
     SourceStatus,
     UnderstandingConfirmationRequest,
     UnderstandingRevisionResult,
     UnderstandingSource as UnderstandingSourceSchema,
+    UnderstandingV31Request,
+    UnderstandingV31Response,
     UnderstandingV3Request,
     UnderstandingV3Response,
 )
+from backend.app.services.v3.understanding_extraction import (
+    build_provider_chain,
+    extract_facts_for_sources,
+    persist_normalized_facts,
+    re_extract_facts,
+)
+from backend.ai_engine.v3.understanding_provider import ProviderFailureV3
 
 _OPERATION_CREATE = "create_v3_understanding"
 _OPERATION_CONFIRM_PREFIX = "confirm_v3_understanding"
@@ -362,6 +372,7 @@ def _persist_run(
                 }
                 for row in source_rows
             ],
+            "normalized_facts": [],
             "applied_changes": [],
             "affected_fact_ids": [],
         },
@@ -369,13 +380,41 @@ def _persist_run(
         confirmed_at=None,
     )
     db.add(revision)
-    return run, source_rows
+    return run, source_rows, revision
+
+
+def _validate_v31_request_sources(
+    session_row: SessionModel,
+    request: UnderstandingV31Request,
+) -> None:
+    """Owner Flow Amendment 001 §4.2/§5 — an ingestion request must match the
+    session's authoritative input state (input_mode + active_document_id),
+    not only the input_revision. Without this check a stale or forged request
+    could silently flip the selected mode or consume replaced material."""
+    if session_row.input_mode is None:
+        raise InvalidChange("INPUT_MODE_NOT_SELECTED", "尚未选择输入方式。")
+    if session_row.input_mode != "with_document":
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "V3.1 无资料模式跳过 Understanding，请完成必填 Q1-Q10。",
+        )
+    active_document_id = session_row.active_document_id
+    for source in request.inputs:
+        if (
+            active_document_id is None
+            or source.source_type.value != "document"
+            or source.text_ref != active_document_id
+        ):
+            raise InvalidChange(
+                "INPUT_SOURCE_MISMATCH",
+                "资料与会话当前输入状态不一致，请基于最新上传的资料重试。",
+            )
 
 
 def create_understanding(
     db: Session,
     principal: AuthPrincipal,
-    request: UnderstandingV3Request,
+    request: UnderstandingV3Request | UnderstandingV31Request,
     idempotency_key: str,
 ) -> tuple[UnderstandingV3Response, bool]:
     session_row = (
@@ -388,6 +427,24 @@ def create_understanding(
     )
     if session_row is None:
         raise OwnedResourceNotFound
+    is_new_flow = session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
+    if isinstance(request, UnderstandingV31Request):
+        if not is_new_flow:
+            raise InvalidChange(
+                "FLOW_CONTRACT_MISMATCH",
+                "该会话不支持 understanding_v3.1 请求。",
+            )
+        if session_row.input_revision != request.expected_input_revision:
+            raise InputRevisionConflict
+        _validate_v31_request_sources(session_row, request)
+    elif is_new_flow:
+        # A v3.0-shaped ingestion on a v3-owner-flow-1 session would mutate
+        # session state the session contract owns elsewhere; only v3.1 speaks
+        # the new-flow input contract.
+        raise InvalidChange(
+            "FLOW_CONTRACT_MISMATCH",
+            "新流程会话仅接受 understanding_v3.1 请求。",
+        )
 
     request_hash = _request_hash(request.model_dump(mode="json"))
     record = (
@@ -412,7 +469,7 @@ def create_understanding(
                 return _read_model(db, run), True
 
     resolved = [_resolve_source(db, principal, session_row, src) for src in request.inputs]
-    run, source_rows = _persist_run(
+    run, source_rows, revision = _persist_run(
         db,
         principal=principal,
         session_row=session_row,
@@ -420,8 +477,30 @@ def create_understanding(
         idempotency_key=idempotency_key,
     )
 
-    # Persist the flow input mode derived from the material sources.
-    session_row.input_mode = _derive_input_mode(request.inputs)
+    # AI fact extraction: OCR/Narrative text through the Understanding
+    # Provider against the approved claim dictionary. An unavailable provider
+    # or an empty result leaves normalized_facts empty — never fabricated.
+    fact_dicts, _extraction_reasons = extract_facts_for_sources(
+        build_provider_chain(),
+        resolved,
+    )
+    presentation = dict(revision.presentation_json or {})
+    presentation["normalized_facts"] = fact_dicts
+    revision.presentation_json = presentation
+    persist_normalized_facts(
+        db,
+        understanding_id=run.understanding_id,
+        understanding_revision=1,
+        fact_dicts=fact_dicts,
+        source_rows=source_rows,
+    )
+
+    # Legacy sessions keep deriving input_mode from the run. New-flow sessions
+    # own input_mode exclusively through input-transitions (Amendment 001 §5):
+    # an ingestion request must match the authoritative state instead of
+    # silently rewriting it without an input_revision bump.
+    if not is_new_flow:
+        session_row.input_mode = _derive_input_mode(request.inputs)
 
     if record is None:
         record = V3IdempotencyRecord(
@@ -540,7 +619,12 @@ def confirm_understanding(
     )
 
     next_revision = run.current_revision + 1
-    case_summary, applied_changes, affected_fact_ids = _apply_decision(
+    (
+        case_summary,
+        applied_changes,
+        affected_fact_ids,
+        new_fact_dicts,
+    ) = _apply_decision(
         request,
         current,
     )
@@ -550,6 +634,12 @@ def confirm_understanding(
         for source_row in sources:
             source_row.processing_status = "skipped"
     new_status = _new_revision_status(request.decision, run.status)
+    # On a successful confirmation the CaseSummary is confirmed and its
+    # revision aligns with the new Understanding revision (no inner state
+    # left behind on the old revision / needs_confirmation).
+    if new_status == "confirmed" and isinstance(case_summary, dict):
+        case_summary["status"] = "confirmed"
+        case_summary["revision"] = next_revision
     revision_row = UnderstandingRevision(
         understanding_id=understanding_id,
         revision=next_revision,
@@ -566,6 +656,16 @@ def confirm_understanding(
                 }
                 for row in sources
             ],
+            # Carry the normalized facts forward; a full-text edit replaces
+            # them via _apply_full_text_edit on the current revision. On a
+            # successful confirmation every fact is confirmed together with
+            # the outer status so Agent 1 consumes a coherent snapshot.
+            "normalized_facts": _confirmed_facts_for(
+                new_fact_dicts
+                if new_fact_dicts is not None
+                else (current.presentation_json or {}).get("normalized_facts") or [],
+                confirmed=new_status == "confirmed",
+            ),
             "applied_changes": applied_changes,
             "affected_fact_ids": affected_fact_ids,
         },
@@ -573,6 +673,17 @@ def confirm_understanding(
         confirmed_at=_utc_now() if new_status == "confirmed" else None,
     )
     db.add(revision_row)
+    if new_fact_dicts is not None:
+        persist_normalized_facts(
+            db,
+            understanding_id=understanding_id,
+            understanding_revision=next_revision,
+            fact_dicts=_confirmed_facts_for(
+                new_fact_dicts,
+                confirmed=new_status == "confirmed",
+            ),
+            source_rows=sources,
+        )
     run.current_revision = next_revision
     run.status = _run_status_for_revision(new_status, request.decision)
 
@@ -580,7 +691,9 @@ def confirm_understanding(
     if (
         new_status == "confirmed"
         and session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
+        and session_row.input_mode == "with_document"
     ):
+        _validate_bind_matches_active_input(db, session_row, understanding_id)
         new_input_revision = _cas_bind_understanding(
             db,
             session_row,
@@ -616,31 +729,50 @@ def confirm_understanding(
     )
 
 
+def _confirmed_facts_for(
+    fact_dicts: list[dict],
+    *,
+    confirmed: bool,
+) -> list[dict]:
+    """Return normalized fact dicts with the confirmation status applied."""
+    result = [dict(item) for item in fact_dicts]
+    if confirmed:
+        for fact in result:
+            fact["confirmation_status"] = "confirmed"
+    return result
+
+
 def _apply_decision(
     request: UnderstandingConfirmationRequest,
     current: UnderstandingRevision,
-) -> tuple[dict[str, object] | None, list[str], list[str]]:
+) -> tuple[
+    dict[str, object] | None,
+    list[str],
+    list[str],
+    list[dict] | None,
+]:
     decision = request.decision
     if decision == "confirm":
         return (
             current.case_summary_json,
             [],
             [],
+            None,
         )
     if decision == "confirm_with_changes":
         if request.edited_summary_text is not None:
             return _apply_full_text_edit(current, request)
-        return _apply_changes(current, request)
+        return (*_apply_changes(current, request), None)
     if decision == "reject_source":
-        return None, [], []
+        return None, [], [], None
     # cannot_confirm: keep the materialized snapshot undecided.
-    return current.case_summary_json, [], []
+    return current.case_summary_json, [], [], None
 
 
 def _apply_full_text_edit(
     current: UnderstandingRevision,
     request: UnderstandingConfirmationRequest,
-) -> tuple[dict[str, object] | None, list[str], list[str]]:
+) -> tuple[dict[str, object] | None, list[str], list[str], list[dict]]:
     base = current.case_summary_json
     if base is None:
         raise InvalidChange("NO_CASE_SUMMARY", "当前没有可确认的材料摘要。")
@@ -648,28 +780,40 @@ def _apply_full_text_edit(
     case_summary["summary"] = request.edited_summary_text
     case_summary["status"] = "confirmed"
     # A full-text edit must re-derive facts from the edited summary, not copy
-    # the old Evidence. When no Understanding provider is configured the edit
-    # cannot be confirmed: publishing empty facts as a confirmed revision would
-    # fabricate a clean result.
-    affected_fact_ids = _re_extract_facts(request.edited_summary_text)
-    return case_summary, ["chg_summary_edit"], affected_fact_ids
+    # the old Evidence. When the Understanding provider is unavailable the
+    # edit cannot be confirmed: publishing empty facts as a confirmed
+    # revision would fabricate a clean result.
+    fact_dicts, affected_fact_ids = _re_extract_facts(request.edited_summary_text)
+    return case_summary, ["chg_summary_edit"], affected_fact_ids, fact_dicts
 
 
-def _re_extract_facts(edited_text: str) -> list[str]:
-    """Controlled fact re-extraction hook for the edited summary.
+def _re_extract_facts(edited_text: str) -> tuple[list[dict], list[str]]:
+    """Controlled fact re-extraction over the edited summary text.
 
-    Must re-run the Understanding provider over ``edited_text`` against the
-    approved claim dictionary and return the affected fact IDs. The backend
-    does not yet have an approved claim dictionary or a configured provider,
-    so a full-text edit cannot produce facts — raise a stable error and keep
-    the old revision rather than publish an empty-facts confirmed revision.
-    Real extraction reuses PR #91's Understanding Provider once merged.
+    Re-runs the Understanding provider against the approved claim dictionary
+    and returns (new fact dicts, affected fact ids). When the provider is
+    unavailable the edit cannot be confirmed: a stable error is raised and
+    the old revision is kept instead of publishing empty facts.
     """
-    del edited_text
-    raise InvalidChange(
-        "FACT_EXTRACTION_UNAVAILABLE",
-        "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
-    )
+    chain = build_provider_chain()
+    if chain is None:
+        raise InvalidChange(
+            "FACT_EXTRACTION_UNAVAILABLE",
+            "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
+        )
+    try:
+        fact_dicts, affected_ids = re_extract_facts(chain, edited_text)
+    except ProviderFailureV3:
+        raise InvalidChange(
+            "FACT_EXTRACTION_UNAVAILABLE",
+            "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
+        ) from None
+    if not fact_dicts:
+        raise InvalidChange(
+            "FACT_EXTRACTION_UNAVAILABLE",
+            "暂无法从修改后的摘要中提取有效事实，请稍后重试。",
+        )
+    return fact_dicts, affected_ids
 
 
 def _apply_changes(
@@ -755,6 +899,34 @@ def _result_from_revision(
             db, run, revision_row=revision_row, for_revision=True
         ),
     )
+
+
+def _validate_bind_matches_active_input(
+    db: Session,
+    session_row: SessionModel,
+    understanding_id: str,
+) -> None:
+    """Amendment 001 §5 — binding a confirmed understanding as the session's
+    active input is only valid when the run's ready sources are exactly the
+    session's active document. The input_revision CAS alone would still bind
+    material that was created before the active document was replaced."""
+    ready_rows = (
+        db.query(UnderstandingSource)
+        .filter(
+            UnderstandingSource.understanding_id == understanding_id,
+            UnderstandingSource.processing_status == "ready",
+        )
+        .all()
+    )
+    ready_document_ids = {row.document_id for row in ready_rows}
+    if (
+        any(row.source_type not in _DOCUMENT_SOURCE_TYPES for row in ready_rows)
+        or ready_document_ids != {session_row.active_document_id}
+    ):
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "资料与会话当前输入状态不一致，请重新上传后再确认。",
+        )
 
 
 def _cas_bind_understanding(
@@ -893,8 +1065,12 @@ def _read_model(
             )
             for row in sources
         ]
-    return UnderstandingV3Response(
-        schema_version="understanding_v3.0",
+    normalized_facts: list[NormalizedFactSchema] = []
+    if revision_row is not None:
+        presentation = revision_row.presentation_json or {}
+        for item in presentation.get("normalized_facts") or []:
+            normalized_facts.append(NormalizedFactSchema.model_validate(item))
+    common = dict(
         understanding_id=run.understanding_id,
         revision=run.current_revision
         if revision_row is None
@@ -902,9 +1078,22 @@ def _read_model(
         status=revision_row.status if for_revision else run.status,
         case_summary=case_summary,
         voice_transcripts=[],
-        normalized_facts=[],
+        normalized_facts=normalized_facts,
         source_statuses=source_statuses,
-        safety_status=run.safety_status,
         safety_signal_refs=[],
         degradation=Degradation.model_validate(run.degradation_json),
+    )
+    if run.flow_contract_version == _FLOW_CONTRACT_V3_OWNER:
+        return UnderstandingV31Response(
+            schema_version="understanding_v3.1",
+            flow_contract_version=_FLOW_CONTRACT_V3_OWNER,
+            safety_policy="deferred_v3",
+            safety_evaluation_status="not_run",
+            safety_status=None,
+            **common,
+        )
+    return UnderstandingV3Response(
+        schema_version="understanding_v3.0",
+        safety_status=run.safety_status,
+        **common,
     )
