@@ -46,11 +46,12 @@ class AssessmentV3Request(V3BaseModel):
 
 
 class AssessmentV31Request(V3BaseModel):
-    """Owner Flow Amendment 001 assessment input — no music goal, nullable
-    understanding (pure-questionnaire path) and optimistic input revision.
+    """Owner Flow assessment input with an independent optional music goal,
+    nullable understanding (pure-questionnaire path) and optimistic input revision.
 
     Source completeness is enforced at the assessment service/readiness
-    layer, not here (legacy schema tests validate goal-freedom only).
+    layer, not here. UserGoal is stored separately from medical evidence and
+    is not rendered as a medical conclusion.
     """
 
     schema_version: Literal["assessment_v3.1"]
@@ -58,6 +59,7 @@ class AssessmentV31Request(V3BaseModel):
     expected_input_revision: Annotated[int, Field(ge=1)]
     understanding_ref: UnderstandingRef | None = None
     questionnaire_ref: QuestionnaireRef | None = None
+    user_goal: UserGoal | None = None
 
 
 class FactEvidence(V3BaseModel):
@@ -185,9 +187,9 @@ class AssessmentRef(V3BaseModel):
 class AssessmentV31Response(AssessmentV3Response):
     """Owner Flow Amendment 001 §4.3 / §6 — new flow output discriminator.
 
-    `understanding_ref` may be null for pure-questionnaire sessions,
-    `safety_status` is always null under `deferred_v3`, and the music goal
-    fields are removed from the presentation.
+    `understanding_ref` may be null for pure-questionnaire sessions and
+    `safety_status` is always null under `deferred_v3`. UserGoal remains an
+    independent personalization input outside the medical presentation.
     """
 
     schema_version: Literal["assessment_v3.1"]
@@ -198,6 +200,7 @@ class AssessmentV31Response(AssessmentV3Response):
     safety_evaluation_status: Literal["not_run"]
     safety_status: None
     presentation: AssessmentV31Presentation
+    user_goal: UserGoal | None = None
 
 
 class AssessmentRefV31(V3BaseModel):

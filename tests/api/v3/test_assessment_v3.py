@@ -1,7 +1,9 @@
 ﻿"""Agent 1 Assessment V3 — deterministic aggregation over approved assets."""
 
 import base64
+from datetime import datetime, timezone
 import json
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import uuid
@@ -14,16 +16,20 @@ from backend.ai_engine.v3.understanding_provider import (
     UnderstandingProviderChain,
 )
 from backend.app.main import app
+from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
 from backend.app.models.v3.assessment import AssessmentV3
 from backend.app.models.v3.identity import UserIdentity
 from backend.app.models.v3.session import V3IdempotencyRecord
+from backend.app.models.v3.understanding import QuestionnaireSubmissionV3
 from backend.app.schemas.v3.understanding import (
     TextSpan,
     UnderstandingProviderFact,
     UnderstandingProviderResponse,
 )
-from backend.app.services.v3 import understanding_service
+from backend.app.schemas.v3.assessment import FactEvidence
+from backend.app.services.v3 import assessment_service, understanding_service
+from backend.app.services.v3.knowledge_assets import load_organ_mapping
 
 
 client = TestClient(app)
@@ -173,6 +179,118 @@ def _assessment_count(db_session_factory, headers):
         db.close()
 
 
+def _seed_questionnaire(db, *, headers, session_id, answers):
+    user_pk = _user_pk(db, headers)
+    session_row = (
+        db.query(SessionModel)
+        .filter(SessionModel.session_id == session_id)
+        .one()
+    )
+    manifest = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "knowledge"
+            / "v3"
+            / "questionnaire-v3.0.json"
+        ).read_text(encoding="utf-8")
+    )
+    submission = QuestionnaireSubmissionV3(
+        questionnaire_submission_id=f"qsub_{uuid.uuid4().hex}",
+        internal_user_pk=user_pk,
+        session_row_id=session_row.id,
+        schema_id=manifest["schema_id"],
+        schema_version=manifest["schema_version"],
+        manifest_version=manifest["manifest_version"],
+        content_checksum=manifest["content_checksum"],
+        time_window_days=7,
+        answers_json=answers,
+        idempotency_key=f"qsub-{uuid.uuid4().hex}",
+        submitted_at=datetime.now(timezone.utc),
+    )
+    db.add(submission)
+    db.commit()
+    return submission.questionnaire_submission_id, manifest
+
+
+def _aggregation_fact(claim_code, source_id, *, source_type="document", value=None):
+    return FactEvidence(
+        fact_evidence_id=f"fev_{uuid.uuid4().hex}",
+        assessment_id="asmt_aggregation",
+        assessment_revision=1,
+        fact_id=f"fact_{uuid.uuid4().hex}",
+        claim_code=claim_code,
+        display_name=claim_code,
+        category="test",
+        value=value or {"type": "severity", "value": "moderate"},
+        time_window="past_7_days",
+        direction="supporting",
+        reliability=1.0,
+        source_refs=[{"source_id": source_id, "source_type": source_type}],
+        confirmation_status="confirmed",
+    )
+
+
+def test_assessment_uses_approved_multi_organ_links():
+    evidence = [_aggregation_fact("sleep_disturbance", "source-sleep")]
+
+    links = assessment_service._organ_links(evidence, load_organ_mapping())
+
+    assert {
+        (link.organ.value, link.mapping_rule_id)
+        for link in links
+    } == {
+        ("heart", "map_sleep_disturbance_heart_multi_01"),
+        ("spleen", "map_sleep_disturbance_spleen_multi_01"),
+        ("kidney", "map_sleep_disturbance_kidney_multi_01"),
+    }
+
+
+def test_assessment_applies_sleep_conflict_rule_once_per_source():
+    mapping = load_organ_mapping()
+    base = [
+        _aggregation_fact("anger_tendency", "source-liver"),
+        _aggregation_fact("flank_discomfort", "source-liver"),
+        _aggregation_fact("agitation_tendency", "source-heart"),
+        _aggregation_fact("palpitation_at_rest", "source-heart"),
+    ]
+    base_links = assessment_service._organ_links(base, mapping)
+    one_sleep = base + [_aggregation_fact("sleep_disturbance", "source-sleep")]
+    two_sleep = one_sleep + [_aggregation_fact("unrefreshing_sleep", "source-sleep")]
+
+    one_links = assessment_service._organ_links(one_sleep, mapping)
+    two_links = assessment_service._organ_links(two_sleep, mapping)
+    one_weights = assessment_service._organ_weights(one_sleep, one_links, mapping)
+    two_weights = assessment_service._organ_weights(two_sleep, two_links, mapping)
+    base_weights = assessment_service._organ_weights(base, base_links, mapping)
+
+    assert one_weights != base_weights
+    assert one_weights == two_weights
+
+
+def test_assessment_marks_questionnaire_priority_conflict_without_raw_text():
+    evidence = [
+        _aggregation_fact(
+            "anger_tendency",
+            "source-document",
+            value={"type": "severity", "value": "mild"},
+        ),
+        _aggregation_fact(
+            "anger_tendency",
+            "qsub-priority",
+            source_type="questionnaire",
+            value={"type": "severity", "value": "severe"},
+        ),
+    ]
+
+    conflicts = assessment_service._build_conflicts(evidence, load_organ_mapping())
+
+    assert len(conflicts) == 1
+    assert conflicts[0].severity == "minor"
+    assert conflicts[0].resolution_status == "unresolved"
+    assert "source-document" not in conflicts[0].display_summary
+    assert "qsub-priority" not in conflicts[0].display_summary
+
+
 def test_assessment_available_from_two_liver_claims(monkeypatch, db_session_factory):
     monkeypatch.setattr(
         understanding_service,
@@ -239,6 +357,263 @@ def test_assessment_insufficient_single_claim(monkeypatch, db_session_factory):
     assert assessment["organ_profile"]["weights"] is None
     assert assessment["degradation"]["active"] is True
     assert "INSUFFICIENT_EVIDENCE" in assessment["degradation"]["reason_codes"]
+
+
+def test_assessment_rejects_understanding_from_another_session(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    first_understanding_id = _confirmed_understanding(
+        headers, session_id, db, facts=None
+    )
+    db.close()
+
+    second_session_response = client.post(
+        "/api/v3/sessions",
+        headers={**headers, "Idempotency-Key": f"sess-{uuid.uuid4().hex}"},
+        json={"flow_contract_version": "v3-owner-flow-1"},
+    )
+    assert second_session_response.status_code == 201, second_session_response.text
+    second_session_id = _v3_data(second_session_response)["session_id"]
+    db = db_session_factory()
+    second_understanding_id = _confirmed_understanding(
+        headers, second_session_id, db, facts=None
+    )
+    db.close()
+
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
+        json=_assessment_body(session_id, second_understanding_id, 2),
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "ASSESSMENT_INPUT_NOT_READY"
+    assert _assessment_count(db_session_factory, headers) == 0
+
+
+def test_assessment_rejects_understanding_owned_by_another_user(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    owner_headers, owner_session_id = _setup_guest()
+    db = db_session_factory()
+    foreign_understanding_id = _confirmed_understanding(
+        owner_headers, owner_session_id, db, facts=None
+    )
+    db.close()
+
+    headers, session_id = _setup_guest()
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
+        json=_assessment_body(session_id, foreign_understanding_id, 1),
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "ASSESSMENT_INPUT_NOT_READY"
+    assert _assessment_count(db_session_factory, headers) == 0
+
+
+def test_assessment_consumes_complete_questionnaire_without_document(
+    db_session_factory,
+):
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    user_pk = _user_pk(db, headers)
+    session_row = (
+        db.query(SessionModel)
+        .filter(SessionModel.session_id == session_id)
+        .one()
+    )
+    from pathlib import Path
+
+    manifest = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "knowledge"
+            / "v3"
+            / "questionnaire-v3.0.json"
+        ).read_text(encoding="utf-8")
+    )
+    answers = [
+        {"question_id": "q01", "answer_type": "frequency_0_4", "value": 3},
+        {"question_id": "q02", "answer_type": "frequency_0_4", "value": 0},
+        {"question_id": "q03", "answer_type": "frequency_0_4", "value": 0},
+        {"question_id": "q04", "answer_type": "frequency_0_4", "value": 0},
+        {"question_id": "q05", "answer_type": "frequency_0_4", "value": 0},
+        {"question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["flank_discomfort"]},
+        {"question_id": "q07", "answer_type": "multi_choice_evidence", "value": ["none"]},
+        {"question_id": "q08", "answer_type": "multi_choice_evidence", "value": ["none"]},
+        {"question_id": "q09", "answer_type": "multi_choice_evidence", "value": ["none"]},
+        {"question_id": "q10", "answer_type": "multi_choice_evidence", "value": ["none"]},
+    ]
+    submission = QuestionnaireSubmissionV3(
+        questionnaire_submission_id=f"qsub_{uuid.uuid4().hex}",
+        internal_user_pk=user_pk,
+        session_row_id=session_row.id,
+        schema_id=manifest["schema_id"],
+        schema_version=manifest["schema_version"],
+        manifest_version=manifest["manifest_version"],
+        content_checksum=manifest["content_checksum"],
+        time_window_days=7,
+        answers_json=answers,
+        idempotency_key=f"qsub-{uuid.uuid4().hex}",
+        submitted_at=datetime.now(timezone.utc),
+    )
+    db.add(submission)
+    session_row.input_mode = "without_document"
+    session_row.input_revision = 2
+    session_row.active_questionnaire_submission_id = submission.questionnaire_submission_id
+    db.commit()
+    questionnaire_id = submission.questionnaire_submission_id
+    db.close()
+
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "assessment_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "understanding_ref": None,
+            "questionnaire_ref": {
+                "questionnaire_submission_id": questionnaire_id,
+                "schema_id": manifest["schema_id"],
+                "schema_version": manifest["schema_version"],
+                "manifest_version": manifest["manifest_version"],
+                "content_checksum": manifest["content_checksum"],
+            },
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assessment = _v3_data(response)
+    assert assessment["understanding_ref"] is None
+    assert len(assessment["fact_evidence"]) == 2
+    assert {item["claim_code"] for item in assessment["fact_evidence"]} == {
+        "anger_tendency",
+        "flank_discomfort",
+    }
+    assert all(
+        item["source_refs"][0]["source_type"] == "questionnaire"
+        for item in assessment["fact_evidence"]
+    )
+
+
+def test_assessment_combines_understanding_and_questionnaire_evidence(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [
+                _provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state"),
+                _provider_fact("flank_discomfort", "胁肋不适", "somatic"),
+            ]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
+    questionnaire_id, manifest = _seed_questionnaire(
+        db,
+        headers=headers,
+        session_id=session_id,
+        answers=[
+            {"question_id": "q01", "answer_type": "frequency_0_4", "value": 3},
+            {"question_id": "q02", "answer_type": "frequency_0_4", "value": 0},
+            {"question_id": "q03", "answer_type": "frequency_0_4", "value": 0},
+            {"question_id": "q04", "answer_type": "frequency_0_4", "value": 0},
+            {"question_id": "q05", "answer_type": "frequency_0_4", "value": 0},
+            {"question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["none"]},
+            {"question_id": "q07", "answer_type": "multi_choice_evidence", "value": ["none"]},
+            {"question_id": "q08", "answer_type": "multi_choice_evidence", "value": ["none"]},
+            {"question_id": "q09", "answer_type": "multi_choice_evidence", "value": ["none"]},
+            {"question_id": "q10", "answer_type": "multi_choice_evidence", "value": ["none"]},
+        ],
+    )
+    db.close()
+
+    body = _assessment_body(session_id, understanding_id, 2)
+    body["questionnaire_ref"] = {
+        "questionnaire_submission_id": questionnaire_id,
+        "schema_id": manifest["schema_id"],
+        "schema_version": manifest["schema_version"],
+        "manifest_version": manifest["manifest_version"],
+        "content_checksum": manifest["content_checksum"],
+    }
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
+        json=body,
+    )
+
+    assert response.status_code == 201, response.text
+    assessment = _v3_data(response)
+    assert len(assessment["fact_evidence"]) == 3
+    assert {
+        item["source_refs"][0]["source_type"]
+        for item in assessment["fact_evidence"]
+    } == {"document", "questionnaire"}
+    assert assessment["source_diversity"] == 2
+
+
+def test_assessment_accepts_optional_user_goal_for_music_design(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
+    db.close()
+
+    body = _assessment_body(session_id, understanding_id, 2)
+    body["user_goal"] = {
+        "primary_goal": "sleep",
+        "secondary_goal": "relaxation",
+        "custom_goal_text": None,
+    }
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
+        json=body,
+    )
+
+    assert response.status_code == 201, response.text
+    assessment = _v3_data(response)
+    assert assessment["user_goal"]["primary_goal"] == "sleep"
+    assert assessment["user_goal"]["secondary_goal"] == "relaxation"
+    assert "goal_summary" not in assessment["presentation"]
+    db = db_session_factory()
+    try:
+        row = db.query(AssessmentV3).filter(
+            AssessmentV3.assessment_id == assessment["assessment_id"]
+        ).one()
+        assert row.user_goal_json == body["user_goal"]
+    finally:
+        db.close()
 
 
 def test_assessment_replays_same_key_and_payload_without_duplicate(

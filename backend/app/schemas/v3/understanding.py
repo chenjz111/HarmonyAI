@@ -54,7 +54,7 @@ class UnderstandingSource(V3BaseModel):
 
 
 class UnderstandingV3Request(V3BaseModel):
-    schema_version: Literal["understanding_v3.0", "understanding_v3.1"]
+    schema_version: Literal["understanding_v3.0"]
     session_id: NonEmptyString
     inputs: Annotated[list[UnderstandingSource], Field(min_length=1)]
 

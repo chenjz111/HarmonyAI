@@ -413,5 +413,11 @@ yu    (羽调)      → 58   → 箫、古琴
 - Agent2 仅定位为基础框架/降级实现（`BLOCKED_BY_MEDICAL_ASSET`），不应描述为 Agent2 已完整完成或 `REAL_RAG_QWEN`。
 - 真实 RAG + Qwen 仍待后续医学资产任务：已批准的 RAG ingestion manifest、Retriever 索引/版本配置、syndrome whitelist/规则资产，以及对应 Qwen Provider 凭据、模型/超时配置。当前没有启用条件，因此保持诚实降级，不伪造医学命中或证型。
 - Assessment/Diagnosis 幂等占位已前移到业务写入之前；唯一约束竞争时回滚并回查胜者结果。相同 key + 相同 payload 返回首次结果（HTTP 200 replay），不同 payload 返回 `IDEMPOTENCY_KEY_REUSED`，不会因唯一约束泄漏 500 或新增业务记录。
-- 源码已检索并清理 PR #91 未合并类状态表述；PR #91 当前 HEAD 为 `5be4d762a0740b55e8da65c5e36ea72d2599ae7a`，目标为 `integration/sprint4-real-input`。
+- 以上为 2026-09-02 的历史检查点（当时 HEAD 为 `5be4d762a0740b55e8da65c5e36ea72d2599ae7a`）；提交后以 PR #91 的最新远端 HEAD 为准，目标仍为 `integration/sprint4-real-input`。
 - 并发回归：Assessment/Diagnosis 相同 payload 均为一条 201 + 一条 200 replay、无重复业务记录；不同 payload 均返回 `IDEMPOTENCY_KEY_REUSED`，无 500。GitHub Tests #137：SUCCESS。
+
+### PR #91 review remediation scope（2026-09-03）
+
+- 本轮修复范围：V3.1 Understanding 路由与 `expected_input_revision` 接线、Agent1 权威 readiness/归属校验、问卷确定性 Evidence 进入 questionnaire-only 与 mixed Assessment、旧 Understanding revision 不可变、approved multi-organ/conflict 规则执行，以及独立可选 UserGoal 持久化。
+- 本 PR 不宣称已完成最新 V3.1 全流程：DocumentSet、Document Relevance Gate 及无资料 Narrative/Voice 新语义仍属于后续适配任务；PR #91 不应作为这些能力已完成的依据。
+- Agent2 仍明确为基础能力/诚实降级 gate（`BLOCKED_BY_MEDICAL_ASSET`）；真实 Query Builder、RAG Retriever、Qwen diagnosis Provider 和 syndrome whitelist 待已批准医学资产与配置到位后由后续任务接入。

@@ -72,11 +72,6 @@ class AssessmentV3(Base):
         ),
         CheckConstraint(
             "flow_contract_version IS NULL OR "
-            "flow_contract_version != 'v3-owner-flow-1' OR user_goal_json IS NULL",
-            name="ck_assessment_v3_no_goal_new_flow",
-        ),
-        CheckConstraint(
-            "flow_contract_version IS NULL OR "
             "flow_contract_version != 'v3-owner-flow-1' OR safety_status IS NULL",
             name="ck_assessment_v3_safety_null_new_flow",
         ),

@@ -201,6 +201,61 @@ def test_document_ingestion_uses_ocr_text_and_with_document_mode():
     assert _session_input_mode(session_id) == "with_document"
 
 
+def test_v31_understanding_create_uses_expected_input_revision():
+    headers = _guest_headers()
+    session_id = _v3_data(
+        client.post(
+            "/api/v3/sessions",
+            headers={**headers, "Idempotency-Key": f"seed-session-{uuid.uuid4().hex}"},
+            json={"flow_contract_version": "v3-owner-flow-1"},
+        )
+    )["session_id"]
+
+    response = _post_understanding(
+        headers,
+        {
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 1,
+            "inputs": [_narrative_source("最近一周睡眠不太安稳。")],
+        },
+        f"sha256:und-v31-{uuid.uuid4().hex}",
+    )
+
+    assert response.status_code == 201, response.text
+    data = _v3_data(response)
+    assert data["schema_version"] == "understanding_v3.1"
+    assert data["flow_contract_version"] == "v3-owner-flow-1"
+    assert data["safety_policy"] == "deferred_v3"
+    assert data["safety_evaluation_status"] == "not_run"
+    assert data["safety_status"] is None
+
+
+def test_v31_understanding_create_rejects_stale_expected_input_revision():
+    headers = _guest_headers()
+    session_id = _v3_data(
+        client.post(
+            "/api/v3/sessions",
+            headers={**headers, "Idempotency-Key": f"seed-session-{uuid.uuid4().hex}"},
+            json={"flow_contract_version": "v3-owner-flow-1"},
+        )
+    )["session_id"]
+
+    response = _post_understanding(
+        headers,
+        {
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "inputs": [_narrative_source("最近一周睡眠不太安稳。")],
+        },
+        f"sha256:und-v31-stale-{uuid.uuid4().hex}",
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
+
+
 def test_ocr_failure_is_explicit_and_never_confirms():
     headers, session_id = _setup_guest()
     with _seed_db() as session:
