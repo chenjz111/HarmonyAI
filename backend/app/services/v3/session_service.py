@@ -56,7 +56,16 @@ def _request_hash(payload: dict[str, object]) -> str:
     return f"sha256:{sha256(encoded).hexdigest()}"
 
 
-def _entry_read_model(session_id: str) -> EntryReadModel:
+def _entry_read_model(
+    session_id: str,
+    *,
+    flow_contract_version: str | None = None,
+) -> EntryReadModel:
+    without_document_route = (
+        "/v3/questionnaire"
+        if flow_contract_version == FLOW_CONTRACT_V3_OWNER
+        else "/v3/narrative"
+    )
     return EntryReadModel(
         page="entry",
         session_id=session_id,
@@ -71,7 +80,7 @@ def _entry_read_model(session_id: str) -> EntryReadModel:
             EntryChoice(
                 id="without_document",
                 label="我没有近期就诊资料",
-                next_route="/v3/narrative",
+                next_route=without_document_route,
             ),
         ],
     )
@@ -112,7 +121,10 @@ def create_v3_session(
                 SessionModel.user_id == principal.internal_user_pk,
             ).one_or_none()
             if session is not None:
-                return _entry_read_model(session.session_id), True
+                return _entry_read_model(
+                    session.session_id,
+                    flow_contract_version=session.flow_contract_version,
+                ), True
 
     session_id = f"sess_{uuid.uuid4().hex}"
     if record is None:
@@ -158,7 +170,10 @@ def create_v3_session(
     except Exception:
         db.rollback()
         raise
-    return _entry_read_model(session_id), False
+    return _entry_read_model(
+        session_id,
+        flow_contract_version=flow_contract_version,
+    ), False
 
 
 def get_owned_v3_session(
@@ -173,7 +188,10 @@ def get_owned_v3_session(
     ).one_or_none()
     if session is None:
         raise OwnedResourceNotFound
-    return _entry_read_model(session.session_id)
+    return _entry_read_model(
+        session.session_id,
+        flow_contract_version=session.flow_contract_version,
+    )
 
 
 def get_owned_session_row(

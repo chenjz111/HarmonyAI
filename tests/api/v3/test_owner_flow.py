@@ -3,7 +3,7 @@
 Covers the non-conflicting #79 surface: session flow-contract negotiation,
 active-input transitions (select_mode / replace_document / discard_document)
 with ownership / idempotency / expected_input_revision, the edited-summary
-confirmation path, deferred safety, and independent optional UserGoal input.
+confirmation path, deferred safety, and the Agent 1/Agent 3 UserGoal boundary.
 """
 
 import base64
@@ -445,8 +445,12 @@ def test_confirm_with_wrong_input_revision_conflicts():
     assert response.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
 
 
-def test_v31_user_goal_is_optional_but_v30_keeps_required_user_goal():
-    from backend.app.schemas.v3.assessment import AssessmentV31Request, AssessmentV3Request
+def test_v31_excludes_user_goal_but_v30_keeps_required_user_goal():
+    from backend.app.schemas.v3.assessment import (
+        AssessmentV31Request,
+        AssessmentV31Response,
+        AssessmentV3Request,
+    )
     from backend.app.schemas.v3.prescription import PrescriptionV31Request, PrescriptionV3Request
 
     v31 = AssessmentV31Request.model_validate(
@@ -460,17 +464,23 @@ def test_v31_user_goal_is_optional_but_v30_keeps_required_user_goal():
     )
     assert v31.schema_version == "assessment_v3.1"
 
-    v31_with_goal = AssessmentV31Request.model_validate(
-        {
-            "schema_version": "assessment_v3.1",
-            "session_id": "sess_1",
-            "expected_input_revision": 3,
-            "understanding_ref": None,
-            "questionnaire_ref": None,
-            "user_goal": {"primary_goal": "sleep", "secondary_goal": None, "custom_goal_text": None},
-        }
-    )
-    assert v31_with_goal.user_goal.primary_goal == "sleep"
+    with pytest.raises(pydantic.ValidationError):
+        AssessmentV31Request.model_validate(
+            {
+                "schema_version": "assessment_v3.1",
+                "session_id": "sess_1",
+                "expected_input_revision": 3,
+                "understanding_ref": None,
+                "questionnaire_ref": None,
+                "user_goal": {
+                    "primary_goal": "sleep",
+                    "secondary_goal": None,
+                    "custom_goal_text": None,
+                },
+            }
+        )
+    assert "user_goal" not in AssessmentV31Request.model_fields
+    assert "user_goal" not in AssessmentV31Response.model_fields
 
     # v3.0 request still requires user_goal (backward compatible).
     with pytest.raises(pydantic.ValidationError):

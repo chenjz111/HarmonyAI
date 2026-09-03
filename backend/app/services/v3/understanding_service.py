@@ -393,24 +393,21 @@ def _validate_v31_request_sources(
     could silently flip the selected mode or consume replaced material."""
     if session_row.input_mode is None:
         raise InvalidChange("INPUT_MODE_NOT_SELECTED", "尚未选择输入方式。")
-    if session_row.input_mode == "with_document":
-        active_document_id = session_row.active_document_id
-        for source in request.inputs:
-            if (
-                active_document_id is None
-                or source.source_type.value != "document"
-                or source.text_ref != active_document_id
-            ):
-                raise InvalidChange(
-                    "INPUT_SOURCE_MISMATCH",
-                    "资料与会话当前输入状态不一致，请基于最新上传的资料重试。",
-                )
-        return
+    if session_row.input_mode != "with_document":
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "V3.1 无资料模式跳过 Understanding，请完成必填 Q1-Q10。",
+        )
+    active_document_id = session_row.active_document_id
     for source in request.inputs:
-        if source.source_type.value != "narrative" or source.text is None:
+        if (
+            active_document_id is None
+            or source.source_type.value != "document"
+            or source.text_ref != active_document_id
+        ):
             raise InvalidChange(
                 "INPUT_SOURCE_MISMATCH",
-                "当前为无资料模式，仅支持文字描述输入。",
+                "资料与会话当前输入状态不一致，请基于最新上传的资料重试。",
             )
 
 

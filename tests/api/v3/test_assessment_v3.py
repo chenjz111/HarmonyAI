@@ -679,7 +679,7 @@ def test_assessment_rejects_questionnaire_from_another_session(
     assert _assessment_count(db_session_factory, headers) == 0
 
 
-def test_assessment_accepts_optional_user_goal_for_music_design(
+def test_assessment_rejects_user_goal_for_agent1(
     monkeypatch, db_session_factory
 ):
     monkeypatch.setattr(
@@ -706,19 +706,8 @@ def test_assessment_accepts_optional_user_goal_for_music_design(
         json=body,
     )
 
-    assert response.status_code == 201, response.text
-    assessment = _v3_data(response)
-    assert assessment["user_goal"]["primary_goal"] == "sleep"
-    assert assessment["user_goal"]["secondary_goal"] == "relaxation"
-    assert "goal_summary" not in assessment["presentation"]
-    db = db_session_factory()
-    try:
-        row = db.query(AssessmentV3).filter(
-            AssessmentV3.assessment_id == assessment["assessment_id"]
-        ).one()
-        assert row.user_goal_json == body["user_goal"]
-    finally:
-        db.close()
+    assert response.status_code == 422, response.text
+    assert _assessment_count(db_session_factory, headers) == 0
 
 
 def test_assessment_replays_same_key_and_payload_without_duplicate(

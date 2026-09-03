@@ -14,7 +14,6 @@ V3_MIGRATION_VERSIONS = [
     "0001_v3_foundation",
     "0002_v3_business",
     "0003_v3_owner_flow",
-    "0004_v3_owner_goal",
 ]
 
 _REQUIRED_TABLES = {
