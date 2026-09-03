@@ -383,6 +383,37 @@ def _persist_run(
     return run, source_rows, revision
 
 
+def _validate_v31_request_sources(
+    session_row: SessionModel,
+    request: UnderstandingV31Request,
+) -> None:
+    """Owner Flow Amendment 001 §4.2/§5 — an ingestion request must match the
+    session's authoritative input state (input_mode + active_document_id),
+    not only the input_revision. Without this check a stale or forged request
+    could silently flip the selected mode or consume replaced material."""
+    if session_row.input_mode is None:
+        raise InvalidChange("INPUT_MODE_NOT_SELECTED", "尚未选择输入方式。")
+    if session_row.input_mode == "with_document":
+        active_document_id = session_row.active_document_id
+        for source in request.inputs:
+            if (
+                active_document_id is None
+                or source.source_type.value != "document"
+                or source.text_ref != active_document_id
+            ):
+                raise InvalidChange(
+                    "INPUT_SOURCE_MISMATCH",
+                    "资料与会话当前输入状态不一致，请基于最新上传的资料重试。",
+                )
+        return
+    for source in request.inputs:
+        if source.source_type.value != "narrative" or source.text is None:
+            raise InvalidChange(
+                "INPUT_SOURCE_MISMATCH",
+                "当前为无资料模式，仅支持文字描述输入。",
+            )
+
+
 def create_understanding(
     db: Session,
     principal: AuthPrincipal,
@@ -399,11 +430,24 @@ def create_understanding(
     )
     if session_row is None:
         raise OwnedResourceNotFound
+    is_new_flow = session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
     if isinstance(request, UnderstandingV31Request):
-        if session_row.flow_contract_version != _FLOW_CONTRACT_V3_OWNER:
-            raise InputRevisionConflict
+        if not is_new_flow:
+            raise InvalidChange(
+                "FLOW_CONTRACT_MISMATCH",
+                "该会话不支持 understanding_v3.1 请求。",
+            )
         if session_row.input_revision != request.expected_input_revision:
             raise InputRevisionConflict
+        _validate_v31_request_sources(session_row, request)
+    elif is_new_flow:
+        # A v3.0-shaped ingestion on a v3-owner-flow-1 session would mutate
+        # session state the session contract owns elsewhere; only v3.1 speaks
+        # the new-flow input contract.
+        raise InvalidChange(
+            "FLOW_CONTRACT_MISMATCH",
+            "新流程会话仅接受 understanding_v3.1 请求。",
+        )
 
     request_hash = _request_hash(request.model_dump(mode="json"))
     record = (
@@ -454,8 +498,12 @@ def create_understanding(
         source_rows=source_rows,
     )
 
-    # Persist the flow input mode derived from the material sources.
-    session_row.input_mode = _derive_input_mode(request.inputs)
+    # Legacy sessions keep deriving input_mode from the run. New-flow sessions
+    # own input_mode exclusively through input-transitions (Amendment 001 §5):
+    # an ingestion request must match the authoritative state instead of
+    # silently rewriting it without an input_revision bump.
+    if not is_new_flow:
+        session_row.input_mode = _derive_input_mode(request.inputs)
 
     if record is None:
         record = V3IdempotencyRecord(
@@ -646,7 +694,9 @@ def confirm_understanding(
     if (
         new_status == "confirmed"
         and session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
+        and session_row.input_mode == "with_document"
     ):
+        _validate_bind_matches_active_input(db, session_row, understanding_id)
         new_input_revision = _cas_bind_understanding(
             db,
             session_row,
@@ -852,6 +902,34 @@ def _result_from_revision(
             db, run, revision_row=revision_row, for_revision=True
         ),
     )
+
+
+def _validate_bind_matches_active_input(
+    db: Session,
+    session_row: SessionModel,
+    understanding_id: str,
+) -> None:
+    """Amendment 001 §5 — binding a confirmed understanding as the session's
+    active input is only valid when the run's ready sources are exactly the
+    session's active document. The input_revision CAS alone would still bind
+    material that was created before the active document was replaced."""
+    ready_rows = (
+        db.query(UnderstandingSource)
+        .filter(
+            UnderstandingSource.understanding_id == understanding_id,
+            UnderstandingSource.processing_status == "ready",
+        )
+        .all()
+    )
+    ready_document_ids = {row.document_id for row in ready_rows}
+    if (
+        any(row.source_type not in _DOCUMENT_SOURCE_TYPES for row in ready_rows)
+        or ready_document_ids != {session_row.active_document_id}
+    ):
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "资料与会话当前输入状态不一致，请重新上传后再确认。",
+        )
 
 
 def _cas_bind_understanding(

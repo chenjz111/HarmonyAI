@@ -356,13 +356,18 @@ def test_reprocess_without_edited_text_is_rejected():
         document_id = _seed_document(
             session, user_pk=user_pk, session_id=session_id, ocr_text="内容。"
         )
+    _transition(
+        headers, session_id, "rep-1",
+        {"expected_input_revision": 1, "action": "replace_document", "document_id": document_id},
+    )
     understanding_id = _v3_data(
         client.post(
             "/api/v3/understandings",
             headers={**headers, "Idempotency-Key": "und-1"},
             json={
-                "schema_version": "understanding_v3.0",
+                "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 2,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -379,7 +384,9 @@ def test_reprocess_without_edited_text_is_rejected():
         f"/api/v3/understandings/{understanding_id}/confirmations",
         headers={**headers, "Idempotency-Key": "confirm-1"},
         json={
+            "schema_version": "understanding_v3.1",
             "expected_revision": 1,
+            "expected_input_revision": 2,
             "decision": "confirm",
             "reprocess_requested": True,
         },
@@ -409,8 +416,9 @@ def test_confirm_with_wrong_input_revision_conflicts():
             "/api/v3/understandings",
             headers={**headers, "Idempotency-Key": "und-1"},
             json={
-                "schema_version": "understanding_v3.0",
+                "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -884,13 +892,21 @@ def test_ocr_failure_never_confirms_in_new_flow():
             session, user_pk=user_pk, session_id=session_id,
             ocr_text=None, ocr_error_code="OCR_FAILED",
         )
+        session_row = session.query(SessionModel).filter(
+            SessionModel.session_id == session_id
+        ).one()
+        session_row.input_mode = "with_document"
+        session_row.active_document_id = document_id
+        session_row.input_revision = 2
+        session.commit()
     data = _v3_data(
         client.post(
             "/api/v3/understandings",
             headers={**headers, "Idempotency-Key": "und-fail"},
             json={
-                "schema_version": "understanding_v3.0",
+                "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 2,
                 "inputs": [
                     {
                         "source_id": "src_1",
