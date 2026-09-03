@@ -301,6 +301,54 @@ def test_full_text_edit_re_extracts_facts_via_provider(monkeypatch, db_session_f
     assert read["case_summary"]["summary"] == "资料中提到最近入睡较慢，白天有些疲惫。"
 
 
+def test_successful_full_text_edit_keeps_previous_revision_immutable(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service, "build_provider_chain", lambda: _mock_chain()
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    user_pk = _user_pk(db, headers)
+    document_id = _seed_document(
+        db,
+        user_pk=user_pk,
+        session_id=session_id,
+        ocr_text="近期入睡困难，白天精神不足。",
+    )
+    db.close()
+
+    understanding_id = _v3_data(
+        _post(headers, session_id, [_document_source(document_id)])
+    )["understanding_id"]
+
+    response = _confirm(
+        headers,
+        understanding_id,
+        decision="confirm_with_changes",
+        edited_summary_text="资料中提到最近入睡较慢，白天有些疲惫。",
+        reprocess_requested=True,
+    )
+    assert response.status_code == 201, response.text
+
+    previous = _v3_data(
+        client.get(
+            f"/api/v3/understandings/{understanding_id}?revision=1",
+            headers=headers,
+        )
+    )
+    latest = _v3_data(
+        client.get(
+            f"/api/v3/understandings/{understanding_id}?revision=2",
+            headers=headers,
+        )
+    )
+    assert previous["case_summary"]["summary"] == "近期入睡困难，白天精神不足。"
+    assert previous["normalized_facts"][0]["source_refs"][0]["source_type"] == "document"
+    assert latest["case_summary"]["summary"] == "资料中提到最近入睡较慢，白天有些疲惫。"
+    assert latest["normalized_facts"][0]["source_refs"][0]["source_type"] == "user_correction"
+
+
 def test_full_text_edit_without_provider_keeps_old_revision(monkeypatch, db_session_factory):
     monkeypatch.setattr(
         understanding_service, "build_provider_chain", lambda: None

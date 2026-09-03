@@ -53,6 +53,7 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
         "0001_v3_foundation",
         "0002_v3_business",
         "0003_v3_owner_flow",
+        "0004_v3_owner_goal",
     ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)
@@ -160,6 +161,7 @@ def test_mysql_v3_migration_scripts_have_equivalent_foundation_constraints():
     assert "MODIFY COLUMN user_goal_json JSON NULL" in up
     assert "MODIFY COLUMN safety_status VARCHAR(32) NULL" in up
     assert "MODIFY COLUMN understanding_revision INTEGER NULL" in up
+    assert "DROP CHECK ck_assessment_v3_no_goal_new_flow" in up
 
 
 def test_sqlite_foreign_key_enforcement_rejects_new_orphan_session(tmp_path):

@@ -52,6 +52,8 @@ from backend.app.schemas.v3.understanding import (
     UnderstandingConfirmationRequest,
     UnderstandingRevisionResult,
     UnderstandingSource as UnderstandingSourceSchema,
+    UnderstandingV31Request,
+    UnderstandingV31Response,
     UnderstandingV3Request,
     UnderstandingV3Response,
 )
@@ -384,7 +386,7 @@ def _persist_run(
 def create_understanding(
     db: Session,
     principal: AuthPrincipal,
-    request: UnderstandingV3Request,
+    request: UnderstandingV3Request | UnderstandingV31Request,
     idempotency_key: str,
 ) -> tuple[UnderstandingV3Response, bool]:
     session_row = (
@@ -397,6 +399,11 @@ def create_understanding(
     )
     if session_row is None:
         raise OwnedResourceNotFound
+    if isinstance(request, UnderstandingV31Request):
+        if session_row.flow_contract_version != _FLOW_CONTRACT_V3_OWNER:
+            raise InputRevisionConflict
+        if session_row.input_revision != request.expected_input_revision:
+            raise InputRevisionConflict
 
     request_hash = _request_hash(request.model_dump(mode="json"))
     record = (
@@ -567,7 +574,12 @@ def confirm_understanding(
     )
 
     next_revision = run.current_revision + 1
-    case_summary, applied_changes, affected_fact_ids = _apply_decision(
+    (
+        case_summary,
+        applied_changes,
+        affected_fact_ids,
+        new_fact_dicts,
+    ) = _apply_decision(
         request,
         current,
     )
@@ -604,7 +616,9 @@ def confirm_understanding(
             # successful confirmation every fact is confirmed together with
             # the outer status so Agent 1 consumes a coherent snapshot.
             "normalized_facts": _confirmed_facts_for(
-                (current.presentation_json or {}).get("normalized_facts") or [],
+                new_fact_dicts
+                if new_fact_dicts is not None
+                else (current.presentation_json or {}).get("normalized_facts") or [],
                 confirmed=new_status == "confirmed",
             ),
             "applied_changes": applied_changes,
@@ -614,6 +628,17 @@ def confirm_understanding(
         confirmed_at=_utc_now() if new_status == "confirmed" else None,
     )
     db.add(revision_row)
+    if new_fact_dicts is not None:
+        persist_normalized_facts(
+            db,
+            understanding_id=understanding_id,
+            understanding_revision=next_revision,
+            fact_dicts=_confirmed_facts_for(
+                new_fact_dicts,
+                confirmed=new_status == "confirmed",
+            ),
+            source_rows=sources,
+        )
     run.current_revision = next_revision
     run.status = _run_status_for_revision(new_status, request.decision)
 
@@ -673,28 +698,34 @@ def _confirmed_facts_for(
 def _apply_decision(
     request: UnderstandingConfirmationRequest,
     current: UnderstandingRevision,
-) -> tuple[dict[str, object] | None, list[str], list[str]]:
+) -> tuple[
+    dict[str, object] | None,
+    list[str],
+    list[str],
+    list[dict] | None,
+]:
     decision = request.decision
     if decision == "confirm":
         return (
             current.case_summary_json,
             [],
             [],
+            None,
         )
     if decision == "confirm_with_changes":
         if request.edited_summary_text is not None:
             return _apply_full_text_edit(current, request)
-        return _apply_changes(current, request)
+        return (*_apply_changes(current, request), None)
     if decision == "reject_source":
-        return None, [], []
+        return None, [], [], None
     # cannot_confirm: keep the materialized snapshot undecided.
-    return current.case_summary_json, [], []
+    return current.case_summary_json, [], [], None
 
 
 def _apply_full_text_edit(
     current: UnderstandingRevision,
     request: UnderstandingConfirmationRequest,
-) -> tuple[dict[str, object] | None, list[str], list[str]]:
+) -> tuple[dict[str, object] | None, list[str], list[str], list[dict]]:
     base = current.case_summary_json
     if base is None:
         raise InvalidChange("NO_CASE_SUMMARY", "当前没有可确认的材料摘要。")
@@ -706,10 +737,7 @@ def _apply_full_text_edit(
     # edit cannot be confirmed: publishing empty facts as a confirmed
     # revision would fabricate a clean result.
     fact_dicts, affected_fact_ids = _re_extract_facts(request.edited_summary_text)
-    presentation = dict(current.presentation_json or {})
-    presentation["normalized_facts"] = fact_dicts
-    current.presentation_json = presentation
-    return case_summary, ["chg_summary_edit"], affected_fact_ids
+    return case_summary, ["chg_summary_edit"], affected_fact_ids, fact_dicts
 
 
 def _re_extract_facts(edited_text: str) -> tuple[list[dict], list[str]]:
@@ -967,8 +995,7 @@ def _read_model(
         presentation = revision_row.presentation_json or {}
         for item in presentation.get("normalized_facts") or []:
             normalized_facts.append(NormalizedFactSchema.model_validate(item))
-    return UnderstandingV3Response(
-        schema_version="understanding_v3.0",
+    common = dict(
         understanding_id=run.understanding_id,
         revision=run.current_revision
         if revision_row is None
@@ -978,7 +1005,20 @@ def _read_model(
         voice_transcripts=[],
         normalized_facts=normalized_facts,
         source_statuses=source_statuses,
-        safety_status=run.safety_status,
         safety_signal_refs=[],
         degradation=Degradation.model_validate(run.degradation_json),
+    )
+    if run.flow_contract_version == _FLOW_CONTRACT_V3_OWNER:
+        return UnderstandingV31Response(
+            schema_version="understanding_v3.1",
+            flow_contract_version=_FLOW_CONTRACT_V3_OWNER,
+            safety_policy="deferred_v3",
+            safety_evaluation_status="not_run",
+            safety_status=None,
+            **common,
+        )
+    return UnderstandingV3Response(
+        schema_version="understanding_v3.0",
+        safety_status=run.safety_status,
+        **common,
     )

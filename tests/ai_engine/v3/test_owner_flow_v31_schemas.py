@@ -1,8 +1,8 @@
 """Owner Flow Amendment 001 §5/§6 — v3.1 discriminator schema tests.
 
-These tests pin the contract-visible boundaries: music goals are rejected on
-new discriminators (never defaulted), understanding/questionnaire refs follow
-the with/without-document rules, and deferred_v3 Safety fields are null.
+These tests pin the contract-visible boundaries: UserGoal is an independent
+optional personalization input, understanding/questionnaire refs follow the
+with/without-document rules, and deferred_v3 Safety fields are null.
 """
 
 import pytest
@@ -32,30 +32,30 @@ def _questionnaire_ref():
     }
 
 
-def test_assessment_v31_rejects_user_goal_via_extra_forbid():
-    with pytest.raises(ValidationError) as exc:
-        AssessmentV31Request.model_validate(
-            {
-                "schema_version": "assessment_v3.1",
-                "session_id": "sess_1",
-                "expected_input_revision": 1,
-                "understanding_ref": {
-                    "understanding_id": "und_1",
-                    "revision": 2,
-                },
-                "user_goal": {
-                    "primary_goal": "sleep",
-                    "secondary_goal": "relaxation",
-                    "custom_goal_text": None,
-                },
-            }
-        )
-    assert exc.value.errors()[0]["type"] == "extra_forbidden"
+def test_assessment_v31_accepts_optional_user_goal():
+    request = AssessmentV31Request.model_validate(
+        {
+            "schema_version": "assessment_v3.1",
+            "session_id": "sess_1",
+            "expected_input_revision": 1,
+            "understanding_ref": {
+                "understanding_id": "und_1",
+                "revision": 2,
+            },
+            "user_goal": {
+                "primary_goal": "sleep",
+                "secondary_goal": "relaxation",
+                "custom_goal_text": None,
+            },
+        }
+    )
+    assert request.user_goal.primary_goal == "sleep"
+    assert request.user_goal.secondary_goal == "relaxation"
 
 
 def test_assessment_v31_without_document_requires_questionnaire():
-    # The schema allows both refs to be null (goal-freedom only); source
-    # completeness is enforced at the assessment readiness/service layer
+    # The schema allows both refs to be null; source completeness is enforced
+    # at the assessment readiness/service layer
     # (see test_without_document_requires_complete_questionnaire_for_assessment).
     both_null = AssessmentV31Request.model_validate(
         {

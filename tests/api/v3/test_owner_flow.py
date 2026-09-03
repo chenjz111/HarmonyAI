@@ -3,7 +3,7 @@
 Covers the non-conflicting #79 surface: session flow-contract negotiation,
 active-input transitions (select_mode / replace_document / discard_document)
 with ownership / idempotency / expected_input_revision, the edited-summary
-confirmation path, deferred safety, and the goal-free v3.1 request schemas.
+confirmation path, deferred safety, and independent optional UserGoal input.
 """
 
 import base64
@@ -290,6 +290,7 @@ def test_edited_summary_text_confirms_new_revision():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -436,7 +437,7 @@ def test_confirm_with_wrong_input_revision_conflicts():
     assert response.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
 
 
-def test_v31_requests_are_goal_free_but_v30_keeps_user_goal():
+def test_v31_user_goal_is_optional_but_v30_keeps_required_user_goal():
     from backend.app.schemas.v3.assessment import AssessmentV31Request, AssessmentV3Request
     from backend.app.schemas.v3.prescription import PrescriptionV31Request, PrescriptionV3Request
 
@@ -451,18 +452,17 @@ def test_v31_requests_are_goal_free_but_v30_keeps_user_goal():
     )
     assert v31.schema_version == "assessment_v3.1"
 
-    # v3.1 request must not carry user_goal (extra=forbid).
-    with pytest.raises(pydantic.ValidationError):
-        AssessmentV31Request.model_validate(
-            {
-                "schema_version": "assessment_v3.1",
-                "session_id": "sess_1",
-                "expected_input_revision": 3,
-                "understanding_ref": None,
-                "questionnaire_ref": None,
-                "user_goal": {"primary_goal": "sleep", "secondary_goal": None, "custom_goal_text": None},
-            }
-        )
+    v31_with_goal = AssessmentV31Request.model_validate(
+        {
+            "schema_version": "assessment_v3.1",
+            "session_id": "sess_1",
+            "expected_input_revision": 3,
+            "understanding_ref": None,
+            "questionnaire_ref": None,
+            "user_goal": {"primary_goal": "sleep", "secondary_goal": None, "custom_goal_text": None},
+        }
+    )
+    assert v31_with_goal.user_goal.primary_goal == "sleep"
 
     # v3.0 request still requires user_goal (backward compatible).
     with pytest.raises(pydantic.ValidationError):
@@ -685,6 +685,7 @@ def test_confirmation_returns_read_model_and_input_revision():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -741,6 +742,7 @@ def test_confirmation_replay_returns_first_success_state():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -831,6 +833,7 @@ def test_v31_rejects_legacy_reject_and_cannot_confirm():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
