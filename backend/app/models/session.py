@@ -5,6 +5,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
 )
@@ -85,6 +86,11 @@ class Session(Base):
     active_understanding_id = Column(String(64), nullable=True)
     active_understanding_revision = Column(Integer, nullable=True)
     active_questionnaire_submission_id = Column(String(64), nullable=True)
+    user_goal_json = Column(
+        JSON,
+        nullable=True,
+        comment="V3.1 疗愈诉求（选填，仅供 Agent3 音乐设计/个性化）",
+    )
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

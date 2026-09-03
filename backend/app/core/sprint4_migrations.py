@@ -36,6 +36,7 @@ SESSION_EXTENSION_COLUMNS = (
     "active_understanding_id",
     "active_understanding_revision",
     "active_questionnaire_submission_id",
+    "user_goal_json",
 )
 
 
