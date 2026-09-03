@@ -130,6 +130,21 @@ def test_document_set_rejects_invalid_size_duplicate_and_cross_user():
     assert denied.json()["error"]["code"] == "DOCUMENT_NOT_FOUND"
 
 
+def test_delete_document_in_active_set_is_rejected():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers, session_id, "sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "with_document"},
+    )
+    doc_a = _create_document(headers, session_id)
+    _replace_set(headers, session_id, "set-1", [doc_a], 2)
+
+    denied = client.delete(f"/api/v3/documents/{doc_a}", headers=headers)
+    assert denied.status_code == 409
+    assert denied.json()["error"]["code"] == "DOCUMENT_IN_ACTIVE_SET"
+
+
 def test_document_set_requires_matching_input_revision():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.models.document import Document
 from backend.app.models.session import Session as SessionModel
+from backend.app.models.v3.document import DocumentSet, DocumentSetItem
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.document import (
     DocumentCreateRequest,
@@ -26,6 +27,10 @@ class OwnedResourceNotFound(RuntimeError):
 
 
 class SessionNotFound(RuntimeError):
+    pass
+
+
+class DocumentInActiveSet(RuntimeError):
     pass
 
 
@@ -119,5 +124,25 @@ def delete_document(
     )
     if document is None:
         raise OwnedResourceNotFound
+    session = (
+        db.query(SessionModel)
+        .filter(
+            SessionModel.session_id == document.session_id,
+            SessionModel.user_id == principal.internal_user_pk,
+        )
+        .one_or_none()
+    )
+    if session is not None and session.active_document_set_id is not None:
+        in_active_set = (
+            db.query(DocumentSetItem)
+            .filter(
+                DocumentSetItem.document_set_id == session.active_document_set_id,
+                DocumentSetItem.document_id == document_id,
+            )
+            .count()
+            > 0
+        )
+        if in_active_set:
+            raise DocumentInActiveSet
     document.status = "deleted"
     db.commit()
