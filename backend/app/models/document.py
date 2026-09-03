@@ -2,7 +2,7 @@
 
 Sprint 3 Issue #36: file metadata only, not the file content.
 """
-from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.sql import func
 
 from backend.app.core.database import Base
@@ -12,7 +12,13 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+        comment="FK→users.id（V3 归属统一）",
+    )
     session_id = Column(String(64), nullable=False, index=True)
 
     # File info
