@@ -3,7 +3,7 @@
 Covers the non-conflicting #79 surface: session flow-contract negotiation,
 active-input transitions (select_mode / replace_document / discard_document)
 with ownership / idempotency / expected_input_revision, the edited-summary
-confirmation path, deferred safety, and the goal-free v3.1 request schemas.
+confirmation path, deferred safety, and the Agent 1/Agent 3 UserGoal boundary.
 """
 
 import base64
@@ -290,6 +290,7 @@ def test_edited_summary_text_confirms_new_revision():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -355,13 +356,18 @@ def test_reprocess_without_edited_text_is_rejected():
         document_id = _seed_document(
             session, user_pk=user_pk, session_id=session_id, ocr_text="内容。"
         )
+    _transition(
+        headers, session_id, "rep-1",
+        {"expected_input_revision": 1, "action": "replace_document", "document_id": document_id},
+    )
     understanding_id = _v3_data(
         client.post(
             "/api/v3/understandings",
             headers={**headers, "Idempotency-Key": "und-1"},
             json={
-                "schema_version": "understanding_v3.0",
+                "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 2,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -378,7 +384,9 @@ def test_reprocess_without_edited_text_is_rejected():
         f"/api/v3/understandings/{understanding_id}/confirmations",
         headers={**headers, "Idempotency-Key": "confirm-1"},
         json={
+            "schema_version": "understanding_v3.1",
             "expected_revision": 1,
+            "expected_input_revision": 2,
             "decision": "confirm",
             "reprocess_requested": True,
         },
@@ -408,8 +416,9 @@ def test_confirm_with_wrong_input_revision_conflicts():
             "/api/v3/understandings",
             headers={**headers, "Idempotency-Key": "und-1"},
             json={
-                "schema_version": "understanding_v3.0",
+                "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -436,8 +445,12 @@ def test_confirm_with_wrong_input_revision_conflicts():
     assert response.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
 
 
-def test_v31_requests_are_goal_free_but_v30_keeps_user_goal():
-    from backend.app.schemas.v3.assessment import AssessmentV31Request, AssessmentV3Request
+def test_v31_excludes_user_goal_but_v30_keeps_required_user_goal():
+    from backend.app.schemas.v3.assessment import (
+        AssessmentV31Request,
+        AssessmentV31Response,
+        AssessmentV3Request,
+    )
     from backend.app.schemas.v3.prescription import PrescriptionV31Request, PrescriptionV3Request
 
     v31 = AssessmentV31Request.model_validate(
@@ -451,7 +464,6 @@ def test_v31_requests_are_goal_free_but_v30_keeps_user_goal():
     )
     assert v31.schema_version == "assessment_v3.1"
 
-    # v3.1 request must not carry user_goal (extra=forbid).
     with pytest.raises(pydantic.ValidationError):
         AssessmentV31Request.model_validate(
             {
@@ -460,9 +472,15 @@ def test_v31_requests_are_goal_free_but_v30_keeps_user_goal():
                 "expected_input_revision": 3,
                 "understanding_ref": None,
                 "questionnaire_ref": None,
-                "user_goal": {"primary_goal": "sleep", "secondary_goal": None, "custom_goal_text": None},
+                "user_goal": {
+                    "primary_goal": "sleep",
+                    "secondary_goal": None,
+                    "custom_goal_text": None,
+                },
             }
         )
+    assert "user_goal" not in AssessmentV31Request.model_fields
+    assert "user_goal" not in AssessmentV31Response.model_fields
 
     # v3.0 request still requires user_goal (backward compatible).
     with pytest.raises(pydantic.ValidationError):
@@ -685,6 +703,7 @@ def test_confirmation_returns_read_model_and_input_revision():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -741,6 +760,7 @@ def test_confirmation_replay_returns_first_success_state():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -831,6 +851,7 @@ def test_v31_rejects_legacy_reject_and_cannot_confirm():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 3,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -881,13 +902,21 @@ def test_ocr_failure_never_confirms_in_new_flow():
             session, user_pk=user_pk, session_id=session_id,
             ocr_text=None, ocr_error_code="OCR_FAILED",
         )
+        session_row = session.query(SessionModel).filter(
+            SessionModel.session_id == session_id
+        ).one()
+        session_row.input_mode = "with_document"
+        session_row.active_document_id = document_id
+        session_row.input_revision = 2
+        session.commit()
     data = _v3_data(
         client.post(
             "/api/v3/understandings",
             headers={**headers, "Idempotency-Key": "und-fail"},
             json={
-                "schema_version": "understanding_v3.0",
+                "schema_version": "understanding_v3.1",
                 "session_id": session_id,
+                "expected_input_revision": 2,
                 "inputs": [
                     {
                         "source_id": "src_1",
