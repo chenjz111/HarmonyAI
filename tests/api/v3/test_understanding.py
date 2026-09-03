@@ -230,21 +230,48 @@ def test_v31_understanding_create_uses_expected_input_revision():
             json={"flow_contract_version": "v3-owner-flow-1"},
         )
     )["session_id"]
+    with _seed_db() as session:
+        user_pk, _ = _row_ids(
+            session,
+            _public_user_id(headers["Authorization"].split()[1]),
+            session_id,
+        )
+        document_id = _seed_document(
+            session,
+            user_pk=user_pk,
+            session_id=session_id,
+            ocr_text="资料中的近期睡眠信息。",
+        )
     selected = _transition(
         headers,
         session_id,
-        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+        {
+            "expected_input_revision": 1,
+            "action": "select_mode",
+            "input_mode": "with_document",
+        },
         f"select-v31-{uuid.uuid4().hex}",
     )
     assert selected.status_code == 201, selected.text
+    replaced = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 2,
+            "action": "replace_document",
+            "document_id": document_id,
+        },
+        f"replace-v31-{uuid.uuid4().hex}",
+    )
+    assert replaced.status_code == 201, replaced.text
 
     response = _post_understanding(
         headers,
         {
             "schema_version": "understanding_v3.1",
             "session_id": session_id,
-            "expected_input_revision": 2,
-            "inputs": [_narrative_source("最近一周睡眠不太安稳。")],
+            "expected_input_revision": 3,
+            "inputs": [_document_source(document_id)],
         },
         f"sha256:und-v31-{uuid.uuid4().hex}",
     )
@@ -256,6 +283,35 @@ def test_v31_understanding_create_uses_expected_input_revision():
     assert data["safety_policy"] == "deferred_v3"
     assert data["safety_evaluation_status"] == "not_run"
     assert data["safety_status"] is None
+
+
+def test_v31_understanding_rejects_narrative_in_without_document_mode():
+    headers, session_id = _setup_owner_flow()
+    selected = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 1,
+            "action": "select_mode",
+            "input_mode": "without_document",
+        },
+        f"select-v31-no-doc-{uuid.uuid4().hex}",
+    )
+    assert selected.status_code == 201, selected.text
+
+    response = _post_understanding(
+        headers,
+        {
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "inputs": [_narrative_source("V3.1 不应接受自由描述。")],
+        },
+        f"und-v31-no-narrative-{uuid.uuid4().hex}",
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
 
 
 def test_v31_understanding_create_rejects_stale_expected_input_revision():

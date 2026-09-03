@@ -418,6 +418,6 @@ yu    (羽调)      → 58   → 箫、古琴
 
 ### PR #91 review remediation scope（2026-09-03）
 
-- 本轮修复范围：V3.1 Understanding 路由与 `expected_input_revision` 接线、Agent1 权威 readiness/归属校验、问卷确定性 Evidence 进入 questionnaire-only 与 mixed Assessment、旧 Understanding revision 不可变、approved multi-organ/conflict 规则执行，以及独立可选 UserGoal 持久化。
-- 本 PR 不宣称已完成最新 V3.1 全流程：DocumentSet、Document Relevance Gate 及无资料 Narrative/Voice 新语义仍属于后续适配任务；PR #91 不应作为这些能力已完成的依据。
+- 本轮修复范围：V3.1 Understanding 路由与 `expected_input_revision` 接线、Agent1 权威 readiness/归属校验、问卷确定性 Evidence 进入 questionnaire-only 与 mixed Assessment、旧 Understanding revision 不可变，以及 approved multi-organ/conflict 规则执行。V3.1 Agent1 不消费或持久化 UserGoal；UserGoal 仅由 Agent3/个性化流程使用，历史数据库字段保留但新流程写入 NULL。
+- 本 PR 不宣称已完成最新 V3.1 全流程：无资料 Owner Flow 跳过 Narrative，直接进入必填 Q1-Q10；V3.1 Understanding 仅接受当前有效资料。DocumentSet、Document Relevance Gate 及 VALID 资料集成等待蔡子鑫的数据模型后单独适配；旧 V3.0 Narrative 兼容能力保留。
 - Agent2 仍明确为基础能力/诚实降级 gate（`BLOCKED_BY_MEDICAL_ASSET`）；真实 Query Builder、RAG Retriever、Qwen diagnosis Provider 和 syndrome whitelist 待已批准医学资产与配置到位后由后续任务接入。

@@ -113,10 +113,9 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0001_v3_foundation",
         "0002_v3_business",
         "0003_v3_owner_flow",
-        "0004_v3_owner_goal",
     ]
     assert second["applied_versions"] == []
-    assert second["current_version"] == "0004_v3_owner_goal"
+    assert second["current_version"] == "0003_v3_owner_flow"
 
     tables = set(inspect(engine).get_table_names())
     assert BUSINESS_TABLES <= tables
@@ -131,7 +130,6 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0001_v3_foundation",
         "0002_v3_business",
         "0003_v3_owner_flow",
-        "0004_v3_owner_goal",
     }
 
 

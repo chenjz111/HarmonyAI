@@ -10,8 +10,8 @@ and weight comes from the approved organ-mapping asset (single_mappings,
 multi_organ_rules, conflict_rules and combination_rules). With insufficient
 evidence the assessment honestly reports an insufficient organ profile (no
 fabricated organs) and the frontend/Agent2 consume it as a degradation, never
-as fake confidence. UserGoal is stored independently for later music design;
-it is not medical evidence or a presentation summary.
+as fake confidence. V3.1 does not consume or persist UserGoal; Agent 3 owns
+personalization.
 """
 
 from __future__ import annotations
@@ -608,7 +608,6 @@ def create_assessment(
         ),
         requires_user_confirmation=True,
         safety_status=None,
-        user_goal=request.user_goal,
         degradation=Degradation(
             active=degraded,
             reason_codes=["INSUFFICIENT_EVIDENCE"] if degraded else [],
@@ -647,11 +646,6 @@ def create_assessment(
         current_revision=1,
         status="needs_confirmation",
         safety_status=None,
-        user_goal_json=(
-            request.user_goal.model_dump(mode="json")
-            if request.user_goal is not None
-            else None
-        ),
         flow_contract_version="v3-owner-flow-1",
         input_revision=request.expected_input_revision,
         input_mode=session_row.input_mode,
