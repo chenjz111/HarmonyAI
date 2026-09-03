@@ -82,6 +82,8 @@ def create_run(
             "IDEMPOTENCY_KEY_REUSED",
             "相同的幂等键已被不同的请求使用。",
         ) from None
+    except InvalidChange as error:
+        raise V3APIError(422, error.code, error.message) from None
     if replayed:
         response.status_code = 200
     return v3_success(result)

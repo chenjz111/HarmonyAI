@@ -119,6 +119,20 @@ def _document_source(document_id):
     }
 
 
+def _replace_document_input(headers, session_id, document_id):
+    response = client.post(
+        f"/api/v3/sessions/{session_id}/input-transitions",
+        headers={**headers, "Idempotency-Key": f"doc-input-{uuid.uuid4().hex}"},
+        json={
+            "expected_input_revision": 1,
+            "action": "replace_document",
+            "document_id": document_id,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return _v3_data(response)["input_revision"]
+
+
 def _confirmed_understanding(headers, session_id, db_session, facts):
     """Create + confirm an understanding carrying the given provider facts."""
     user_pk = _user_pk(db_session, headers)
@@ -128,12 +142,14 @@ def _confirmed_understanding(headers, session_id, db_session, facts):
         session_id=session_id,
         ocr_text="近期入睡困难，白天精神不足，胸胁不舒。",
     )
+    input_revision = _replace_document_input(headers, session_id, document_id)
     run = client.post(
         "/api/v3/understandings",
         headers={**headers, "Idempotency-Key": f"und-{uuid.uuid4().hex}"},
         json={
-            "schema_version": "understanding_v3.0",
+            "schema_version": "understanding_v3.1",
             "session_id": session_id,
+            "expected_input_revision": input_revision,
             "inputs": [_document_source(document_id)],
         },
     )
@@ -145,7 +161,7 @@ def _confirmed_understanding(headers, session_id, db_session, facts):
         json={
             "schema_version": "understanding_v3.1",
             "expected_revision": 1,
-            "expected_input_revision": 1,
+            "expected_input_revision": input_revision,
             "decision": "confirm",
         },
     )
@@ -291,6 +307,35 @@ def test_assessment_marks_questionnaire_priority_conflict_without_raw_text():
     assert "qsub-priority" not in conflicts[0].display_summary
 
 
+def test_assessment_questionnaire_priority_deduplicates_multi_organ_claim():
+    mapping = load_organ_mapping()
+    base = [
+        _aggregation_fact("overthinking_tendency", "qsub-overthinking", source_type="questionnaire"),
+        _aggregation_fact("poor_appetite", "qsub-appetite", source_type="questionnaire"),
+    ]
+    questionnaire_low_energy = _aggregation_fact(
+        "low_energy", "qsub-low-energy", source_type="questionnaire"
+    )
+    document_low_energy = _aggregation_fact("low_energy", "document-low-energy")
+    all_evidence = base + [questionnaire_low_energy, document_low_energy]
+
+    effective = assessment_service._select_effective_evidence(all_evidence, mapping)
+    effective_weights = assessment_service._organ_weights(
+        all_evidence,
+        assessment_service._organ_links(all_evidence, mapping),
+        mapping,
+    )
+    questionnaire_only = base + [questionnaire_low_energy]
+    questionnaire_links = assessment_service._organ_links(questionnaire_only, mapping)
+    questionnaire_weights = assessment_service._organ_weights(
+        questionnaire_only, questionnaire_links, mapping
+    )
+
+    assert len([item for item in effective if item.claim_code == "low_energy"]) == 1
+    assert effective_weights == questionnaire_weights
+    assert effective_weights["spleen"] > 0
+
+
 def test_assessment_available_from_two_liver_claims(monkeypatch, db_session_factory):
     monkeypatch.setattr(
         understanding_service,
@@ -312,7 +357,7 @@ def test_assessment_available_from_two_liver_claims(monkeypatch, db_session_fact
     response = client.post(
         "/api/v3/assessments",
         headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
-        json=_assessment_body(session_id, understanding_id, 2),
+        json=_assessment_body(session_id, understanding_id, 3),
     )
     assert response.status_code == 201, response.text
     assessment = _v3_data(response)
@@ -348,7 +393,7 @@ def test_assessment_insufficient_single_claim(monkeypatch, db_session_factory):
     response = client.post(
         "/api/v3/assessments",
         headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
-        json=_assessment_body(session_id, understanding_id, 2),
+        json=_assessment_body(session_id, understanding_id, 3),
     )
     assert response.status_code == 201, response.text
     assessment = _v3_data(response)
@@ -392,7 +437,7 @@ def test_assessment_rejects_understanding_from_another_session(
     response = client.post(
         "/api/v3/assessments",
         headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
-        json=_assessment_body(session_id, second_understanding_id, 2),
+        json=_assessment_body(session_id, second_understanding_id, 3),
     )
 
     assert response.status_code == 409, response.text
@@ -550,7 +595,7 @@ def test_assessment_combines_understanding_and_questionnaire_evidence(
     )
     db.close()
 
-    body = _assessment_body(session_id, understanding_id, 2)
+    body = _assessment_body(session_id, understanding_id, 3)
     body["questionnaire_ref"] = {
         "questionnaire_submission_id": questionnaire_id,
         "schema_id": manifest["schema_id"],
@@ -574,6 +619,66 @@ def test_assessment_combines_understanding_and_questionnaire_evidence(
     assert assessment["source_diversity"] == 2
 
 
+def test_assessment_rejects_questionnaire_from_another_session(
+    db_session_factory,
+):
+    headers, foreign_session_id = _setup_guest()
+    answers = [{"question_id": f"q{index:02d}"} for index in range(1, 11)]
+    db = db_session_factory()
+    foreign_questionnaire_id, manifest = _seed_questionnaire(
+        db,
+        headers=headers,
+        session_id=foreign_session_id,
+        answers=answers,
+    )
+    db.close()
+
+    target_session_response = client.post(
+        "/api/v3/sessions",
+        headers={**headers, "Idempotency-Key": f"sess-target-{uuid.uuid4().hex}"},
+        json={"flow_contract_version": "v3-owner-flow-1"},
+    )
+    assert target_session_response.status_code == 201, target_session_response.text
+    target_session_id = _v3_data(target_session_response)["session_id"]
+    db = db_session_factory()
+    target_questionnaire_id, _ = _seed_questionnaire(
+        db,
+        headers=headers,
+        session_id=target_session_id,
+        answers=answers,
+    )
+    target_row = db.query(SessionModel).filter(
+        SessionModel.session_id == target_session_id
+    ).one()
+    target_row.input_mode = "without_document"
+    target_row.input_revision = 2
+    target_row.active_questionnaire_submission_id = target_questionnaire_id
+    db.commit()
+    db.close()
+
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-cross-session-q-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "assessment_v3.1",
+            "session_id": target_session_id,
+            "expected_input_revision": 2,
+            "understanding_ref": None,
+            "questionnaire_ref": {
+                "questionnaire_submission_id": foreign_questionnaire_id,
+                "schema_id": manifest["schema_id"],
+                "schema_version": manifest["schema_version"],
+                "manifest_version": manifest["manifest_version"],
+                "content_checksum": manifest["content_checksum"],
+            },
+        },
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "ASSESSMENT_INPUT_NOT_READY"
+    assert _assessment_count(db_session_factory, headers) == 0
+
+
 def test_assessment_accepts_optional_user_goal_for_music_design(
     monkeypatch, db_session_factory
 ):
@@ -589,7 +694,7 @@ def test_assessment_accepts_optional_user_goal_for_music_design(
     understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
     db.close()
 
-    body = _assessment_body(session_id, understanding_id, 2)
+    body = _assessment_body(session_id, understanding_id, 3)
     body["user_goal"] = {
         "primary_goal": "sleep",
         "secondary_goal": "relaxation",
@@ -631,7 +736,7 @@ def test_assessment_replays_same_key_and_payload_without_duplicate(
     understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
     db.close()
 
-    body = _assessment_body(session_id, understanding_id, 2)
+    body = _assessment_body(session_id, understanding_id, 3)
     key = f"asmt-replay-{uuid.uuid4().hex}"
     first = client.post(
         "/api/v3/assessments",
@@ -684,7 +789,7 @@ def test_assessment_reused_key_with_different_payload_conflicts_without_duplicat
     db.close()
 
     key = f"asmt-conflict-{uuid.uuid4().hex}"
-    first_body = _assessment_body(session_id, understanding_id, 2)
+    first_body = _assessment_body(session_id, understanding_id, 3)
     conflict_body = _assessment_body(session_id, understanding_id, 1)
     first = client.post(
         "/api/v3/assessments",
@@ -719,7 +824,7 @@ def test_assessment_concurrent_same_key_replays_without_duplicate(
     understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
     db.close()
 
-    body = _assessment_body(session_id, understanding_id, 2)
+    body = _assessment_body(session_id, understanding_id, 3)
     key = f"asmt-concurrent-{uuid.uuid4().hex}"
     barrier = threading.Barrier(2)
     lock = threading.Lock()
@@ -792,8 +897,8 @@ def test_assessment_concurrent_different_payload_returns_idempotency_conflict(
 
     key = f"asmt-concurrent-conflict-{uuid.uuid4().hex}"
     bodies = [
-        _assessment_body(first_session_id, first_understanding_id, 2),
-        _assessment_body(second_session_id, second_understanding_id, 2),
+        _assessment_body(first_session_id, first_understanding_id, 3),
+        _assessment_body(second_session_id, second_understanding_id, 3),
     ]
     barrier = threading.Barrier(2)
     lock = threading.Lock()
@@ -848,12 +953,14 @@ def test_assessment_requires_confirmed_understanding(monkeypatch, db_session_fac
         session_id=session_id,
         ocr_text="近期入睡困难。",
     )
+    input_revision = _replace_document_input(headers, session_id, document_id)
     run = client.post(
         "/api/v3/understandings",
         headers={**headers, "Idempotency-Key": f"und-{uuid.uuid4().hex}"},
         json={
-            "schema_version": "understanding_v3.0",
+            "schema_version": "understanding_v3.1",
             "session_id": session_id,
+            "expected_input_revision": input_revision,
             "inputs": [_document_source(document_id)],
         },
     )
@@ -864,7 +971,7 @@ def test_assessment_requires_confirmed_understanding(monkeypatch, db_session_fac
     response = client.post(
         "/api/v3/assessments",
         headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
-        json=_assessment_body(session_id, understanding_id, 1),
+        json=_assessment_body(session_id, understanding_id, input_revision),
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "ASSESSMENT_INPUT_NOT_READY"

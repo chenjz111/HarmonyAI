@@ -243,6 +243,37 @@ def _is_questionnaire_evidence(item: FactEvidence) -> bool:
     return any(ref.source_type == "questionnaire" for ref in item.source_refs)
 
 
+def _select_effective_evidence(
+    evidence: list[FactEvidence],
+    mapping: dict,
+) -> list[FactEvidence]:
+    """One effective FactEvidence per claim_code.
+
+    conflict_rules.questionnaire_priority: the questionnaire's deterministic
+    score wins and is never overridden by provider-extracted facts — without
+    this selection a multi-organ claim present from both the questionnaire and
+    a document would be scored twice (once per source). Within one priority
+    class the highest-reliability item wins; ties are broken deterministically
+    by fact_id.
+    """
+    if "questionnaire_priority" not in _conflict_rules(mapping):
+        return evidence
+    by_claim: dict[str, list[FactEvidence]] = {}
+    for item in evidence:
+        by_claim.setdefault(item.claim_code, []).append(item)
+    return [
+        max(
+            items,
+            key=lambda item: (
+                _is_questionnaire_evidence(item),
+                item.reliability,
+                item.fact_id,
+            ),
+        )
+        for items in by_claim.values()
+    ]
+
+
 def _conflict_rules(mapping: dict) -> set[str]:
     return {
         item["rule"]
@@ -320,6 +351,9 @@ def _organ_weights(
     mapping: dict,
 ) -> dict[OrganCode, float] | None:
     """Compute available organ weights from the approved combination rules."""
+    evidence = _select_effective_evidence(evidence, mapping)
+    effective_ids = {item.fact_evidence_id for item in evidence}
+    links = [link for link in links if link.fact_evidence_id in effective_ids]
     links_by_evidence: dict[str, list[OrganEvidenceLink]] = {}
     for link in links:
         links_by_evidence.setdefault(link.fact_evidence_id, []).append(link)
@@ -525,8 +559,9 @@ def create_assessment(
         for index, fact in enumerate(facts)
     ]
     mapping = load_organ_mapping()
-    links = _organ_links(evidence, mapping)
-    weights = _organ_weights(evidence, links, mapping)
+    effective_evidence = _select_effective_evidence(evidence, mapping)
+    links = _organ_links(effective_evidence, mapping)
+    weights = _organ_weights(effective_evidence, links, mapping)
     conflicts = _build_conflicts(evidence, mapping)
 
     if weights is None:
