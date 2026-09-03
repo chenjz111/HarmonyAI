@@ -55,10 +55,16 @@ This draft proposes a V3.1 flow delta over `harmonyai-v3-contract-freeze-v3.0.0-
 
 ### G. UserGoal
 
-- UserGoal is an independent, optional step after Q1～Q10.
-- It may be skipped without invalidating the questionnaire.
-- It is a music-design preference input, not FactEvidence or OrganEvidence.
-- It cannot override user-confirmed clinical/state facts.
+Authoritative product semantics:
+
+- UserGoal is an independent, optional step after Q1～Q10 and the whole step is skippable.
+- A user may select 0～2 goals. The first selection maps to `primary_goal`; the second maps to `secondary_goal`.
+- `custom_goal_text` is optional and limited to 200 characters.
+- Approved goal codes are `sleep`, `relaxation`, `emotion_regulation`, `focus`, `energy`, `stress_relief`, and `other`.
+- Skipping the step produces `user_goal = null`.
+- `UserGoal != FactEvidence` and `UserGoal != OrganEvidence`.
+- UserGoal is a music-design preference and cannot override user-confirmed clinical/state facts.
+- The exact V3.1 JSON Schema/API/persistence representation remains `SCHEMA_DELTA_REQUIRED` because the existing common UserGoal requires a primary goal whenever the object is present, while V3.1 makes the entire object nullable.
 
 ### H. ConfirmedUserState
 
@@ -122,7 +128,7 @@ No new discriminator, table name, endpoint path, or enum value is frozen by this
 
 1. Exact `DocumentSet`, `DocumentRelevanceResult`, and `ConfirmedUserState` JSON schemas.
 2. `INSUFFICIENT` relevance behavior.
-3. UserGoal code set and whether multiple selections are allowed.
+3. UserGoal V3.1 schema/API/persistence representation.
 4. Tone secondary-selection threshold and explanation representation.
 5. Endpoint and persistence versioning strategy.
 6. Final feedback option vocabulary.

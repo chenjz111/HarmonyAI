@@ -52,11 +52,12 @@
 - **Purpose:** Capture an optional expectation for this music adaptation session.
 - **Produced By:** User after completing Q1～Q10.
 - **Consumed By:** Prescription/personalization input only.
-- **Authority:** Latest explicit user selection for the current session.
-- **V3.1 Changes:** Independent and optional; must be tagged as preference, never medical evidence.
-- **Existing Mapping:** A common UserGoal model exists but assumes a required primary goal.
-- **Status:** `SCHEMA_DELTA_REQUIRED`.
-- **Open Questions:** Code set, single/multiple selection, optional free text.
+- **Authority:** Latest explicit user selection for the current session; a skipped step is authoritative as `user_goal = null`.
+- **V3.1 Changes:** Independent and optional; must be tagged as preference, never Medical Evidence, FactEvidence, or OrganEvidence.
+- **Existing Mapping:** A common UserGoal model already defines the approved codes, primary/secondary fields and 200-character text bound, but requires a primary goal whenever the object is present.
+- **Status:** `SCHEMA_DELTA_REQUIRED` for the nullable V3.1 boundary and its API/persistence representation.
+- **Frozen Product Semantics:** Approved codes are `sleep`, `relaxation`, `emotion_regulation`, `focus`, `energy`, `stress_relief`, and `other`; the whole step is skippable; 0～2 selections are allowed; the first is `primary_goal`, the second is `secondary_goal`; optional `custom_goal_text` is limited to 200 characters.
+- **Open Questions:** Whether to reuse the existing UserGoal schema or introduce a V3.1 version; API representation; persistence location; revision/CAS semantics if the goal is edited after submission.
 
 ## 6. ConfirmedUserState
 
