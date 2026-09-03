@@ -579,7 +579,7 @@ def create_assessment(
 
     degraded = weights is None
     state_summary = (
-        "已综合近期资料、描述与问卷完成状态评估。"
+        "已根据你本次提供并确认的信息完成状态评估。"
         if not degraded
         else "现有证据不足，暂不能形成五脏状态判断。"
     )

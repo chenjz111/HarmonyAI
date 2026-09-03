@@ -549,6 +549,7 @@ def test_assessment_consumes_complete_questionnaire_without_document(
     assert response.status_code == 201, response.text
     assessment = _v3_data(response)
     assert assessment["understanding_ref"] is None
+    assert assessment["state_summary"] == "已根据你本次提供并确认的信息完成状态评估。"
     assert len(assessment["fact_evidence"]) == 2
     assert {item["claim_code"] for item in assessment["fact_evidence"]} == {
         "anger_tendency",
