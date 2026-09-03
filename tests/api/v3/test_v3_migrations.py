@@ -36,6 +36,20 @@ def _create_legacy_foundation(engine):
         )
         connection.execute(
             text(
+                "CREATE TABLE documents ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, "
+                "session_id VARCHAR(64) NOT NULL, "
+                "document_id VARCHAR(64) NOT NULL UNIQUE, "
+                "original_filename VARCHAR(256) NOT NULL, "
+                "file_type VARCHAR(16) NOT NULL, "
+                "file_size_bytes INTEGER NOT NULL, "
+                "storage_path VARCHAR(512) NOT NULL, "
+                "status VARCHAR(16) DEFAULT 'uploaded', "
+                "created_at DATETIME, updated_at DATETIME)"
+            )
+        )
+        connection.execute(
+            text(
                 "INSERT INTO sessions (user_id, session_id, status) "
                 "VALUES (7, 'sess_legacy', 'active')"
             )
@@ -55,6 +69,8 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
         "0003_v3_owner_flow",
         "0004_v3_multidoc",
         "0005_v3_relevance",
+        "0006_v3_doc_fk",
+        "0007_v3_prescription_mode",
     ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)

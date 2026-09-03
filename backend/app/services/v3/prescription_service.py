@@ -19,7 +19,7 @@ from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.schemas.v3.common import AuthPrincipal, ToneCode
 from backend.app.schemas.v3.prescription import (
-    AvailableToneProfile,
+    FallbackToneProfile,
     GenerationFallbackPolicy,
     GenerationSpec,
     GenerationStructure,
@@ -46,7 +46,7 @@ def _conservative_generation_spec(
     diagnosis_id: str,
     preference,
 ) -> GenerationSpec:
-    tone_profile = AvailableToneProfile(
+    tone_profile = FallbackToneProfile(
         schema_version="tone_profile_v3.0",
         weights={
             ToneCode.jiao: 0.1,
@@ -59,7 +59,7 @@ def _conservative_generation_spec(
         score_semantics="relative_tone_distribution",
         mapping_version="tone_mapping_v3.0",
         basis=ToneBasis(diagnosis_id=diagnosis_id, supporting_fact_ids=[]),
-        status="available",
+        status="fallback",
     )
     bpm = 62
     instruments = ["guqin"]
@@ -161,8 +161,10 @@ def create_prescription(
         internal_user_pk=principal.internal_user_pk,
         session_row_id=diagnosis.session_row_id,
         diagnosis_id=request.diagnosis_id,
-        status="success",
-        prescription_mode="syndrome_based",
+        # Until the real five-tone medical mapping is wired, this is an honest
+        # wellness fallback, not a syndrome-based prescription.
+        status="degraded",
+        prescription_mode="wellness",
         tone_profile_json=spec.tone_profile.model_dump(mode="json"),
         generation_spec_json=spec.model_dump(mode="json"),
         preference_profile_id=profile_id,

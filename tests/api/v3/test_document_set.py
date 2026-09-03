@@ -55,9 +55,6 @@ def _create_document(headers, session_id, filename="sample.png"):
             "original_filename": filename,
             "file_type": "png",
             "file_size_bytes": 1024,
-            "storage_path": f"docs/{uuid.uuid4().hex}",
-            "status": "uploaded",
-            "ocr_text": "材料内容",
         },
     )
     assert response.status_code == 201, response.text

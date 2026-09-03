@@ -14,15 +14,14 @@ from .common import NonEmptyString, V3BaseModel
 
 
 class DocumentCreateRequest(V3BaseModel):
+    """Client-registered document metadata only. storage_path / status / OCR
+    fields are server-controlled: the actual upload + OCR runs through the
+    existing upload/OCR chain, not through this endpoint."""
+
     session_id: NonEmptyString
     original_filename: NonEmptyString
     file_type: Literal["jpg", "jpeg", "png", "pdf"]
     file_size_bytes: Annotated[int, Field(gt=0)]
-    storage_path: NonEmptyString
-    status: Literal["uploaded", "ocr_failed"] = "uploaded"
-    ocr_text: str | None = None
-    ocr_confidence: Literal["high", "medium", "low"] | None = None
-    ocr_error_code: NonEmptyString | None = None
 
 
 class DocumentReadModel(V3BaseModel):

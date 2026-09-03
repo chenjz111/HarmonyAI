@@ -78,10 +78,9 @@ class DocumentSetItem(Base):
         nullable=False,
         index=True,
     )
-    # Plain reference column (not a hard FK) so the V3 migration does not need
-    # the Sprint-4 documents table; same-user/session ownership is enforced at
-    # the service layer.
-    document_id = Column(String(64), nullable=False)
+    document_id = Column(
+        String(64), ForeignKey("documents.document_id"), nullable=False
+    )
     position = Column(Integer, nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
