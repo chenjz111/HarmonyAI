@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     String,
     UniqueConstraint,
 )
@@ -82,6 +83,43 @@ class DocumentSetItem(Base):
     # the service layer.
     document_id = Column(String(64), nullable=False)
     position = Column(Integer, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class DocumentRelevance(Base):
+    """Relevance assessment of a source document within a document set.
+
+    Produced by the Information Understanding layer after OCR. Outcome is the
+    only field the client reads; reason_codes / evaluator are internal audit.
+    """
+
+    __tablename__ = "document_relevances"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_set_id", "document_id", name="uq_document_relevances_document"
+        ),
+        CheckConstraint(
+            "outcome IN ('VALID', 'INVALID', 'IRRELEVANT', 'INSUFFICIENT')",
+            name="ck_document_relevances_outcome",
+        ),
+    )
+
+    document_relevance_id = Column(String(64), primary_key=True)
+    document_set_id = Column(
+        String(64),
+        ForeignKey("document_sets.document_set_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_set_revision = Column(Integer, nullable=False)
+    document_id = Column(String(64), nullable=False)
+    outcome = Column(String(16), nullable=False)
+    reason_codes_json = Column(JSON, nullable=False)
+    evaluator = Column(String(32), nullable=True)
+    evaluator_version = Column(String(32), nullable=True)
+    evaluated_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
