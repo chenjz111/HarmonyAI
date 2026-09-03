@@ -68,10 +68,16 @@ def _submit_questionnaire(headers, session_id):
             "schema_version": manifest["schema_version"],
             "manifest_version": manifest["manifest_version"],
             "content_checksum": manifest["content_checksum"],
-            "answers": [
-                {"question_id": f"q{i:02d}", "answer_type": "frequency_0_4", "value": 0}
-                for i in range(1, 11)
-            ],
+            "answers": (
+                [
+                    {"question_id": f"q{i:02d}", "answer_type": "frequency_0_4", "value": 0}
+                    for i in range(1, 6)
+                ]
+                + [
+                    {"question_id": f"q{i:02d}", "answer_type": "multi_choice_evidence", "value": ["none"]}
+                    for i in range(6, 11)
+                ]
+            ),
             "started_at": "2026-01-01T00:00:00Z",
             "completed_at": "2026-01-01T00:05:00Z",
         },

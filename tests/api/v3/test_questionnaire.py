@@ -74,10 +74,15 @@ def _approved_manifest() -> dict:
 
 
 def _complete_answers() -> list[dict]:
-    return [
+    answers = [
         {"question_id": f"q{i:02d}", "answer_type": "frequency_0_4", "value": 0}
-        for i in range(1, 11)
+        for i in range(1, 6)
     ]
+    answers += [
+        {"question_id": f"q{i:02d}", "answer_type": "multi_choice_evidence", "value": ["none"]}
+        for i in range(6, 11)
+    ]
+    return answers
 
 
 def _body(session_id, expected_input_revision, answers=None):
@@ -155,6 +160,29 @@ def test_submit_rejects_wrong_checksum():
     response = _post(headers, session_id, "q-1", body)
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "QUESTIONNAIRE_INVALID_CHECKSUM"
+
+
+def test_submit_rejects_invalid_option_and_mutual_exclusion():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers, session_id, "sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+    )
+
+    # Invalid option code on q06.
+    bad_option = _complete_answers()
+    bad_option[5] = {"question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["bogus"]}
+    response = _post(headers, session_id, "q-badopt", _body(session_id, 2, answers=bad_option))
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "QUESTIONNAIRE_INVALID_OPTION"
+
+    # Mutual exclusion: none + a symptom option on q06.
+    bad_excl = _complete_answers()
+    bad_excl[5] = {"question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["none", "flank_discomfort"]}
+    response = _post(headers, session_id, "q-badexcl", _body(session_id, 2, answers=bad_excl))
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "QUESTIONNAIRE_MUTUAL_EXCLUSION"
 
 
 def test_submit_requires_matching_input_revision():

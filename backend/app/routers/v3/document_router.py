@@ -14,6 +14,7 @@ from backend.app.schemas.v3.document import (
 from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.services.v3.auth_service import get_current_v3_principal
 from backend.app.services.v3.document_service import (
+    DocumentInActiveSet,
     OwnedResourceNotFound,
     SessionNotFound,
     create_document,
@@ -69,4 +70,10 @@ def delete_document_endpoint(
         delete_document(db, principal, document_id)
     except OwnedResourceNotFound:
         raise V3APIError(404, "RESOURCE_NOT_FOUND", "未找到对应资料。") from None
+    except DocumentInActiveSet:
+        raise V3APIError(
+            409,
+            "DOCUMENT_IN_ACTIVE_SET",
+            "该资料仍在活动资料集中，请先替换资料集。",
+        ) from None
     return v3_success({"document_id": document_id, "status": "deleted"})

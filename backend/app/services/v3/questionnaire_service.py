@@ -94,12 +94,64 @@ def _validate_complete_answers(answers: list) -> None:
         )
 
 
+def _validate_answers_against_manifest(answers: list, manifest: dict) -> None:
+    """Per-question validation: answer type, option codes, value range,
+    multi-select bounds and mutual exclusion — against the approved manifest."""
+    questions = {q["question_id"]: q for q in manifest.get("questions", [])}
+    for answer in answers:
+        question = questions.get(answer.question_id)
+        if question is None:
+            raise InvalidQuestionnaire(
+                "QUESTIONNAIRE_UNKNOWN_QUESTION", "未知题号。"
+            )
+        if answer.answer_type != question["answer_type"]:
+            raise InvalidQuestionnaire(
+                "QUESTIONNAIRE_ANSWER_TYPE_MISMATCH", "答案类型不匹配。"
+            )
+        if question["answer_type"] == "frequency_0_4":
+            value = answer.value
+            if not isinstance(value, int) or not (0 <= value <= 4):
+                raise InvalidQuestionnaire(
+                    "QUESTIONNAIRE_INVALID_VALUE", "取值超出范围。"
+                )
+            continue
+        # multi_choice_evidence / single_choice_evidence
+        selected = (
+            answer.value if isinstance(answer.value, list) else [answer.value]
+        )
+        option_codes = {o["option_code"]: o for o in question.get("options", [])}
+        min_sel = question.get("min_selections") or 1
+        max_sel = question.get("max_selections") or len(option_codes)
+        if len(selected) < min_sel or len(selected) > max_sel:
+            raise InvalidQuestionnaire(
+                "QUESTIONNAIRE_SELECTION_BOUNDS", "选择数量超出范围。"
+            )
+        for code in selected:
+            if code not in option_codes:
+                raise InvalidQuestionnaire(
+                    "QUESTIONNAIRE_INVALID_OPTION", "非法选项。"
+                )
+        for code in selected:
+            exclusive = option_codes[code].get("exclusive_with") or []
+            if "*" in exclusive and len(selected) != 1:
+                raise InvalidQuestionnaire(
+                    "QUESTIONNAIRE_MUTUAL_EXCLUSION",
+                    "互斥选项不能与其他选项同时选择。",
+                )
+            for other in selected:
+                if other != code and other in exclusive:
+                    raise InvalidQuestionnaire(
+                        "QUESTIONNAIRE_MUTUAL_EXCLUSION",
+                        "互斥选项不能与其他选项同时选择。",
+                    )
+
+
 def _validate_manifest(
     schema_id: str,
     schema_version: str,
     manifest_version: str,
     content_checksum: str,
-) -> None:
+) -> dict:
     manifest = _approved_questionnaire_manifest()
     if manifest is None:
         raise InvalidQuestionnaire(
@@ -119,6 +171,7 @@ def _validate_manifest(
         raise InvalidQuestionnaire(
             "QUESTIONNAIRE_INVALID_CHECKSUM", "问卷内容校验无效。"
         )
+    return manifest
 
 
 def _confirmation_from_record(resource_id: str) -> tuple[str | None, int | None]:
@@ -188,12 +241,13 @@ def submit_questionnaire(
                     )
 
     _validate_complete_answers(request.answers)
-    _validate_manifest(
+    manifest = _validate_manifest(
         request.schema_id,
         request.schema_version,
         request.manifest_version,
         request.content_checksum,
     )
+    _validate_answers_against_manifest(request.answers, manifest)
 
     submission_id = f"qsub_{uuid.uuid4().hex}"
     submission = QuestionnaireSubmissionV3(

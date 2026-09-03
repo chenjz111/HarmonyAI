@@ -258,8 +258,8 @@ def replace_document_set(
             input_revision=next_revision,
             input_mode=session_row.input_mode,
             active_document_id=document_ids[0],
-            active_understanding_id=session_row.active_understanding_id,
-            active_understanding_revision=session_row.active_understanding_revision,
+            active_understanding_id=None,
+            active_understanding_revision=None,
             active_questionnaire_submission_id=session_row.active_questionnaire_submission_id,
             action="replace_document",
         )
@@ -297,6 +297,9 @@ def _cas_bind_document_set(
             input_revision=expected + 1,
             active_document_set_id=set_id,
             active_document_id=first_document_id,
+            # A new document set invalidates the previous summary/understanding.
+            active_understanding_id=None,
+            active_understanding_revision=None,
         )
         .execution_options(synchronize_session="fetch")
     )
