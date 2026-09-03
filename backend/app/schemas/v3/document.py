@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .common import NonEmptyString, V3BaseModel
 
@@ -41,3 +41,23 @@ class DocumentList(V3BaseModel):
     session_id: NonEmptyString
     documents: list[DocumentReadModel]
     total: int
+
+
+class DocumentSetReplaceRequest(V3BaseModel):
+    session_id: NonEmptyString
+    expected_input_revision: Annotated[int, Field(ge=1)]
+    document_ids: Annotated[list[NonEmptyString], Field(min_length=1, max_length=3)]
+
+    @model_validator(mode="after")
+    def unique_documents(self) -> "DocumentSetReplaceRequest":
+        if len(set(self.document_ids)) != len(self.document_ids):
+            raise ValueError("document_ids must be unique")
+        return self
+
+
+class DocumentSetReadModel(V3BaseModel):
+    document_set_id: NonEmptyString
+    revision: Annotated[int, Field(ge=1)]
+    status: Literal["active", "superseded", "discarded"]
+    documents: list[DocumentReadModel]
+    input_revision: Annotated[int, Field(ge=1)]

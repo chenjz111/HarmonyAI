@@ -81,6 +81,7 @@ class Session(Base):
         comment="New-flow safety policy: deferred_v3 (server-set)",
     )
     active_document_id = Column(String(64), nullable=True)
+    active_document_set_id = Column(String(64), nullable=True)
     active_understanding_id = Column(String(64), nullable=True)
     active_understanding_revision = Column(Integer, nullable=True)
     active_questionnaire_submission_id = Column(String(64), nullable=True)
