@@ -123,6 +123,9 @@ def test_owner_flow_entry_skips_narrative_and_goes_to_questionnaire():
     )
 
     assert response.status_code == 201
+    assert _v3_data(response)["description"] == (
+        "你可以上传近期就诊资料，或直接通过近期状态问卷开始。"
+    )
     choices = {choice["id"]: choice["next_route"] for choice in _v3_data(response)["choices"]}
     assert choices["with_document"] == "/v3/material"
     assert choices["without_document"] == "/v3/questionnaire"
@@ -136,5 +139,6 @@ def test_legacy_v3_entry_keeps_narrative_compatibility():
     )
 
     assert response.status_code == 201
+    assert _v3_data(response)["description"] == "你可以从近期就诊资料或最近发生的事情开始。"
     choices = {choice["id"]: choice["next_route"] for choice in _v3_data(response)["choices"]}
     assert choices["without_document"] == "/v3/narrative"

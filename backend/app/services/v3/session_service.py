@@ -66,11 +66,16 @@ def _entry_read_model(
         if flow_contract_version == FLOW_CONTRACT_V3_OWNER
         else "/v3/narrative"
     )
+    description = (
+        "你可以上传近期就诊资料，或直接通过近期状态问卷开始。"
+        if flow_contract_version == FLOW_CONTRACT_V3_OWNER
+        else "你可以从近期就诊资料或最近发生的事情开始。"
+    )
     return EntryReadModel(
         page="entry",
         session_id=session_id,
         title="开始了解你最近的状态",
-        description="你可以从近期就诊资料或最近发生的事情开始。",
+        description=description,
         choices=[
             EntryChoice(
                 id="with_document",
