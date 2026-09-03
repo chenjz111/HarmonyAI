@@ -45,8 +45,6 @@ def _create_document(headers, session_id, *, storage_path=None):
             "original_filename": "sample.png",
             "file_type": "png",
             "file_size_bytes": 1024,
-            "storage_path": storage_path or f"docs/{uuid.uuid4().hex}",
-            "status": "uploaded",
         },
     )
 

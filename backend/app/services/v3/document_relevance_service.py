@@ -38,6 +38,18 @@ class InvalidRelevance(RuntimeError):
         self.message = message
 
 
+_REASON_CODE_WHITELIST = frozenset(
+    {
+        "OCR_FAILED",
+        "EMPTY_CONTENT",
+        "NOT_CLINICAL_DOCUMENT",
+        "UNRELATED_TOPIC",
+        "OUT_OF_WINDOW",
+        "LOW_INFORMATION",
+    }
+)
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -67,17 +79,34 @@ def record_relevance(
 ) -> DocumentRelevanceReadModel:
     set_row = _owned_document_set(db, principal, request.document_set_id)
 
+    # Must target the currently-active set and its real revision.
+    if set_row.status != "active":
+        raise InvalidRelevance(
+            "RELEVANCE_SET_NOT_ACTIVE", "该资料集不是当前活动资料集。"
+        )
+    if request.document_set_revision != set_row.revision:
+        raise InvalidRelevance(
+            "RELEVANCE_REVISION_MISMATCH", "资料集版本不匹配。"
+        )
+
     item_ids = {
         item.document_id
         for item in db.query(DocumentSetItem)
         .filter(DocumentSetItem.document_set_id == request.document_set_id)
         .all()
     }
+    request_ids = {item.document_id for item in request.items}
+    # Complete coverage: exactly the set's documents, no missing / no extra.
+    if request_ids != item_ids:
+        raise InvalidRelevance(
+            "RELEVANCE_COVERAGE_INCOMPLETE", "相关性结果未完整覆盖资料集。"
+        )
     for item in request.items:
-        if item.document_id not in item_ids:
-            raise InvalidRelevance(
-                "RELEVANCE_DOCUMENT_NOT_IN_SET", "该资料不属于该资料集。"
-            )
+        for code in item.reason_codes:
+            if code not in _REASON_CODE_WHITELIST:
+                raise InvalidRelevance(
+                    "RELEVANCE_REASON_CODE_INVALID", "原因码无效。"
+                )
 
     evaluated_at = _utc_now()
     for item in request.items:

@@ -63,18 +63,18 @@ def create_document(
     request: DocumentCreateRequest,
 ) -> DocumentReadModel:
     _owned_session_row(db, principal, request.session_id)
+    document_id = f"doc_{uuid.uuid4().hex}"
     document = Document(
         user_id=principal.internal_user_pk,
         session_id=request.session_id,
-        document_id=f"doc_{uuid.uuid4().hex}",
+        document_id=document_id,
         original_filename=request.original_filename,
         file_type=request.file_type,
         file_size_bytes=request.file_size_bytes,
-        storage_path=request.storage_path,
-        status=request.status,
-        ocr_text=request.ocr_text,
-        ocr_confidence=request.ocr_confidence,
-        ocr_error_code=request.ocr_error_code,
+        # Server-controlled: the actual upload/OCR chain (not this endpoint)
+        # fills storage_path + ocr_* fields.
+        storage_path=f"docs/{document_id}",
+        status="uploaded",
     )
     db.add(document)
     db.commit()

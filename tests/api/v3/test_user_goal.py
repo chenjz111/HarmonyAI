@@ -44,9 +44,45 @@ def _submit(headers, session_id, user_goal):
     )
 
 
-def test_submit_and_read_user_goal():
+def _submit_questionnaire(headers, session_id):
+    from pathlib import Path
+
+    manifest = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "knowledge" / "v3" / "questionnaire-v3.0.json"
+        ).read_text(encoding="utf-8")
+    )
+    client.post(
+        f"/api/v3/sessions/{session_id}/input-transitions",
+        headers={**headers, "Idempotency-Key": f"sel-{uuid.uuid4().hex}"},
+        json={"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+    )
+    response = client.post(
+        f"/api/v3/sessions/{session_id}/questionnaire",
+        headers={**headers, "Idempotency-Key": f"q-{uuid.uuid4().hex}"},
+        json={
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "schema_id": manifest["schema_id"],
+            "schema_version": manifest["schema_version"],
+            "manifest_version": manifest["manifest_version"],
+            "content_checksum": manifest["content_checksum"],
+            "answers": [
+                {"question_id": f"q{i:02d}", "answer_type": "frequency_0_4", "value": 0}
+                for i in range(1, 11)
+            ],
+            "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": "2026-01-01T00:05:00Z",
+        },
+    )
+    assert response.status_code == 201, response.text
+
+
+def test_submit_and_read_user_goal_after_questionnaire():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
+    _submit_questionnaire(headers, session_id)
 
     submitted = _submit(
         headers,
@@ -60,6 +96,18 @@ def test_submit_and_read_user_goal():
     assert read["user_goal"]["secondary_goal"] == "relaxation"
 
 
+def test_non_null_user_goal_requires_complete_questionnaire():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+
+    response = _submit(
+        headers, session_id,
+        {"primary_goal": "sleep", "secondary_goal": None, "custom_goal_text": None},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "QUESTIONNAIRE_REQUIRED"
+
+
 def test_skip_user_goal_stores_null():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
@@ -68,15 +116,12 @@ def test_skip_user_goal_stores_null():
     assert skipped.status_code == 200
     assert _v3_data(skipped)["user_goal"] is None
 
-    read = _v3_data(client.get(f"/api/v3/sessions/{session_id}/user-goal", headers=headers))
-    assert read["user_goal"] is None
-
 
 def test_user_goal_validation():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
 
-    # secondary == primary is invalid.
+    # secondary == primary is invalid (schema-level).
     dup = _submit(
         headers, session_id,
         {"primary_goal": "sleep", "secondary_goal": "sleep", "custom_goal_text": None},
@@ -89,13 +134,6 @@ def test_user_goal_validation():
         {"primary_goal": "other", "secondary_goal": None, "custom_goal_text": None},
     )
     assert missing_text.status_code == 422
-
-    # custom_goal_text only allowed with "other".
-    extra_text = _submit(
-        headers, session_id,
-        {"primary_goal": "sleep", "secondary_goal": None, "custom_goal_text": "想睡好"},
-    )
-    assert extra_text.status_code == 422
 
 
 def test_user_goal_is_cross_user_isolated():

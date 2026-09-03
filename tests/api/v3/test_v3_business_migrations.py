@@ -73,6 +73,20 @@ def _create_foundation(engine):
         )
         connection.execute(
             text(
+                "CREATE TABLE documents ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, "
+                "session_id VARCHAR(64) NOT NULL, "
+                "document_id VARCHAR(64) NOT NULL UNIQUE, "
+                "original_filename VARCHAR(256) NOT NULL, "
+                "file_type VARCHAR(16) NOT NULL, "
+                "file_size_bytes INTEGER NOT NULL, "
+                "storage_path VARCHAR(512) NOT NULL, "
+                "status VARCHAR(16) DEFAULT 'uploaded', "
+                "created_at DATETIME, updated_at DATETIME)"
+            )
+        )
+        connection.execute(
+            text(
                 "INSERT INTO users (id, openid) VALUES (1, 'seed:user'), (2, 'seed:user2')"
             )
         )
@@ -120,9 +134,11 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0003_v3_owner_flow",
         "0004_v3_multidoc",
         "0005_v3_relevance",
+        "0006_v3_doc_fk",
+        "0007_v3_prescription_mode",
     ]
     assert second["applied_versions"] == []
-    assert second["current_version"] == "0005_v3_relevance"
+    assert second["current_version"] == "0007_v3_prescription_mode"
 
     tables = set(inspect(engine).get_table_names())
     assert BUSINESS_TABLES <= tables
@@ -139,6 +155,8 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0003_v3_owner_flow",
         "0004_v3_multidoc",
         "0005_v3_relevance",
+        "0006_v3_doc_fk",
+        "0007_v3_prescription_mode",
     }
 
 

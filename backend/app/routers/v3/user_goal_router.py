@@ -10,7 +10,11 @@ from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.schemas.v3.user_goal import UserGoalReadModel, UserGoalSubmitRequest
 from backend.app.services.v3.auth_service import get_current_v3_principal
 from backend.app.services.v3.session_service import OwnedResourceNotFound
-from backend.app.services.v3.user_goal_service import get_user_goal, submit_user_goal
+from backend.app.services.v3.user_goal_service import (
+    InvalidUserGoal,
+    get_user_goal,
+    submit_user_goal,
+)
 
 
 router = APIRouter()
@@ -32,6 +36,8 @@ def submit_user_goal_endpoint(
         )
     except OwnedResourceNotFound:
         raise V3APIError(404, "RESOURCE_NOT_FOUND", "未找到对应资源。") from None
+    except InvalidUserGoal as error:
+        raise V3APIError(422, error.code, error.message) from None
 
 
 @router.get(

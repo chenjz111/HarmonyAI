@@ -27,7 +27,7 @@ class PrescriptionV3(Base):
         ),
         CheckConstraint(
             "prescription_mode IS NULL OR prescription_mode IN "
-            "('syndrome_based', 'conservative_fallback')",
+            "('syndrome_based', 'candidate_blend', 'emotion_based', 'wellness')",
             name="ck_prescription_v3_mode",
         ),
         CheckConstraint(

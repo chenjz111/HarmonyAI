@@ -16,6 +16,8 @@ V3_MIGRATION_VERSIONS = [
     "0003_v3_owner_flow",
     "0004_v3_multidoc",
     "0005_v3_relevance",
+    "0006_v3_doc_fk",
+    "0007_v3_prescription_mode",
 ]
 
 _REQUIRED_TABLES = {
