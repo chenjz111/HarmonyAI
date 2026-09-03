@@ -1,0 +1,145 @@
+{
+  "schema_id": "five_tone_safe_expression_rules_v3_1",
+  "schema_version": "3.1.0-candidate",
+  "asset_status": "candidate_provisional",
+  "registry_status": "NOT_REGISTERED_PENDING_FREEZE",
+  "authored_by": "nob（肖宇翔，Medical Knowledge Engineer）",
+  "authored_at": "2026-09-03",
+  "contract_refs": [
+    "Issue #97 [S5-V3.1][Medical] Relevance Rules & UserGoal Assets",
+    "docs/product/app-v3.1-provisional-owner-flow.md §7 五音调适解析与音乐、§10 待老师确认",
+    "docs/contracts/harmonyai-v3.1-interface-semantics-draft.md §10 Explanation/Rationale",
+    "docs/contracts/harmonyai-v3.1-flow-amendment-draft.md §I Five-Tone Adaptation Analysis",
+    "knowledge/v3/knowledge-manifest-v3.0.json（forbidden_expressions 与 usage_boundaries 基线）"
+  ],
+  "purpose": "为‘五音调适解析’页面（及任何向用户呈现的解析/解释文本）制定医学安全表达规则：展示状态倾向、调式选择理由与音乐参数时，不形成确诊式、疗效承诺式或越界医疗建议式表述。消费方为 Agent2/Agent3 输出的解释装配器与前端只读渲染。",
+  "status_note": "PROVISIONAL / CANDIDATE —— 未冻结；免责声明最终文案与页面措辞待老师审阅（flow §10）。",
+  "presentation_sections": [
+    {"section": "confirmed_state", "desc": "本次确认的状态（来自 ConfirmedUserState：资料摘要/问卷事实）", "required": true},
+    {"section": "state_tendency", "desc": "状态倾向与依据引用（倾向性表达，非诊断）", "required": true},
+    {"section": "tone_selection", "desc": "主音与可选辅音及选择理由（引用 approved five-tone mapping 与 evidence link）", "required": true},
+    {"section": "music_parameters", "desc": "BPM、乐器、环境音、时长及每项简短说明", "required": true}
+  ],
+  "global_rules": [
+    {
+      "rule_id": "FT-01",
+      "severity": "P0",
+      "constraint": "禁止确诊式表述",
+      "forbidden": ["你的证型是", "你患有", "你是X证", "诊断为", "确诊", "你有肝郁化火", "你属于脾虚湿困体质（判定式）"],
+      "allowed_replacement": "只允许倾向性措辞：如‘状态以……倾向为主（调适参考）’、‘更贴近……方向’",
+      "rationale": "对齐 manifest forbidden_expressions 与‘不形成确诊式表述’验收标准；普通用户流程非医疗诊断场景"
+    },
+    {
+      "rule_id": "FT-02",
+      "severity": "P0",
+      "constraint": "禁止疗效承诺",
+      "forbidden": ["治愈", "治疗有效", "疗效", "可改善病情", "本音乐可治疗", "替代治疗", "康复"],
+      "allowed_replacement": "使用‘调适/舒缓/放松参考’等中性词；可写‘音乐调养参考’",
+      "rationale": "音乐生成内容不是医疗干预；禁止任何疗效暗示"
+    },
+    {
+      "rule_id": "FT-03",
+      "severity": "P0",
+      "constraint": "禁止对器官/脏腑的医学结论式表述",
+      "forbidden": ["你的肝有问题", "你的心火很旺（判断式）", "肾虚（下结论式）", "脏腑失调说明你生病"],
+      "allowed_replacement": "以五行理论视角表达：如‘传统中医理论认为该状态多与……调适相关（仅供参考）’，须引用批准资产中的五行/五音对应",
+      "rationale": "五音调适基于中医理论模型，不等于脏腑疾病诊断"
+    },
+    {
+      "rule_id": "FT-04",
+      "severity": "P0",
+      "constraint": "禁止将 UserGoal/偏好写为医学依据",
+      "forbidden": ["因为你希望助眠，所以你是……", "你的诉求说明你需要……（医学归因）"],
+      "allowed_replacement": "UserGoal 只能出现在音乐参数偏好说明中，且注明‘这是你的疗愈偏好’",
+      "rationale": "对齐 usergoal-vocabulary UG-01~UG-04：偏好不是证据"
+    },
+    {
+      "rule_id": "FT-05",
+      "severity": "P0",
+      "constraint": "禁止泄露内部信息",
+      "forbidden": ["provider 名称/状态、内部枚举、prompt、检索内部字段、model 名（对普通用户展示层）", "mock/degraded 冒充真实成功"],
+      "allowed_replacement": "只展示批准公开字段；降级/模拟结果须显式标注",
+      "rationale": "对齐 interface-semantics Cross-Interface Invariant #5/#6"
+    },
+    {
+      "rule_id": "FT-06",
+      "severity": "P0",
+      "constraint": "引用必须可溯源且带证据等级",
+      "required": ["每处医学/理论表述携带依据引用（来源+等级 A/B/C/D 或五级证据标记）", "RAG 片段只展示 display_summary 层内容"],
+      "rationale": "知识库 assets 引用可溯源要求（manifest usage_boundaries.rag_boundary）"
+    },
+    {
+      "rule_id": "FT-07",
+      "severity": "P0",
+      "constraint": "前端不得硬编码医学结果",
+      "required": ["页面只渲染后端返回值", "不得在客户端推导/硬编码 脏腑/五行/音/证型/BPM/乐器/环境音/时长"],
+      "rationale": "对齐 flow-amendment §I：前端禁止派生医学结论"
+    },
+    {
+      "rule_id": "FT-08",
+      "severity": "P1",
+      "constraint": "红旗症状提示",
+      "required": ["当已确认状态含需警惕信号（严重自伤风险等 Safety 场景）时，按 Safety 流程提示专业帮助", "普通内容不得主动给出‘建议就医’类医学建议"],
+      "rationale": "对齐 manifest usage_boundaries.safety_boundary 与 forbidden ‘建议就医（除 Safety 场景）’"
+    }
+  ],
+  "required_disclaimer": {
+    "disclaimer_id": "DIS-V3.1-01",
+    "text_candidate": "本解析基于你近期填写的状态与传统中医五行/五音理论生成，仅供音乐调适与放松参考，不构成医疗诊断、治疗或用药建议。如有身体不适，请咨询专业医疗人员。",
+    "placement": "五音调适解析页显著位置（顶部或底部常驻）",
+    "status": "PENDING_TEACHER_REVIEW"
+  },
+  "section_rules": [
+    {
+      "section": "state_tendency",
+      "rules": [
+        "只能呈现由已批准 Diagnosis/Agent2 结果导出的倾向与 abstention/degradation 状态",
+        "倾向措辞须带‘参考/倾向’限定，禁止判决式",
+        "abstain 时展示温和降级文案而非强行给倾向"
+      ]
+    },
+    {
+      "section": "tone_selection",
+      "rules": [
+        "主音/辅音及其权重只来自 approved five-tone-mapping + organ evidence（ToneProfile）",
+        "解释引用五音-五脏-五行对应与证据链接，不引入资产外理论",
+        "未定辅音（阈值/并列未决）时只展示主音，不编造辅音理由"
+      ]
+    },
+    {
+      "section": "music_parameters",
+      "rules": [
+        "只描述声音特征（速度/音色/环境/时长），不描述生理或病理作用",
+        "可注明‘依据你的疗愈偏好调整’当且仅当确实使用了 UserGoal",
+        "参数与 GenerationSpec 实际值一致，禁止前端另造"
+      ]
+    },
+    {
+      "section": "confirmed_state",
+      "rules": [
+        "状态摘要来自用户确认版本（FinalConfirmedSummary / QuestionnaireResult），不展示未确认 AI 建议",
+        "AI 建议不得伪装为用户确认事实"
+      ]
+    }
+  ],
+  "open_decisions": [
+    {
+      "id": "OD-FT-01",
+      "topic": "免责声明最终文案",
+      "owner": "老师审阅 + 产品",
+      "status": "OPEN"
+    },
+    {
+      "id": "OD-FT-02",
+      "topic": "状态倾向措辞模板库（由后端安全装配器维护）",
+      "owner": "AI 侧生成 + nob 复核",
+      "status": "OPEN"
+    },
+    {
+      "id": "OD-FT-03",
+      "topic": "红旗场景在 V3.1 主路径的呈现方式（V3.1 不重新接入 Safety 流程）",
+      "owner": "Owner #96",
+      "status": "OPEN"
+    }
+  ]
+}

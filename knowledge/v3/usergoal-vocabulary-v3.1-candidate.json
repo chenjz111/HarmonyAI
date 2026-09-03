@@ -1,0 +1,140 @@
+{
+  "schema_id": "usergoal_vocabulary_v3_1",
+  "schema_version": "3.1.0-candidate",
+  "asset_status": "candidate_provisional",
+  "registry_status": "NOT_REGISTERED_PENDING_FREEZE",
+  "authored_by": "nob（肖宇翔，Medical Knowledge Engineer）",
+  "authored_at": "2026-09-03",
+  "contract_refs": [
+    "Issue #97 [S5-V3.1][Medical] Relevance Rules & UserGoal Assets",
+    "docs/contracts/harmonyai-v3.1-flow-amendment-draft.md §G UserGoal",
+    "docs/contracts/harmonyai-v3.1-interface-semantics-draft.md §5 UserGoal",
+    "docs/product/app-v3.1-provisional-owner-flow.md §5 问卷与 UserGoal",
+    "harmonyai-v3-contract-freeze-v3.0.0-draft.3.md（UserGoal 既有产品语义）"
+  ],
+  "purpose": "医学侧对 V3.1 UserGoal 正式词表的审核稿：确认 7 个批准 code 的非医学语义与音乐设计方向，明确 UserGoal 属于偏好输入而非医学证据，划定其消费边界（仅供 Agent3 处方/个性化输入，不得覆盖已确认的临床/状态事实）。",
+  "status_note": "PROVISIONAL / CANDIDATE —— 未冻结、未注册入 knowledge-manifest；中文文案与‘是否参与音乐参数’细则为建议值，待产品文案与老师/ Owner 确认。",
+  "audit_conclusion": {
+    "codes_audit": "7 个批准 code 与 V3.0 freeze draft.3 保持一致，医学侧无异议：sleep / relaxation / emotion_regulation / focus / energy / stress_relief / other",
+    "selection_shape": "整步可跳过；0~2 个选择；第 1 项为 primary_goal、第 2 项为 secondary_goal；跳过时 user_goal = null；custom_goal_text 仅在选择 other 时启用且不超过 200 字（V3.0 语义）——V3.1 的可空边界（整个对象可为 null）属 SCHEMA_DELTA_REQUIRED，由 Owner/工程侧落 schema",
+    "evidence_position": "UserGoal 不是 Medical Evidence、不是 FactEvidence、不是 OrganEvidence；不参与 Assessment/Diagnosis/organ_net 聚合，也不得覆盖用户已确认的临床/状态事实"
+  },
+  "approved_codes": [
+    {
+      "code": "sleep",
+      "user_label_candidate": "助眠",
+      "definition": "偏好：本次希望音乐偏舒缓、帮助放松并易于入睡",
+      "tone_design_hint_candidate": "音乐参数可倾向低-中速、低频稳定、环境音少刺激；仅作 GenerationSpec 参数方向的偏好输入",
+      "not_medical_note": "不表达‘失眠/睡眠障碍/失眠症’等医学判断；不产生任何 sleep 类 claim"
+    },
+    {
+      "code": "relaxation",
+      "user_label_candidate": "放松身心",
+      "definition": "偏好：本次希望放松身体与精神紧张",
+      "tone_design_hint_candidate": "音乐参数可倾向中低速、平滑音色、柔和环境声",
+      "not_medical_note": "不表达‘焦虑/紧张状态’的医学判断"
+    },
+    {
+      "code": "emotion_regulation",
+      "user_label_candidate": "情绪调节",
+      "definition": "偏好：本次希望音乐帮助情绪趋于平稳",
+      "tone_design_hint_candidate": "音乐参数方向需结合已确认状态证据的 tone 结果，避免与证据冲突；不作为独立辨证依据",
+      "not_medical_note": "不表达‘情绪障碍/情志病’等医学判断；不得由该 code 反推任何证型"
+    },
+    {
+      "code": "focus",
+      "user_label_candidate": "提升专注",
+      "definition": "偏好：本次希望音乐帮助集中注意力",
+      "tone_design_hint_candidate": "音乐参数可倾向节奏稳定、结构清晰、中速为主",
+      "not_medical_note": "不表达‘注意力缺陷’等医学判断"
+    },
+    {
+      "code": "energy",
+      "user_label_candidate": "恢复精力",
+      "definition": "偏好：本次希望音乐帮助提神、恢复精力",
+      "tone_design_hint_candidate": "音乐参数可倾向中-快速、明亮音色、能量曲线前段上扬",
+      "not_medical_note": "不表达‘疲劳/虚劳’等医学判断；不产生精力相关 claim"
+    },
+    {
+      "code": "stress_relief",
+      "user_label_candidate": "缓解压力",
+      "definition": "偏好：本次希望缓解近期压力带来的紧绷感",
+      "tone_design_hint_candidate": "音乐参数可倾向舒缓、低紧张度、环境声开阔",
+      "not_medical_note": "不表达‘压力相关障碍’等医学判断"
+    },
+    {
+      "code": "other",
+      "user_label_candidate": "其他（自填）",
+      "definition": "偏好：不属于上述类别的自定义诉求，custom_goal_text ≤ 200 字",
+      "tone_design_hint_candidate": "仅当文本可映射到明确音乐参数方向时做弱提示；无明确方向时不做任何推断",
+      "not_medical_note": "自定义文本是偏好表达，严禁从中抽取 FactEvidence / OrganEvidence / 医学 claim"
+    }
+  ],
+  "evidence_boundary_rules": [
+    {
+      "rule_id": "UG-01",
+      "rule": "UserGoal 一律标记为 preference 输入，禁止标记为 MedicalEvidence / FactEvidence / OrganEvidence",
+      "severity": "P0",
+      "rationale": "对齐 #101 interface-semantics §5 与 Cross-Interface Invariant #3；防止把用户期望误当成状态事实进入辨证"
+    },
+    {
+      "rule_id": "UG-02",
+      "rule": "UserGoal 不得进入 Agent1 Assessment 与 Agent2 Diagnosis 的输入证据集",
+      "severity": "P0",
+      "rationale": "只被 Prescription/personalization 消费；不参与 organ_net 聚合与证型倾向计算"
+    },
+    {
+      "rule_id": "UG-03",
+      "rule": "UserGoal 不得覆盖或改写用户已确认的临床/状态事实（FinalConfirmedSummary / QuestionnaireResult / ConfirmedUserState）",
+      "severity": "P0",
+      "rationale": "对齐 flow-amendment §G：UserGoal 是音乐设计偏好，不能覆盖已确认事实"
+    },
+    {
+      "rule_id": "UG-04",
+      "rule": "ToneProfile 主音/辅音只能由 OrganEvidence 驱动的已批准映射产生；UserGoal 不得改变 ToneProfile",
+      "severity": "P0",
+      "rationale": "五音调适的医学基础是状态证据，不是用户偏好；偏好最多影响 GenerationSpec 的非医学参数方向"
+    },
+    {
+      "rule_id": "UG-05",
+      "rule": "custom_goal_text（含 other 自填）只作偏好文本；禁止从中抽取 claim、证型、器官或情绪状态证据",
+      "severity": "P0",
+      "rationale": "自由文本高危区：用户可能写‘最近睡不好/很焦虑’；此类内容不得回流为证据"
+    },
+    {
+      "rule_id": "UG-06",
+      "rule": "UserGoal 对 GenerationSpec 的影响只限音乐参数方向（BPM 倾向/音色/环境音/能量曲线等），且不得宣称疗效",
+      "severity": "P1",
+      "rationale": "允许个性化体验，同时保持医学表达安全边界"
+    }
+  ],
+  "consumption_contract": {
+    "produced_by": "用户在完成 Q1~Q10 后的独立选填步骤（整步可跳过）",
+    "consumed_by": ["Agent3 Prescription / personalization input"],
+    "not_consumed_by": ["Agent1 Assessment", "Agent2 Diagnosis", "organ_net 聚合", "RAG 医学检索"],
+    "representation_note": "确切 V3.1 JSON Schema/API/持久化表示属 #96/#101 SCHEMA_DELTA_REQUIRED 范围；医学侧只约束语义边界与词表。"
+  },
+  "open_decisions": [
+    {
+      "id": "OD-UG-01",
+      "topic": "中文 label 最终文案",
+      "candidate_default": "sleep=助眠 / relaxation=放松身心 / emotion_regulation=情绪调节 / focus=提升专注 / energy=恢复精力 / stress_relief=缓解压力 / other=其他",
+      "owner": "产品文案 + 老师确认",
+      "status": "OPEN"
+    },
+    {
+      "id": "OD-UG-02",
+      "topic": "secondary_goal 是否必须与 primary_goal 不同",
+      "candidate_default": "沿用 V3.0：不同；若产品希望在 V3.1 放开，需单独确认",
+      "owner": "Owner #96",
+      "status": "OPEN"
+    },
+    {
+      "id": "OD-UG-03",
+      "topic": "custom_goal_text 是否参与音乐参数弱提示",
+      "candidate_default": "仅关键词可明确映射时做弱提示；不映射则忽略（见 UG-05/UG-06）",
+      "owner": "AI 侧 + nob 复核",
+      "status": "OPEN"
+    }
+  ]
+}
