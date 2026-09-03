@@ -74,15 +74,14 @@
       "constraint": "前端不得硬编码医学结果",
       "required": ["页面只渲染后端返回值", "不得在客户端推导/硬编码 脏腑/五行/音/证型/BPM/乐器/环境音/时长"],
       "rationale": "对齐 flow-amendment §I：前端禁止派生医学结论"
-    },
-    {
-      "rule_id": "FT-08",
-      "severity": "P1",
-      "constraint": "红旗症状提示",
-      "required": ["当已确认状态含需警惕信号（严重自伤风险等 Safety 场景）时，按 Safety 流程提示专业帮助", "普通内容不得主动给出‘建议就医’类医学建议"],
-      "rationale": "对齐 manifest usage_boundaries.safety_boundary 与 forbidden ‘建议就医（除 Safety 场景）’"
     }
   ],
+  "safety_compatibility": {
+    "note_id": "FT-08-COMPAT",
+    "status": "NOT_ACTIVE_IN_V3.1",
+    "note": "红旗/专业帮助提示属 Sprint4 Safety 兼容范畴：V3.1 主路径不重新接入 Safety 流程、不新增 Safety 路由或阻断行为；未经 Owner 重新批准不作为 V3.1 必执行规则。",
+    "reactivation_condition": "需 Owner 单独批准并冻结相关 Safety 合同后恢复"
+  },
   "required_disclaimer": {
     "disclaimer_id": "DIS-V3.1-01",
     "text_candidate": "本解析基于你近期填写的状态与传统中医五行/五音理论生成，仅供音乐调适与放松参考，不构成医疗诊断、治疗或用药建议。如有身体不适，请咨询专业医疗人员。",
@@ -138,6 +137,7 @@
     {
       "id": "OD-FT-03",
       "topic": "红旗场景在 V3.1 主路径的呈现方式（V3.1 不重新接入 Safety 流程）",
+      "candidate_default": "维持 NOT_ACTIVE_IN_V3.1（见 safety_compatibility FT-08-COMPAT）；激活需 Owner 重新批准",
       "owner": "Owner #96",
       "status": "OPEN"
     }
