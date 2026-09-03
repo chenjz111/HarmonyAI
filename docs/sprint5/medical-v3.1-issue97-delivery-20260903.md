@@ -14,7 +14,7 @@
 | 文件（仓库路径） | 内容 | canonical sha256 |
 | --- | --- | --- |
 | `knowledge/v3/document-relevance-rules-v3.1-candidate.json` | Document Relevance 医学规则（VALID/INVALID/IRRELEVANT/INSUFFICIENT + reason-code 白名单 + 判定决策表 + 硬性不变量） | `4506b335…9c69` |
-| `knowledge/v3/usergoal-vocabulary-v3.1-candidate.json` | UserGoal 正式词表审核稿（7 code 非医学语义 + 证据边界 UG-01至06 + 消费契约） | `2fb05e5d…12e4` |
+| `knowledge/v3/usergoal-vocabulary-v3.1-candidate.json` | UserGoal 正式词表审核稿（7 code 非医学语义 + 证据边界 UG-01至06 + 消费契约） | `aaedd6ba…5ad4` |
 | `knowledge/v3/five-tone-safe-expression-rules-v3.1-candidate.json` | “五音调适解析”安全医学表达规则（FT-01至08 + 区块规则 + 免责声明候选文案） | `731edc13…6eb7` |
 | `docs/sprint5/medical-v3.1-issue97-delivery-20260903.md` | 本交付说明 | — |
 
@@ -85,7 +85,8 @@
 
 - **P0-01**：Relevance Gate 判定仅使用判定时点可得信息（OCR + 资料元数据 + 固定 V3.1 评估范围/已批准 Claim Dictionary）；删除对摘要确认环节与‘当前主诉’的依赖；归属无法仅凭资料确认一律归 INSUFFICIENT（新增 reason_code ri_ins_ownership_unclear；INVALID 仅保留明确非本人信号 ri_not_own_explicit）；新增硬性不变量 IV-6/IV-7，不引入独立资料确认页。
 - **P0-02**：FT-08 移出 global_rules，转 safety_compatibility（FT-08-COMPAT，NOT_ACTIVE_IN_V3.1），激活需 Owner 重新批准。
-- **P1-01**：删除 custom_goal_text ‘仅在选择 other 时启用’越权结论，改为 V3.1 Owner Baseline 口径（选填、≤200 字）；schema 表达保留技术开放项 OD-UG-04。
+- **P1-01**：删除 custom_goal_text ‘仅在选择 other 时启用’越权结论，改为 V3.1 Owner Baseline 口径（选填、≤200 字，未限定仅 other）；Schema/API/持久化与 revision/CAS 表达归 #96/#101 SCHEMA_DELTA_REQUIRED 技术范围（不设资产级开放项）。
 - **P1-02**：document-relevance 资产 purpose 改为‘医学侧候选规则稿（冻结并注册 manifest 后作为权威规则来源）’。
 - **P2**：本说明同步为‘已创建 Draft PR #102，未 Merge’。
 - 约束保持：PROVISIONAL / Draft；未注册 manifest；未改动正式 Q1至Q10；未转 Ready；未 Merge。
+- **R2（2026-09-03，二轮复审）**：移除 custom_goal_text 条件开放项这一漂移——Owner Baseline 已冻结其语义（选填、≤200 字、无 other 限定），不应再以开放项形式重新打开；仅保留 Schema/API/持久化与 revision/CAS 表达为 #96/#101 SCHEMA_DELTA_REQUIRED 技术项。
