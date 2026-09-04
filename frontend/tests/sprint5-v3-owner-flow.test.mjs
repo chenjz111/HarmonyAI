@@ -44,9 +44,12 @@ test("V3 owner-flow pages are all registered", () => {
   const v3Routes = [
     "pages/entry/entry",
     "pages/v3-material/v3-material",
+    "pages/v3-material-error/v3-material-error",
     "pages/v3-summary/v3-summary",
+    "pages/v3-supplement/v3-supplement",
     "pages/v3-narrative/v3-narrative",
     "pages/v3-questionnaire/v3-questionnaire",
+    "pages/v3-goal/v3-goal",
     "pages/v3-confirm/v3-confirm",
     "pages/v3-basis/v3-basis",
     "pages/v3-player/v3-player",
@@ -56,6 +59,8 @@ test("V3 owner-flow pages are all registered", () => {
     assert.ok(routes.includes(route), `missing V3 route: ${route}`)
     assert.ok(existsSync(resolve(frontendRoot, `${route}.vue`)), `missing V3 page: ${route}`)
   }
+  // Issue #100：entry 是启动首页（见 pages[0]）
+  assert.equal(routes[0], "pages/entry/entry", "entry must be the launch home page")
 })
 
 test("welcome routes into the V3 entry page", () => {
@@ -87,16 +92,37 @@ test("entry page uses the approved dual-entry wording", () => {
   assert.ok(!entry.includes("无近期材料"), "obsolete wording must not appear")
 })
 
-test("OCR failure page follows Amendment 3.1 + Sprint 5 wording", () => {
+test("V3.1: material page uploads 1-3 files; OCR failure routes to the standalone error page", () => {
   const material = readPage("v3-material/v3-material.vue")
-  assert.ok(material.includes("资料暂未识别成功"), "failure title")
-  assert.ok(material.includes("重新上传资料"), "primary action")
-  assert.ok(material.includes("暂不使用资料，通过描述和问卷继续"), "secondary action (Sprint 5 wording)")
-  assert.ok(material.includes("自由描述可以跳过，10道状态问卷需要完成"), "side note")
+  // Issue #100: 多文件（1~3 张）上传
+  assert.ok(material.includes("count: remain"), "must allow adding up to the remaining slots")
+  assert.ok(material.includes("MAX_FILES = 3"), "must cap the selection at 3 files")
+  assert.ok(material.includes("removeFile"), "each thumbnail must be removable")
+  assert.ok(material.includes("识别并继续"), "bulk upload action")
+  // 失败不再内嵌本页，统一跳独立异常页
+  assert.ok(
+    material.includes('/pages/v3-material-error/v3-material-error?type=ocr'),
+    "OCR failure must redirect to the standalone error page",
+  )
+  assert.ok(
+    material.includes('/pages/v3-material-error/v3-material-error?type=network'),
+    "network failure must redirect to the standalone error page",
+  )
+})
+
+test("OCR failure page (v3-material-error) follows Amendment 3.1 + Sprint 5 wording", () => {
+  const errPage = readPage("v3-material-error/v3-material-error.vue")
+  assert.ok(errPage.includes("资料暂未识别成功"), "failure title")
+  assert.ok(errPage.includes("重新上传资料"), "primary action")
+  assert.ok(errPage.includes("暂不使用资料，通过描述和问卷继续"), "secondary action (Sprint 5 wording)")
+  assert.ok(errPage.includes("描述可以跳过，状态问卷需要完成"), "side note")
   // 暂不使用资料必须调用后端 Input Transition（discard_document），不是前端隐藏
-  assert.ok(material.includes("discardDocument"), "must call backend input transition")
-  // 网络错误与 OCR 失败分流
-  assert.ok(material.includes("network_error"), "must distinguish network error from OCR failure")
+  assert.ok(errPage.includes("discardDocument"), "must call backend input transition")
+  // 网络错误与 OCR 失败分流（?type=network）
+  assert.ok(errPage.includes('query.type === "network"'), "must distinguish network error from OCR failure")
+  // 原内嵌失败卡片已从 material 页移除
+  const material = readPage("v3-material/v3-material.vue")
+  assert.ok(!material.includes("资料暂未识别成功"), "failure copy must live on the error page, not material")
 })
 
 test("summary page exposes the four approved actions (Sprint 5 wording)", () => {
@@ -117,7 +143,10 @@ test("summary page exposes the four approved actions (Sprint 5 wording)", () => 
 test("V3 pages do not leak internal fields to users", () => {
   for (const page of [
     "v3-material/v3-material.vue",
+    "v3-material-error/v3-material-error.vue",
     "v3-summary/v3-summary.vue",
+    "v3-supplement/v3-supplement.vue",
+    "v3-goal/v3-goal.vue",
     "v3-confirm/v3-confirm.vue",
     "v3-basis/v3-basis.vue",
     "v3-player/v3-player.vue",
@@ -246,24 +275,28 @@ test("P0-3: backend audio streams are fetched with auth headers before playback"
 })
 
 test("P0-2: upload failures still offer the describe-and-questionnaire path", () => {
-  const material = readPage("v3-material/v3-material.vue")
-  // network_error 分支必须提供"暂不使用资料"出口（不能只有重试，避免用户被卡死）
-  const networkCard = (material.match(/state === 'network_error'[\s\S]*?<\/view>\s*<\/view>/) || [""])[0]
+  // V3.1：网络/OCR 失败收敛到独立异常页，出口同样提供"不用资料继续"，避免用户被卡死
+  const errPage = readPage("v3-material-error/v3-material-error.vue")
   assert.ok(
-    networkCard.includes("暂不使用资料，通过描述和问卷继续"),
-    "network error card must also offer the continue-without-material action",
+    errPage.includes("暂不使用资料，通过描述和问卷继续"),
+    "error page must offer the continue-without-material action",
   )
   assert.ok(
-    networkCard.includes("switchToQuestionnaire"),
+    errPage.includes("switchToQuestionnaire"),
     "the action must call the backend input transition",
   )
+  assert.ok(errPage.includes("discardDocument"), "must call discard_document transition")
+  assert.ok(errPage.includes("retry"), "error page must offer a retry/back-to-upload entry")
 })
 
 test("P1-2: V3 pages and API errors use stable user copy without internal dev info", () => {
   for (const page of [
     "entry/entry.vue",
     "v3-material/v3-material.vue",
+    "v3-material-error/v3-material-error.vue",
     "v3-summary/v3-summary.vue",
+    "v3-supplement/v3-supplement.vue",
+    "v3-goal/v3-goal.vue",
     "v3-narrative/v3-narrative.vue",
     "v3-questionnaire/v3-questionnaire.vue",
     "v3-confirm/v3-confirm.vue",
@@ -301,7 +334,10 @@ test("no music goal wording or fields in V3 flow", () => {
   for (const page of [
     "entry/entry.vue",
     "v3-material/v3-material.vue",
+    "v3-material-error/v3-material-error.vue",
     "v3-summary/v3-summary.vue",
+    "v3-supplement/v3-supplement.vue",
+    "v3-goal/v3-goal.vue",
     "v3-narrative/v3-narrative.vue",
     "v3-questionnaire/v3-questionnaire.vue",
     "v3-confirm/v3-confirm.vue",

@@ -1,94 +1,92 @@
 <script>
 /**
- * V3 资料上传页（有资料流程第一步）
+ * V3.1 资料上传页（Issue #100：1~3 张资料上传）
  * 合同依据：frontend-read-model-contract-v3.md §3.2 SourceStatusReadModel
- *          harmonyai-v3-owner-flow-amendment-001.md §3.1（OCR 失败标准文案）
- *          Sprint 5 组长指令：OCR 失败按钮二固定为"暂不使用资料，通过描述和问卷继续"
+ *          harmonyai-v3-owner-flow-amendment-001.md §3.1（OCR 失败标准文案，现收敛至独立异常页）
  *
- * 状态机：idle → uploading/processing → ready（去摘要确认）| failed（OCR 失败分流）| network_error（网络/服务错误，可重试）
- *  - 失败页文案严格按 Amendment §3.1：标题"资料暂未识别成功"
- *  - OCR 失败与网络错误是两种状态：网络错误展示具体错误信息与重试入口，不冒充 OCR 失败固定文案
- *  - 失败不得进入摘要确认或后续 Agent 页面
- *  - 不展示 OCR Provider、原始置信度或内部异常
+ * 变更（V3.0 → V3.1）：
+ *  - 单文件 → 1~3 张多文件：缩略图列表、单张删除、"+ 添加"入口（不超过 3 张）
+ *  - OCR/网络失败不再内嵌本页，统一跳转独立资料异常页 v3-material-error
+ *    （?type=ocr | ?type=network）
+ *  - 识别成功 → 资料摘要确认页
  *
- * mock 提示：测试时选择文件名含 "fail" 的文件可模拟 OCR 失败路径
+ * 注意：真实后端未交付多文档聚合与 owner-aware 上传端点，real 模式下逐张上传
+ * 仍会如实失败并跳转异常页，不伪造成功；mock/hybrid 可完整演示多文件流程。
  */
 import { apiV3 } from "../../common/api-v3.js"
+
+const MAX_FILES = 3
 
 export default {
   data() {
     return {
-      state: "idle", // idle | processing | ready | failed | network_error
-      filePath: "",
-      fileName: "",
-      isImage: false,
+      state: "pick", // pick（选图/列表） | uploading | uploaded
+      files: [], // [{ path, name, isImage, document_id }]
       error: "",
-      discarding: false,
     }
   },
+  computed: {
+    canAdd() {
+      return this.files.length < MAX_FILES
+    },
+  },
   methods: {
-    chooseFile() {
-      if (this.state === "processing") return
+    chooseFiles() {
+      if (this.state === "uploading" || !this.canAdd) return
+      const remain = MAX_FILES - this.files.length
       uni.chooseImage({
-        count: 1,
+        count: remain,
         success: (res) => {
-          const f = res.tempFiles && res.tempFiles[0]
-          this.filePath = res.tempFilePaths && res.tempFilePaths[0]
-          this.fileName = (f && f.name) || "就诊资料图片.jpg"
-          this.isImage = true
-          this.upload()
+          const paths = res.tempFilePaths || []
+          const temp = res.tempFiles || []
+          paths.forEach((p, i) => {
+            const f = temp[i] || {}
+            this.files.push({
+              path: p,
+              name: f.name || this.defaultName(p),
+              isImage: true,
+              document_id: null,
+            })
+          })
         },
         fail: () => {
           // 用户取消选择，静默返回
         },
       })
     },
-    async upload() {
-      this.state = "processing"
+    defaultName(path) {
+      const seg = String(path || "").split(/[\\/]/)
+      return seg[seg.length - 1] || "就诊资料图片.jpg"
+    },
+    removeFile(idx) {
+      if (this.state === "uploading") return
+      this.files.splice(idx, 1)
+    },
+    async startUpload() {
+      if (this.state !== "pick" || this.files.length === 0) return
+      this.state = "uploading"
       this.error = ""
-      try {
-        const doc = await apiV3.uploadDocument(this.filePath, this.fileName)
-        if (doc.state === "failed") {
-          // OCR 失败：留在本页失败态，不进入摘要确认
-          this.state = "failed"
-        } else {
-          this.state = "ready"
-          // 识别成功 → 进入资料摘要确认页（Amendment §2）
-          setTimeout(() => {
-            uni.redirectTo({ url: "/pages/v3-summary/v3-summary" })
-          }, 600)
+      for (let i = 0; i < this.files.length; i++) {
+        const f = this.files[i]
+        try {
+          const doc = await apiV3.uploadDocument(f.path, f.name)
+          if (doc.state === "failed") {
+            // OCR 失败：跳独立异常页（?type=ocr）
+            uni.redirectTo({ url: "/pages/v3-material-error/v3-material-error?type=ocr" })
+            return
+          }
+          f.document_id = doc.document_id
+        } catch (e) {
+          // 网络/服务错误（含真实环境归属缺口）：跳独立异常页（?type=network）
+          uni.redirectTo({ url: "/pages/v3-material-error/v3-material-error?type=network" })
+          return
         }
-      } catch (e) {
-        // 网络/服务错误与 OCR 失败分流：这里只是上传或服务调用失败，
-        // 资料本身是否识别成功由后端 ocr_status 决定，不冒用 OCR 失败固定文案
-        this.state = "network_error"
-        this.error = e.message || "上传失败，请重试"
       }
-    },
-    retry() {
-      // 重新上传资料（Amendment §3.1 按钮一）
-      this.state = "idle"
-      this.filePath = ""
-      this.fileName = ""
-    },
-    retryFromNetworkError() {
-      this.error = ""
-      this.retry()
-    },
-    async switchToQuestionnaire() {
-      // 暂不使用资料，通过描述和问卷继续（Sprint 5 组长指令按钮二）
-      // 必须调用后端 Input Transition（discard_document）切换为无资料模式，不是前端隐藏卡片
-      if (this.discarding) return
-      this.discarding = true
-      try {
-        const session = await apiV3.discardDocument()
-        apiV3.rememberSession(session)
-        uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
-      } catch (e) {
-        uni.showToast({ title: e.message || "切换失败，请重试", icon: "none" })
-      } finally {
-        this.discarding = false
-      }
+      // 全部识别成功 → 资料摘要确认页
+      this.state = "uploaded"
+      setTimeout(() => {
+        uni.redirectTo({ url: "/pages/v3-summary/v3-summary" })
+      }, 600)
     },
   },
 }
@@ -99,63 +97,55 @@ export default {
     <view class="header">
       <text class="step-tag">有资料流程 · 第 1 步</text>
       <text class="page-title">上传就诊资料</text>
-      <text class="page-subtitle">可以上传近期病历、检查报告或相关就诊记录。</text>
+      <text class="page-subtitle">可上传 1~3 张近期病历、检查报告或相关就诊记录。</text>
     </view>
 
-    <!-- 待上传 -->
-    <view v-if="state === 'idle'" class="upload-card" @click="chooseFile">
+    <!-- 空态：点击添加第一张 -->
+    <view v-if="files.length === 0 && state === 'pick'" class="upload-card" @click="chooseFiles">
       <view class="upload-icon"><text class="upload-plus">+</text></view>
       <text class="upload-title">点击上传文件</text>
-      <text class="upload-hint">支持图片、PDF · 仅用于本次评估</text>
+      <text class="upload-hint">最多 3 张 · 仅用于本次评估</text>
     </view>
 
-    <!-- OCR 处理中：不进入摘要确认（Amendment §3.1） -->
-    <view v-if="state === 'processing'" class="status-card">
+    <!-- 文件缩略图网格 -->
+    <view v-if="files.length > 0 && state === 'pick'" class="file-grid">
+      <view v-for="(f, idx) in files" :key="idx" class="file-tile">
+        <image class="file-thumb" :src="f.path" mode="aspectFill" />
+        <view class="file-remove" @click="removeFile(idx)"><text class="file-remove-text">×</text></view>
+        <view class="file-name">
+          <text class="file-name-text">{{ f.name }}</text>
+        </view>
+      </view>
+      <view v-if="canAdd" class="file-tile file-add" @click="chooseFiles">
+        <text class="file-add-plus">+</text>
+        <text class="file-add-text">添加</text>
+      </view>
+    </view>
+
+    <!-- 上传中 -->
+    <view v-if="state === 'uploading'" class="status-card">
       <view class="status-ring"></view>
       <text class="status-label">正在识别资料</text>
-      <text class="status-msg">通常需要几秒钟。</text>
+      <text class="status-msg">通常需要几秒钟，请稍候。</text>
     </view>
 
-    <!-- 识别成功：短暂提示后进入摘要确认 -->
-    <view v-if="state === 'ready'" class="status-card">
+    <!-- 全部识别成功：短暂提示后进入摘要确认 -->
+    <view v-if="state === 'uploaded'" class="status-card">
       <text class="status-done-icon">✓</text>
       <text class="status-label">资料识别完成</text>
       <text class="status-msg">正在为你整理资料摘要…</text>
     </view>
 
-    <!-- OCR 失败页：文案严格按 Amendment §3.1 + Sprint 5 组长指令按钮二 -->
-    <view v-if="state === 'failed'" class="fail-card">
-      <view class="fail-icon"><text class="fail-icon-text">!</text></view>
-      <text class="fail-title">资料暂未识别成功</text>
-      <text class="fail-desc">我们暂时无法从这份资料中提取有效内容。你可以重新上传清晰的图片或PDF，也可以跳过本次资料，改用最近情况描述和10道状态问卷继续评估。</text>
-
-      <view class="fail-actions">
-        <view class="btn-primary" @click="retry">
-          <text class="btn-primary-text">重新上传资料</text>
-        </view>
-        <view class="btn-secondary" @click="switchToQuestionnaire">
-          <text class="btn-secondary-text">{{ discarding ? "正在切换…" : "暂不使用资料，通过描述和问卷继续" }}</text>
-        </view>
-        <text class="fail-note">自由描述可以跳过，10道状态问卷需要完成。</text>
+    <!-- 开始识别按钮（仅选图阶段展示） -->
+    <view v-if="state === 'pick'" class="action-area">
+      <view
+        class="btn-start"
+        :class="{ 'btn-start-disabled': files.length === 0 }"
+        @click="startUpload"
+      >
+        <text class="btn-start-text">{{ files.length > 0 ? `识别并继续（${files.length} 张）` : "开始识别" }}</text>
       </view>
-    </view>
-
-    <!-- 网络/服务错误：展示具体错误与重试，不冒充 OCR 失败固定文案 -->
-    <view v-if="state === 'network_error'" class="fail-card">
-      <view class="fail-icon"><text class="fail-icon-text">!</text></view>
-      <text class="fail-title">资料暂时没有上传成功</text>
-      <text class="fail-desc">{{ error || "网络或服务暂时不可用，请稍后重试。" }}</text>
-
-      <view class="fail-actions">
-        <view class="btn-primary" @click="retryFromNetworkError">
-          <text class="btn-primary-text">重新上传资料</text>
-        </view>
-        <!-- P0-2 前端桥接：资料无法关联会话等场景下，用户仍可走描述+问卷路径，
-             不会被卡死在重试；归属问题的根治需后端 V3 owner-aware 上传接口 -->
-        <view class="btn-secondary" @click="switchToQuestionnaire">
-          <text class="btn-secondary-text">{{ discarding ? "正在切换…" : "暂不使用资料，通过描述和问卷继续" }}</text>
-        </view>
-      </view>
+      <text v-if="files.length > 0 && canAdd" class="action-hint">还可再添加 {{ 3 - files.length }} 张</text>
     </view>
 
     <view class="privacy-note">
@@ -216,6 +206,69 @@ export default {
 .upload-plus { font-size: 60rpx; color: #4a6b5c; }
 .upload-title { font-size: 32rpx; color: #2f3d35; font-weight: 500; margin-bottom: 12rpx; }
 .upload-hint { font-size: 24rpx; color: #9c9585; }
+
+/* 缩略图网格 */
+.file-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+}
+.file-tile {
+  position: relative;
+  width: 200rpx;
+  height: 240rpx;
+  border-radius: 20rpx;
+  overflow: hidden;
+  background: #fffefa;
+  border: 2rpx solid #e8e2d4;
+}
+.file-thumb {
+  width: 100%;
+  height: 172rpx;
+  display: block;
+}
+.file-remove {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: rgba(44, 42, 40, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.file-remove-text { color: #fff; font-size: 32rpx; line-height: 1; }
+.file-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8rpx 12rpx;
+  background: rgba(255, 254, 250, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.file-name-text {
+  font-size: 20rpx;
+  color: #6b6862;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-add {
+  border: 2rpx dashed #c9c3b2;
+  background: #fcfaf6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.file-add-plus { font-size: 56rpx; color: #9c9585; line-height: 1; margin-bottom: 8rpx; }
+.file-add-text { font-size: 24rpx; color: #9c9585; }
+
 .status-card {
   background: #fffefa;
   border: 2rpx solid #e8e2d4;
@@ -242,62 +295,29 @@ export default {
 }
 .status-label { font-size: 32rpx; color: #2f3d35; font-weight: 500; margin-bottom: 12rpx; }
 .status-msg { font-size: 26rpx; color: #9c9585; }
-.fail-card {
-  background: #fffefa;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 24rpx;
-  padding: 64rpx 40rpx;
+
+.action-area {
+  margin-top: 48rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-.fail-icon {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 50%;
-  background: #f6e9e7;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 28rpx;
-}
-.fail-icon-text { font-size: 52rpx; color: #b0574f; font-weight: 600; }
-.fail-title {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #2f3d35;
-  margin-bottom: 20rpx;
-}
-.fail-desc {
-  font-size: 26rpx;
-  color: #7a8078;
-  line-height: 1.7;
-  margin-bottom: 48rpx;
-  text-align: center;
-}
-.fail-actions { width: 100%; }
-.btn-primary {
+.btn-start {
+  width: 100%;
   background: #4a6b5c;
   border-radius: 48rpx;
-  padding: 26rpx 0;
+  padding: 28rpx 0;
   display: flex;
   justify-content: center;
-  margin-bottom: 24rpx;
+  box-shadow: 0 8rpx 24rpx rgba(74, 107, 92, 0.2);
 }
-.btn-primary-text { color: #fff; font-size: 30rpx; }
-.btn-secondary {
-  background: #fffefa;
-  border: 2rpx solid #4a6b5c;
-  border-radius: 48rpx;
-  padding: 24rpx 0;
-  display: flex;
-  justify-content: center;
+.btn-start-disabled {
+  opacity: 0.5;
+  box-shadow: none;
 }
-.btn-secondary-text { color: #4a6b5c; font-size: 30rpx; }
-.fail-note {
-  display: block;
-  text-align: center;
-  margin-top: 28rpx;
+.btn-start-text { color: #fff; font-size: 32rpx; font-weight: 600; letter-spacing: 2rpx; }
+.action-hint {
+  margin-top: 20rpx;
   font-size: 24rpx;
   color: #9c9585;
 }
