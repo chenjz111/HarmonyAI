@@ -53,7 +53,8 @@ export default {
           decision: "confirm",
           changes: [],
         })
-        uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
+        // V3.1：摘要确认后进入选填补充页（补充近况）
+        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (e) {
         uni.showToast({ title: e.message || "确认失败，请重试", icon: "none" })
       } finally {
@@ -86,8 +87,8 @@ export default {
           edited_summary_text: text,
           reprocess_requested: true,
         })
-        // 保存成功直接进入最近情况，不再增加二次确认（Amendment §3.3）
-        uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
+        // 保存成功直接进入补充近况页，不再增加二次确认（Amendment §3.3）
+        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (e) {
         // 失败保留编辑输入、停留本页，旧摘要不变
         if (e.code === "FACT_EXTRACTION_UNAVAILABLE") {
@@ -120,7 +121,8 @@ export default {
       try {
         const session = await apiV3.discardDocument()
         apiV3.rememberSession(session)
-        uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
+        // 丢弃资料后走无资料路径：先到选填补充近况页
+        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (e) {
         uni.showToast({ title: e.message || "切换失败，请重试", icon: "none" })
       } finally {

@@ -43,7 +43,8 @@ export default {
       try {
         const session = await apiV3.discardDocument()
         apiV3.rememberSession(session)
-        uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
+        // V3.1：丢弃资料后走无资料路径 → 选填补充近况页
+        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (e) {
         uni.showToast({ title: e.message || "切换失败，请重试", icon: "none" })
       } finally {

@@ -37,7 +37,7 @@ export default {
           description: "通过近期资料或状态问卷，生成专属于你的音乐调养建议。",
           choices: [
             { id: "with_document", label: "我有近期就诊资料", desc: "可上传近期病历、检查报告或相关就诊记录，让建议更贴合你的情况。", route: "/pages/v3-material/v3-material" },
-            { id: "without_document", label: "我没有近期就诊资料", desc: "只需完成一份简短的近期状态问卷，即可开始评估。", route: "/pages/v3-narrative/v3-narrative" },
+            { id: "without_document", label: "我没有近期就诊资料", desc: "可以先补充一些近况，也可以直接完成近期状态问卷。", route: "/pages/v3-supplement/v3-supplement" },
           ],
         }
       } catch (e) {
