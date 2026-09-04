@@ -1,12 +1,12 @@
 <script>
 /**
- * V3 入口页（双入口选择）
+ * V3 首页（双入口选择）
  * 合同依据：frontend-read-model-contract-v3.md §3.1 EntryReadModel
  *          harmonyai-v3-owner-flow-amendment-001.md §2（最终用户流程）
+ *          Issue #100：Welcome 退出主流程，entry 直接作为首页。
  *
  * 文案严格使用 Owner Amendment 批准版本：
  *  - "我有近期就诊资料" / "我没有近期就诊资料"
- *  - 不使用旧的入口文案表述
  */
 import { apiV3 } from "../../common/api-v3.js"
 
@@ -33,11 +33,11 @@ export default {
         this.entry = {
           page: "entry",
           session_id: session.session_id,
-          title: "开始了解你最近的状态",
-          description: "请选择是否有近期就诊资料。没有资料也可以通过状态问卷开始。",
+          title: "今天感觉如何？",
+          description: "通过近期资料或状态问卷，生成专属于你的音乐调养建议。",
           choices: [
-            { id: "with_document", label: "我有近期就诊资料", desc: "可以上传近期病历、检查报告或相关就诊记录。", route: "/pages/v3-material/v3-material" },
-            { id: "without_document", label: "我没有近期就诊资料", desc: "可以通过最近情况和10道状态问卷继续评估。", route: "/pages/v3-narrative/v3-narrative" },
+            { id: "with_document", label: "我有近期就诊资料", desc: "可上传近期病历、检查报告或相关就诊记录，让建议更贴合你的情况。", route: "/pages/v3-material/v3-material" },
+            { id: "without_document", label: "我没有近期就诊资料", desc: "只需完成一份简短的近期状态问卷，即可开始评估。", route: "/pages/v3-narrative/v3-narrative" },
           ],
         }
       } catch (e) {
@@ -65,9 +65,17 @@ export default {
 
 <template>
   <view class="container">
-    <view class="header">
-      <text class="page-title">{{ entry ? entry.title : "开始了解你最近的状态" }}</text>
-      <text class="page-subtitle">请选择是否有近期就诊资料。没有资料也可以通过状态问卷开始。</text>
+    <!-- 品牌头部（首页定位：Welcome 已退出主流程） -->
+    <view class="hero">
+      <view class="brand-row">
+        <view class="brand-logo"><text class="brand-logo-text">和</text></view>
+        <view class="brand-meta">
+          <text class="brand-name">HarmonyAI</text>
+          <text class="brand-tagline">中医五音 · 音乐调养</text>
+        </view>
+      </view>
+      <text class="hero-title">{{ entry ? entry.title : "今天感觉如何？" }}</text>
+      <text class="hero-desc">{{ entry ? entry.description : "生成专属于你的音乐调养建议。" }}</text>
     </view>
 
     <view v-if="loading" class="loading-wrap">
@@ -81,6 +89,11 @@ export default {
     </view>
 
     <view v-else class="choices">
+      <view class="section-label">
+        <view class="label-line"></view>
+        <text class="label-text">选择一种方式开始</text>
+        <view class="label-line"></view>
+      </view>
       <view
         v-for="c in entry.choices"
         :key="c.id"
@@ -108,26 +121,70 @@ export default {
 <style>
 .container {
   min-height: 100vh;
-  background: #f7f3eb;
-  padding: 80rpx 48rpx 60rpx;
+  background: linear-gradient(180deg, #f0eadc 0%, #f7f3eb 320rpx, #f7f3eb 100%);
+  padding: 60rpx 48rpx 60rpx;
   box-sizing: border-box;
 }
-.header {
-  margin-bottom: 64rpx;
+
+/* ===== 品牌头部 ===== */
+.hero {
+  margin-bottom: 48rpx;
 }
-.page-title {
-  display: block;
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-bottom: 48rpx;
+}
+.brand-logo {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4a6b5c 0%, #2f4a3d 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 24rpx rgba(74, 107, 92, 0.22);
+}
+.brand-logo-text {
   font-size: 44rpx;
+  font-weight: 700;
+  color: #f7f3eb;
+  font-family: 'Kaiti SC', 'STKaiti', 'Songti SC', serif;
+}
+.brand-meta {
+  display: flex;
+  flex-direction: column;
+}
+.brand-name {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #2c2a28;
+  letter-spacing: 0.14em;
+}
+.brand-tagline {
+  font-size: 22rpx;
+  color: #6b6862;
+  letter-spacing: 0.34em;
+  padding-left: 0.34em;
+  margin-top: 4rpx;
+}
+.hero-title {
+  display: block;
+  font-size: 46rpx;
   font-weight: 600;
   color: #2f3d35;
-  margin-bottom: 20rpx;
+  margin-bottom: 16rpx;
+  letter-spacing: 0.02em;
 }
-.page-subtitle {
+.hero-desc {
   display: block;
-  font-size: 28rpx;
+  font-size: 27rpx;
   color: #7a8078;
-  line-height: 1.6;
+  line-height: 1.65;
+  max-width: 560rpx;
 }
+
 .loading-wrap {
   display: flex;
   flex-direction: column;
@@ -170,10 +227,27 @@ export default {
   color: #fff;
   font-size: 28rpx;
 }
+
+/* ===== 双入口卡片 ===== */
 .choices {
   display: flex;
   flex-direction: column;
-  gap: 32rpx;
+}
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 28rpx;
+}
+.label-line {
+  flex: 1;
+  height: 1rpx;
+  background: linear-gradient(90deg, transparent, #d9d0bd, transparent);
+}
+.label-text {
+  font-size: 24rpx;
+  color: #9c9585;
+  letter-spacing: 0.08em;
 }
 .choice-card {
   display: flex;
@@ -182,6 +256,13 @@ export default {
   border: 2rpx solid #e8e2d4;
   border-radius: 24rpx;
   padding: 40rpx 32rpx;
+  margin-bottom: 28rpx;
+  box-shadow: 0 6rpx 20rpx rgba(74, 107, 92, 0.06);
+  transition: all 0.2s;
+}
+.choice-card:active {
+  transform: scale(0.99);
+  border-color: #c8d2cb;
 }
 .choice-disabled {
   opacity: 0.6;
@@ -226,7 +307,7 @@ export default {
   color: #c9c3b2;
 }
 .foot-note {
-  margin-top: 72rpx;
+  margin-top: 48rpx;
   text-align: center;
 }
 .foot-note-text {
