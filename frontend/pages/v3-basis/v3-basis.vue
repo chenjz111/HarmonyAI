@@ -1,22 +1,23 @@
 <script>
 /**
- * V3 音乐生成依据 + 生成进度页
+ * V3.1 五音调适解析页（Issue #100：升级自"音乐生成依据"，删除生成完成中间步骤）
  * 合同依据：frontend-read-model-contract-v3.md §10 / §11
  *          harmonyai-v3-owner-flow-amendment-001.md §2
  *
- * - 展示辨证倾向、依据摘要、音参数（PUBLIC 提示，不显示分数/规则ID）
+ * - 展示五音倾向、解析依据与调适参数（PUBLIC 提示，不显示分数/规则ID）
  * - 生成状态：queued | running | succeeded | matched_fallback | failed | cancelled
  * - Provider 未报告真实进度时显示不定进度，不伪造百分比
- * - 不显示候选分数、规则 ID 或任何目标类字段（该概念已在 V3 删除，Amendment §5）
- * - real 模式下依据/生成依赖后端辨证能力（尚未交付）：
- *   遇 AGENT_PENDING 进入明确等待状态，不伪造依据或生成结果
+ * - 生成成功后直接切到播放器（无独立完成卡），失败/取消可重试
+ * - 不显示候选分数、规则 ID 或任何目标类字段（该概念已在 V3 删除）
+ * - real 模式下解析/生成依赖后端辨证能力（尚未交付）：
+ *   遇 AGENT_PENDING 进入明确等待状态，不伪造解析或生成结果
  */
 import { apiV3 } from "../../common/api-v3.js"
 
 export default {
   data() {
     return {
-      phase: "loading", // loading | basis | generating | done | cancelled | pending
+      phase: "loading", // loading | basis | generating | cancelled | pending
       error: "",
       basis: null,
       task: null,
@@ -90,8 +91,9 @@ export default {
         try {
           this.task = await apiV3.pollMusicGeneration()
           if (this.task.status === "succeeded" || this.task.status === "matched_fallback") {
+            // V3.1：删除"生成完成"中间步骤，成功后直接进入播放器
             this.stopPoll()
-            setTimeout(() => { this.phase = "done" }, 800)
+            setTimeout(() => { this.goPlayer() }, 600)
           } else if (this.task.status === "failed" || this.task.status === "cancelled") {
             this.stopPoll()
             this.phase = "cancelled"
@@ -136,8 +138,9 @@ export default {
 <template>
   <view class="container">
     <view class="header">
-      <text class="step-tag">音乐生成</text>
-      <text class="page-title">本次音乐生成依据</text>
+      <text class="step-tag">五音调适</text>
+      <text class="page-title">五音调适解析</text>
+      <text class="page-subtitle">根据你的近期状态总结，生成本次调适的解析与方案。</text>
     </view>
 
     <!-- 加载中 -->
@@ -159,11 +162,11 @@ export default {
       <view class="btn-retry" @click="load"><text class="btn-retry-text">重新加载</text></view>
     </view>
 
-    <!-- 依据页（Read Model §10） -->
+    <!-- 解析页（Read Model §10） -->
     <view v-else-if="phase === 'basis' || phase === 'generating' || phase === 'cancelled'" class="basis-card">
       <!-- hybrid 演示标识 -->
       <view v-if="simulated" class="demo-banner">
-        <text class="demo-banner-text">演示模式：以下依据与生成过程为模拟数据</text>
+        <text class="demo-banner-text">演示模式：以下解析与生成过程为模拟数据</text>
       </view>
 
       <view class="tendency-box">
@@ -219,16 +222,6 @@ export default {
         </view>
       </view>
     </view>
-
-    <!-- 生成完成 -->
-    <view v-else-if="phase === 'done'" class="done-card">
-      <view class="done-icon"><text class="done-icon-text">♪</text></view>
-      <text class="done-title">音乐已生成完成</text>
-      <text class="done-sub">已根据本次评估结果为你定制</text>
-      <view class="btn-primary" @click="goPlayer">
-        <text class="btn-primary-text">开始收听</text>
-      </view>
-    </view>
   </view>
 </template>
 
@@ -250,7 +243,8 @@ export default {
   margin-bottom: 18rpx;
 }
 .page-title { display: block; font-size: 40rpx; font-weight: 600; color: #2f3d35; }
-.basis-card, .done-card {
+.page-subtitle { display: block; font-size: 26rpx; color: #7a8078; line-height: 1.6; margin-top: 12rpx; }
+.basis-card {
   background: #fffefa;
   border: 2rpx solid #e8e2d4;
   border-radius: 24rpx;
@@ -327,20 +321,6 @@ export default {
   margin-bottom: 24rpx;
 }
 .btn-primary-text { color: #fff; font-size: 30rpx; }
-.done-card { display: flex; flex-direction: column; align-items: center; padding: 80rpx 40rpx; }
-.done-icon {
-  width: 130rpx;
-  height: 130rpx;
-  border-radius: 50%;
-  background: #eef0ea;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 32rpx;
-}
-.done-icon-text { font-size: 60rpx; color: #4a6b5c; }
-.done-title { font-size: 36rpx; font-weight: 600; color: #2f3d35; margin-bottom: 14rpx; }
-.done-sub { font-size: 26rpx; color: #9c9585; margin-bottom: 56rpx; }
 .loading-wrap { display: flex; flex-direction: column; align-items: center; padding: 120rpx 0; }
 .loading-ring {
   width: 72rpx; height: 72rpx;

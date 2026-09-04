@@ -1,14 +1,15 @@
 <script>
 /**
- * V3 反馈页（feedback_v3.0）
+ * V3.1 反馈页（feedback_v3.0，Issue #100：由必填改为选填）
  * 合同依据：backend/app/schemas/v3/feedback.py（FeedbackV3 冻结契约）
  *          frontend-read-model-contract-v3.md §13 Feedback
  *
- * - 状态变化为必填的大尺寸 2×2 卡片（much_better / slightly_better / no_change / worse）
+ * - 状态变化为可选的大尺寸 2×2 卡片（much_better / slightly_better / no_change / worse）
  * - 互斥调整项由前端保证：节奏更慢/节奏更快互斥，缩短时长/延长时长互斥
  *   （后端同样校验，冲突时返回 422）
  * - continue_use 单选：yes / maybe / no
  * - liked_features 多选；comment 选填（1-500 字）
+ * - 全部可选填，可一条不填直接提交，也可跳过反馈返回首页
  * - 选中态统一为深绿色底 + 白字 + ✓
  */
 import { apiV3 } from "../../common/api-v3.js"
@@ -22,7 +23,7 @@ const MUTEX_GROUPS = [
 export default {
   data() {
     return {
-      changeLabel: "", // 必填：much_better | slightly_better | no_change | worse
+      changeLabel: "", // 选填：much_better | slightly_better | no_change | worse
       changeOptions: [
         { value: "much_better", label: "明显好转" },
         { value: "slightly_better", label: "略有好转" },
@@ -61,7 +62,7 @@ export default {
   },
   computed: {
     canSubmit() {
-      return !!this.changeLabel && !this.submitting
+      return !this.submitting
     },
   },
   methods: {
@@ -101,7 +102,7 @@ export default {
       this.submitError = ""
       try {
         await apiV3.submitFeedback({
-          post_state: { change_label: this.changeLabel },
+          post_state: this.changeLabel ? { change_label: this.changeLabel } : null,
           continue_use: this.continueUse || undefined,
           favorite: null,
           liked_features: this.likedFeatures.slice(),
@@ -126,9 +127,9 @@ export default {
 <template>
   <view class="container">
     <view class="header">
-      <text class="step-tag">最后一步 · 反馈</text>
+      <text class="step-tag">反馈 · 选填</text>
       <text class="page-title">听完后，感觉怎么样？</text>
-      <text class="page-subtitle">你的反馈会帮助我们调整后续的音乐，让它更适合你。</text>
+      <text class="page-subtitle">可以告诉我们你的感受，也可以直接结束。反馈为选填。</text>
     </view>
 
     <!-- 提交成功 -->
@@ -142,12 +143,9 @@ export default {
     </view>
 
     <view v-else>
-      <!-- 1. 状态变化（必填，2×2 大卡片） -->
+      <!-- 1. 状态变化（选填，2×2 大卡片） -->
       <view class="section-card">
-        <view class="section-head">
-          <text class="section-title">听完这段音乐，你的状态变化是？</text>
-          <text class="section-required">必填</text>
-        </view>
+        <text class="section-title">听完这段音乐，你的状态变化是？</text>
         <view class="change-grid">
           <view
             v-for="opt in changeOptions"
@@ -229,6 +227,9 @@ export default {
 
       <view class="btn-primary" :class="{ 'btn-disabled': !canSubmit }" @click="submit">
         <text class="btn-primary-text">{{ submitting ? "正在提交…" : "提交反馈" }}</text>
+      </view>
+      <view class="btn-link" @click="goHome">
+        <text class="btn-link-text">暂不反馈，返回首页</text>
       </view>
     </view>
   </view>
@@ -360,6 +361,8 @@ export default {
 }
 .btn-primary-text { color: #fff; font-size: 30rpx; }
 .btn-disabled { opacity: 0.5; }
+.btn-link { display: flex; justify-content: center; padding: 24rpx 0 8rpx; }
+.btn-link-text { color: #8a9188; font-size: 26rpx; text-decoration: underline; }
 .error-row { display: flex; justify-content: center; margin-bottom: 20rpx; }
 .error-text { font-size: 26rpx; color: #b0574f; }
 /* 提交成功 */

@@ -134,6 +134,11 @@ export default {
       // 本页是 tabBar 页面，用 navigateTo 跳转非 tab 页
       uni.navigateTo({ url: "/pages/v3-feedback/v3-feedback" })
     },
+    // V3.1：反馈为选填，可从播放器直接结束本次聆听回到首页
+    exitSession() {
+      this.stopAudio()
+      uni.reLaunch({ url: "/pages/entry/entry" })
+    },
   },
 }
 </script>
@@ -191,7 +196,10 @@ export default {
 
       <view class="actions">
         <view class="btn-primary" @click="goFeedback">
-          <text class="btn-primary-text">完成收听，填写反馈</text>
+          <text class="btn-primary-text">反馈本次体验</text>
+        </view>
+        <view class="btn-ghost" @click="exitSession">
+          <text class="btn-ghost-text">结束本次聆听</text>
         </view>
       </view>
     </view>
@@ -287,8 +295,17 @@ export default {
   padding: 26rpx 0;
   display: flex;
   justify-content: center;
+  margin-bottom: 20rpx;
 }
 .btn-primary-text { color: #fff; font-size: 30rpx; }
+.btn-ghost {
+  border: 2rpx solid #c9c3b2;
+  border-radius: 48rpx;
+  padding: 22rpx 0;
+  display: flex;
+  justify-content: center;
+}
+.btn-ghost-text { color: #7a8078; font-size: 28rpx; }
 .loading-wrap { display: flex; flex-direction: column; align-items: center; padding: 120rpx 0; }
 .loading-ring {
   width: 72rpx; height: 72rpx;

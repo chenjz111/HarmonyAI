@@ -394,6 +394,20 @@ test("api-v3 mock: healing intent is stored without fabricating defaults", async
   assert.equal(skipped.saved_locally, false)
 })
 
+test("V3.1: basis page is 五音调适解析 without a Generation Complete stopover", () => {
+  const basis = readPage("v3-basis/v3-basis.vue")
+  // Issue #100：依据页升级为"五音调适解析"，随近期状态总结生成解析与方案
+  assert.ok(basis.includes("五音调适解析"), "Issue #100: page title must be 五音调适解析")
+  assert.ok(basis.includes("生成本次调适的解析与方案"), "subtitle must frame generation output")
+  // 生成成功后直接进入播放器，删除独立"生成完成"中间步骤
+  assert.ok(basis.includes("goPlayer()"), "must still have the goPlayer method")
+  assert.ok(basis.includes("switchTab"), "must keep switchTab to open tab page v3-player")
+  const template = (basis.match(/<template>[\s\S]*?<\/template>/) || [""])[0]
+  assert.ok(!template.includes("生成完成"), "template must not show a Generation Complete stopover")
+  assert.ok(!template.includes("done-card") && !template.includes("done-icon"), "done card markup removed")
+  assert.ok(!template.includes('phase === "done"') && !basis.includes("phase === 'done'"), "done phase removed")
+})
+
 test("player only renders backend-provided asset, wires favorites and V3 feedback", () => {
   const player = readPage("v3-player/v3-player.vue")
   assert.ok(player.includes("stream_url"), "player must use backend stream_url")
@@ -405,11 +419,24 @@ test("player only renders backend-provided asset, wires favorites and V3 feedbac
   assert.ok(!player.includes("/pages/feedback-v2/feedback-v2"), "V3 flow must not reuse V2 feedback page")
 })
 
+test("V3.1: player footer offers feedback vs end-session as an explicit choice", () => {
+  const player = readPage("v3-player/v3-player.vue")
+  // Issue #100：底部二选一 —— 反馈本次体验 / 结束本次聆听
+  assert.ok(player.includes("反馈本次体验"), "primary footer action must label feedback")
+  assert.ok(player.includes("结束本次聆听"), "secondary footer action must offer ending the session")
+  assert.ok(player.includes("exitSession"), "end-session must be implemented in methods")
+  // 结束本次聆听不留在页内，而是退出主流程回到入口
+  assert.ok(player.includes('url: "/pages/entry/entry"'), "exit must relaunch back to entry home")
+  assert.ok(player.includes("reLaunch"), "exit must use reLaunch (tab page escape)")
+  assert.ok(player.includes("stopAudio"), "exit must stop playback before leaving")
+})
+
 // ===== V3 反馈页（feedback_v3.0） =====
 
-test("feedback page: required 2x2 change cards with deep-green selected state", () => {
+test("feedback page: optional 2x2 change cards with deep-green selected state (V3.1)", () => {
   const feedback = readPage("v3-feedback/v3-feedback.vue")
-  // 2×2 必填状态变化卡片：四个 change label
+  const template = (feedback.match(/<template>[\s\S]*?<\/template>/) || [""])[0]
+  // 2×2 状态变化卡片：四个 change label
   for (const label of ["much_better", "slightly_better", "no_change", "worse"]) {
     assert.ok(feedback.includes(label), `feedback must include change label: ${label}`)
   }
@@ -418,9 +445,12 @@ test("feedback page: required 2x2 change cards with deep-green selected state", 
   assert.ok(feedback.includes("change-card-active"), "change cards need active state")
   assert.ok(feedback.includes("change-label-active"), "active label must turn white")
   assert.ok(feedback.includes("change-check"), "active card must show check mark")
-  // 必填标识
-  assert.ok(feedback.includes("必填"), "change selection must be marked required")
-  assert.ok(feedback.includes("post_state"), "must submit post_state.change_label")
+  // Issue #100：反馈改为选填，允许一条不填直接提交或跳过（校验用户可见文案）
+  assert.ok(feedback.includes("选填"), "feedback must be marked optional")
+  assert.ok(template.includes("暂不反馈，返回首页"), "must offer skipping feedback to home")
+  assert.ok(!template.includes("必填"), "change selection must no longer be required (user copy)")
+  assert.ok(feedback.includes("post_state"), "must submit post_state")
+  assert.ok(feedback.includes("change_label"), "must include change_label field")
 })
 
 test("feedback page: mutex adjustment groups match backend contract", () => {
