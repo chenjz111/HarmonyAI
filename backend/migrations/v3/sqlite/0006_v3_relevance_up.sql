@@ -2,7 +2,7 @@ PRAGMA foreign_keys=OFF;
 BEGIN IMMEDIATE;
 
 -- ============================================================
--- 0005_v3_relevance — document relevance assessment (SQLite)
+-- 0006_v3_relevance — document relevance assessment (SQLite)
 -- Mirrors Issue #99 ruling: outcome enum + per-source audit.
 -- ============================================================
 

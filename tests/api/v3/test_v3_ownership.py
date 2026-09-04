@@ -112,3 +112,33 @@ def test_entry_choice_id_and_route_are_frozen_pairs():
                 "next_route": "/v3/narrative",
             }
         )
+
+
+def test_owner_flow_entry_skips_narrative_and_goes_to_questionnaire():
+    headers = _guest_headers(idempotency_key="owner-entry-questionnaire-1")
+    response = client.post(
+        "/api/v3/sessions",
+        headers=headers,
+        json={"flow_contract_version": "v3-owner-flow-1"},
+    )
+
+    assert response.status_code == 201
+    assert _v3_data(response)["description"] == (
+        "你可以上传近期就诊资料，或直接通过近期状态问卷开始。"
+    )
+    choices = {choice["id"]: choice["next_route"] for choice in _v3_data(response)["choices"]}
+    assert choices["with_document"] == "/v3/material"
+    assert choices["without_document"] == "/v3/questionnaire"
+
+
+def test_legacy_v3_entry_keeps_narrative_compatibility():
+    response = client.post(
+        "/api/v3/sessions",
+        headers=_guest_headers(idempotency_key="legacy-entry-narrative-1"),
+        json={},
+    )
+
+    assert response.status_code == 201
+    assert _v3_data(response)["description"] == "你可以从近期就诊资料或最近发生的事情开始。"
+    choices = {choice["id"]: choice["next_route"] for choice in _v3_data(response)["choices"]}
+    assert choices["without_document"] == "/v3/narrative"

@@ -2,7 +2,7 @@ PRAGMA foreign_keys=OFF;
 BEGIN IMMEDIATE;
 
 -- ============================================================
--- 0004_v3_multidoc — multi-document sets (SQLite)
+-- 0005_v3_multidoc — multi-document sets (SQLite)
 -- Mirrors Issue #99 ruling: 1-3 ordered documents per set.
 -- The sessions.active_document_set_id column is added idempotently by
 -- sprint4_migrations; this migration only creates the two new tables.

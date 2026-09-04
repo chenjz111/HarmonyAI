@@ -1,5 +1,5 @@
 -- ============================================================
--- 0004_v3_multidoc — multi-document sets (MySQL 8)
+-- 0005_v3_multidoc — multi-document sets (MySQL 8)
 -- Mirrors Issue #99 ruling: 1-3 ordered documents per set.
 -- sessions.active_document_set_id is added idempotently by
 -- sprint4_migrations; this migration only creates the two new tables.

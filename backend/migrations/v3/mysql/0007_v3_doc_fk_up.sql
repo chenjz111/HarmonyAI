@@ -1,4 +1,4 @@
--- 0006_v3_doc_fk — add the real FK document_set_items.document_id ->
+-- 0007_v3_doc_fk — add the real FK document_set_items.document_id ->
 -- documents.document_id.
 
 ALTER TABLE document_set_items

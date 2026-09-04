@@ -11,15 +11,15 @@ from .common import NonEmptyString, V3BaseModel
 class EntryChoice(V3BaseModel):
     id: Literal["with_document", "without_document"]
     label: NonEmptyString
-    next_route: Literal["/v3/material", "/v3/narrative"]
+    next_route: Literal["/v3/material", "/v3/narrative", "/v3/questionnaire"]
 
     @model_validator(mode="after")
     def id_and_route_must_match(self) -> "EntryChoice":
         expected = {
-            "with_document": "/v3/material",
-            "without_document": "/v3/narrative",
+            "with_document": {"/v3/material"},
+            "without_document": {"/v3/narrative", "/v3/questionnaire"},
         }
-        if self.next_route != expected[self.id]:
+        if self.next_route not in expected[self.id]:
             raise ValueError("entry choice id and route do not match")
         return self
 

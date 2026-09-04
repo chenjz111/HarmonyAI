@@ -14,10 +14,10 @@ V3_MIGRATION_VERSIONS = [
     "0001_v3_foundation",
     "0002_v3_business",
     "0003_v3_owner_flow",
-    "0004_v3_multidoc",
-    "0005_v3_relevance",
-    "0006_v3_doc_fk",
-    "0007_v3_prescription_mode",
+    "0005_v3_multidoc",
+    "0006_v3_relevance",
+    "0007_v3_doc_fk",
+    "0008_v3_prescription_mode",
 ]
 
 _REQUIRED_TABLES = {
@@ -59,10 +59,10 @@ _REQUIRED_TABLES = {
     "favorites",
     # 0003 owner flow amendment (session activity audit)
     "session_input_revisions",
-    # 0004 multi-document (document set)
+    # 0005 multi-document (document set)
     "document_sets",
     "document_set_items",
-    # 0005 document relevance
+    # 0006 document relevance
     "document_relevances",
 }
 

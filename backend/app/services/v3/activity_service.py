@@ -396,8 +396,8 @@ def validate_assessment_input_readiness(
     with_document → a confirmed, session-owned case summary must be active;
     without_document → a complete, session-owned, approved-schema 10-question
     submission must be active. Legacy sessions are not subject to these rules.
-    This is the backend gate the future Agent 1 must call — it must not rely
-    on the frontend hiding buttons.
+    This is the backend gate Agent 1 calls before consuming assessment inputs;
+    it must not rely on the frontend hiding buttons.
     """
     if session_row.flow_contract_version != FLOW_CONTRACT_V3_OWNER:
         return

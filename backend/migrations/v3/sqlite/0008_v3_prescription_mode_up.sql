@@ -2,7 +2,7 @@ PRAGMA foreign_keys=OFF;
 PRAGMA legacy_alter_table=ON;
 BEGIN IMMEDIATE;
 
--- 0007_v3_prescription_mode — unify the prescription_mode CHECK with the
+-- 0008_v3_prescription_mode — unify the prescription_mode CHECK with the
 -- V3.1-approved four modes.
 
 ALTER TABLE prescription_v3 RENAME TO prescription_v3_old;
