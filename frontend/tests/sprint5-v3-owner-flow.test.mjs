@@ -422,6 +422,22 @@ test("questionnaire page renders frequency questions from the canonical manifest
   assert.ok(page.includes("answer_type"), "page must dispatch by answer_type")
 })
 
+test("V3.1: questionnaire is paginated 5 pages x 2 questions with step progress", () => {
+  const page = readPage("v3-questionnaire/v3-questionnaire.vue")
+  // Issue #100：10 题拆 5 页，每页 2 题
+  assert.ok(page.includes("PAGE_SIZE = 2"), "page must define PAGE_SIZE = 2")
+  assert.ok(page.includes("pageQuestions"), "page must derive the current 2-question slice")
+  assert.ok(page.includes("totalSteps"), "page must compute total steps (5)")
+  assert.ok(page.includes("pageAnswered"), "page must gate on both questions answered")
+  // 进度以页为单位 1/5 ~ 5/5
+  assert.ok(page.includes("第 {{ current + 1 }} / {{ totalSteps }} 页"), "progress must show step x / 5")
+  // 分页导航文案
+  assert.ok(page.includes("上一页"), "pagination must offer prev-page")
+  assert.ok(page.includes("下一页"), "pagination must offer next-page")
+  // 一次作答收集，仍提交全部 10 题（answers 对象贯穿所有页）
+  assert.ok(page.includes("submitQuestionnaire(this.answers)"), "submit must send the whole answer set once")
+})
+
 test("manifest matches the authoritative questionnaire structure", async () => {
   const { apiV3, FREQUENCY_OPTIONS } = await import("../common/api-v3.js")
   const schema = await apiV3.getQuestionnaireSchema()
