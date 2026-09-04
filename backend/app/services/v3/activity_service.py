@@ -466,13 +466,31 @@ def validate_assessment_input_readiness(
             raise AssessmentInputNotReady(
                 "DOCUMENT_SET_NOT_READY", "资料集版本尚未绑定。"
             )
-        # The confirmation bind advances input_revision once. Any later
-        # source transition must invalidate the old Understanding even if a
-        # stale active-understanding pointer is restored.
-        if session_row.input_revision not in {
-            run.input_revision,
-            (run.input_revision or 0) + 1,
-        }:
+        # Questionnaire submission also advances input_revision, but it does
+        # not invalidate the confirmed document Understanding. Inspect the
+        # immutable revision audit instead of inferring the meaning from a
+        # numeric version delta.
+        if (
+            session_row.input_revision is None
+            or run.input_revision is None
+            or session_row.input_revision < run.input_revision
+        ):
+            raise AssessmentInputNotReady(
+                "DOCUMENT_SET_NOT_ACTIVE", "资料集已被替换或丢弃。"
+            )
+        document_mutation = (
+            db.query(SessionInputRevision)
+            .filter(
+                SessionInputRevision.session_row_id == session_row.id,
+                SessionInputRevision.input_revision > run.input_revision,
+                SessionInputRevision.input_revision <= session_row.input_revision,
+                SessionInputRevision.action.in_(
+                    {"replace_document", "discard_document"}
+                ),
+            )
+            .first()
+        )
+        if document_mutation is not None:
             raise AssessmentInputNotReady(
                 "DOCUMENT_SET_NOT_ACTIVE", "资料集已被替换或丢弃。"
             )

@@ -292,6 +292,58 @@ def _seed_questionnaire(db, *, headers, session_id, answers):
     return submission.questionnaire_submission_id, manifest
 
 
+def _submit_questionnaire(headers, session_id, expected_input_revision):
+    manifest = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "knowledge"
+            / "v3"
+            / "questionnaire-v3.0.json"
+        ).read_text(encoding="utf-8")
+    )
+    answers = [
+        {"question_id": f"q{index:02d}", "answer_type": "frequency_0_4", "value": 0}
+        for index in range(1, 6)
+    ] + [
+        {
+            "question_id": f"q{index:02d}",
+            "answer_type": "multi_choice_evidence",
+            "value": ["none"],
+        }
+        for index in range(6, 11)
+    ]
+    response = client.post(
+        f"/api/v3/sessions/{session_id}/questionnaire",
+        headers={**headers, "Idempotency-Key": f"qsub-{uuid.uuid4().hex}"},
+        json={
+            "session_id": session_id,
+            "expected_input_revision": expected_input_revision,
+            "schema_id": manifest["schema_id"],
+            "schema_version": manifest["schema_version"],
+            "manifest_version": manifest["manifest_version"],
+            "content_checksum": manifest["content_checksum"],
+            "answers": answers,
+            "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": "2026-01-01T00:05:00Z",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return _v3_data(response)
+
+
+def _session_input_revision(db_session_factory, session_id):
+    db = db_session_factory()
+    try:
+        return (
+            db.query(SessionModel)
+            .filter(SessionModel.session_id == session_id)
+            .one()
+            .input_revision
+        )
+    finally:
+        db.close()
+
+
 def _aggregation_fact(claim_code, source_id, *, source_type="document", value=None):
     return FactEvidence(
         fact_evidence_id=f"fev_{uuid.uuid4().hex}",
@@ -682,6 +734,86 @@ def test_assessment_combines_understanding_and_questionnaire_evidence(
         for item in assessment["fact_evidence"]
     } == {"document", "questionnaire"}
     assert assessment["source_diversity"] == 2
+
+
+def test_confirmed_document_assessment_succeeds_without_questionnaire(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
+    db.close()
+    input_revision = _session_input_revision(db_session_factory, session_id)
+
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-no-q-{uuid.uuid4().hex}"},
+        json=_assessment_body(session_id, understanding_id, input_revision),
+    )
+
+    assert response.status_code == 201, response.text
+    assert _v3_data(response)["understanding_ref"]["understanding_id"] == understanding_id
+
+
+def test_confirmed_document_assessment_succeeds_after_questionnaire_submission(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
+    db.close()
+    before_questionnaire = _session_input_revision(db_session_factory, session_id)
+    questionnaire = _submit_questionnaire(
+        headers, session_id, before_questionnaire
+    )
+
+    body = _assessment_body(
+        session_id,
+        understanding_id,
+        questionnaire["input_revision"],
+    )
+    body["questionnaire_ref"] = {
+        "questionnaire_submission_id": questionnaire[
+            "questionnaire_submission_id"
+        ],
+        "schema_id": questionnaire["schema_id"],
+        "schema_version": questionnaire["schema_version"],
+        "manifest_version": questionnaire["manifest_version"],
+        "content_checksum": questionnaire["content_checksum"],
+    }
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-with-q-{uuid.uuid4().hex}"},
+        json=body,
+    )
+
+    assert response.status_code == 201, response.text
+    assessment = _v3_data(response)
+    assert assessment["input_revision"] == questionnaire["input_revision"]
+    db = db_session_factory()
+    try:
+        stored = db.query(AssessmentV3).filter(
+            AssessmentV3.assessment_id == assessment["assessment_id"]
+        ).one()
+        assert stored.questionnaire_submission_id == questionnaire[
+            "questionnaire_submission_id"
+        ]
+    finally:
+        db.close()
 
 
 def test_assessment_rejects_questionnaire_from_another_session(

@@ -11,6 +11,7 @@ from backend.app.core.database import get_db
 from backend.app.main import app
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
+from backend.app.models.v3.document import DocumentRelevance
 from backend.app.models.v3.identity import UserIdentity
 from backend.app.models.v3.understanding import UnderstandingRun
 from backend.app.schemas.v3.common import AuthPrincipal
@@ -553,6 +554,54 @@ def test_assessment_readiness_rejects_a_stale_document_set_snapshot():
             assert error.code == "DOCUMENT_SET_NOT_ACTIVE"
         else:
             raise AssertionError("stale document set must not pass readiness")
+
+
+def test_assessment_readiness_rejects_re_evaluated_relevance_for_old_understanding():
+    headers = _guest_headers()
+    session_id = _new_owner_session(headers)
+    document_ids = _seed_owner_documents(headers, session_id, 1)
+    document_set = _make_document_set(headers, session_id, document_ids)
+    _record_relevance(
+        headers,
+        document_set["document_set_id"],
+        document_set["revision"],
+        document_ids,
+        ["VALID"],
+    )
+    understanding_id = _v3_data(
+        _post_understanding(headers, session_id, document_ids, 3)
+    )["understanding_id"]
+    confirmed = client.post(
+        f"/api/v3/understandings/{understanding_id}/confirmations",
+        headers={**headers, "Idempotency-Key": f"confirm-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "understanding_v3.1",
+            "expected_revision": 1,
+            "expected_input_revision": 3,
+            "decision": "confirm",
+        },
+    )
+    assert confirmed.status_code == 201, confirmed.text
+
+    with _seed_db() as db:
+        relevance = db.query(DocumentRelevance).filter(
+            DocumentRelevance.document_set_id == document_set["document_set_id"],
+            DocumentRelevance.document_id == document_ids[0],
+        ).one()
+        relevance.outcome = "IRRELEVANT"
+        relevance.reason_codes_json = ["UNRELATED_TOPIC"]
+        db.commit()
+
+    with _seed_db() as db:
+        session = db.query(SessionModel).filter(
+            SessionModel.session_id == session_id
+        ).one()
+        try:
+            validate_assessment_input_readiness(db, session)
+        except AssessmentInputNotReady as error:
+            assert error.code == "DOCUMENT_SET_NOT_ACTIVE"
+        else:
+            raise AssertionError("updated relevance must invalidate old understanding")
 
 
 def test_v31_discarded_document_set_cannot_be_used_for_understanding():
