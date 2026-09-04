@@ -85,23 +85,19 @@ export default {
   data() {
     return {
       steps: [
-        { icon: '册', name: '上传材料', desc: '可选 · 病历或检查报告' },
-        { icon: '写', name: '自由描述', desc: '可选 · 写几句最近状态' },
-        { icon: '问', name: '12 题问卷', desc: '约 1 分钟 · 五维度评估' },
-        { icon: '音', name: '智能音乐方案', desc: '本地曲库 · 参数化匹配' }
+        { icon: '择', name: '选择方式', desc: '有/无近期就诊资料均可' },
+        { icon: '册', name: '上传材料', desc: '有资料 · 上传并确认摘要' },
+        { icon: '问', name: '状态问卷', desc: '10 题 · 五脏状态评估' },
+        { icon: '音', name: '音乐调养', desc: '依据评估生成音乐' }
       ]
     }
   },
   methods: {
     async goNext() {
+      // V3 owner-flow-1：进入双入口选择页（api-v3 内部完成 guest auth + session 创建）
+      // entry 已是 tabBar 页面（首页 tab），navigateTo 无法打开 tab 页，须用 reLaunch
       try {
-        clearSprint3Session()
-        const session = await createSession()
-        updateSprint3Session({
-          session_id: session.session_id,
-          user_id: 'demo_user_001'
-        })
-        uni.navigateTo({ url: '/pages/material/material' })
+        uni.reLaunch({ url: '/pages/entry/entry' })
       } catch (error) {
         uni.showToast({ title: error.message || '无法开始评估', icon: 'none' })
       }
