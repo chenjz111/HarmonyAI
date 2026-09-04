@@ -19,6 +19,9 @@ from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
 from backend.app.models.v3.identity import UserIdentity
 from backend.app.models.v3.understanding import UnderstandingRun, UnderstandingSource
+from backend.app.schemas.v3.common import AuthPrincipal
+from backend.app.schemas.v3.document import DocumentRelevanceRecordRequest
+from backend.app.services.v3.document_relevance_service import record_relevance
 
 
 client = TestClient(app)
@@ -175,6 +178,64 @@ def _session_input_mode(session_id: str) -> str | None:
         return row.input_mode
 
 
+def _principal(headers: dict[str, str]) -> AuthPrincipal:
+    public_user_id = _public_user_id(headers["Authorization"].split()[1])
+    with _seed_db() as session:
+        internal_user_pk = (
+            session.query(UserIdentity)
+            .filter(UserIdentity.public_user_id == public_user_id)
+            .one()
+            .internal_user_pk
+        )
+    return AuthPrincipal(
+        internal_user_pk=internal_user_pk,
+        public_user_id=public_user_id,
+        auth_type="guest",
+        guest_expires_at="2030-01-01T00:00:00Z",
+    )
+
+
+def _bind_document_set(
+    headers: dict[str, str],
+    session_id: str,
+    document_ids: list[str],
+    expected_input_revision: int,
+    outcomes: list[str] | None = None,
+) -> dict:
+    response = client.post(
+        f"/api/v3/sessions/{session_id}/document-sets",
+        headers={**headers, "Idempotency-Key": f"set-{uuid.uuid4().hex}"},
+        json={
+            "session_id": session_id,
+            "expected_input_revision": expected_input_revision,
+            "document_ids": document_ids,
+        },
+    )
+    assert response.status_code == 201, response.text
+    result = _v3_data(response)
+    relevance = DocumentRelevanceRecordRequest(
+        document_set_id=result["document_set_id"],
+        document_set_revision=result["revision"],
+        items=[
+            {
+                "document_id": document_id,
+                "outcome": outcome,
+                "reason_codes": [],
+            }
+            for document_id, outcome in zip(
+                document_ids,
+                outcomes or ["VALID"] * len(document_ids),
+                strict=True,
+            )
+        ],
+        evaluator="test",
+        evaluator_version="v1",
+    )
+    with _seed_db() as session:
+        record_relevance(session, _principal(headers), relevance)
+    return result
+
+
 def test_narrative_ingestion_persists_without_document_mode():
     headers, session_id = _setup_guest()
     response = _post_understanding(
@@ -253,24 +314,15 @@ def test_v31_understanding_create_uses_expected_input_revision():
         f"select-v31-{uuid.uuid4().hex}",
     )
     assert selected.status_code == 201, selected.text
-    replaced = _transition(
-        headers,
-        session_id,
-        {
-            "expected_input_revision": 2,
-            "action": "replace_document",
-            "document_id": document_id,
-        },
-        f"replace-v31-{uuid.uuid4().hex}",
-    )
-    assert replaced.status_code == 201, replaced.text
+    document_set = _bind_document_set(headers, session_id, [document_id], 2)
+    input_revision = document_set["input_revision"]
 
     response = _post_understanding(
         headers,
         {
             "schema_version": "understanding_v3.1",
             "session_id": session_id,
-            "expected_input_revision": 3,
+            "expected_input_revision": input_revision,
             "inputs": [_document_source(document_id)],
         },
         f"sha256:und-v31-{uuid.uuid4().hex}",
@@ -427,25 +479,20 @@ def test_v31_rejects_replaced_document_and_keeps_authoritative_pointer():
         },
         f"replace-first-{uuid.uuid4().hex}",
     )
-    second = _transition(
-        headers,
-        session_id,
-        {
-            "expected_input_revision": 2,
-            "action": "replace_document",
-            "document_id": second_document_id,
-        },
-        f"replace-second-{uuid.uuid4().hex}",
-    )
     assert first.status_code == 201, first.text
-    assert second.status_code == 201, second.text
+    first_set = _bind_document_set(
+        headers, session_id, [first_document_id], _v3_data(first)["input_revision"]
+    )
+    second_set = _bind_document_set(
+        headers, session_id, [second_document_id], first_set["input_revision"]
+    )
 
     response = _post_understanding(
         headers,
         {
             "schema_version": "understanding_v3.1",
             "session_id": session_id,
-            "expected_input_revision": 3,
+            "expected_input_revision": second_set["input_revision"],
             "inputs": [_document_source(first_document_id)],
         },
         f"und-stale-document-{uuid.uuid4().hex}",
@@ -458,7 +505,7 @@ def test_v31_rejects_replaced_document_and_keeps_authoritative_pointer():
             SessionModel.session_id == session_id
         ).one()
         assert row.active_document_id == second_document_id
-        assert row.input_revision == 3
+        assert row.input_revision == 4
         assert session.query(UnderstandingRun).count() == 0
 
 
@@ -506,12 +553,18 @@ def test_confirm_rejects_understanding_after_active_document_replacement():
         f"confirm-first-{uuid.uuid4().hex}",
     )
     assert first.status_code == 201, first.text
+    first_set = _bind_document_set(
+        headers,
+        session_id,
+        [first_document_id],
+        _v3_data(first)["input_revision"],
+    )
     understanding = _post_understanding(
         headers,
         {
             "schema_version": "understanding_v3.1",
             "session_id": session_id,
-            "expected_input_revision": 2,
+            "expected_input_revision": first_set["input_revision"],
             "inputs": [_document_source(first_document_id)],
         },
         f"und-before-replace-{uuid.uuid4().hex}",
@@ -519,17 +572,12 @@ def test_confirm_rejects_understanding_after_active_document_replacement():
     assert understanding.status_code == 201, understanding.text
     understanding_id = _v3_data(understanding)["understanding_id"]
 
-    second = _transition(
+    second = _bind_document_set(
         headers,
         session_id,
-        {
-            "expected_input_revision": 2,
-            "action": "replace_document",
-            "document_id": second_document_id,
-        },
-        f"confirm-second-{uuid.uuid4().hex}",
+        [second_document_id],
+        first_set["input_revision"],
     )
-    assert second.status_code == 201, second.text
 
     response = client.post(
         f"/api/v3/understandings/{understanding_id}/confirmations",
@@ -537,13 +585,13 @@ def test_confirm_rejects_understanding_after_active_document_replacement():
         json={
             "schema_version": "understanding_v3.1",
             "expected_revision": 1,
-            "expected_input_revision": 3,
+            "expected_input_revision": second["input_revision"],
             "decision": "confirm",
         },
     )
 
-    assert response.status_code == 422, response.text
-    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
     with _seed_db() as session:
         run = session.query(UnderstandingRun).filter(
             UnderstandingRun.understanding_id == understanding_id
@@ -553,7 +601,7 @@ def test_confirm_rejects_understanding_after_active_document_replacement():
             SessionModel.session_id == session_id
         ).one()
         assert row.active_document_id == second_document_id
-        assert row.input_revision == 3
+        assert row.input_revision == 4
 
 
 def test_ocr_failure_is_explicit_and_never_confirms():

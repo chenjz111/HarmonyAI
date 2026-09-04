@@ -227,6 +227,9 @@ class SourceStatus(V3BaseModel):
     source_id: NonEmptyString
     source_type: SourceType
     status: SourceProcessingStatus
+    relevance_outcome: Literal[
+        "VALID", "INVALID", "IRRELEVANT", "INSUFFICIENT"
+    ] | None = None
 
 
 class UnderstandingV3Response(V3BaseModel):
