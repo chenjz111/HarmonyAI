@@ -126,7 +126,8 @@ export default {
   <view class="container">
     <view class="header">
       <text class="step-tag">最后一步 · 确认</text>
-      <text class="page-title">{{ model ? model.title : "确认一下我们对你当前状态的理解" }}</text>
+      <text class="page-title">完成近期状态总结</text>
+      <text class="page-subtitle">确认通过后，将以此为基础生成本次音乐调养方案。</text>
     </view>
 
     <view v-if="loading" class="loading-wrap">
@@ -154,6 +155,7 @@ export default {
       </view>
 
       <view class="summary-box">
+        <text class="summary-title">{{ model.title }}</text>
         <text class="summary-text">{{ model.summary }}</text>
       </view>
 
@@ -231,6 +233,7 @@ export default {
   margin-bottom: 18rpx;
 }
 .page-title { display: block; font-size: 40rpx; font-weight: 600; color: #2f3d35; line-height: 1.4; }
+.page-subtitle { display: block; font-size: 26rpx; color: #7a8078; line-height: 1.6; margin-top: 12rpx; }
 .confirm-card, .correct-card {
   background: #fffefa;
   border: 2rpx solid #e8e2d4;
@@ -243,6 +246,7 @@ export default {
   padding: 32rpx;
   margin-bottom: 36rpx;
 }
+.summary-title { display: block; font-size: 30rpx; font-weight: 500; color: #2f3d35; margin-bottom: 12rpx; }
 .summary-text { font-size: 30rpx; color: #2f3d35; line-height: 1.8; }
 .section { margin-bottom: 32rpx; }
 .section-title {

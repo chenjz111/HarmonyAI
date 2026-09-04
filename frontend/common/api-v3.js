@@ -496,6 +496,23 @@ const realInputApi = {
     return data
   },
 
+  // V3.1 疗愈诉求（选填）：后端暂无对应保存能力 → 本机暂存，如实标注，
+  // 不伪造已提交、不补默认偏好；后端交付后在此替换为真实请求
+  async submitHealingIntent(payload) {
+    await delay(60)
+    const clean = payload
+      ? {
+          primary: payload.primary || null,
+          secondary: payload.secondary || null,
+          custom_text: payload.custom_text || null,
+        }
+      : null
+    if (clean) {
+      try { safeSet("v3_healing_intent", JSON.stringify(clean)) } catch (e) { /* ignore */ }
+    }
+    return { received: true, saved_locally: !!clean }
+  },
+
   async submitFeedback(payload) {
     const state = loadFlowState()
     // feedback_v3.0 必填：music_ref 与 pre_state_snapshot 可由 flow state 补全
@@ -611,6 +628,7 @@ const MOCK = {
   musicTask: null,
   music: null,
   feedbackDone: false,
+  healingIntent: null,
 }
 
 function clone(obj) {
@@ -765,6 +783,7 @@ const mockApi = {
     MOCK.musicTask = null
     MOCK.music = null
     MOCK.feedbackDone = false
+    MOCK.healingIntent = null
     clearFlowState()
     return clone(MOCK.session)
   },
@@ -1053,6 +1072,20 @@ const mockApi = {
     MOCK.feedbackDone = true
     return { received: true }
   },
+
+  // V3.1 疗愈诉求（选填）：演示状态机记录，不补默认偏好
+  async submitHealingIntent(payload) {
+    await delay(200)
+    ensureMockSession()
+    MOCK.healingIntent = payload
+      ? {
+          primary: payload.primary || null,
+          secondary: payload.secondary || null,
+          custom_text: payload.custom_text || null,
+        }
+      : null
+    return { received: true, saved_locally: !!payload }
+  },
 }
 
 // ===== 对外接口（按模式分发） =====
@@ -1094,6 +1127,11 @@ export const apiV3 = {
   // 最近情况描述：无资料路径真实提交（narrative 源）并确认绑定会话
   submitNarrative(text) {
     return INPUT_REAL ? realInputApi.submitNarrative(text) : mockApi.submitNarrative(text)
+  },
+
+  // V3.1 疗愈诉求（选填）：real 本机暂存并如实标注；mock/hybrid 走演示状态机
+  submitHealingIntent(payload) {
+    return INPUT_REAL ? realInputApi.submitHealingIntent(payload) : mockApi.submitHealingIntent(payload)
   },
 
   // 问卷：题目为权威清单（前后端同源），三种模式一致，必填性由会话权威模式决定；
@@ -1243,6 +1281,7 @@ export const apiV3 = {
     MOCK.musicTask = null
     MOCK.music = null
     MOCK.feedbackDone = false
+    MOCK.healingIntent = null
   },
 }
 

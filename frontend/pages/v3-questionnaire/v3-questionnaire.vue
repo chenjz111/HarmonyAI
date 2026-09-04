@@ -171,9 +171,9 @@ export default {
     async goAssessment() {
       this.submittingAssessment = true
       try {
-        // 触发综合评估，进入最终确认页
+        // 触发综合评估后进入疗愈诉求（选填）页，随后到达最终确认页
         await apiV3.createAssessment()
-        uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
+        uni.redirectTo({ url: "/pages/v3-goal/v3-goal" })
       } catch (e) {
         if (e.agentPending) {
           // real 模式：综合评估能力未接入，进入明确等待状态，不伪造评估

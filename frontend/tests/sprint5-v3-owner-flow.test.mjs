@@ -361,6 +361,39 @@ test("single final confirmation: assessment confirm page has exactly one primary
   assert.ok(!confirm.includes("再次确认"), "no double confirmation")
 })
 
+test("V3.1: final confirm is titled 完成近期状态总结 and sits after optional goal page", () => {
+  const confirm = readPage("v3-confirm/v3-confirm.vue")
+  assert.ok(confirm.includes("完成近期状态总结"), "Issue #100: confirm page title")
+  // 问卷页评估创建完成后先进入疗愈诉求（选填），再到最终确认
+  const questionnaire = readPage("v3-questionnaire/v3-questionnaire.vue")
+  assert.ok(questionnaire.includes('"/pages/v3-goal/v3-goal"'), "questionnaire must route to goal page")
+  const goal = readPage("v3-goal/v3-goal.vue")
+  assert.ok(goal.includes('"/pages/v3-confirm/v3-confirm"'), "goal page must route to the final confirm")
+})
+
+test("V3.1: goal page is an optional healing-intent page without removed goal concepts", () => {
+  const goal = readPage("v3-goal/v3-goal.vue")
+  assert.ok(goal.includes("疗愈诉求"), "page title")
+  assert.ok(goal.includes("主要诉求"), "primary intent section")
+  assert.ok(goal.includes("次要诉求"), "secondary intent section")
+  assert.ok(goal.includes("选填"), "must be marked optional")
+  assert.ok(goal.includes("submitHealingIntent"), "must persist via api submitHealingIntent")
+  assert.ok(goal.includes("skip"), "must allow skipping the whole step")
+  // 未选择任何内容时等同跳过，不发送默认偏好
+  assert.ok(goal.includes("!this.primary"), "must not submit when nothing chosen")
+})
+
+test("api-v3 mock: healing intent is stored without fabricating defaults", async () => {
+  const { apiV3 } = await import("../common/api-v3.js")
+  await apiV3.guestAuth()
+  await apiV3.createSession()
+  const res = await apiV3.submitHealingIntent({ primary: "sleep", secondary: null, custom_text: null })
+  assert.equal(res.received, true)
+  // 未选择时提交 null 等同跳过，不产生记录
+  const skipped = await apiV3.submitHealingIntent(null)
+  assert.equal(skipped.saved_locally, false)
+})
+
 test("player only renders backend-provided asset, wires favorites and V3 feedback", () => {
   const player = readPage("v3-player/v3-player.vue")
   assert.ok(player.includes("stream_url"), "player must use backend stream_url")
