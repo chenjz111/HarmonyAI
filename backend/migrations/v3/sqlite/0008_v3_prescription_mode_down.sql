@@ -48,6 +48,6 @@ CREATE INDEX IF NOT EXISTS ix_prescription_v3_user_created
 CREATE INDEX IF NOT EXISTS ix_prescription_v3_diagnosis
     ON prescription_v3(diagnosis_id);
 
-DELETE FROM schema_migrations WHERE version = '0007_v3_prescription_mode';
+DELETE FROM schema_migrations WHERE version = '0008_v3_prescription_mode';
 COMMIT;
 PRAGMA foreign_keys=ON;

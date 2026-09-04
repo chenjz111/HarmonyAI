@@ -420,7 +420,7 @@ frontend/full-demo.html?mode=v2  # 强制 V2
 - 自动验证：Safety/Prescription/API 受影响回归 186 passed；E2E 5/5；Contract 30/30；Frontend 66/66；H5 PASS。
 - 本机 Full 684/689；5 个非本次 Safety 失败来自已安装 PaddleOCR 与其顶层 `tools` 包导入污染，已明确记录，待 CI 的干净环境验证。
 - Formal60 `NOT_RUN`；MySQL `PASS`；OCR/Android 人工 Gate 仍 PENDING。
-- NEXT_ACTION：PR Review + CI，保持未合并；不得开始 Sprint 5 或重新优化 emotion_f1。
+- 历史记录（2026-08-15）：当时处于 PR Review + CI、保持未合并；后续 Sprint 5 已启动，当前状态以本文件末尾最新记录为准。
 
 ### Sprint 5 V3 合同冻结准备（2026-08-24）
 

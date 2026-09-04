@@ -1,5 +1,5 @@
 -- ============================================================
--- 0005_v3_relevance — document relevance assessment (MySQL 8)
+-- 0006_v3_relevance — document relevance assessment (MySQL 8)
 -- Mirrors Issue #99 ruling: outcome enum + per-source audit.
 -- ============================================================
 
