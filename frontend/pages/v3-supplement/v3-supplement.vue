@@ -10,6 +10,15 @@
  *  - 无资料路径：填写则通过 narrative 源真实提交并确认绑定会话，失败如实报错
  *  - 语音转写仅在显式 mock 模式提供模拟数据并标注演示；real/hybrid 不伪造
  *
+ * ===== 后端对齐依赖（Issue #100 复审注明：等待钟睿宸对齐，未确定前不擅自恢复旧流程） =====
+ *  - 字段：narrative inline text（已提交）
+ *  - 端点：POST /api/v3/understandings，inputs[].source_type = "narrative"
+ *  - 保存位置：Understanding + Source；CAS 确认后写入 session understanding_ref
+ *  - 调用方式：apiV3.submitNarrative(text) → create → confirmUnderstanding(decision="confirm")
+ *  - 当前缺口：与钟睿宸对齐的"补充信息"新字段 / 保存方式仍在协议中
+ *    —— 在此之前本页面**绝不**自行恢复旧版 narrative 必填规则，也**绝不**把本机暂存伪装成已提交；
+ *    失败/缺口一律如实抛错（错误码 NARRATIVE_APPEND_UNSUPPORTED 等）。
+ *
  * 后续：v3-questionnaire
  */
 import { apiV3 } from "../../common/api-v3.js"

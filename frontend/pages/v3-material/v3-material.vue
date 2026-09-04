@@ -10,6 +10,13 @@
  *    （?type=ocr | ?type=network）
  *  - 识别成功 → 资料摘要确认页
  *
+ * ===== 后端对齐依赖（Issue #100 复审注明：等待蔡子鑫对齐，未确定前不擅自调用聚合端点） =====
+ *  - 单文件仍走现有 V2 通道：POST /api/v2/documents + replace_document（真实接口已交付）
+ *  - 多文档聚合（DocumentSet / 1~3 份有序聚合 + owner-aware upload）端点尚未交付
+ *    —— 在此之前，本页面对真实多文档上传如实逐张失败并跳转 v3-material-error，不模拟成功；
+ *    mock / hybrid 演示模式按"独立 document_id + 上传顺序保留"实现，便于本地预览
+ *    1~3 份资料的有序聚合体验。后端对齐完成后由 apiV3.uploadDocument 内部替换为聚合通道。
+ *
  * 注意：真实后端未交付多文档聚合与 owner-aware 上传端点，real 模式下逐张上传
  * 仍会如实失败并跳转异常页，不伪造成功；mock/hybrid 可完整演示多文件流程。
  */

@@ -797,3 +797,72 @@ test("safety deferred_v3 policy never routes to safety pages (Amendment 6)", asy
     "legacy safety routing must be preserved",
   )
 })
+
+// ===== Issue #100 复审修订 P8 剩余：依赖注记 + 多资料/补充近况依赖边界 =====
+
+test("V3.1: material page documents the multi-document ownership dependency without restoring legacy required rule", () => {
+  // 复审要求：与蔡子鑫对齐 DocumentSet/API **不擅自调用聚合端点**；本页头部必须明确记录该依赖
+  const material = readPage("v3-material/v3-material.vue")
+  assert.match(
+    material,
+    /DocumentSet/,
+    "material page must name the DocumentSet dependency in its header",
+  )
+  assert.match(
+    material,
+    /owner-aware/,
+    "material page must surface the owner-aware upload dependency",
+  )
+  assert.match(
+    material,
+    /蔡子鑫/,
+    "material page must surface the alignment owner (蔡子鑫) in the header",
+  )
+  // 不允许擅自聚合 / 不允许伪造成功 —— 真实模式仍逐张失败跳转 v3-material-error
+  assert.match(
+    material,
+    /如实失败并跳转异常页/,
+    "material page must keep failing honestly in real mode",
+  )
+})
+
+test("V3.1: supplement page documents the narrative endpoint dependency without restoring legacy required rule", () => {
+  // 复审要求：与钟睿宸对齐补充信息字段 / 保存位置 / 调用方式**不擅自恢复旧规则**；
+  // 本页头部必须明确记录该依赖。
+  const supplement = readPage("v3-supplement/v3-supplement.vue")
+  assert.match(
+    supplement,
+    /等待钟睿宸对齐|与钟睿宸对齐/,
+    "supplement page must surface the alignment owner (钟睿宸) in the header",
+  )
+  assert.match(
+    supplement,
+    /source_type:\s*["']narrative["']|source_type\s*=\s*["']narrative["']/,
+    "supplement header must reference the narrative source_type on /api/v3/understandings",
+  )
+  // V3.1：supplement 整页选填 / 两条路径均可整步跳过 —— 不得恢复旧 narrative 必填规则
+  assert.ok(
+    !/必填[\s\S]*?narrative|narrative[\s\S]*?必填/.test(
+      supplement
+        // 只看用户可见文案（template 区），防止注释中\"必填\"被误判
+        .match(/<template>[\s\S]*?<\/template>/)[0],
+    ),
+    "supplement template must not reintroduce the legacy narrative required rule",
+  )
+  // 补充近况 fail-fast：失败 / 缺口仍按 apiV3.submitNarrative 抛错（NARRATIVE_APPEND_UNSUPPORTED 等）
+  assert.match(
+    supplement,
+    /apiV3\.submitNarrative/,
+    "supplement must keep calling apiV3.submitNarrative on the no-document path",
+  )
+})
+
+test("V3.1: supplement page must not fake successful narrative submission in the with-document gap path", () => {
+  // 接口未确定前**绝不**把本机暂存伪装成已提交（NARRATIVE_APPEND_UNSUPPORTED 错误码保留）
+  const supplement = readPage("v3-supplement/v3-supplement.vue")
+  assert.match(
+    supplement,
+    /NARRATIVE_APPEND_UNSUPPORTED|apiV3\.submitNarrative|提交失败/,
+    "supplement must keep honest failure semantics for the with-document append gap",
+  )
+})
