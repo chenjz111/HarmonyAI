@@ -155,7 +155,10 @@ def extract_facts_for_sources(
             fact_dicts.extend(
                 _fact_dicts(
                     "und",
-                    source_id=item.source.source_id,
+                    # V3.1 document provenance is the concrete document id,
+                    # not a client-generated source alias. Legacy V3.0 keeps
+                    # its existing source-id semantics.
+                    source_id=item.document_id or item.source.source_id,
                     source_type=item.source.source_type.value,
                     provider_facts=provider_facts,
                     method=method,

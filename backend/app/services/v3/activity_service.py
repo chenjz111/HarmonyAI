@@ -461,6 +461,60 @@ def validate_assessment_input_readiness(
             raise AssessmentInputNotReady(
                 "UNDERSTANDING_NOT_OWNED", "资料摘要不属于当前会话。"
             )
+        snapshot = (run.degradation_json or {}).get("input_snapshot") or {}
+        if not snapshot:
+            raise AssessmentInputNotReady(
+                "DOCUMENT_SET_NOT_READY", "资料集版本尚未绑定。"
+            )
+        # The confirmation bind advances input_revision once. Any later
+        # source transition must invalidate the old Understanding even if a
+        # stale active-understanding pointer is restored.
+        if session_row.input_revision not in {
+            run.input_revision,
+            (run.input_revision or 0) + 1,
+        }:
+            raise AssessmentInputNotReady(
+                "DOCUMENT_SET_NOT_ACTIVE", "资料集已被替换或丢弃。"
+            )
+        from backend.app.services.v3.understanding_service import (
+            InvalidChange as UnderstandingInvalidChange,
+            _load_active_document_set,
+        )
+
+        try:
+            active_set = _load_active_document_set(
+                db, session_row.user_id, session_row
+            )
+        except UnderstandingInvalidChange as error:
+            raise AssessmentInputNotReady(error.code, error.message) from None
+        if (
+            active_set.row.document_set_id != snapshot.get("document_set_id")
+            or active_set.row.revision != snapshot.get("document_set_revision")
+            or list(active_set.document_ids) != snapshot.get("document_ids")
+            or active_set.relevance_fingerprint
+            != snapshot.get("relevance_fingerprint")
+        ):
+            raise AssessmentInputNotReady(
+                "DOCUMENT_SET_NOT_ACTIVE", "资料集版本已发生变化。"
+            )
+        valid_document_ids = {
+            document_id
+            for document_id, relevance in active_set.relevance_by_document.items()
+            if relevance.outcome == "VALID"
+        }
+        normalized_facts = (revision.presentation_json or {}).get(
+            "normalized_facts"
+        ) or []
+        for fact in normalized_facts:
+            for source_ref in fact.get("source_refs") or []:
+                if (
+                    source_ref.get("source_type") == "document"
+                    and source_ref.get("source_id") not in valid_document_ids
+                ):
+                    raise AssessmentInputNotReady(
+                        "DOCUMENT_RELEVANCE_INVALID",
+                        "评估输入包含不可用资料。",
+                    )
         return
     submission_id = session_row.active_questionnaire_submission_id
     if submission_id is None:

@@ -30,6 +30,11 @@ from sqlalchemy.orm import Session
 
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
+from backend.app.models.v3.document import (
+    DocumentRelevance,
+    DocumentSet,
+    DocumentSetItem,
+)
 from backend.app.models.v3.session import (
     SessionInputRevision,
     V3IdempotencyRecord,
@@ -147,6 +152,15 @@ class _ResolvedSource:
     document_id: str | None = None
     questionnaire_submission_id: str | None = None
     failure_reason: str | None = None
+    relevance_outcome: str | None = None
+
+
+@dataclass(frozen=True)
+class _ActiveDocumentSet:
+    row: DocumentSet
+    document_ids: tuple[str, ...]
+    relevance_by_document: dict[str, DocumentRelevance]
+    relevance_fingerprint: str
 
 
 def _resolve_document(
@@ -281,7 +295,11 @@ def _build_case_summary(
     ]
     if not documents:
         return None
-    summary_text = (documents[0].text or "").strip()
+    summary_text = "\n".join(
+        (item.text or "").strip()
+        for item in documents
+        if (item.text or "").strip()
+    )
     truncated = summary_text[:_SUMMARY_MAX_CHARS]
     if len(summary_text) > _SUMMARY_MAX_CHARS:
         truncated = f"{truncated}…"
@@ -312,7 +330,8 @@ def _persist_run(
     session_row: SessionModel,
     resolved: list[_ResolvedSource],
     idempotency_key: str,
-) -> tuple[UnderstandingRun, list[UnderstandingSource]]:
+    input_snapshot: dict[str, object] | None = None,
+) -> tuple[UnderstandingRun, list[UnderstandingSource], UnderstandingRevision]:
     understanding_id = f"und_{uuid.uuid4().hex}"
     run_status, reason_codes = _run_status_and_reasons(resolved)
     is_new_flow = session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
@@ -332,6 +351,7 @@ def _persist_run(
         degradation_json={
             "active": run_status in {"degraded", "failed"},
             "reason_codes": reason_codes,
+            "input_snapshot": input_snapshot,
         },
     )
     db.add(run)
@@ -369,8 +389,10 @@ def _persist_run(
                     "source_id": row.source_id,
                     "source_type": row.source_type,
                     "processing_status": row.processing_status,
+                    "document_id": item.document_id,
+                    "relevance_outcome": item.relevance_outcome,
                 }
-                for row in source_rows
+                for item, row in zip(resolved, source_rows, strict=True)
             ],
             "normalized_facts": [],
             "applied_changes": [],
@@ -383,14 +405,147 @@ def _persist_run(
     return run, source_rows, revision
 
 
-def _validate_v31_request_sources(
+def _relevance_fingerprint(rows: list[DocumentRelevance]) -> str:
+    return _request_hash(
+        {
+            "rows": [
+                {
+                    "document_id": row.document_id,
+                    "document_set_revision": row.document_set_revision,
+                    "outcome": row.outcome,
+                    "reason_codes": list(row.reason_codes_json or []),
+                    "evaluator": row.evaluator,
+                    "evaluator_version": row.evaluator_version,
+                    "evaluated_at": (
+                        row.evaluated_at.isoformat() if row.evaluated_at else None
+                    ),
+                }
+                for row in rows
+            ]
+        }
+    )
+
+
+def _load_active_document_set(
+    db: Session,
+    principal_or_user_pk: AuthPrincipal | int,
+    session_row: SessionModel,
+) -> _ActiveDocumentSet:
+    """Load the session's exact active DocumentSet, never the latest set by
+    session. The set pointer, owner, session, item order and relevance version
+    all form one authoritative input snapshot for V3.1."""
+    set_id = session_row.active_document_set_id
+    internal_user_pk = (
+        principal_or_user_pk.internal_user_pk
+        if isinstance(principal_or_user_pk, AuthPrincipal)
+        else principal_or_user_pk
+    )
+    if not set_id:
+        raise InvalidChange(
+            "DOCUMENT_SET_NOT_ACTIVE",
+            "当前会话没有可用的活动资料集。",
+        )
+    set_row = (
+        db.query(DocumentSet)
+        .filter(
+            DocumentSet.document_set_id == set_id,
+            DocumentSet.internal_user_pk == internal_user_pk,
+            DocumentSet.session_row_id == session_row.id,
+            DocumentSet.status == "active",
+        )
+        .one_or_none()
+    )
+    if set_row is None:
+        raise InvalidChange(
+            "DOCUMENT_SET_NOT_ACTIVE",
+            "当前会话没有可用的活动资料集。",
+        )
+
+    items = (
+        db.query(DocumentSetItem)
+        .filter(DocumentSetItem.document_set_id == set_row.document_set_id)
+        .order_by(DocumentSetItem.position)
+        .all()
+    )
+    document_ids = tuple(item.document_id for item in items)
+    if not (1 <= len(document_ids) <= 3) or len(set(document_ids)) != len(document_ids):
+        raise InvalidChange(
+            "DOCUMENT_SET_NOT_ACTIVE",
+            "活动资料集版本无效。",
+        )
+    if [item.position for item in items] != list(range(1, len(items) + 1)):
+        raise InvalidChange(
+            "DOCUMENT_SET_NOT_ACTIVE",
+            "活动资料集顺序无效。",
+        )
+    if session_row.active_document_id != document_ids[0]:
+        raise InvalidChange(
+            "DOCUMENT_SET_NOT_ACTIVE",
+            "活动资料集与会话输入状态不一致。",
+        )
+
+    documents = (
+        db.query(Document)
+        .filter(
+            Document.document_id.in_(document_ids),
+            Document.user_id == internal_user_pk,
+            Document.session_id == session_row.session_id,
+            Document.status != "deleted",
+        )
+        .all()
+    )
+    if {document.document_id for document in documents} != set(document_ids):
+        raise InvalidChange(
+            "DOCUMENT_SET_NOT_ACTIVE",
+            "活动资料集包含不可用资料。",
+        )
+
+    relevance_rows = (
+        db.query(DocumentRelevance)
+        .filter(DocumentRelevance.document_set_id == set_row.document_set_id)
+        .all()
+    )
+    relevance_by_document = {row.document_id: row for row in relevance_rows}
+    if (
+        set(relevance_by_document) != set(document_ids)
+        or len(relevance_rows) != len(document_ids)
+        or any(
+            row.document_set_revision != set_row.revision
+            for row in relevance_rows
+        )
+    ):
+        raise InvalidChange(
+            "RELEVANCE_NOT_READY",
+            "资料相关性结果尚未覆盖当前资料集版本。",
+        )
+    if any(row.outcome == "INSUFFICIENT" for row in relevance_rows):
+        raise InvalidChange(
+            "RELEVANCE_INSUFFICIENT",
+            "资料相关性结果仍待确认。",
+        )
+
+    return _ActiveDocumentSet(
+        row=set_row,
+        document_ids=document_ids,
+        relevance_by_document=relevance_by_document,
+        relevance_fingerprint=_relevance_fingerprint(
+            [relevance_by_document[document_id] for document_id in document_ids]
+        ),
+    )
+
+
+def _resolve_v31_document_sources(
+    db: Session,
+    principal: AuthPrincipal,
     session_row: SessionModel,
     request: UnderstandingV31Request,
-) -> None:
-    """Owner Flow Amendment 001 §4.2/§5 — an ingestion request must match the
-    session's authoritative input state (input_mode + active_document_id),
-    not only the input_revision. Without this check a stale or forged request
-    could silently flip the selected mode or consume replaced material."""
+) -> tuple[list[_ResolvedSource], dict[str, object]]:
+    """Resolve V3.1 inputs from the session-owned DocumentSet.
+
+    Client inputs are only references and are required to cover the active set;
+    the actual documents, order, OCR text and Relevance outcomes come from
+    server-side state.
+    """
     if session_row.input_mode is None:
         raise InvalidChange("INPUT_MODE_NOT_SELECTED", "尚未选择输入方式。")
     if session_row.input_mode != "with_document":
@@ -398,17 +553,77 @@ def _validate_v31_request_sources(
             "INPUT_SOURCE_MISMATCH",
             "V3.1 无资料模式跳过 Understanding，请完成必填 Q1-Q10。",
         )
-    active_document_id = session_row.active_document_id
+    if any(
+        source.source_type.value != "document" or source.text_ref is None
+        for source in request.inputs
+    ):
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "请求资料必须与当前活动资料集完全一致。",
+        )
+    active_set = _load_active_document_set(db, principal, session_row)
+    if len(request.inputs) != len(active_set.document_ids):
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "请求资料必须与当前活动资料集完全一致。",
+        )
+    source_by_document: dict[str, UnderstandingSourceSchema] = {}
     for source in request.inputs:
-        if (
-            active_document_id is None
-            or source.source_type.value != "document"
-            or source.text_ref != active_document_id
-        ):
+        if source.source_type.value != "document" or source.text_ref is None:
             raise InvalidChange(
                 "INPUT_SOURCE_MISMATCH",
-                "资料与会话当前输入状态不一致，请基于最新上传的资料重试。",
+                "请求资料必须与当前活动资料集完全一致。",
             )
+        if source.text_ref in source_by_document:
+            raise InvalidChange(
+                "INPUT_SOURCE_MISMATCH",
+                "请求资料不能重复。",
+            )
+        source_by_document[source.text_ref] = source
+    if set(source_by_document) != set(active_set.document_ids):
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "请求资料必须与当前活动资料集完全一致。",
+        )
+
+    resolved: list[_ResolvedSource] = []
+    for document_id in active_set.document_ids:
+        source = source_by_document[document_id].model_copy(
+            update={"source_id": document_id}
+        )
+        outcome = active_set.relevance_by_document[document_id].outcome
+        if outcome in {"INVALID", "IRRELEVANT"}:
+            resolved.append(
+                _ResolvedSource(
+                    source,
+                    "skipped",
+                    document_id=document_id,
+                    failure_reason=f"RELEVANCE_{outcome}",
+                    relevance_outcome=outcome,
+                )
+            )
+            continue
+        resolved_source = _resolve_document(
+            db, principal, session_row, source
+        )
+        resolved.append(
+            _ResolvedSource(
+                source=resolved_source.source,
+                processing_status=resolved_source.processing_status,
+                text=resolved_source.text,
+                document_id=resolved_source.document_id,
+                questionnaire_submission_id=resolved_source.questionnaire_submission_id,
+                failure_reason=resolved_source.failure_reason,
+                relevance_outcome=outcome,
+            )
+        )
+    snapshot = {
+        "document_set_id": active_set.row.document_set_id,
+        "document_set_revision": active_set.row.revision,
+        "document_ids": list(active_set.document_ids),
+        "relevance_fingerprint": active_set.relevance_fingerprint,
+    }
+    return resolved, snapshot
 
 
 def create_understanding(
@@ -428,6 +643,8 @@ def create_understanding(
     if session_row is None:
         raise OwnedResourceNotFound
     is_new_flow = session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
+    input_snapshot: dict[str, object] | None = None
+    resolved_v31: list[_ResolvedSource] | None = None
     if isinstance(request, UnderstandingV31Request):
         if not is_new_flow:
             raise InvalidChange(
@@ -436,7 +653,9 @@ def create_understanding(
             )
         if session_row.input_revision != request.expected_input_revision:
             raise InputRevisionConflict
-        _validate_v31_request_sources(session_row, request)
+        resolved_v31, input_snapshot = _resolve_v31_document_sources(
+            db, principal, session_row, request
+        )
     elif is_new_flow:
         # A v3.0-shaped ingestion on a v3-owner-flow-1 session would mutate
         # session state the session contract owns elsewhere; only v3.1 speaks
@@ -468,13 +687,18 @@ def create_understanding(
             if run is not None:
                 return _read_model(db, run), True
 
-    resolved = [_resolve_source(db, principal, session_row, src) for src in request.inputs]
+    resolved = (
+        resolved_v31
+        if resolved_v31 is not None
+        else [_resolve_source(db, principal, session_row, src) for src in request.inputs]
+    )
     run, source_rows, revision = _persist_run(
         db,
         principal=principal,
         session_row=session_row,
         resolved=resolved,
         idempotency_key=idempotency_key,
+        input_snapshot=input_snapshot,
     )
 
     # AI fact extraction: OCR/Narrative text through the Understanding
@@ -612,6 +836,11 @@ def confirm_understanding(
     current = _revision(db, understanding_id, run.current_revision)
     if current is None:
         raise OwnedResourceNotFound
+    source_snapshots = {
+        item.get("source_id"): item
+        for item in (current.presentation_json or {}).get("sources", [])
+        if isinstance(item, dict) and item.get("source_id")
+    }
     sources = (
         db.query(UnderstandingSource)
         .filter(UnderstandingSource.understanding_id == understanding_id)
@@ -653,6 +882,12 @@ def confirm_understanding(
                     "source_id": row.source_id,
                     "source_type": row.source_type,
                     "processing_status": row.processing_status,
+                    "document_id": source_snapshots.get(row.source_id, {}).get(
+                        "document_id"
+                    ),
+                    "relevance_outcome": source_snapshots.get(
+                        row.source_id, {}
+                    ).get("relevance_outcome"),
                 }
                 for row in sources
             ],
@@ -693,7 +928,13 @@ def confirm_understanding(
         and session_row.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
         and session_row.input_mode == "with_document"
     ):
-        _validate_bind_matches_active_input(db, session_row, understanding_id)
+        _validate_bind_matches_active_input(
+            db,
+            session_row,
+            run,
+            understanding_id,
+            request.expected_input_revision,
+        )
         new_input_revision = _cas_bind_understanding(
             db,
             session_row,
@@ -904,12 +1145,33 @@ def _result_from_revision(
 def _validate_bind_matches_active_input(
     db: Session,
     session_row: SessionModel,
+    run: UnderstandingRun,
     understanding_id: str,
+    expected_input_revision: int | None,
 ) -> None:
-    """Amendment 001 §5 — binding a confirmed understanding as the session's
-    active input is only valid when the run's ready sources are exactly the
-    session's active document. The input_revision CAS alone would still bind
-    material that was created before the active document was replaced."""
+    """Bind only the same active DocumentSet/Relevance snapshot that created
+    the run. The input_revision CAS alone cannot prove that an old set was not
+    replaced, discarded or re-evaluated before confirmation."""
+    snapshot = (run.degradation_json or {}).get("input_snapshot") or {}
+    if not snapshot or run.input_revision != expected_input_revision:
+        raise InputRevisionConflict
+    if session_row.input_revision != expected_input_revision:
+        raise InputRevisionConflict
+    active_set = _load_active_document_set(
+        db,
+        run.internal_user_pk,
+        session_row,
+    )
+    if (
+        active_set.row.document_set_id != snapshot.get("document_set_id")
+        or active_set.row.revision != snapshot.get("document_set_revision")
+        or active_set.relevance_fingerprint != snapshot.get("relevance_fingerprint")
+        or list(active_set.document_ids) != snapshot.get("document_ids")
+    ):
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "资料与会话当前输入状态不一致，请重新上传后再确认。",
+        )
     ready_rows = (
         db.query(UnderstandingSource)
         .filter(
@@ -918,10 +1180,20 @@ def _validate_bind_matches_active_input(
         )
         .all()
     )
-    ready_document_ids = {row.document_id for row in ready_rows}
+    ready_document_ids = {
+        row.document_id
+        for row in ready_rows
+        if row.document_id is not None
+    }
+    valid_document_ids = {
+        document_id
+        for document_id, row in active_set.relevance_by_document.items()
+        if row.outcome == "VALID"
+    }
     if (
         any(row.source_type not in _DOCUMENT_SOURCE_TYPES for row in ready_rows)
-        or ready_document_ids != {session_row.active_document_id}
+        or ready_document_ids != valid_document_ids
+        or not valid_document_ids
     ):
         raise InvalidChange(
             "INPUT_SOURCE_MISMATCH",
@@ -1053,6 +1325,7 @@ def _read_model(
                 source_id=item["source_id"],
                 source_type=item["source_type"],
                 status=item["processing_status"],
+                relevance_outcome=item.get("relevance_outcome"),
             )
             for item in snapshot_sources
         ]
@@ -1070,6 +1343,10 @@ def _read_model(
         presentation = revision_row.presentation_json or {}
         for item in presentation.get("normalized_facts") or []:
             normalized_facts.append(NormalizedFactSchema.model_validate(item))
+    degradation_payload = {
+        "active": bool((run.degradation_json or {}).get("active")),
+        "reason_codes": list((run.degradation_json or {}).get("reason_codes") or []),
+    }
     common = dict(
         understanding_id=run.understanding_id,
         revision=run.current_revision
@@ -1081,7 +1358,7 @@ def _read_model(
         normalized_facts=normalized_facts,
         source_statuses=source_statuses,
         safety_signal_refs=[],
-        degradation=Degradation.model_validate(run.degradation_json),
+        degradation=Degradation.model_validate(degradation_payload),
     )
     if run.flow_contract_version == _FLOW_CONTRACT_V3_OWNER:
         return UnderstandingV31Response(

@@ -27,10 +27,13 @@ from backend.app.models.v3.understanding import (
     QuestionnaireSubmissionV3,
     UnderstandingRevision,
 )
+from backend.app.schemas.v3.common import AuthPrincipal
+from backend.app.schemas.v3.document import DocumentRelevanceRecordRequest
 from backend.app.services.v3.activity_service import (
     AssessmentInputNotReady,
     validate_assessment_input_readiness,
 )
+from backend.app.services.v3.document_relevance_service import record_relevance
 
 
 client = TestClient(app)
@@ -122,6 +125,62 @@ def _transition(headers, session_id, idempotency_key, body):
         headers={**headers, "Idempotency-Key": idempotency_key},
         json=body,
     )
+
+
+def _principal(headers: dict[str, str]) -> AuthPrincipal:
+    public_user_id = _public_user_id(headers["Authorization"].split()[1])
+    with _seed_db() as session:
+        internal_user_pk = (
+            session.query(UserIdentity)
+            .filter(UserIdentity.public_user_id == public_user_id)
+            .one()
+            .internal_user_pk
+        )
+    return AuthPrincipal(
+        internal_user_pk=internal_user_pk,
+        public_user_id=public_user_id,
+        auth_type="guest",
+        guest_expires_at="2030-01-01T00:00:00Z",
+    )
+
+
+def _bind_document_set(
+    headers: dict[str, str],
+    session_id: str,
+    document_id: str,
+    expected_input_revision: int,
+    outcome: str = "VALID",
+) -> int:
+    response = client.post(
+        f"/api/v3/sessions/{session_id}/document-sets",
+        headers={**headers, "Idempotency-Key": f"set-{uuid.uuid4().hex}"},
+        json={
+            "session_id": session_id,
+            "expected_input_revision": expected_input_revision,
+            "document_ids": [document_id],
+        },
+    )
+    assert response.status_code == 201, response.text
+    result = _v3_data(response)
+    with _seed_db() as session:
+        record_relevance(
+            session,
+            _principal(headers),
+            DocumentRelevanceRecordRequest(
+                document_set_id=result["document_set_id"],
+                document_set_revision=result["revision"],
+                items=[
+                    {
+                        "document_id": document_id,
+                        "outcome": outcome,
+                        "reason_codes": [],
+                    }
+                ],
+                evaluator="test",
+                evaluator_version="v1",
+            ),
+        )
+    return result["input_revision"]
 
 
 def _session_row(session_id):
@@ -283,6 +342,7 @@ def test_edited_summary_text_confirms_new_revision():
         headers, session_id, "rep-1",
         {"expected_input_revision": 2, "action": "replace_document", "document_id": document_id},
     )
+    input_revision = _bind_document_set(headers, session_id, document_id, 3)
     understanding_id = _v3_data(
         client.post(
             "/api/v3/understandings",
@@ -290,7 +350,7 @@ def test_edited_summary_text_confirms_new_revision():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
-                "expected_input_revision": 3,
+                "expected_input_revision": input_revision,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -313,7 +373,7 @@ def test_edited_summary_text_confirms_new_revision():
         json={
             "schema_version": "understanding_v3.1",
             "expected_revision": 1,
-            "expected_input_revision": 3,
+            "expected_input_revision": input_revision,
             "decision": "confirm_with_changes",
             "edited_summary_text": "资料提到近期入睡较慢，白天有些疲惫。",
             "reprocess_requested": True,
@@ -334,7 +394,7 @@ def test_edited_summary_text_confirms_new_revision():
     # revision, no input_revision bump, no active-understanding bind, no facts,
     # no half-written database rows.
     row = _session_row(session_id)
-    assert row.input_revision == 3
+    assert row.input_revision == 4
     assert row.active_understanding_id is None
     assert row.active_understanding_revision is None
     with _seed_db() as session:
@@ -344,7 +404,7 @@ def test_edited_summary_text_confirms_new_revision():
             .count()
             == 1
         )
-        assert session.query(SessionInputRevision).count() == 3
+        assert session.query(SessionInputRevision).count() == 4
         assert session.query(NormalizedFact).count() == 0
 
 
@@ -360,6 +420,7 @@ def test_reprocess_without_edited_text_is_rejected():
         headers, session_id, "rep-1",
         {"expected_input_revision": 1, "action": "replace_document", "document_id": document_id},
     )
+    input_revision = _bind_document_set(headers, session_id, document_id, 2)
     understanding_id = _v3_data(
         client.post(
             "/api/v3/understandings",
@@ -367,7 +428,7 @@ def test_reprocess_without_edited_text_is_rejected():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
-                "expected_input_revision": 2,
+                "expected_input_revision": input_revision,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -386,7 +447,7 @@ def test_reprocess_without_edited_text_is_rejected():
         json={
             "schema_version": "understanding_v3.1",
             "expected_revision": 1,
-            "expected_input_revision": 2,
+            "expected_input_revision": input_revision,
             "decision": "confirm",
             "reprocess_requested": True,
         },
@@ -411,6 +472,7 @@ def test_confirm_with_wrong_input_revision_conflicts():
         headers, session_id, "rep-1",
         {"expected_input_revision": 2, "action": "replace_document", "document_id": document_id},
     )
+    input_revision = _bind_document_set(headers, session_id, document_id, 3)
     understanding_id = _v3_data(
         client.post(
             "/api/v3/understandings",
@@ -418,7 +480,7 @@ def test_confirm_with_wrong_input_revision_conflicts():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
-                "expected_input_revision": 3,
+                "expected_input_revision": input_revision,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -696,6 +758,7 @@ def test_confirmation_returns_read_model_and_input_revision():
         headers, session_id, "rep-1",
         {"expected_input_revision": 2, "action": "replace_document", "document_id": document_id},
     )
+    input_revision = _bind_document_set(headers, session_id, document_id, 3)
     understanding_id = _v3_data(
         client.post(
             "/api/v3/understandings",
@@ -703,7 +766,7 @@ def test_confirmation_returns_read_model_and_input_revision():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
-                "expected_input_revision": 3,
+                "expected_input_revision": input_revision,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -724,14 +787,14 @@ def test_confirmation_returns_read_model_and_input_revision():
             json={
                 "schema_version": "understanding_v3.1",
                 "expected_revision": 1,
-                "expected_input_revision": 3,
+                "expected_input_revision": input_revision,
                 "decision": "confirm",
             },
         )
     )
     assert result["revision"] == 2
     assert result["status"] == "confirmed"
-    assert result["input_revision"] == 4
+    assert result["input_revision"] == 5
     assert result["understanding"]["understanding_id"] == understanding_id
     assert result["understanding"]["revision"] == 2
     assert result["understanding"]["status"] == "confirmed"
@@ -753,6 +816,7 @@ def test_confirmation_replay_returns_first_success_state():
         headers, session_id, "rep-1",
         {"expected_input_revision": 2, "action": "replace_document", "document_id": document_id},
     )
+    input_revision = _bind_document_set(headers, session_id, document_id, 3)
     understanding_id = _v3_data(
         client.post(
             "/api/v3/understandings",
@@ -760,7 +824,7 @@ def test_confirmation_replay_returns_first_success_state():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
-                "expected_input_revision": 3,
+                "expected_input_revision": input_revision,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -777,7 +841,7 @@ def test_confirmation_replay_returns_first_success_state():
     confirm_body = {
         "schema_version": "understanding_v3.1",
         "expected_revision": 1,
-        "expected_input_revision": 3,
+        "expected_input_revision": input_revision,
         "decision": "confirm",
     }
     first = client.post(
@@ -786,12 +850,12 @@ def test_confirmation_replay_returns_first_success_state():
         json=confirm_body,
     )
     assert first.status_code == 201
-    assert _v3_data(first)["input_revision"] == 4
+    assert _v3_data(first)["input_revision"] == 5
 
     # A later transition advances the session input_revision.
     _transition(
         headers, session_id, "disc-1",
-        {"expected_input_revision": 4, "action": "discard_document"},
+        {"expected_input_revision": 5, "action": "discard_document"},
     )
 
     replay = client.post(
@@ -802,13 +866,13 @@ def test_confirmation_replay_returns_first_success_state():
     assert replay.status_code == 200
     data = _v3_data(replay)
     assert data["revision"] == 2
-    assert data["input_revision"] == 4  # first success's, not the later 5
+    assert data["input_revision"] == 5  # first success's, not the later 6
     assert data["understanding"]["revision"] == 2
     assert data["understanding"]["status"] == "confirmed"
 
     # Replay must not create any new revision, input_revision bump, or snapshot.
     row = _session_row(session_id)
-    assert row.input_revision == 5  # unchanged from discard, not bumped to 6
+    assert row.input_revision == 6  # unchanged from discard, not bumped to 7
     with _seed_db() as session:
         assert (
             session.query(UnderstandingRevision)
@@ -816,13 +880,13 @@ def test_confirmation_replay_returns_first_success_state():
             .count()
             == 2
         )
-        assert session.query(SessionInputRevision).count() == 5
+        assert session.query(SessionInputRevision).count() == 6
 
     # Same Idempotency-Key with a different payload is an idempotency conflict.
     conflict = client.post(
         f"/api/v3/understandings/{understanding_id}/confirmations",
         headers={**headers, "Idempotency-Key": "confirm-1"},
-        json={**confirm_body, "expected_input_revision": 5},
+        json={**confirm_body, "expected_input_revision": 6},
     )
     assert conflict.status_code == 422
     assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
@@ -844,6 +908,7 @@ def test_v31_rejects_legacy_reject_and_cannot_confirm():
         headers, session_id, "rep-1",
         {"expected_input_revision": 2, "action": "replace_document", "document_id": document_id},
     )
+    input_revision = _bind_document_set(headers, session_id, document_id, 3)
     understanding_id = _v3_data(
         client.post(
             "/api/v3/understandings",
@@ -851,7 +916,7 @@ def test_v31_rejects_legacy_reject_and_cannot_confirm():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
-                "expected_input_revision": 3,
+                "expected_input_revision": input_revision,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -872,7 +937,7 @@ def test_v31_rejects_legacy_reject_and_cannot_confirm():
             json={
                 "schema_version": "understanding_v3.1",
                 "expected_revision": 1,
-                "expected_input_revision": 3,
+                "expected_input_revision": input_revision,
                 "decision": decision,
             },
         )
@@ -909,6 +974,9 @@ def test_ocr_failure_never_confirms_in_new_flow():
         session_row.active_document_id = document_id
         session_row.input_revision = 2
         session.commit()
+    input_revision = _bind_document_set(
+        headers, session_id, document_id, 2, outcome="INVALID"
+    )
     data = _v3_data(
         client.post(
             "/api/v3/understandings",
@@ -916,7 +984,7 @@ def test_ocr_failure_never_confirms_in_new_flow():
             json={
                 "schema_version": "understanding_v3.1",
                 "session_id": session_id,
-                "expected_input_revision": 2,
+                "expected_input_revision": input_revision,
                 "inputs": [
                     {
                         "source_id": "src_1",
@@ -931,5 +999,5 @@ def test_ocr_failure_never_confirms_in_new_flow():
     )
     assert data["status"] == "failed"
     assert data["case_summary"] is None
-    assert data["source_statuses"][0]["status"] == "failed"
+    assert data["source_statuses"][0]["status"] == "skipped"
     assert data["safety_status"] is None
