@@ -33,10 +33,16 @@
  *  - "hybrid"（显式）：输入段（鉴权/会话/输入切换/资料上传/资料理解）走真实后端，
  *    Agent 段（评估/辨证/生成）走 mock 演示数据，页面显示"演示数据"标识。
  *  - "mock"（显式）：全 fixture 状态机，供自动测试与本地开发。
- *  开启方式（三选一，均为显式）：
- *  - 构建环境变量 HARMONYAI_V3_MODE=mock|hybrid|real（Vite import.meta.env）
+ *  开启方式（仅显式 —— 默认 real）：
+ *  - 构建环境变量 VITE_HARMONYAI_V3_MODE=mock|hybrid|real（Vite import.meta.env，
+ *    兼容旧名 HARMONYAI_V3_MODE）
  *  - Node 测试进程环境变量 process.env.HARMONYAI_V3_MODE
- *  - H5 本地调试：localStorage.setItem("HARMONYAI_V3_MODE", "mock")
+ *  - H5 本机视觉演示：localhost/127.0.0.1 + URL query ?harmonyai_demo=1
+ *
+ *  关键约束（P1-2 严格隔离）：
+ *  - 正式运行（任意非 localhost 域名）默认 real，**不读** localStorage.Mock 配置，
+ *    防止陈旧调试缓存污染正式会话。
+ *  - mock/hybrid 仅由上述三种显式入口触发，未命中即返回 real。
  *
  * 已知后端缺口（如实上报，不静默绕过）：
  *  - V2 上传接口 /api/v2/documents 固定把资料写入默认用户，而 V3 访客是独立用户，
@@ -52,25 +58,31 @@ import { QUESTIONNAIRE_MANIFEST, FREQUENCY_OPTIONS } from "./questionnaire-v3-ma
 
 // ===== 配置 =====
 
+// 严格隔离：mock/hybrid 仅由显式入口触发；正式运行绝不读陈旧 localStorage 配置
 function resolveMode() {
-  // 1. Vite 构建注入
+  // 1. 本机视觉演示（仅在显式 localhost + ?harmonyai_demo=1 时进入 mock）
+  try {
+    if (typeof location !== "undefined") {
+      const host = location.hostname || ""
+      const localHost = host === "127.0.0.1" || host === "localhost"
+      const demo = new URLSearchParams(location.search || "").get("harmonyai_demo")
+      if (localHost && demo === "1") return "mock"
+    }
+  } catch (e) { /* 非浏览器环境 */ }
+
+  // 2. Vite 构建注入（兼容旧名 HARMONYAI_V3_MODE 与新名 VITE_HARMONYAI_V3_MODE）
   let mode = ""
   try {
-    mode = (import.meta.env && import.meta.env.HARMONYAI_V3_MODE) || ""
+    const env = (import.meta && import.meta.env) || {}
+    mode = env.VITE_HARMONYAI_V3_MODE || env.HARMONYAI_V3_MODE || ""
   } catch (e) { /* 非 Vite 环境 */ }
-  // 2. Node 测试进程
+  // 3. Node 测试进程
   if (!mode && typeof process !== "undefined" && process && process.env) {
     mode = process.env.HARMONYAI_V3_MODE || ""
   }
-  // 3. H5 本地调试（localStorage 显式覆盖，仅开发用）
-  if (!mode) {
-    try {
-      const stored = typeof localStorage !== "undefined" && localStorage.getItem("HARMONYAI_V3_MODE")
-      if (stored === "mock" || stored === "hybrid" || stored === "real") mode = stored
-    } catch (e) { /* 非 H5 环境 */ }
-  }
   if (mode === "mock" || mode === "hybrid" || mode === "real") return mode
-  return "real" // 默认真实；mock/hybrid 必须显式开启
+  // 4. 默认 real —— 不允许陈旧 localStorage 配置污染正式域名（严格隔离）
+  return "real"
 }
 
 const MODE = resolveMode()
@@ -619,7 +631,8 @@ function toneLabel(toneProfile) {
 const MOCK = {
   token: null,
   session: null,
-  document: null,
+  documents: [], // 多资料：按上传顺序保存 document_id / state / uploaded_at
+  document: null, // 最近一份上传的资料（兼容旧读取，仅作为最后活跃资料的别名）
   understanding: null,
   transcript: null,
   questionnaireSubmission: null,
@@ -775,6 +788,7 @@ const mockApi = {
       understanding_ref: null,
       questionnaire_ref: null,
     }
+    MOCK.documents = []
     MOCK.document = null
     MOCK.understanding = null
     MOCK.questionnaireSubmission = null
@@ -812,6 +826,17 @@ const mockApi = {
       if (!payload.document_id) {
         throw apiError("缺少新资料标识", "VALIDATION_ERROR", { status: 422 })
       }
+      // 多资料：把新 document 追加进 MOCK.documents，并设为活跃 document
+      const exists = (MOCK.documents || []).find((d) => d.document_id === payload.document_id)
+      if (!exists) {
+        MOCK.documents = MOCK.documents || []
+        MOCK.documents.push({
+          document_id: payload.document_id,
+          state: "ready",
+          uploaded_at: new Date().toISOString(),
+        })
+      }
+      MOCK.document = { document_id: payload.document_id, state: "ready", uploaded_at: new Date().toISOString() }
       s.input_mode = "with_document"
       s.input_revision += 1
       s.active_document_id = payload.document_id
@@ -820,12 +845,14 @@ const mockApi = {
       return clone(s)
     }
     if (action === "discard_document") {
+      // 丢弃当前资料：清空多资料集合，重置 active_document_id
+      MOCK.documents = []
+      MOCK.document = null
       s.input_mode = "without_document"
       s.input_revision += 1
       s.active_document_id = null
       s.understanding_ref = null
       MOCK.understanding = null
-      MOCK.document = null
       return clone(s)
     }
     throw apiError("未知操作", "VALIDATION_ERROR", { status: 422 })
@@ -843,29 +870,44 @@ const mockApi = {
   async uploadDocument(filePath, fileName) {
     await delay(1200)
     const fail = fileName && String(fileName).toLowerCase().indexOf("fail") !== -1
-    MOCK.document = {
-      document_id: "doc_mock_" + Date.now(),
+    const docId = "doc_mock_" + Date.now() + "_" + (MOCK.documents || []).length
+    const record = {
+      document_id: docId,
       state: fail ? "failed" : "ready",
       uploaded_at: new Date().toISOString(),
     }
+    // 多资料：追加而非覆盖；保留上传顺序
+    MOCK.documents = MOCK.documents || []
+    MOCK.documents.push(record)
+    MOCK.document = record
     const s = MOCK.session
     if (s && !fail) {
       s.input_mode = "with_document"
       s.input_revision += 1 // replace_document
-      s.active_document_id = MOCK.document.document_id
+      s.active_document_id = docId
       s.understanding_ref = null
       MOCK.understanding = null
     }
-    return clone(MOCK.document)
+    return clone(record)
   },
 
   getCaseSummary() {
-    if (!MOCK.document || MOCK.document.state !== "ready") {
+    // 多资料：只要至少一份文档达 ready 即可生成摘要（mock 演示）
+    const anyReady = (MOCK.documents || []).some((d) => d.state === "ready")
+    if (!anyReady && (!MOCK.document || MOCK.document.state !== "ready")) {
       return Promise.reject(apiError("资料尚未识别成功，不能进入摘要确认", "SOURCE_NOT_READY"))
     }
     if (!MOCK.understanding) {
       MOCK.understanding = mockCaseSummary()
+      const activeId = MOCK.session && MOCK.session.active_document_id
+      MOCK.understanding.source_document_ids = (MOCK.documents || [])
+        .filter((d) => d.state === "ready")
+        .map((d) => d.document_id)
       MOCK.session.understanding_ref = { understanding_id: "und_mock_001", revision: 1 }
+      // 如果没有 active_document_id 但 documents 里有 ready 的，取最后一份
+      if (!MOCK.session.active_document_id && MOCK.understanding.source_document_ids.length) {
+        MOCK.session.active_document_id = MOCK.understanding.source_document_ids[MOCK.understanding.source_document_ids.length - 1]
+      }
     }
     return Promise.resolve(clone(MOCK.understanding))
   },
@@ -1273,6 +1315,7 @@ export const apiV3 = {
     clearFlowState()
     MOCK.token = null
     MOCK.session = null
+    MOCK.documents = []
     MOCK.document = null
     MOCK.understanding = null
     MOCK.questionnaireSubmission = null
