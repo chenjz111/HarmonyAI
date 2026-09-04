@@ -364,11 +364,58 @@ test("single final confirmation: assessment confirm page has exactly one primary
 test("V3.1: final confirm is titled 完成近期状态总结 and sits after optional goal page", () => {
   const confirm = readPage("v3-confirm/v3-confirm.vue")
   assert.ok(confirm.includes("完成近期状态总结"), "Issue #100: confirm page title")
-  // 问卷页评估创建完成后先进入疗愈诉求（选填），再到最终确认
+  // 问卷页评估创建完成后（答完 10 题路径）先进入疗愈诉求（选填），再到最终确认
   const questionnaire = readPage("v3-questionnaire/v3-questionnaire.vue")
   assert.ok(questionnaire.includes('"/pages/v3-goal/v3-goal"'), "questionnaire must route to goal page")
   const goal = readPage("v3-goal/v3-goal.vue")
   assert.ok(goal.includes('"/pages/v3-confirm/v3-confirm"'), "goal page must route to the final confirm")
+})
+
+test("V3.1: with-document skip in questionnaire bypasses goal and lands on confirm", () => {
+  // 复审修订：有资料用户**跳过**问卷时，直接进入"完成近期状态总结"（v3-confirm），
+  // 不经过疗愈诉求（v3-goal）。无资料用户这条分支走不到（required 守卫 + skip-row
+  // 仅在 !required 时渲染）。
+  const questionnaire = readPage("v3-questionnaire/v3-questionnaire.vue")
+  // skip 的"继续"路径必须包含 v3-confirm
+  assert.ok(
+    questionnaire.includes('"/pages/v3-confirm/v3-confirm"'),
+    "skip path must land on v3-confirm",
+  )
+  // 提取 skip() 函数体，单独断言其内 redirectTo 目标
+  const m = questionnaire.match(/async skip\(\)\s*\{[\s\S]*?\n\s{4}\}/)
+  assert.ok(m, "skip() method must exist in v3-questionnaire")
+  const skipBody = m[0]
+  assert.ok(skipBody.includes("/pages/v3-confirm/v3-confirm"), "skip() must redirect to v3-confirm")
+  assert.ok(
+    !skipBody.includes("/pages/v3-goal/v3-goal"),
+    "skip() must not route to v3-goal",
+  )
+  // 守卫：required 或 submitting 时 skip 立即返回
+  assert.match(
+    skipBody,
+    /if\s*\(this\.required\s*\|\|\s*this\.submitting\)\s*return/,
+    "skip() must guard against required or in-flight state",
+  )
+})
+
+test("V3.1: questionnaire required comes from authoritative session, not stale cache", () => {
+  // 复审修订：必填性必须读当前权威 Session，防止 schema.required_for_flow / 本地缓存 /
+  // 上一个会话的选项误判当前 10 题。
+  const questionnaire = readPage("v3-questionnaire/v3-questionnaire.vue")
+  assert.match(
+    questionnaire,
+    /apiV3\.getSession\(\)/,
+    "load() must call apiV3.getSession()",
+  )
+  assert.match(
+    questionnaire,
+    /session\.input_mode\s*!==\s*["']with_document["']/,
+    "required must be derived from session.input_mode",
+  )
+  assert.ok(
+    !/this\.required\s*=\s*!!this\.schema\.required_for_flow/.test(questionnaire),
+    "schema.required_for_flow must no longer be the source of truth",
+  )
 })
 
 test("V3.1: goal page is an optional healing-intent page without removed goal concepts", () => {
@@ -381,6 +428,15 @@ test("V3.1: goal page is an optional healing-intent page without removed goal co
   assert.ok(goal.includes("skip"), "must allow skipping the whole step")
   // 未选择任何内容时等同跳过，不发送默认偏好
   assert.ok(goal.includes("!this.primary"), "must not submit when nothing chosen")
+  // 复审修订：意图代码与 Read Model 合同权威枚举对齐（不再使用 relax / soothe / lift_mood）
+  for (const code of ["sleep", "relaxation", "emotion_regulation", "focus", "energy", "stress_relief", "other"]) {
+    assert.ok(goal.includes(`code: "${code}"`), `goal page must declare canonical intent code: ${code}`)
+  }
+  for (const legacy of ["code: \"relax\"", "code: \"soothe\"", "code: \"lift_mood\""]) {
+    assert.ok(!goal.includes(legacy), `goal page must not reuse removed code: ${legacy}`)
+  }
+  // 200 字补充输入上限
+  assert.ok(goal.includes("maxlength=\"200\""), "supplement text must cap at 200 chars")
 })
 
 test("api-v3 mock: healing intent is stored without fabricating defaults", async () => {

@@ -73,8 +73,15 @@ export default {
       this.loading = true
       this.error = ""
       try {
-        this.schema = await apiV3.getQuestionnaireSchema()
-        this.required = !!this.schema.required_for_flow
+        // 必填性必须读取当前权威 Session —— schema.required_for_flow 是历史
+        // 冗余字段，不能作为唯一来源；防止过期的本地缓存 / 上一个会话的选项
+        // 误判当前 10 题的必填性（强制读取 session.input_mode）
+        const [schema, session] = await Promise.all([
+          apiV3.getQuestionnaireSchema(),
+          apiV3.getSession(),
+        ])
+        this.schema = schema
+        this.required = !!session && session.input_mode !== "with_document"
         this.simulated = !!apiV3.AGENT_SIMULATED
         this.current = 0
         this.answers = {}
@@ -159,19 +166,29 @@ export default {
         this.submitting = false
       }
     },
-    // 有资料模式：跳过整份问卷（部分草稿不作为有效来源）
+    // V3.1 Issue #100 复审修订：有资料用户**跳过**问卷时，直接进入状态总结确认
+    // （v3-confirm）—— 不显示疗愈诉求页（v3-goal）。意图与行为一致：
+    // "整份选填、不需引导再做选择"的用户无需额外的偏好页。
     async skip() {
       if (this.required || this.submitting) return
       try {
-        await this.goAssessment()
+        // 直接尝试推进到"完成近期状态总结"；评估依赖后端能力时如实报错。
+        await apiV3.createAssessment()
+        uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
       } catch (e) {
+        if (e && e.agentPending) {
+          // 综合评估能力未接入：保留问卷的等待卡
+          this.agentPending = true
+          return
+        }
         uni.showToast({ title: e.message || "操作失败，请重试", icon: "none" })
       }
     },
+    // V3.1：完成 10 题走"提交→评估→选填疗愈诉求"路径
     async goAssessment() {
       this.submittingAssessment = true
       try {
-        // 触发综合评估后进入疗愈诉求（选填）页，随后到达最终确认页
+        // 提交后先入疗愈诉求（选填），再到最终确认（完成近期状态总结）
         await apiV3.createAssessment()
         uni.redirectTo({ url: "/pages/v3-goal/v3-goal" })
       } catch (e) {
@@ -185,6 +202,13 @@ export default {
       } finally {
         this.submittingAssessment = false
       }
+    },
+    // V3.1 Issue #100 复审修订：有资料用户**跳过**问卷，不再经过疗愈诉求（Goal）页，
+    // 直接进入"完成近期状态总结"（v3-confirm）。无资料用户这条分支永远走不到
+    // （required 守卫阻断 + skip-row 仅在 !required 时渲染）。
+    skipToFinalConfirm() {
+      if (this.required || this.submitting) return
+      uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
     },
     // submit 阶段的 AGENT_PENDING：同样进入等待状态
     handleAgentPending(e) {
@@ -320,9 +344,9 @@ export default {
         </view>
       </view>
 
-      <!-- 有资料模式：整份跳过 -->
+      <!-- 有资料模式：跳过整份问卷；跳过 = 直接进入状态总结确认，不经过疗愈诉求页 -->
       <view v-if="!required" class="skip-row" @click="skip">
-        <text class="skip-text">跳过问卷，继续评估</text>
+        <text class="skip-text">跳过问卷，直接进入状态总结</text>
       </view>
       <view v-else class="must-note">
         <text class="must-note-text">无资料流程需要完成全部 {{ total }} 题后才能继续 · 已答 {{ answeredCount }} / {{ total }}</text>

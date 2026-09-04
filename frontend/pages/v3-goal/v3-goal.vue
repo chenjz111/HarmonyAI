@@ -83,24 +83,35 @@
 /**
  * V3.1 疗愈诉求页（Issue #100：Provisional Flow 选填加回）
  *
- * - 此页为可选的调适方向偏好，两条路径（有资料 / 无资料）均为选填，可整步跳过
- * - 不虚构、不默认补全任何偏好：用户未选择时不留占位、不提交空对象
- * - 选择内容本机暂存（后端暂无对应保存能力），页面如实标注；mock 状态机同步记录
- * - 后续：v3-confirm（完成近期状态总结）
+ * 意图代码使用合同权威枚举（frontend-read-model-contract-v3.md §10 + 复审指令）：
+ *   sleep / relaxation / emotion_regulation / focus / energy / stress_relief / other
+ * - 不使用自定义代码（如 relax/soothe/lift_mood 等），与后端契约字段一一对应，
+ *   便于上游 Agent / 下游生成器直接消费。
+ * - 整页选填、可整步跳过；最多 2 项：主诉求（primary）+ 次诉求（secondary）。
+ * - "其他想法"补充输入 ≤ 200 字（前端 maxlength=200；后端写入时也按同样上限校验）。
+ * - 不虚构、不默认补全任何偏好：用户未选择时不留占位、不提交空对象。
+ * - 后端暂无对应保存能力 → 选择内容本机暂存（safeSet），页面如实标注，
+ *   mock 状态机同步记录。后端交付后由 apiV3.submitHealingIntent 替换为本请求。
+ * - 后续：v3-confirm（完成近期状态总结）。
  */
 import { apiV3 } from "../../common/api-v3.js"
+
+// 合同权威意图代码（与前端 Read Model 一致；后端尚未交付保存能力，本机暂存）
+const INTENT_CODES = Object.freeze([
+  { code: "sleep", label: "睡得更安稳" },
+  { code: "relaxation", label: "让身心放松" },
+  { code: "emotion_regulation", label: "调节情绪起伏" },
+  { code: "focus", label: "更专注一些" },
+  { code: "energy", label: "更有精神一些" },
+  { code: "stress_relief", label: "缓解压力" },
+  { code: "other", label: "其他诉求" },
+])
 
 export default {
   data() {
     return {
       withDocument: false,
-      intents: [
-        { code: "sleep", label: "睡得更安稳" },
-        { code: "relax", label: "让身心放松" },
-        { code: "soothe", label: "舒缓紧张不安" },
-        { code: "lift_mood", label: "改善低落心情" },
-        { code: "energy", label: "更有精神一些" },
-      ],
+      intents: INTENT_CODES,
       primary: null,
       secondary: null,
       custom: "",
