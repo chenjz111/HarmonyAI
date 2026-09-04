@@ -1,0 +1,124 @@
+"""V3.1 document-set persistence (Issue #99 step 2).
+
+A DocumentSet is an immutable, revisioned snapshot of 1-3 active source
+documents for a with_document session. Adding, deleting or replacing a
+document creates a new revision; the previous revision is kept for audit but
+no longer active. Item order (position 1-3) preserves the user's upload order.
+"""
+
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.sql import func
+
+from backend.app.core.database import Base
+
+
+class DocumentSet(Base):
+    __tablename__ = "document_sets"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_row_id", "document_set_id", name="uq_document_sets_session"
+        ),
+        CheckConstraint("revision >= 1", name="ck_document_sets_revision"),
+        CheckConstraint(
+            "status IN ('active', 'superseded', 'discarded')",
+            name="ck_document_sets_status",
+        ),
+    )
+
+    document_set_id = Column(String(64), primary_key=True)
+    internal_user_pk = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    session_row_id = Column(
+        Integer, ForeignKey("sessions.id"), nullable=False, index=True
+    )
+    revision = Column(Integer, nullable=False)
+    status = Column(String(16), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class DocumentSetItem(Base):
+    __tablename__ = "document_set_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_set_id", "position", name="uq_document_set_items_position"
+        ),
+        UniqueConstraint(
+            "document_set_id", "document_id", name="uq_document_set_items_document"
+        ),
+        CheckConstraint(
+            "position >= 1 AND position <= 3", name="ck_document_set_items_position"
+        ),
+    )
+
+    document_set_item_id = Column(String(64), primary_key=True)
+    document_set_id = Column(
+        String(64),
+        ForeignKey("document_sets.document_set_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_id = Column(
+        String(64), ForeignKey("documents.document_id"), nullable=False
+    )
+    position = Column(Integer, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class DocumentRelevance(Base):
+    """Relevance assessment of a source document within a document set.
+
+    Produced by the Information Understanding layer after OCR. Outcome is the
+    only field the client reads; reason_codes / evaluator are internal audit.
+    """
+
+    __tablename__ = "document_relevances"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_set_id", "document_id", name="uq_document_relevances_document"
+        ),
+        CheckConstraint(
+            "outcome IN ('VALID', 'INVALID', 'IRRELEVANT', 'INSUFFICIENT')",
+            name="ck_document_relevances_outcome",
+        ),
+    )
+
+    document_relevance_id = Column(String(64), primary_key=True)
+    document_set_id = Column(
+        String(64),
+        ForeignKey("document_sets.document_set_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_set_revision = Column(Integer, nullable=False)
+    document_id = Column(String(64), nullable=False)
+    outcome = Column(String(16), nullable=False)
+    reason_codes_json = Column(JSON, nullable=False)
+    evaluator = Column(String(32), nullable=True)
+    evaluator_version = Column(String(32), nullable=True)
+    evaluated_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
