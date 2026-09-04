@@ -130,6 +130,34 @@ def test_document_set_rejects_invalid_size_duplicate_and_cross_user():
     assert denied.json()["error"]["code"] == "DOCUMENT_NOT_FOUND"
 
 
+def test_discard_document_clears_active_set_and_allows_delete():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers, session_id, "sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "with_document"},
+    )
+    doc_a = _create_document(headers, session_id)
+    _replace_set(headers, session_id, "set-1", [doc_a], 2)
+
+    # Discard -> without_document.
+    discard = _transition(
+        headers, session_id, "disc-1",
+        {"expected_input_revision": 3, "action": "discard_document"},
+    )
+    assert discard.status_code == 201, discard.text
+
+    # The old set is no longer active.
+    active = client.get(
+        f"/api/v3/sessions/{session_id}/document-sets/active", headers=headers
+    )
+    assert active.status_code == 404
+
+    # The document can now be deleted.
+    deleted = client.delete(f"/api/v3/documents/{doc_a}", headers=headers)
+    assert deleted.status_code == 200
+
+
 def test_delete_document_in_active_set_is_rejected():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
