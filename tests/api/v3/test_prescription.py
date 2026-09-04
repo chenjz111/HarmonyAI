@@ -169,6 +169,71 @@ def test_create_and_read_prescription():
     assert read["prescription_id"] == data["prescription_id"]
 
 
+def _submit_questionnaire(headers, session_id):
+    from pathlib import Path
+
+    manifest = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "knowledge" / "v3" / "questionnaire-v3.0.json"
+        ).read_text(encoding="utf-8")
+    )
+    client.post(
+        f"/api/v3/sessions/{session_id}/input-transitions",
+        headers={**headers, "Idempotency-Key": f"sel-{uuid.uuid4().hex}"},
+        json={"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+    )
+    response = client.post(
+        f"/api/v3/sessions/{session_id}/questionnaire",
+        headers={**headers, "Idempotency-Key": f"q-{uuid.uuid4().hex}"},
+        json={
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "schema_id": manifest["schema_id"],
+            "schema_version": manifest["schema_version"],
+            "manifest_version": manifest["manifest_version"],
+            "content_checksum": manifest["content_checksum"],
+            "answers": (
+                [
+                    {"question_id": f"q{i:02d}", "answer_type": "frequency_0_4", "value": 0}
+                    for i in range(1, 6)
+                ]
+                + [
+                    {"question_id": f"q{i:02d}", "answer_type": "multi_choice_evidence", "value": ["none"]}
+                    for i in range(6, 11)
+                ]
+            ),
+            "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": "2026-01-01T00:05:00Z",
+        },
+    )
+    assert response.status_code == 201, response.text
+
+
+def test_user_goal_influences_prescription_bpm():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+    _submit_questionnaire(headers, session_id)
+
+    submitted = client.put(
+        f"/api/v3/sessions/{session_id}/user-goal",
+        headers=headers,
+        json={"user_goal": {"primary_goal": "energy", "secondary_goal": None, "custom_goal_text": None}},
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    created = _v3_data(
+        client.post(
+            "/api/v3/prescriptions",
+            headers=headers,
+            json={"schema_version": "prescription_v3.1", "diagnosis_id": diagnosis_id, "preference_snapshot": None},
+        )
+    )
+    assert created["generation_spec"]["bpm"] == 82
+    assert created["generation_spec"]["energy_curve"] == "轻快有活力"
+
+
 def test_prescription_requires_owned_diagnosis():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)

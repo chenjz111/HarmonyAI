@@ -15,9 +15,10 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from backend.app.models.session import Session as SessionModel
 from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.models.v3.prescription import PrescriptionV3
-from backend.app.schemas.v3.common import AuthPrincipal, ToneCode
+from backend.app.schemas.v3.common import AuthPrincipal, ToneCode, UserGoal
 from backend.app.schemas.v3.prescription import (
     FallbackToneProfile,
     GenerationFallbackPolicy,
@@ -34,6 +35,27 @@ from backend.app.schemas.v3.prescription import (
 from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
 
 
+# 疗愈诉求 → 保守 BPM / 能量曲线（仅供音乐设计，不进医学证据）。
+_USER_GOAL_BPM = {
+    "sleep": 60,
+    "relaxation": 62,
+    "stress_relief": 64,
+    "emotion_regulation": 66,
+    "focus": 76,
+    "energy": 82,
+    "other": 68,
+}
+_USER_GOAL_ENERGY = {
+    "sleep": "平稳舒缓",
+    "relaxation": "平稳舒缓",
+    "stress_relief": "平稳舒缓",
+    "emotion_regulation": "平稳舒缓",
+    "focus": "平稳专注",
+    "energy": "轻快有活力",
+    "other": "平稳舒缓",
+}
+
+
 class OwnedResourceNotFound(RuntimeError):
     pass
 
@@ -45,6 +67,7 @@ class DiagnosisNotReady(RuntimeError):
 def _conservative_generation_spec(
     diagnosis_id: str,
     preference,
+    user_goal: UserGoal | None,
 ) -> GenerationSpec:
     tone_profile = FallbackToneProfile(
         schema_version="tone_profile_v3.0",
@@ -61,7 +84,14 @@ def _conservative_generation_spec(
         basis=ToneBasis(diagnosis_id=diagnosis_id, supporting_fact_ids=[]),
         status="fallback",
     )
+    # 疗愈诉求先定基调，历史偏好再微调。
     bpm = 62
+    energy_curve = "平稳舒缓"
+    if user_goal is not None:
+        bpm = _USER_GOAL_BPM.get(user_goal.primary_goal.value, 68)
+        energy_curve = _USER_GOAL_ENERGY.get(
+            user_goal.primary_goal.value, "平稳舒缓"
+        )
     instruments = ["guqin"]
     duration = 180
     if preference is not None:
@@ -83,7 +113,7 @@ def _conservative_generation_spec(
         structure=GenerationStructure(
             intro_seconds=30, main_seconds=120, outro_seconds=30
         ),
-        energy_curve="平稳舒缓",
+        energy_curve=energy_curve,
         forbidden_constraints=[],
         fallback_policy=GenerationFallbackPolicy(allow_local_matching=True),
     )
@@ -108,6 +138,17 @@ def _to_schema(row: PrescriptionV3) -> PrescriptionV3Schema:
     )
 
 
+def _session_user_goal(db: Session, session_row_id: int) -> UserGoal | None:
+    session = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == session_row_id)
+        .one_or_none()
+    )
+    if session is None or session.user_goal_json is None:
+        return None
+    return UserGoal.model_validate(session.user_goal_json)
+
+
 def create_prescription(
     db: Session,
     principal: AuthPrincipal,
@@ -126,8 +167,9 @@ def create_prescription(
     if diagnosis.status not in {"success", "degraded"}:
         raise DiagnosisNotReady
 
+    user_goal = _session_user_goal(db, diagnosis.session_row_id)
     preference = get_latest_preference_snapshot(db, principal)
-    spec = _conservative_generation_spec(request.diagnosis_id, preference)
+    spec = _conservative_generation_spec(request.diagnosis_id, preference, user_goal)
 
     if preference is not None:
         personalization = PrescriptionPersonalization(
