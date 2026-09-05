@@ -10,9 +10,12 @@
  * - continue_use 单选：yes / maybe / no
  * - liked_features 多选；comment 选填（1-500 字）
  * - 全部可选填，可一条不填直接提交，也可跳过反馈返回首页
- * - 选中态统一为深绿色底 + 白字 + ✓
+ * - 选中态统一为朱砂印章底 + 白字 + ✓
+ *
+ * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
 import { apiV3 } from "../../common/api-v3.js"
+import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 // 互斥组定义（与 FeedbackV3.validate_selection_sets 一致）
 const MUTEX_GROUPS = [
@@ -21,6 +24,7 @@ const MUTEX_GROUPS = [
 ]
 
 export default {
+  components: { HanSideNav },
   data() {
     return {
       changeLabel: "", // 选填：much_better | slightly_better | no_change | worse
@@ -125,156 +129,246 @@ export default {
 </script>
 
 <template>
-  <view class="container">
-    <view class="header">
-      <text class="step-tag">反馈 · 选填</text>
-      <text class="page-title">听完后，感觉怎么样？</text>
-      <text class="page-subtitle">可以告诉我们你的感受，也可以直接结束。反馈为选填。</text>
-    </view>
-
-    <!-- 提交成功 -->
-    <view v-if="submitted" class="done-card">
-      <view class="done-icon"><text class="done-icon-text">✓</text></view>
-      <text class="done-title">反馈已提交</text>
-      <text class="done-sub">感谢你的反馈，我们会让它越来越适合你。</text>
-      <view class="btn-primary" @click="goHome">
-        <text class="btn-primary-text">返回首页</text>
-      </view>
-    </view>
-
-    <view v-else>
-      <!-- 1. 状态变化（选填，2×2 大卡片） -->
-      <view class="section-card">
-        <text class="section-title">听完这段音乐，你的状态变化是？</text>
-        <view class="change-grid">
-          <view
-            v-for="opt in changeOptions"
-            :key="opt.value"
-            class="change-card"
-            :class="{ 'change-card-active': changeLabel === opt.value }"
-            @click="pickChange(opt.value)"
-          >
-            <text v-if="changeLabel === opt.value" class="change-check">✓</text>
-            <text class="change-label" :class="{ 'change-label-active': changeLabel === opt.value }">{{ opt.label }}</text>
+  <view class="page han-page side-nav-page">
+    <han-side-nav current="listen" />
+    <view class="han-page-content container">
+      <view class="header ink-fade-in">
+        <view class="header-row">
+          <view class="stage-seal">
+            <text class="stage-seal-text">谢</text>
           </view>
+          <view class="header-titles">
+            <text class="step-tag">反馈 · 选填</text>
+            <text class="page-title han-title-brush revealed">听完后，感觉怎么样？</text>
+          </view>
+        </view>
+        <text class="page-subtitle">可以告诉我们你的感受，也可以直接结束。反馈为选填。</text>
+      </view>
+
+      <!-- 提交成功 -->
+      <view v-if="submitted" class="han-card done-card ink-fade-up">
+        <view class="done-seal">
+          <text class="done-seal-text">谢</text>
+        </view>
+        <text class="done-title">反馈已提交</text>
+        <text class="done-sub">感谢你的反馈，我们会让它越来越适合你。</text>
+        <view class="han-btn han-btn-primary btn-primary" @click="goHome">
+          <text class="btn-primary-text">返回首页</text>
         </view>
       </view>
 
-      <!-- 2. 是否继续使用（单选） -->
-      <view class="section-card">
-        <text class="section-title">之后还会继续使用吗？</text>
-        <view class="radio-row">
-          <view
-            v-for="opt in continueOptions"
-            :key="opt.value"
-            class="radio-chip"
-            :class="{ 'radio-chip-active': continueUse === opt.value }"
-            @click="pickContinue(opt.value)"
-          >
-            <text class="radio-chip-text" :class="{ 'radio-chip-text-active': continueUse === opt.value }">{{ opt.label }}</text>
+      <view v-else>
+        <!-- 1. 状态变化（选填，2×2 大卡片） -->
+        <view class="han-card section-card ink-fade-up">
+          <view class="section-head">
+            <view class="section-seal"><text class="section-seal-text">感</text></view>
+            <text class="section-title">听完这段音乐，你的状态变化是？</text>
+          </view>
+          <view class="change-grid">
+            <view
+              v-for="opt in changeOptions"
+              :key="opt.value"
+              class="change-card"
+              :class="{ 'change-card-active': changeLabel === opt.value }"
+              @click="pickChange(opt.value)"
+            >
+              <text v-if="changeLabel === opt.value" class="change-check">✓</text>
+              <text class="change-label" :class="{ 'change-label-active': changeLabel === opt.value }">{{ opt.label }}</text>
+            </view>
           </view>
         </view>
-      </view>
 
-      <!-- 3. 喜欢的方面（多选） -->
-      <view class="section-card">
-        <text class="section-title">这次音乐中，你比较喜欢哪些方面？（可多选）</text>
-        <view class="tag-cloud">
-          <view
-            v-for="opt in likedOptions"
-            :key="opt.value"
-            class="tag-chip"
-            :class="{ 'tag-chip-active': likedFeatures.indexOf(opt.value) !== -1 }"
-            @click="toggleLiked(opt.value)"
-          >
-            <text class="tag-chip-text" :class="{ 'tag-chip-text-active': likedFeatures.indexOf(opt.value) !== -1 }">{{ opt.label }}</text>
+        <!-- 2. 是否继续使用（单选） -->
+        <view class="han-card section-card ink-fade-up">
+          <view class="section-head">
+            <view class="section-seal"><text class="section-seal-text">续</text></view>
+            <text class="section-title">之后还会继续使用吗？</text>
+          </view>
+          <view class="radio-row">
+            <view
+              v-for="opt in continueOptions"
+              :key="opt.value"
+              class="radio-chip"
+              :class="{ 'radio-chip-active': continueUse === opt.value }"
+              @click="pickContinue(opt.value)"
+            >
+              <text class="radio-chip-text" :class="{ 'radio-chip-text-active': continueUse === opt.value }">{{ opt.label }}</text>
+            </view>
           </view>
         </view>
-      </view>
 
-      <!-- 4. 希望调整的地方（互斥多选） -->
-      <view class="section-card">
-        <text class="section-title">希望下次调整哪些地方？（可多选）</text>
-        <text class="section-hint">节奏与时长各只能选一个方向</text>
-        <view class="tag-cloud">
-          <view
-            v-for="opt in adjustmentOptions"
-            :key="opt.value"
-            class="tag-chip"
-            :class="{ 'tag-chip-active': adjustments.indexOf(opt.value) !== -1 }"
-            @click="toggleAdjust(opt.value)"
-          >
-            <text class="tag-chip-text" :class="{ 'tag-chip-text-active': adjustments.indexOf(opt.value) !== -1 }">{{ opt.label }}</text>
+        <!-- 3. 喜欢的方面（多选） -->
+        <view class="han-card section-card ink-fade-up">
+          <view class="section-head">
+            <view class="section-seal"><text class="section-seal-text">好</text></view>
+            <text class="section-title">这次音乐中，你比较喜欢哪些方面？（可多选）</text>
+          </view>
+          <view class="tag-cloud">
+            <view
+              v-for="opt in likedOptions"
+              :key="opt.value"
+              class="tag-chip"
+              :class="{ 'tag-chip-active': likedFeatures.indexOf(opt.value) !== -1 }"
+              @click="toggleLiked(opt.value)"
+            >
+              <text class="tag-chip-text" :class="{ 'tag-chip-text-active': likedFeatures.indexOf(opt.value) !== -1 }">{{ opt.label }}</text>
+            </view>
           </view>
         </view>
-      </view>
 
-      <!-- 5. 补充说明（选填） -->
-      <view class="section-card">
-        <text class="section-title">还有什么想说的？（选填）</text>
-        <textarea
-          class="comment-textarea"
-          v-model="comment"
-          :maxlength="500"
-          placeholder="例如：希望晚上睡前听，节奏再舒缓一点。"
-        />
-        <view class="comment-count"><text class="comment-count-text">{{ (comment || '').length }} / 500</text></view>
-      </view>
+        <!-- 4. 希望调整的地方（互斥多选） -->
+        <view class="han-card section-card ink-fade-up">
+          <view class="section-head">
+            <view class="section-seal"><text class="section-seal-text">调</text></view>
+            <text class="section-title">希望下次调整哪些地方？（可多选）</text>
+          </view>
+          <text class="section-hint">节奏与时长各只能选一个方向</text>
+          <view class="tag-cloud">
+            <view
+              v-for="opt in adjustmentOptions"
+              :key="opt.value"
+              class="tag-chip"
+              :class="{ 'tag-chip-active': adjustments.indexOf(opt.value) !== -1 }"
+              @click="toggleAdjust(opt.value)"
+            >
+              <text class="tag-chip-text" :class="{ 'tag-chip-text-active': adjustments.indexOf(opt.value) !== -1 }">{{ opt.label }}</text>
+            </view>
+          </view>
+        </view>
 
-      <view v-if="submitError" class="error-row">
-        <text class="error-text">{{ submitError }}</text>
-      </view>
+        <!-- 5. 补充说明（选填） -->
+        <view class="han-card section-card ink-fade-up">
+          <view class="section-head">
+            <view class="section-seal"><text class="section-seal-text">言</text></view>
+            <text class="section-title">还有什么想说的？（选填）</text>
+          </view>
+          <textarea
+            class="comment-textarea"
+            v-model="comment"
+            :maxlength="500"
+            placeholder="例如：希望晚上睡前听，节奏再舒缓一点。"
+          />
+          <view class="comment-count"><text class="comment-count-text">{{ (comment || '').length }} / 500</text></view>
+        </view>
 
-      <view class="btn-primary" :class="{ 'btn-disabled': !canSubmit }" @click="submit">
-        <text class="btn-primary-text">{{ submitting ? "正在提交…" : "提交反馈" }}</text>
-      </view>
-      <view class="btn-link" @click="goHome">
-        <text class="btn-link-text">暂不反馈，返回首页</text>
+        <view v-if="submitError" class="error-row">
+          <text class="error-text">{{ submitError }}</text>
+        </view>
+
+        <view class="han-btn han-btn-primary btn-primary" :class="{ 'btn-disabled': !canSubmit }" @click="submit">
+          <text class="btn-primary-text">{{ submitting ? "正在提交…" : "提交反馈" }}</text>
+        </view>
+        <view class="btn-link" @click="goHome">
+          <text class="btn-link-text">暂不反馈，返回首页</text>
+        </view>
       </view>
     </view>
   </view>
 </template>
 
-<style>
+<style scoped>
 .container {
   min-height: 100vh;
-  background: #f7f3eb;
   padding: 70rpx 48rpx 60rpx;
   box-sizing: border-box;
 }
-.header { margin-bottom: 40rpx; }
+
+/* ===== 页头 ===== */
+.header {
+  margin-bottom: 40rpx;
+}
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin-bottom: 16rpx;
+}
+.stage-seal {
+  width: 88rpx;
+  height: 88rpx;
+  background: var(--ink-seal);
+  border-radius: var(--radius-seal);
+  transform: rotate(-4deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-seal);
+  flex-shrink: 0;
+}
+.stage-seal-text {
+  color: var(--text-inverse);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 44rpx;
+  font-weight: 700;
+}
+.header-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
 .step-tag {
   display: inline-block;
+  align-self: flex-start;
   font-size: 22rpx;
-  color: #4a6b5c;
-  background: #e6ebe5;
+  color: var(--ink-primary);
+  background: rgba(107, 124, 94, 0.12);
+  border: 1rpx solid rgba(107, 124, 94, 0.2);
   border-radius: 8rpx;
-  padding: 6rpx 16rpx;
-  margin-bottom: 18rpx;
+  padding: 4rpx 16rpx;
 }
-.page-title { display: block; font-size: 40rpx; font-weight: 600; color: #2f3d35; margin-bottom: 12rpx; }
-.page-subtitle { display: block; font-size: 26rpx; color: #7a8078; line-height: 1.6; }
+.page-title {
+  font-size: 40rpx;
+}
+.page-subtitle {
+  display: block;
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ===== 分节卡 ===== */
 .section-card {
-  background: #fffefa;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 24rpx;
+  border-radius: var(--radius-lg);
   padding: 36rpx 32rpx;
   margin-bottom: 28rpx;
 }
-.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28rpx; }
-.section-title { font-size: 30rpx; font-weight: 500; color: #2f3d35; line-height: 1.5; }
-.section-required {
-  font-size: 20rpx;
-  color: #b0574f;
-  border: 2rpx solid #e3c4c0;
-  border-radius: 8rpx;
-  padding: 4rpx 12rpx;
-  flex-shrink: 0;
-  margin-left: 16rpx;
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 28rpx;
 }
-.section-hint { display: block; font-size: 22rpx; color: #b3ac9c; margin-bottom: 24rpx; }
-.section-card .section-title:not(:last-child) { margin-bottom: 28rpx; }
-/* 2×2 状态变化大卡片 */
+.section-seal {
+  min-width: 44rpx;
+  height: 44rpx;
+  background: var(--ink-700);
+  border-radius: var(--radius-seal);
+  transform: rotate(-3deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.section-seal-text {
+  color: var(--text-inverse);
+  font-size: 24rpx;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+.section-title {
+  font-size: 30rpx;
+  font-weight: 500;
+  color: var(--ink-700);
+  line-height: 1.5;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+.section-hint {
+  display: block;
+  font-size: 22rpx;
+  color: var(--text-muted);
+  margin-bottom: 24rpx;
+}
+
+/* ===== 2×2 状态变化大卡片（朱砂选中） ===== */
 .change-grid {
   display: flex;
   flex-wrap: wrap;
@@ -283,9 +377,9 @@ export default {
 .change-card {
   width: calc(50% - 10rpx);
   min-height: 160rpx;
-  background: #f6f3ea;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 20rpx;
+  background: rgba(244, 238, 219, 0.45);
+  border: 2rpx solid var(--border-light);
+  border-radius: 16rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -293,100 +387,180 @@ export default {
   box-sizing: border-box;
   padding: 24rpx 16rpx;
   position: relative;
+  transition: all 0.2s ease;
 }
 .change-card-active {
   background: #2f5d43;
   border-color: #2f5d43;
+  transform: rotate(-1.5deg);
+  box-shadow: 0 6rpx 18rpx rgba(47, 93, 67, 0.32);
 }
 .change-check {
   position: absolute;
   top: 14rpx;
   right: 18rpx;
   font-size: 28rpx;
-  color: #fff;
+  color: #fdfbf5;
   font-weight: 600;
 }
-.change-label { font-size: 30rpx; color: #2f3d35; font-weight: 500; }
-.change-label-active { color: #fff; }
-/* 单选 chips */
-.radio-row { display: flex; flex-wrap: wrap; gap: 20rpx; }
+.change-label {
+  font-size: 30rpx;
+  color: var(--ink-700);
+  font-weight: 500;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+.change-label-active {
+  color: #fdfbf5;
+}
+
+/* ===== 单选 chips ===== */
+.radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+}
 .radio-chip {
-  background: #f6f3ea;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 44rpx;
+  background: rgba(244, 238, 219, 0.45);
+  border: 2rpx solid transparent;
+  border-radius: var(--radius-seal);
   padding: 18rpx 36rpx;
+  transition: all 0.2s ease;
 }
 .radio-chip-active {
-  background: #2f5d43;
-  border-color: #2f5d43;
+  background: rgba(192, 57, 43, 0.06);
+  border-color: var(--ink-seal);
+  transform: rotate(-1.5deg);
 }
-.radio-chip-text { font-size: 27rpx; color: #2f3d35; }
-.radio-chip-text-active { color: #fff; }
-/* 多选 chips */
-.tag-cloud { display: flex; flex-wrap: wrap; gap: 18rpx; }
+.radio-chip-text {
+  font-size: 27rpx;
+  color: var(--ink-700);
+}
+.radio-chip-text-active {
+  color: var(--ink-seal);
+  font-weight: 500;
+}
+
+/* ===== 多选 chips ===== */
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18rpx;
+}
 .tag-chip {
-  background: #f6f3ea;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 44rpx;
+  background: rgba(244, 238, 219, 0.45);
+  border: 2rpx solid transparent;
+  border-radius: var(--radius-seal);
   padding: 16rpx 32rpx;
+  transition: all 0.2s ease;
 }
 .tag-chip-active {
-  background: #2f5d43;
-  border-color: #2f5d43;
+  background: rgba(107, 124, 94, 0.1);
+  border-color: var(--ink-primary);
+  transform: rotate(-1.5deg);
 }
-.tag-chip-text { font-size: 26rpx; color: #2f3d35; }
-.tag-chip-text-active { color: #fff; }
-/* 补充说明 */
+.tag-chip-text {
+  font-size: 26rpx;
+  color: var(--ink-700);
+}
+.tag-chip-text-active {
+  color: var(--ink-primary-dark);
+  font-weight: 500;
+}
+
+/* ===== 补充说明 ===== */
 .comment-textarea {
   width: 100%;
   min-height: 200rpx;
-  background: #f6f3ea;
-  border-radius: 16rpx;
+  background: rgba(244, 238, 219, 0.5);
+  border: 1rpx solid var(--border-light);
+  border-radius: 14rpx;
   padding: 26rpx;
   font-size: 28rpx;
-  color: #2f3d35;
+  color: var(--ink-700);
   line-height: 1.7;
   box-sizing: border-box;
 }
-.comment-count { display: flex; justify-content: flex-end; margin-top: 12rpx; }
-.comment-count-text { font-size: 22rpx; color: #b3ac9c; }
-/* 提交 */
-.btn-primary {
-  background: #4a6b5c;
-  border-radius: 48rpx;
-  padding: 26rpx 0;
+.comment-count {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   margin-top: 12rpx;
 }
-.btn-primary-text { color: #fff; font-size: 30rpx; }
-.btn-disabled { opacity: 0.5; }
-.btn-link { display: flex; justify-content: center; padding: 24rpx 0 8rpx; }
-.btn-link-text { color: #8a9188; font-size: 26rpx; text-decoration: underline; }
-.error-row { display: flex; justify-content: center; margin-bottom: 20rpx; }
-.error-text { font-size: 26rpx; color: #b0574f; }
-/* 提交成功 */
+.comment-count-text {
+  font-size: 22rpx;
+  color: var(--text-muted);
+}
+
+/* ===== 提交 ===== */
+.btn-primary {
+  margin-top: 12rpx;
+}
+.btn-primary-text {
+  color: var(--text-inverse);
+  font-size: 30rpx;
+}
+.btn-disabled {
+  opacity: 0.5;
+}
+.btn-link {
+  display: flex;
+  justify-content: center;
+  padding: 24rpx 0 8rpx;
+}
+.btn-link-text {
+  color: var(--text-muted);
+  font-size: 26rpx;
+  text-decoration: underline;
+}
+.error-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20rpx;
+}
+.error-text {
+  font-size: 26rpx;
+  color: var(--ink-seal);
+}
+
+/* ===== 提交成功 ===== */
 .done-card {
-  background: #fffefa;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 24rpx;
+  border-radius: var(--radius-lg);
   padding: 80rpx 40rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-.done-icon {
+.done-seal {
   width: 120rpx;
   height: 120rpx;
-  border-radius: 50%;
-  background: #2f5d43;
+  background: var(--ink-seal);
+  border-radius: var(--radius-seal);
+  transform: rotate(-4deg);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 32rpx;
+  box-shadow: var(--shadow-seal);
 }
-.done-icon-text { font-size: 56rpx; color: #fff; font-weight: 600; }
-.done-title { font-size: 36rpx; font-weight: 600; color: #2f3d35; margin-bottom: 14rpx; }
-.done-sub { font-size: 26rpx; color: #9c9585; margin-bottom: 56rpx; }
-.done-card .btn-primary { width: 100%; margin-top: 0; }
+.done-seal-text {
+  font-size: 56rpx;
+  color: var(--text-inverse);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-weight: 700;
+}
+.done-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: var(--ink-700);
+  margin-bottom: 14rpx;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+.done-sub {
+  font-size: 26rpx;
+  color: var(--text-muted);
+  margin-bottom: 56rpx;
+}
+.done-card .btn-primary {
+  width: 100%;
+  margin-top: 0;
+}
 </style>

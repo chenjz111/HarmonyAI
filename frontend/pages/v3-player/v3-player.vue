@@ -18,8 +18,10 @@
  *   - 业务逻辑 togglePlay/toggleFavorite/goFeedback/exitSession 完全保留
  */
 import { apiV3 } from "../../common/api-v3.js"
+import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 export default {
+  components: { HanSideNav },
   data() {
     return {
       loading: true,
@@ -142,7 +144,8 @@ export default {
 </script>
 
 <template>
-  <view class="page han-page">
+  <view class="page han-page side-nav-page">
+    <han-side-nav current="listen" />
     <view class="han-page-content container">
       <view class="header ink-fade-in">
         <view class="step-tag">

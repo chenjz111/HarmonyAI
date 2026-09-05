@@ -11,12 +11,16 @@
  * - 有资料模式：整份选填，可跳过；一旦进入作答，本页 2 题都完成后才能进入下一页
  * - real 模式下提交/评估依赖后端综合评估能力（尚未交付）：
  *   捕获 AGENT_PENDING 后进入明确等待状态，不伪造结果、不静默失败
+ *
+ * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
 import { apiV3, FREQUENCY_OPTIONS } from "../../common/api-v3.js"
+import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 const PAGE_SIZE = 2 // V3.1：每页展示 2 题
 
 export default {
+  components: { HanSideNav },
   data() {
     return {
       loading: true,
@@ -166,7 +170,7 @@ export default {
         this.submitting = false
       }
     },
-    // V3.1 Issue #100 复审修订：有资料用户**跳过**问卷时，直接进入状态总结确认
+    // V3.1 复审修订：有资料用户**跳过**问卷时，直接进入状态总结确认
     // （v3-confirm）—— 不显示疗愈诉求页（v3-goal）。意图与行为一致：
     // "整份选填、不需引导再做选择"的用户无需额外的偏好页。
     async skip() {
@@ -203,7 +207,7 @@ export default {
         this.submittingAssessment = false
       }
     },
-    // V3.1 Issue #100 复审修订：有资料用户**跳过**问卷，不再经过疗愈诉求（Goal）页，
+    // V3.1 复审修订：有资料用户**跳过**问卷，不再经过疗愈诉求（Goal）页，
     // 直接进入"完成近期状态总结"（v3-confirm）。无资料用户这条分支永远走不到
     // （required 守卫阻断 + skip-row 仅在 !required 时渲染）。
     skipToFinalConfirm() {
@@ -223,203 +227,303 @@ export default {
 </script>
 
 <template>
-  <view class="container">
-    <view class="header">
-      <text class="step-tag">{{ required ? "无资料流程 · 第 2 步 · 必填" : "有资料流程 · 第 4 步 · 选填" }}</text>
-      <text class="page-title">{{ schema ? schema.title : "五脏状态问卷" }}</text>
-      <text class="page-subtitle">请根据最近 7 天的实际感受作答，每页 2 题。</text>
-    </view>
-
-    <view v-if="loading" class="loading-wrap">
-      <view class="loading-ring"></view>
-      <text class="loading-text">正在加载问卷…</text>
-    </view>
-
-    <view v-else-if="error" class="error-wrap">
-      <text class="error-text">{{ error }}</text>
-      <view class="btn-retry" @click="load"><text class="btn-retry-text">重试</text></view>
-    </view>
-
-    <view v-else-if="submittingAssessment" class="loading-wrap">
-      <view class="loading-ring"></view>
-      <text class="loading-text">正在生成你的状态评估…</text>
-      <text class="loading-sub">请稍候，通常需要几秒钟</text>
-    </view>
-
-    <!-- real 模式：评估服务未接入，明确等待状态，不伪造评估（稳定用户文案） -->
-    <view v-else-if="agentPending" class="pending-card">
-      <view class="pending-icon"><text class="pending-icon-text">…</text></view>
-      <text class="pending-title">正在等待评估服务接入</text>
-      <text class="pending-desc">评估服务正在升级维护中，暂时无法提交。你的作答已保留在本页，不会丢失，服务恢复后可直接提交。</text>
-      <view class="btn-retry" @click="agentPending = false"><text class="btn-retry-text">返回问卷</text></view>
-    </view>
-
-    <view v-else-if="totalSteps > 0">
-      <!-- hybrid 演示标识 -->
-      <view v-if="simulated" class="demo-banner">
-        <text class="demo-banner-text">演示模式：评估与音乐部分为模拟数据</text>
+  <view class="page han-page side-nav-page">
+    <han-side-nav current="question" />
+    <view class="han-page-content container">
+      <view class="header ink-fade-in">
+        <view class="header-row">
+          <view class="stage-seal">
+            <text class="stage-seal-text">问</text>
+          </view>
+          <view class="header-titles">
+            <text class="step-tag">{{ required ? "无资料流程 · 第 2 步 · 必填" : "有资料流程 · 第 4 步 · 选填" }}</text>
+            <text class="page-title han-title-brush revealed">{{ schema ? schema.title : "五脏状态问卷" }}</text>
+          </view>
+        </view>
+        <text class="page-subtitle">请根据最近 7 天的实际感受作答，每页 2 题。</text>
       </view>
 
-      <!-- 进度（V3.1：以页为单位 1/5 ~ 5/5） -->
-      <view class="progress-row">
-        <view class="progress-bar">
+      <view v-if="loading" class="loading-wrap">
+        <view class="loading-ring"></view>
+        <text class="loading-text">正在加载问卷…</text>
+      </view>
+
+      <view v-else-if="error" class="han-card error-card ink-fade-in">
+        <view class="error-seal">
+          <text class="error-seal-text">静</text>
+        </view>
+        <text class="error-title">暂时无法加载</text>
+        <text class="error-text">{{ error }}</text>
+        <view class="han-btn han-btn-primary btn-retry" @click="load">
+          <text class="btn-retry-text">重试</text>
+        </view>
+      </view>
+
+      <view v-else-if="submittingAssessment" class="loading-wrap">
+        <view class="loading-ring"></view>
+        <text class="loading-text">正在生成你的状态评估…</text>
+        <text class="loading-sub">请稍候，通常需要几秒钟</text>
+      </view>
+
+      <!-- real 模式：评估服务未接入，明确等待状态，不伪造评估（稳定用户文案） -->
+      <view v-else-if="agentPending" class="han-card pending-card ink-fade-in">
+        <view class="pending-seal">
+          <text class="pending-seal-text">候</text>
+        </view>
+        <text class="pending-title">正在等待评估服务接入</text>
+        <text class="pending-desc">评估服务正在升级维护中，暂时无法提交。你的作答已保留在本页，不会丢失，服务恢复后可直接提交。</text>
+        <view class="han-btn han-btn-ghost btn-back" @click="agentPending = false">
+          <text class="btn-back-text">返回问卷</text>
+        </view>
+      </view>
+
+      <view v-else-if="totalSteps > 0">
+        <!-- hybrid 演示标识 -->
+        <view v-if="simulated" class="demo-banner">
+          <text class="demo-banner-text">演示模式：评估与音乐部分为模拟数据</text>
+        </view>
+
+        <!-- 进度（V3.1：以页为单位 1/5 ~ 5/5） -->
+        <view class="progress-row">
+          <view class="progress-bar">
+            <view
+              class="progress-fill"
+              :style="{ width: (((current + (pageAnswered ? 1 : 0)) / totalSteps) * 100) + '%' }"
+            ></view>
+          </view>
+          <text class="progress-text">第 {{ current + 1 }} / {{ totalSteps }} 页</text>
+        </view>
+
+        <!-- 当前页 2 道题 -->
+        <view class="page-card">
           <view
-            class="progress-fill"
-            :style="{ width: (((current + (pageAnswered ? 1 : 0)) / totalSteps) * 100) + '%' }"
-          ></view>
-        </view>
-        <text class="progress-text">第 {{ current + 1 }} / {{ totalSteps }} 页</text>
-      </view>
-
-      <!-- 当前页 2 道题 -->
-      <view class="page-card">
-        <view
-          v-for="(q, i) in pageQuestions"
-          :key="q.question_id"
-          class="q-card"
-        >
-          <view class="q-card-head">
-            <text class="q-index">第 {{ pageStartIndex + i + 1 }} 题 · 共 {{ total }} 题</text>
-            <text v-if="required" class="q-required">必答</text>
-          </view>
-          <text class="q-prompt">{{ q.prompt }}</text>
-
-          <!-- 频率题（q01-q05）：单选 0..4 -->
-          <view v-if="isFrequency(q)" class="q-options">
-            <view
-              v-for="opt in frequencyOptions"
-              :key="'f' + q.question_id + opt.value"
-              class="q-option"
-              :class="{ 'q-option-active': currentFrequencyValue(q) === opt.value }"
-              @click="selectFrequency(q, opt)"
-            >
-              <view class="q-radio" :class="{ 'q-radio-active': currentFrequencyValue(q) === opt.value }">
-                <view v-if="currentFrequencyValue(q) === opt.value" class="q-radio-dot"></view>
-              </view>
-              <text class="q-option-label">{{ opt.label }}</text>
+            v-for="(q, i) in pageQuestions"
+            :key="q.question_id"
+            class="han-card q-card ink-fade-up"
+          >
+            <view class="q-card-head">
+              <text class="q-index">第 {{ pageStartIndex + i + 1 }} 题 · 共 {{ total }} 题</text>
+              <text v-if="required" class="q-required">必答</text>
             </view>
-          </view>
+            <text class="q-prompt">{{ q.prompt }}</text>
 
-          <!-- 多选题（q06-q10） -->
-          <view v-else class="q-options">
-            <view
-              v-for="opt in q.options"
-              :key="opt.option_code"
-              class="q-option"
-              :class="{ 'q-option-active': currentAnswer(q).indexOf(opt.option_code) !== -1 }"
-              @click="toggleOption(q, opt)"
-            >
+            <!-- 频率题（q01-q05）：单选 0..4 -->
+            <view v-if="isFrequency(q)" class="q-options">
               <view
-                class="q-radio"
-                :class="{ 'q-radio-active': currentAnswer(q).indexOf(opt.option_code) !== -1 }"
+                v-for="opt in frequencyOptions"
+                :key="'f' + q.question_id + opt.value"
+                class="q-option"
+                :class="{ 'q-option-active': currentFrequencyValue(q) === opt.value }"
+                @click="selectFrequency(q, opt)"
               >
-                <view v-if="currentAnswer(q).indexOf(opt.option_code) !== -1" class="q-radio-dot"></view>
+                <view class="q-radio" :class="{ 'q-radio-active': currentFrequencyValue(q) === opt.value }">
+                  <view v-if="currentFrequencyValue(q) === opt.value" class="q-radio-dot"></view>
+                </view>
+                <text class="q-option-label">{{ opt.label }}</text>
               </view>
-              <text class="q-option-label">{{ opt.label }}</text>
+            </view>
+
+            <!-- 多选题（q06-q10） -->
+            <view v-else class="q-options">
+              <view
+                v-for="opt in q.options"
+                :key="opt.option_code"
+                class="q-option"
+                :class="{ 'q-option-active': currentAnswer(q).indexOf(opt.option_code) !== -1 }"
+                @click="toggleOption(q, opt)"
+              >
+                <view
+                  class="q-radio"
+                  :class="{ 'q-radio-active': currentAnswer(q).indexOf(opt.option_code) !== -1 }"
+                >
+                  <view v-if="currentAnswer(q).indexOf(opt.option_code) !== -1" class="q-radio-dot"></view>
+                </view>
+                <text class="q-option-label">{{ opt.label }}</text>
+              </view>
             </view>
           </view>
         </view>
-      </view>
 
-      <!-- 导航 -->
-      <view class="nav-row">
-        <view class="nav-btn" :class="{ 'nav-hidden': current === 0 }" @click="prev">
-          <text class="nav-btn-text">上一页</text>
+        <!-- 导航 -->
+        <view class="nav-row">
+          <view class="han-btn han-btn-ghost nav-btn" :class="{ 'nav-hidden': current === 0 }" @click="prev">
+            <text class="nav-btn-text">上一页</text>
+          </view>
+          <view
+            v-if="current < totalSteps - 1"
+            class="han-btn han-btn-primary nav-btn nav-primary"
+            :class="{ 'nav-disabled': !pageAnswered }"
+            @click="next"
+          >
+            <text class="nav-btn-text nav-primary-text">下一页</text>
+          </view>
+          <view
+            v-else
+            class="han-btn han-btn-primary nav-btn nav-primary"
+            :class="{ 'nav-disabled': !canSubmit }"
+            @click="submit"
+          >
+            <text class="nav-btn-text nav-primary-text">提交问卷</text>
+          </view>
         </view>
-        <view
-          v-if="current < totalSteps - 1"
-          class="nav-btn nav-primary"
-          :class="{ 'nav-disabled': !pageAnswered }"
-          @click="next"
-        >
-          <text class="nav-btn-text nav-primary-text">下一页</text>
-        </view>
-        <view
-          v-else
-          class="nav-btn nav-primary"
-          :class="{ 'nav-disabled': !canSubmit }"
-          @click="submit"
-        >
-          <text class="nav-btn-text nav-primary-text">提交问卷</text>
-        </view>
-      </view>
 
-      <!-- 有资料模式：跳过整份问卷；跳过 = 直接进入状态总结确认，不经过疗愈诉求页 -->
-      <view v-if="!required" class="skip-row" @click="skip">
-        <text class="skip-text">跳过问卷，直接进入状态总结</text>
-      </view>
-      <view v-else class="must-note">
-        <text class="must-note-text">无资料流程需要完成全部 {{ total }} 题后才能继续 · 已答 {{ answeredCount }} / {{ total }}</text>
+        <!-- 有资料模式：跳过整份问卷；跳过 = 直接进入状态总结确认，不经过疗愈诉求页 -->
+        <view v-if="!required" class="skip-row" @click="skip">
+          <text class="skip-text">跳过问卷，直接进入状态总结</text>
+        </view>
+        <view v-else class="must-note">
+          <text class="must-note-text">无资料流程需要完成全部 {{ total }} 题后才能继续 · 已答 {{ answeredCount }} / {{ total }}</text>
+        </view>
       </view>
     </view>
   </view>
 </template>
 
-<style>
+<style scoped>
 .container {
   min-height: 100vh;
-  background: #f7f3eb;
   padding: 70rpx 48rpx 60rpx;
   box-sizing: border-box;
 }
-.header { margin-bottom: 40rpx; }
+
+/* ===== 页头 ===== */
+.header {
+  margin-bottom: 40rpx;
+}
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin-bottom: 16rpx;
+}
+.stage-seal {
+  width: 88rpx;
+  height: 88rpx;
+  background: var(--ink-seal);
+  border-radius: var(--radius-seal);
+  transform: rotate(-4deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-seal);
+  flex-shrink: 0;
+}
+.stage-seal-text {
+  color: var(--text-inverse);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 44rpx;
+  font-weight: 700;
+}
+.header-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
 .step-tag {
   display: inline-block;
+  align-self: flex-start;
   font-size: 22rpx;
-  color: #4a6b5c;
-  background: #e6ebe5;
+  color: var(--ink-primary);
+  background: rgba(107, 124, 94, 0.12);
+  border: 1rpx solid rgba(107, 124, 94, 0.2);
   border-radius: 8rpx;
-  padding: 6rpx 16rpx;
-  margin-bottom: 18rpx;
+  padding: 4rpx 16rpx;
 }
-.page-title { display: block; font-size: 40rpx; font-weight: 600; color: #2f3d35; margin-bottom: 12rpx; }
-.page-subtitle { display: block; font-size: 26rpx; color: #7a8078; }
-.progress-row { display: flex; align-items: center; gap: 20rpx; margin-bottom: 32rpx; }
+.page-title {
+  font-size: 40rpx;
+}
+.page-subtitle {
+  display: block;
+  font-size: 26rpx;
+  color: var(--text-secondary);
+}
+
+/* ===== 进度（墨线） ===== */
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-bottom: 32rpx;
+}
 .progress-bar {
   flex: 1;
-  height: 12rpx;
-  background: #e8e2d4;
-  border-radius: 6rpx;
+  height: 10rpx;
+  background: var(--paper-deep);
+  border-radius: 5rpx;
   overflow: hidden;
 }
 .progress-fill {
   height: 100%;
-  background: #4a6b5c;
-  border-radius: 6rpx;
+  background: linear-gradient(90deg, var(--ink-primary), var(--ink-primary-dark));
+  border-radius: 5rpx;
   transition: width 0.3s ease;
 }
-.progress-text { font-size: 24rpx; color: #9c9585; white-space: nowrap; }
-.page-card { display: flex; flex-direction: column; gap: 28rpx; }
+.progress-text {
+  font-size: 24rpx;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ===== 题目卡 ===== */
+.page-card {
+  display: flex;
+  flex-direction: column;
+  gap: 28rpx;
+}
 .q-card {
-  background: #fffefa;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 24rpx;
+  border-radius: var(--radius-lg);
   padding: 40rpx 32rpx;
 }
-.q-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; }
-.q-index { display: block; font-size: 22rpx; color: #9c9585; }
+.q-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+.q-index {
+  display: block;
+  font-size: 22rpx;
+  color: var(--text-muted);
+}
 .q-required {
   font-size: 20rpx;
-  color: #b0574f;
-  background: #f7e8e5;
+  color: var(--ink-seal);
+  background: rgba(192, 57, 43, 0.07);
+  border: 1rpx solid rgba(192, 57, 43, 0.18);
   border-radius: 6rpx;
   padding: 4rpx 14rpx;
 }
-.q-prompt { display: block; font-size: 32rpx; font-weight: 500; color: #2f3d35; line-height: 1.6; margin-bottom: 36rpx; }
-.q-options { display: flex; flex-direction: column; gap: 20rpx; }
+.q-prompt {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 500;
+  color: var(--ink-700);
+  line-height: 1.6;
+  margin-bottom: 36rpx;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+.q-options {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
 .q-option {
   display: flex;
   align-items: center;
-  background: #f6f3ea;
+  background: rgba(244, 238, 219, 0.45);
   border: 2rpx solid transparent;
-  border-radius: 16rpx;
+  border-radius: 14rpx;
   padding: 26rpx 24rpx;
+  transition: all 0.2s ease;
 }
-.q-option-active { background: #edf1ec; border-color: #4a6b5c; }
+.q-option-active {
+  background: rgba(107, 124, 94, 0.1);
+  border-color: var(--ink-primary);
+}
 .q-radio {
   width: 36rpx;
   height: 36rpx;
-  border: 3rpx solid #c9c3b2;
+  border: 3rpx solid var(--border-soft);
   border-radius: 50%;
   margin-right: 22rpx;
   display: flex;
@@ -427,42 +531,141 @@ export default {
   justify-content: center;
   flex-shrink: 0;
 }
-.q-radio-active { border-color: #4a6b5c; }
-.q-radio-dot { width: 18rpx; height: 18rpx; background: #4a6b5c; border-radius: 50%; }
-.q-option-label { font-size: 28rpx; color: #2f3d35; line-height: 1.5; }
-.nav-row { display: flex; gap: 24rpx; margin-top: 40rpx; }
+.q-radio-active {
+  border-color: var(--ink-primary);
+}
+.q-radio-dot {
+  width: 18rpx;
+  height: 18rpx;
+  background: var(--ink-primary);
+  border-radius: 50%;
+}
+.q-option-label {
+  font-size: 28rpx;
+  color: var(--ink-700);
+  line-height: 1.5;
+}
+
+/* ===== 导航 ===== */
+.nav-row {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 40rpx;
+}
 .nav-btn {
   flex: 1;
-  border: 2rpx solid #4a6b5c;
-  border-radius: 48rpx;
-  padding: 24rpx 0;
+}
+.nav-hidden {
+  visibility: hidden;
+}
+.nav-btn-text {
+  color: var(--ink-700);
+  font-size: 30rpx;
+}
+.nav-primary-text {
+  color: var(--text-inverse);
+}
+.nav-disabled {
+  opacity: 0.5;
+  box-shadow: none;
+  background: var(--text-disabled);
+}
+.skip-row {
   display: flex;
   justify-content: center;
+  margin-top: 36rpx;
+  padding: 12rpx 0;
 }
-.nav-hidden { visibility: hidden; }
-.nav-primary { background: #4a6b5c; }
-.nav-btn-text { color: #4a6b5c; font-size: 30rpx; }
-.nav-primary-text { color: #fff; }
-.nav-disabled { opacity: 0.5; }
-.skip-row { display: flex; justify-content: center; margin-top: 36rpx; padding: 12rpx 0; }
-.skip-text { color: #8a9188; font-size: 26rpx; text-decoration: underline; }
-.must-note { display: flex; justify-content: center; margin-top: 36rpx; }
-.must-note-text { color: #b3ac9c; font-size: 24rpx; }
-.loading-wrap { display: flex; flex-direction: column; align-items: center; padding: 120rpx 0; }
+.skip-text {
+  color: var(--text-muted);
+  font-size: 26rpx;
+  text-decoration: underline;
+}
+.must-note {
+  display: flex;
+  justify-content: center;
+  margin-top: 36rpx;
+}
+.must-note-text {
+  color: var(--text-muted);
+  font-size: 24rpx;
+}
+
+/* ===== 加载 / 错误 / 等待 ===== */
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 120rpx 0;
+}
 .loading-ring {
-  width: 72rpx; height: 72rpx;
-  border: 6rpx solid #e3ddcf;
-  border-top-color: #4a6b5c;
+  width: 72rpx;
+  height: 72rpx;
+  border: 6rpx solid var(--paper-deep);
+  border-top-color: var(--ink-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
-.loading-text { margin-top: 24rpx; font-size: 26rpx; color: #9c9585; }
-.loading-sub { margin-top: 12rpx; font-size: 24rpx; color: #b3ac9c; }
-.error-wrap { display: flex; flex-direction: column; align-items: center; padding: 100rpx 0; }
-.error-text { font-size: 28rpx; color: #b0574f; margin-bottom: 32rpx; }
-.btn-retry { padding: 20rpx 64rpx; background: #4a6b5c; border-radius: 44rpx; }
-.btn-retry-text { color: #fff; font-size: 28rpx; }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.loading-text {
+  margin-top: 24rpx;
+  font-size: 26rpx;
+  color: var(--text-muted);
+}
+.loading-sub {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: var(--text-muted);
+}
+.error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80rpx 40rpx;
+  border-radius: var(--radius-lg);
+}
+.error-seal {
+  width: 108rpx;
+  height: 108rpx;
+  border: 3rpx solid var(--ink-seal);
+  border-radius: var(--radius-seal);
+  transform: rotate(-4deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28rpx;
+  background: rgba(192, 57, 43, 0.04);
+}
+.error-seal-text {
+  color: var(--ink-seal);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 52rpx;
+  font-weight: 700;
+}
+.error-title {
+  font-size: 32rpx;
+  color: var(--ink-700);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  margin-bottom: 12rpx;
+}
+.error-text {
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  margin-bottom: 36rpx;
+  text-align: center;
+  line-height: 1.6;
+}
+.btn-retry {
+  padding: 20rpx 72rpx;
+}
+.btn-retry-text {
+  color: var(--text-inverse);
+  font-size: 28rpx;
+}
 .demo-banner {
   display: flex;
   justify-content: center;
@@ -470,37 +673,56 @@ export default {
 }
 .demo-banner-text {
   font-size: 22rpx;
-  color: #8a6d3b;
-  background: #f5eddc;
+  color: var(--warning);
+  background: rgba(198, 138, 46, 0.09);
+  border: 1rpx solid rgba(198, 138, 46, 0.22);
   border-radius: 8rpx;
   padding: 8rpx 20rpx;
 }
 .pending-card {
-  background: #fffefa;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 24rpx;
+  border-radius: var(--radius-lg);
   padding: 64rpx 40rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-.pending-icon {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 50%;
-  background: #eef0ea;
+.pending-seal {
+  width: 100rpx;
+  height: 100rpx;
+  background: var(--ink-700);
+  border-radius: var(--radius-seal);
+  transform: rotate(-4deg);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 28rpx;
+  box-shadow: 0 6rpx 18rpx rgba(26, 25, 22, 0.2);
 }
-.pending-icon-text { font-size: 48rpx; color: #4a6b5c; font-weight: 600; }
-.pending-title { font-size: 34rpx; font-weight: 600; color: #2f3d35; margin-bottom: 20rpx; }
+.pending-seal-text {
+  color: var(--text-inverse);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 44rpx;
+  font-weight: 700;
+}
+.pending-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--ink-700);
+  margin-bottom: 20rpx;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
 .pending-desc {
   font-size: 26rpx;
-  color: #7a8078;
+  color: var(--text-secondary);
   line-height: 1.7;
   margin-bottom: 48rpx;
   text-align: center;
+}
+.btn-back {
+  padding: 20rpx 64rpx;
+}
+.btn-back-text {
+  color: var(--ink-700);
+  font-size: 28rpx;
 }
 </style>

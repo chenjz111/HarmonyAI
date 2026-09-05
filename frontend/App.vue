@@ -172,6 +172,11 @@ page {
   z-index: 1;
 }
 
+/* ===== 左侧印章导航让位（side-nav 页面内容右移） ===== */
+.side-nav-page .han-page-content {
+  padding-left: 140rpx;
+}
+
 /* ===== 宣纸卡片 ===== */
 .han-card {
   position: relative;
