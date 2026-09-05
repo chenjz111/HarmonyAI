@@ -1,0 +1,166 @@
+{
+  "schema_id": "document_relevance_rules_v3_1",
+  "schema_version": "3.1.0-candidate",
+  "asset_status": "candidate_provisional",
+  "registry_status": "NOT_REGISTERED_PENDING_FREEZE",
+  "authored_by": "nob（肖宇翔，Medical Knowledge Engineer）",
+  "authored_at": "2026-09-03",
+  "contract_refs": [
+    "Issue #97 [S5-V3.1][Medical] Relevance Rules & UserGoal Assets",
+    "docs/contracts/harmonyai-v3.1-interface-semantics-draft.md §2 DocumentRelevanceResult",
+    "docs/contracts/harmonyai-v3.1-flow-amendment-draft.md §C Document Relevance Gate",
+    "docs/product/app-v3.1-provisional-owner-flow.md §3.2"
+  ],
+  "purpose": "V3.1 recent-document 路径：DocumentSet（1~3 张就诊资料图片）完成 OCR 后，判定识别材料是否可进入摘要确认与下游证据。本文件是医学侧候选规则稿（V3.1 冻结并注册 knowledge-manifest 后作为权威规则来源）；实际判定执行在 Information Understanding Layer，判定结果以 DocumentRelevanceResult 呈现并绑定 DocumentSet revision。",
+  "status_note": "PROVISIONAL / CANDIDATE —— 未冻结、未注册入 knowledge-manifest；INSUFFICIENT 分流与时效阈值等开放项待老师与 Owner 合同确认。V3.1 冻结前不得作为生产判定依据。",
+  "verdicts": [
+    {
+      "verdict": "VALID",
+      "summary": "资料可进入摘要确认与下游证据链",
+      "action": "allow_summary_confirmation",
+      "evidence_usage": "允许经用户确认的 FinalConfirmedSummary 进入 ConfirmedUserState，并可作为 Agent1/Agent2 证据来源",
+      "medical_criteria": [
+        "归属：仅依据资料自身信息即可确认属于本次评估对象本人（如资料内姓名/就诊人标识清晰一致）；不得依赖后续摘要确认环节",
+        "可解读：内容属于可被医学解读的就诊/健康文书（病历、检查报告、检验单、处方、出院小结、影像报告等），OCR 文本与结构足以支撑理解",
+        "时效：资料时间与本次‘近期状态评估’同周期或仍在相关期内（候选默认近 6 个月，见 open_decisions）",
+        "相关：内容与固定 V3.1 状态评估范围/已批准 Claim Dictionary 范畴（五志情绪、五脏身体、睡眠/精力等 claim）可映射——能够支持至少一条 V3 claim 抽取或可抽取的状态事实（如就诊原因、诊断结论、主要检查结果）"
+      ],
+      "reason_codes": ["rv_own_internal", "rv_medical_interpretable", "rv_recent_period", "rv_state_relevant"]
+    },
+    {
+      "verdict": "INVALID",
+      "summary": "资料不可用：非医疗文书或无法医学解读",
+      "action": "block_to_exception_page",
+      "evidence_usage": "禁止进入摘要确认、ConfirmedUserState、Agent1/Agent2 证据与 RAG 检索",
+      "medical_criteria": [
+        "内容不是医疗/健康文书（如收据、便签、合影、无关截图）",
+        "图像模糊、倾斜、反光、残缺导致 OCR 无法产出可解读医学信息",
+        "资料内含明确信号表明非本次评估对象本人（如资料所示姓名/标识明显为他人且无本人关联）",
+        "文件损坏或格式不可识别"
+      ],
+      "reason_codes": ["ri_not_medical", "ri_unreadable", "ri_not_own_explicit", "ri_damaged"]
+    },
+    {
+      "verdict": "IRRELEVANT",
+      "summary": "资料是本人医疗文书，但与本次近期状态评估无关",
+      "action": "block_to_exception_page",
+      "evidence_usage": "禁止进入摘要确认、ConfirmedUserState、Agent1/Agent2 证据与 RAG 检索",
+      "medical_criteria": [
+        "属本人且可医学解读，但内容与本次‘近期状态’评估范围无关",
+        "典型：与固定 V3.1 状态评估范围（五志情绪/五脏身体/睡眠精力等）无关的既往专科资料、疫苗记录、儿保记录、口腔专科影像、长期慢性病但与本次评估范围无已知关联的历史文书",
+        "时效上明显超出近期窗口，且内容不能说明与近期状态相关"
+      ],
+      "reason_codes": ["rr_out_of_scope_condition", "rr_out_of_scope_category", "rr_not_recent_no_link"]
+    },
+    {
+      "verdict": "INSUFFICIENT",
+      "summary": "材料不足以作出确定判定，处置待合同确认",
+      "action": "PENDING_CONTRACT_DECISION —— 不得静默映射为成功或丢弃",
+      "evidence_usage": "在最终分流确定前：不得进入摘要确认，也不得直接按 INVALID/IRRELEVANT 丢弃；须等待 #96/#101 合同决策或用户补充",
+      "medical_criteria": [
+        "关键字段缺失或歧义：资料类型、时间、检查/诊断结论缺失或 OCR 多义，无法判断 VALID/INVALID/IRRELEVANT 之一",
+        "判定置信度低于阈值（阈值本身待定，见 open_decisions）",
+        "归属无法仅凭资料确认（无清晰本人标识或无法关联本人）——不做本人/非本人的猜测"
+      ],
+      "reason_codes": ["ri_ins_key_field_missing", "ri_ins_ambiguous", "ri_ins_ownership_unclear"]
+    }
+  ],
+  "relevance_dimensions": [
+    "ownership：归属是否本人",
+    "medical_interpretability：是否可医学解读（文书类型 + OCR 质量 + 结构完整性）",
+    "recency：时效是否在‘近期’相关窗口内",
+    "state_relevance：是否与本次状态评估/claim 抽取相关",
+    "sufficiency：关键字段与判定置信是否足以定论"
+  ],
+  "decision_table": [
+    {
+      "row_id": "DT-01",
+      "if": "归属本人 且 可医学解读 且 时效相关 且 状态相关",
+      "then": "VALID",
+      "note": "进入摘要确认"
+    },
+    {
+      "row_id": "DT-02",
+      "if": "非医疗文书 或 不可医学解读 或 资料明确非本人 或 文件损坏",
+      "then": "INVALID",
+      "note": "阻断，进资料暂不可用页"
+    },
+    {
+      "row_id": "DT-03",
+      "if": "本人医疗文书 但 与本次状态评估无关（类别或条件无关 / 过期且无近期关联）",
+      "then": "IRRELEVANT",
+      "note": "阻断，进资料暂不可用页"
+    },
+    {
+      "row_id": "DT-04",
+      "if": "关键字段缺失/歧义 或 归属无法仅凭资料确认 或 判定置信不足",
+      "then": "INSUFFICIENT",
+      "note": "PENDING_CONTRACT；不静默成功也不静默丢弃"
+    }
+  ],
+  "reason_code_whitelist": [
+    {"code": "rv_own_internal", "verdict": "VALID", "meaning": "仅凭资料自身信息可确认归属本人（姓名/就诊人标识清晰一致）", "public_text": null},
+    {"code": "rv_medical_interpretable", "verdict": "VALID", "meaning": "属于可医学解读的就诊/健康文书且可辨识", "public_text": null},
+    {"code": "rv_recent_period", "verdict": "VALID", "meaning": "时间在近期相关窗口内", "public_text": null},
+    {"code": "rv_state_relevant", "verdict": "VALID", "meaning": "内容与本次状态评估相关、可支持状态/claim 信息", "public_text": null},
+    {"code": "ri_not_medical", "verdict": "INVALID", "meaning": "内容不是医疗/健康文书", "public_text": "这张资料看起来不是可用的就诊资料。"},
+    {"code": "ri_unreadable", "verdict": "INVALID", "meaning": "图像模糊/损坏导致无法识别", "public_text": "图片不太清楚，暂时没法识别内容。"},
+    {"code": "ri_not_own_explicit", "verdict": "INVALID", "meaning": "资料内含明确信号表明非本人", "public_text": "这份资料看起来不是本人可用的就诊资料。"},
+    {"code": "ri_damaged", "verdict": "INVALID", "meaning": "文件损坏或格式不支持", "public_text": "文件无法打开，请换一张试试。"},
+    {"code": "rr_out_of_scope_condition", "verdict": "IRRELEVANT", "meaning": "与固定 V3.1 评估范围无关的疾病资料", "public_text": "这份资料和这次的近期状态评估关系不大。"},
+    {"code": "rr_out_of_scope_category", "verdict": "IRRELEVANT", "meaning": "类别与状态评估无关（疫苗/儿保/口腔专科等）", "public_text": "这份资料和这次的近期状态评估关系不大。"},
+    {"code": "rr_not_recent_no_link", "verdict": "IRRELEVANT", "meaning": "过期且与近期状态无已知关联", "public_text": "这份资料时间较早，和近期状态关系不大。"},
+    {"code": "ri_ins_key_field_missing", "verdict": "INSUFFICIENT", "meaning": "关键字段缺失，无法定论", "public_text": "资料信息不全，暂时无法判断是否可用。"},
+    {"code": "ri_ins_ambiguous", "verdict": "INSUFFICIENT", "meaning": "结论/数值存在歧义", "public_text": "资料内容有歧义，暂时无法判断是否可用。"},
+    {"code": "ri_ins_ownership_unclear", "verdict": "INSUFFICIENT", "meaning": "归属无法仅凭资料确认", "public_text": "暂时无法确认这份资料是否可用于本次评估。"}
+  ],
+  "hard_invariants": [
+    "IV-1：只有 VALID 可进入摘要确认，进而形成 FinalConfirmedSummary 与 ConfirmedUserState",
+    "IV-2：INVALID 与 IRRELEVANT 一律不得进入 Agent1/Agent2 证据、不得进入 RAG 检索、不得参与 organ_net/辨证聚合",
+    "IV-3：INSUFFICIENT 不得静默映射为成功或丢弃；分流由合同决策（对齐 interface-semantics §2 开放问题）",
+    "IV-4：判定结果必须绑定 DocumentSet revision、携带 verdict + reason_code，供审计追溯",
+    "IV-5：用户重新选择资料将替换活动候选集；不选用任何资料则进入 no-document 问卷路径",
+    "IV-6：Relevance Gate 只能使用判定时点可获得的信息（OCR 文本 + 资料元数据 + 固定 V3.1 评估范围/Claim Dictionary）；不得依赖后置的摘要确认环节；V3.1 已删除 Narrative，判定时不参照不存在的‘当前主诉’文本",
+    "IV-7：归属或相关性信息不足一律归 INSUFFICIENT，不得猜测为 VALID/INVALID/IRRELEVANT；本 Gate 不引入独立资料确认页"
+  ],
+  "consumption_contract": {
+    "produced_by": "Information Understanding Layer（OCR 之后、摘要确认之前）",
+    "consumed_by": ["Flow router", "Summary service", "Agent1 输入装配（ConfirmedUserState）", "Audit log"],
+    "agent1_rule": "Agent1 只消费 ConfirmedUserState；而 ConfirmedUserState 中来源于资料的部分只允许来自携带 VALID 判定且经用户确认的 FinalConfirmedSummary。Agent1 不得直接读取未确认 OCR 或未通过相关性门的资料内容。",
+    "output_shape_note": "DocumentRelevanceResult 的确切 JSON Schema 属 #96/#101 SCHEMA_DELTA_REQUIRED 范围，医学侧本资产只约束 verdict 枚举、reason_code 词表与证据准入语义。"
+  },
+  "open_decisions": [
+    {
+      "id": "OD-DR-01",
+      "topic": "‘近期’时效阈值",
+      "candidate_default": "候选默认：距今 6 个月以内，或以资料内与近期状态评估相关的复查/复诊时间为准",
+      "owner": "nob 提出 / 老师与 Owner 确认",
+      "status": "OPEN"
+    },
+    {
+      "id": "OD-DR-02",
+      "topic": "INSUFFICIENT 分流",
+      "candidate_options": [
+        "A：提示补充更清晰资料后可重试（保留会话内重试）",
+        "B：不重试，直接引导进入 no-document 问卷路径",
+        "C：允许用户口头/文本补充说明后由人工审核标注（成本高，候选不推荐）"
+      ],
+      "owner": "Owner #96/#101 合同决策",
+      "status": "OPEN"
+    },
+    {
+      "id": "OD-DR-03",
+      "topic": "reason_code 对用户的公开粒度",
+      "candidate_default": "对用户只展示 public_text 级温和文案，完整 reason_code 仅入审计",
+      "owner": "产品/前端文案 + Owner",
+      "status": "OPEN"
+    },
+    {
+      "id": "OD-DR-04",
+      "topic": "判定置信度阈值",
+      "candidate_default": "不设全局数值阈值；以 reason_code 白名单枚举为主，避免伪精度",
+      "owner": "nob 建议 / AI 侧可评估",
+      "status": "OPEN"
+    }
+  ]
+}
