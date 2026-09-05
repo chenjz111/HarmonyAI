@@ -4,7 +4,7 @@
 >
 > Baseline: `origin/integration/sprint4-real-input@d16876d6fcd4cd664370b963bfa545e7e6f1fc00`
 >
-> Executable schema: `backend/app/schemas/v3/flow_v31.py` in the companion executable-contract PR.
+> Executable schema: `backend/app/schemas/v3/flow_v31.py` in companion Draft PR #106.
 > This document is not `FROZEN`; only the Owner may make the final freeze decision.
 
 ## 1. Frozen questionnaire identity
