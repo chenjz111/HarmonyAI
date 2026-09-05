@@ -1,7 +1,7 @@
 # HarmonyAI V3.1 Interface Semantics Draft
 
-> Status: **PROVISIONAL — PENDING TEACHER CONFIRMATION**
-> Scope: semantic ownership and interface deltas only. Exact JSON Schema remains subject to final freeze review.
+> Status: **FREEZE CANDIDATE — OWNER FINAL FREEZE REVIEW REQUIRED**
+> Scope: semantic ownership plus frozen V3.1 executable boundaries. Exact fields and examples are authoritative in `harmonyai-v3.1-freeze-candidate.md` and the companion executable-schema PR.
 
 ## 1. DocumentSet
 
@@ -11,8 +11,7 @@
 - **Authority:** The active server-side session revision; client thumbnails are not authoritative.
 - **V3.1 Changes:** Replaces single-document flow semantics with an ordered multi-page set. Page deletion/addition must update a new revision.
 - **Existing Mapping:** Individual document records and single `active_document_id` exist.
-- **Status:** `SCHEMA_DELTA_REQUIRED`.
-- **Open Questions:** Exact set identifier, page ordering field, replacement/retention policy.
+- **Freeze Candidate:** `document_set_id`, `session_id`, ordered unique 1～3 document references, set revision, session input revision and authority status are executable. Database replacement/retention remains implementation detail.
 
 ## 2. DocumentRelevanceResult
 
@@ -20,10 +19,9 @@
 - **Produced By:** Information Understanding Layer after OCR.
 - **Consumed By:** Flow router, summary service, audit log.
 - **Authority:** Latest completed server-side relevance run for the active DocumentSet revision.
-- **V3.1 Changes:** Adds explicit `VALID`, `INVALID`, `IRRELEVANT`, and provisional `INSUFFICIENT` outcomes with reasons and source references.
+- **V3.1 Changes:** Freezes `VALID`, `INVALID`, `IRRELEVANT`, and `INSUFFICIENT` with reasons and source-set revision binding.
 - **Existing Mapping:** No dedicated V3 object.
-- **Status:** `SCHEMA_DELTA_REQUIRED`.
-- **Open Questions:** `INSUFFICIENT` route; reason-code whitelist; retry policy.
+- **Freeze Candidate:** Only `VALID` may enter summary, Evidence or Agent2. The other three outcomes retain distinct backend status/reason and share the same frontend exception route. Reason-code vocabulary and retry implementation may be versioned without changing the enum or gate.
 
 ## 3. FinalConfirmedSummary
 
@@ -33,8 +31,7 @@
 - **Authority:** Latest confirmed revision; raw OCR and pre-confirmation AI summaries are supporting sources only.
 - **V3.1 Changes:** Makes inline-edited summary explicitly authoritative and binds it to DocumentSet/relevance revisions.
 - **Existing Mapping:** CaseSummary and understanding revision/confirmation models are reusable.
-- **Status:** `REUSE_WITH_AUTHORITY_CLARIFICATION`.
-- **Open Questions:** Structured edit representation versus replacement text; fact re-extraction trigger.
+- **Freeze Candidate:** User-confirmed text is a separate authoritative revision with explicit source DocumentSet, VALID relevance, AI draft, OCR references and checksum. Re-extraction execution remains an implementation responsibility.
 
 ## 4. QuestionnaireResult
 
@@ -44,8 +41,7 @@
 - **Authority:** Server-validated manifest version, checksum, answers, and revision.
 - **V3.1 Changes:** Required in no-document mode; optional in recent-document mode, but complete once started/submitted.
 - **Existing Mapping:** Questionnaire payload/readiness logic exists but requires V3.1 flow validation.
-- **Status:** `VALIDATION_DELTA_REQUIRED`.
-- **Open Questions:** Final manifest/version identifier after medical review.
+- **Freeze Candidate:** `questionnaire_v3` / `3.0.0`, manifest `medical_v3.0`, canonical checksum `sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211`; exactly Q1～Q10 when submitted.
 
 ## 5. UserGoal
 
@@ -55,9 +51,9 @@
 - **Authority:** Latest explicit user selection for the current session; a skipped step is authoritative as `user_goal = null`.
 - **V3.1 Changes:** Independent and optional; must be tagged as preference, never Medical Evidence, FactEvidence, or OrganEvidence.
 - **Existing Mapping:** A common UserGoal model already defines the approved codes, primary/secondary fields and 200-character text bound, but requires a primary goal whenever the object is present.
-- **Status:** `SCHEMA_DELTA_REQUIRED` for the nullable V3.1 boundary and its API/persistence representation.
+- **Freeze Candidate:** `UserGoalV31 | null` with canonical `primary_goal`, `secondary_goal`, `custom_goal_text` fields and executable validation.
 - **Frozen Product Semantics:** Approved codes are `sleep`, `relaxation`, `emotion_regulation`, `focus`, `energy`, `stress_relief`, and `other`; the whole step is skippable; 0～2 selections are allowed; the first is `primary_goal`, the second is `secondary_goal`; optional `custom_goal_text` is limited to 200 characters.
-- **Open Questions:** Whether to reuse the existing UserGoal schema or introduce a V3.1 version; API representation; persistence location; revision/CAS semantics if the goal is edited after submission.
+- **Open Question:** Only whether custom text may be submitted without a goal code; the Q1～Q10 asset contains no UserGoal definition. Persistence location and endpoint mapping remain implementation details, not product-field decisions.
 
 ## 6. ConfirmedUserState
 
@@ -67,8 +63,7 @@
 - **Authority:** Server-side confirmed revision and checksum.
 - **V3.1 Changes:** Unifies document-only, document-plus-questionnaire, and questionnaire-only paths; carries source references and optional UserGoal separately.
 - **Existing Mapping:** No single object currently provides this authority boundary.
-- **Status:** `SCHEMA_DELTA_REQUIRED`.
-- **Open Questions:** Exact fact projection, source union, revision/CAS fields, persistence location.
+- **Freeze Candidate:** Exact `document_only`, `document_plus_questionnaire`, and `questionnaire_only` unions, normalized projection, authority, confirmation, upstream revisions and checksums are executable. Persistence location remains an implementation detail.
 
 ## 7. Agent2Result / AnalysisResult
 
@@ -89,8 +84,7 @@
 - **Authority:** Accepted prescription run.
 - **V3.1 Changes:** Retains `jiao`, `zhi`, `gong`, `shang`, `yu`; identifies a primary tone and optional secondary tone with supporting rationale references.
 - **Existing Mapping:** Five weights and `dominant_tone` exist.
-- **Status:** `SCHEMA_DELTA_REQUIRED` for secondary/explanation semantics.
-- **Open Questions:** Secondary-tone threshold and tie handling.
+- **Freeze Candidate:** All five weights, primary tone, nullable distinct secondary tone, score semantics, mapping version and evidence-bound basis are executable. The medical threshold/tie rule remains a versioned rule-asset decision.
 
 ## 9. GenerationSpec
 
@@ -111,8 +105,7 @@
 - **Authority:** References accepted evidence/diagnosis/prescription runs; presentation text is not new evidence.
 - **V3.1 Changes:** Requires structured sections for state tendency, tone selection, BPM, instruments, ambience and duration, each traceable to real output.
 - **Existing Mapping:** Partial summary/presentation strings exist.
-- **Status:** `READ_MODEL_DELTA_REQUIRED`.
-- **Open Questions:** Public reason-code vocabulary and localization.
+- **Freeze Candidate:** A PUBLIC-only read model requires confirmed state, tendency, rationale/evidence refs, primary/optional secondary explanations, BPM/instruments/ambience/duration explanations, generation readiness and disclaimer. Extra/internal fields are forbidden; localization remains presentation work.
 
 ## 11. FeedbackPreference
 

@@ -1,7 +1,7 @@
 # HarmonyAI V3.1 Flow Amendment Draft
 
-> Status: **DRAFT / PROVISIONAL / PENDING TEACHER CONFIRMATION**
-> This document is not frozen and must not be treated as final implementation authority.
+> Status: **FREEZE CANDIDATE — OWNER FINAL FREEZE REVIEW REQUIRED**
+> This document is not frozen. Exact executable shapes are defined by `harmonyai-v3.1-freeze-candidate.md` and its companion schema PR.
 
 ## 1. Relationship to Existing Contracts
 
@@ -28,7 +28,7 @@ This draft proposes a V3.1 flow delta over `harmonyai-v3-contract-freeze-v3.0.0-
 - A relevance result is required before summary confirmation.
 - `VALID` advances to summary.
 - `INVALID` and `IRRELEVANT` advance to the document exception page and must not enter Agent 1/2 evidence.
-- `INSUFFICIENT` routing is **PENDING CONTRACT DECISION** and must not be silently mapped to a success or discard path.
+- `INSUFFICIENT` retains its own status/reason but uses the same frontend exception page and choices as `INVALID` / `IRRELEVANT`. All three are excluded from summary, Evidence, and Agent2.
 - Re-selecting replaces the active candidate set; continuing without a usable document enters the no-document questionnaire path.
 
 ### D. Summary Confirmation
@@ -64,7 +64,8 @@ Authoritative product semantics:
 - Skipping the step produces `user_goal = null`.
 - `UserGoal != FactEvidence` and `UserGoal != OrganEvidence`.
 - UserGoal is a music-design preference and cannot override user-confirmed clinical/state facts.
-- The exact V3.1 JSON Schema/API/persistence representation remains `SCHEMA_DELTA_REQUIRED` because the existing common UserGoal requires a primary goal whenever the object is present, while V3.1 makes the entire object nullable.
+- The canonical boundary is `UserGoalV31 | null`, with fields `primary_goal`, `secondary_goal`, and `custom_goal_text`; approved codes, 0～2 selections, distinct primary/secondary, and the 200-character bound are executable.
+- The Q1～Q10 asset does not define custom-text-only behavior. Until Owner review of this one narrow point, a present object follows the existing conservative V3 rule: it has a primary code and text accompanies `other` only.
 
 ### H. ConfirmedUserState
 
@@ -103,33 +104,31 @@ Each result must carry source references, confirmation revision, and a stable ch
 | Area | Existing baseline | V3.1 draft requirement | Status |
 | --- | --- | --- | --- |
 | Entry | Session `input_mode` | Same meaning; new routes | REUSE_WITH_FLOW_CHANGE |
-| Document reference | Single `active_document_id` | Active 1～3 page DocumentSet reference | SCHEMA_DELTA_REQUIRED |
+| Document reference | Single `active_document_id` | Active 1～3 page DocumentSet reference | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
 | Case summary | `source_document_ids` list and revision model exist | Final user-confirmed summary authority | REUSE_WITH_AUTHORITY_CLARIFICATION |
-| Relevance | No dedicated V3 result | `DocumentRelevanceResult` with explicit outcome | SCHEMA_DELTA_REQUIRED |
-| Questionnaire | V3.1 request accepts nullable questionnaire | Conditional required/optional rules and Q1～Q10 completeness | VALIDATION_DELTA_REQUIRED |
-| UserGoal | Existing common object is required-primary oriented | Independent optional post-questionnaire preference | SCHEMA_DELTA_REQUIRED |
-| Unified input | Separate understanding/questionnaire references | Versioned `ConfirmedUserState` | SCHEMA_DELTA_REQUIRED |
-| ToneProfile | Five weights + dominant tone | Primary + optional secondary and explainable references | SCHEMA_DELTA_REQUIRED |
+| Relevance | No dedicated V3 result | `DocumentRelevanceResult` with explicit outcome | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
+| Questionnaire | `questionnaire_v3` / `3.0.0` | Q1～Q10, `medical_v3.0`, checksum `sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211` | FROZEN_IDENTITY |
+| UserGoal | Existing common object is required-primary oriented | Independent optional post-questionnaire preference | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
+| Unified input | Separate understanding/questionnaire references | Versioned `ConfirmedUserState` | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
+| ToneProfile | Five weights + dominant tone | Primary + optional secondary and explainable references | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
 | GenerationSpec | BPM/duration/instruments/ambience exist | Preserve; add display explanations outside provider prompt | REUSE_WITH_PRESENTATION_DELTA |
 | Read models | Existing activity/summary/result models | DocumentSet, relevance, confirmation, analysis and generation projections | READ_MODEL_DELTA_REQUIRED |
 | Navigation | Welcome/Narrative/Generation Complete appear in older flow | Remove from primary route chain, retain compatibility code as needed | FLOW_DELTA_REQUIRED |
 
-No new discriminator, table name, endpoint path, or enum value is frozen by this draft. Implementers must not silently overload V3.0 fields where semantics differ.
+The V3.1 object discriminators, enums, validation, authority, and revision/checksum bindings are frozen by the companion executable contract. Final table names, ORM names, endpoint routing, Providers, and secondary-tone medical thresholds remain implementation/versioned-rule decisions.
 
 ## 4. Compatibility and Versioning Rules
 
 - V3.0/Sprint 4 stored data remains readable.
 - Removing a page from the main path does not authorize destructive migration.
-- A versioned API/schema discriminator is required before V3.1 writes are enabled; its exact value is pending final contract review.
+- V3.1 schema discriminators are defined in `harmonyai-v3.1-freeze-candidate.md`; implementations must use the matching version rather than silently overload V3.0 fields.
 - Current Safety backend capabilities remain intact. Safety is not reintroduced into the V3.1 user path by this draft.
 - Provider failures must remain explicit; mock output cannot be serialized as real success.
 
 ## 5. Open Contract Decisions
 
-1. Exact `DocumentSet`, `DocumentRelevanceResult`, and `ConfirmedUserState` JSON schemas.
-2. `INSUFFICIENT` relevance behavior.
-3. UserGoal V3.1 schema/API/persistence representation.
-4. Tone secondary-selection threshold and explanation representation.
-5. Endpoint and persistence versioning strategy.
-6. Final feedback option vocabulary.
-7. Teacher approval and subsequent final freeze decision.
+1. Whether UserGoal permits custom text without any goal code; the formal Q1～Q10 asset does not define this.
+2. The versioned medical threshold for selecting a secondary tone.
+3. Endpoint and persistence implementation mapping without changing frozen transport semantics.
+4. Final feedback option vocabulary.
+5. Owner approval and subsequent final freeze decision.
