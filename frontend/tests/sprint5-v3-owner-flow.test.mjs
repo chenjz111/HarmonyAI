@@ -11,6 +11,12 @@ import assert from "node:assert/strict"
 import { readFileSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
 import test from "node:test"
+import * as healingIntent from "../common/v3-healing-intent.js"
+import {
+  INTENT_CODES,
+  MAX_CUSTOM_LEN,
+  HEALING_INTENT_REASON_MESSAGE,
+} from "../common/v3-healing-intent.js"
 
 // mock 必须显式开启：在首次 import api-v3.js 之前设置
 process.env.HARMONYAI_V3_MODE = "mock"
@@ -426,28 +432,172 @@ test("V3.1: goal page is an optional healing-intent page without removed goal co
   assert.ok(goal.includes("选填"), "must be marked optional")
   assert.ok(goal.includes("submitHealingIntent"), "must persist via api submitHealingIntent")
   assert.ok(goal.includes("skip"), "must allow skipping the whole step")
-  // 未选择任何内容时等同跳过，不发送默认偏好
-  assert.ok(goal.includes("!this.primary"), "must not submit when nothing chosen")
-  // 复审修订：意图代码与 Read Model 合同权威枚举对齐（不再使用 relax / soothe / lift_mood）
+  // 复审：校验逻辑集中在 common/v3-healing-intent.js，.vue 不再硬编码校验字符串
+  assert.ok(goal.includes("decideHealingIntent"), "must delegate validation to decideHealingIntent")
+  assert.ok(goal.includes("INTENT_CODES"), "must import INTENT_CODES from validation module")
+  // 不再使用旧字段名 primary / secondary / custom 作为最终字段（data 字段已对齐合同）
+  assert.ok(goal.includes("primary_goal:"), "data must use primary_goal")
+  assert.ok(goal.includes("secondary_goal:"), "data must use secondary_goal")
+  assert.ok(goal.includes("custom_goal_text:"), "data must use custom_goal_text")
+  // 复审修订：意图代码与 Read Model 合同权威枚举对齐（现在集中在校验模块）
   for (const code of ["sleep", "relaxation", "emotion_regulation", "focus", "energy", "stress_relief", "other"]) {
-    assert.ok(goal.includes(`code: "${code}"`), `goal page must declare canonical intent code: ${code}`)
+    assert.ok(INTENT_CODES.some((it) => it.code === code), `intent module must declare canonical code: ${code}`)
   }
-  for (const legacy of ["code: \"relax\"", "code: \"soothe\"", "code: \"lift_mood\""]) {
-    assert.ok(!goal.includes(legacy), `goal page must not reuse removed code: ${legacy}`)
+  for (const legacy of ["relax", "soothe", "lift_mood"]) {
+    assert.ok(!INTENT_CODES.some((it) => it.code === legacy), `intent module must not reuse removed code: ${legacy}`)
   }
   // 200 字补充输入上限
   assert.ok(goal.includes("maxlength=\"200\""), "supplement text must cap at 200 chars")
+  assert.equal(MAX_CUSTOM_LEN, 200, "MAX_CUSTOM_LEN must be 200 in validation module")
 })
 
 test("api-v3 mock: healing intent is stored without fabricating defaults", async () => {
   const { apiV3 } = await import("../common/api-v3.js")
   await apiV3.guestAuth()
   await apiV3.createSession()
-  const res = await apiV3.submitHealingIntent({ primary: "sleep", secondary: null, custom_text: null })
+  // 复审：payload 字段对齐 Read Model §10（primary_goal / secondary_goal / custom_goal_text）
+  const res = await apiV3.submitHealingIntent({ primary_goal: "sleep", secondary_goal: null, custom_goal_text: null })
   assert.equal(res.received, true)
   // 未选择时提交 null 等同跳过，不产生记录
   const skipped = await apiV3.submitHealingIntent(null)
   assert.equal(skipped.saved_locally, false)
+})
+
+// ===== 疗愈诉求合同校验（Issue #100 复审指令 1~8） =====
+
+test("V3.1 review: 疗愈诉求合同校验 - 全空允许整页跳过", () => {
+  const { decideHealingIntent } = healingIntent
+  const d = decideHealingIntent({ primary_goal: null, secondary_goal: null, custom_goal_text: "" })
+  assert.equal(d.ok, true, "全空应当 ok")
+  assert.equal(d.skip, true, "全空应当 skip = true（整页跳过）")
+  assert.equal(d.payload, null, "全空 payload 为 null")
+  assert.equal(d.reason, null, "全空无 reason")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - 只填文字、不选主要诉求 → 阻止", () => {
+  const { decideHealingIntent } = healingIntent
+  const d = decideHealingIntent({ primary_goal: null, secondary_goal: null, custom_goal_text: "希望更舒缓一些" })
+  assert.equal(d.ok, false, "仅文字必须阻止")
+  assert.equal(d.reason, "primary_required", "reason 必须是 primary_required")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - 选择 other 但文字为空 → 阻止", () => {
+  const { decideHealingIntent } = healingIntent
+  const d = decideHealingIntent({ primary_goal: "other", secondary_goal: null, custom_goal_text: "" })
+  assert.equal(d.ok, false, "other + 空文字必须阻止")
+  assert.equal(d.reason, "other_needs_text", "reason 必须是 other_needs_text")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - other + 合法文字 → 通过", () => {
+  const { decideHealingIntent } = healingIntent
+  const d = decideHealingIntent({
+    primary_goal: "other",
+    secondary_goal: null,
+    custom_goal_text: "希望节奏更慢一些，像清晨山雾那种感觉",
+  })
+  assert.equal(d.ok, true, "other + 合法文字必须通过")
+  assert.equal(d.skip, false)
+  assert.equal(d.reason, null)
+  assert.equal(d.payload.primary_goal, "other")
+  assert.equal(typeof d.payload.custom_goal_text, "string")
+  assert.ok(d.payload.custom_goal_text.length > 0)
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - 只有次要诉求、没有主要诉求 → 阻止", () => {
+  const { decideHealingIntent } = healingIntent
+  const d = decideHealingIntent({ primary_goal: null, secondary_goal: "relaxation", custom_goal_text: "" })
+  assert.equal(d.ok, false, "无主诉求必须阻止")
+  assert.equal(d.reason, "primary_required", "reason 必须是 primary_required")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - 普通主要/次要诉求 → 正常通过", () => {
+  const { decideHealingIntent } = healingIntent
+  const d = decideHealingIntent({
+    primary_goal: "sleep",
+    secondary_goal: "stress_relief",
+    custom_goal_text: null,
+  })
+  assert.equal(d.ok, true)
+  assert.equal(d.skip, false)
+  assert.equal(d.payload.primary_goal, "sleep")
+  assert.equal(d.payload.secondary_goal, "stress_relief")
+  assert.equal(d.payload.custom_goal_text, null)
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - 自由文字超过 200 字 → 阻止", () => {
+  const { decideHealingIntent, MAX_CUSTOM_LEN } = healingIntent
+  // 构造恰好 201 字（maxlength=200 是物理限制，JS 校验兜底拦 201）
+  const longText = "舒".repeat(MAX_CUSTOM_LEN + 1)
+  assert.equal(longText.length, MAX_CUSTOM_LEN + 1, "测试数据必须 > 200 字")
+  const d = decideHealingIntent({
+    primary_goal: "relaxation",
+    secondary_goal: null,
+    custom_goal_text: longText,
+  })
+  assert.equal(d.ok, false, "超长文字必须阻止")
+  assert.equal(d.reason, "custom_too_long", "reason 必须是 custom_too_long")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - 边界：恰好 200 字 → 通过", () => {
+  const { decideHealingIntent, MAX_CUSTOM_LEN } = healingIntent
+  const exactText = "舒".repeat(MAX_CUSTOM_LEN)
+  assert.equal(exactText.length, 200, "边界值必须正好 200 字")
+  const d = decideHealingIntent({
+    primary_goal: "relaxation",
+    secondary_goal: null,
+    custom_goal_text: exactText,
+  })
+  assert.equal(d.ok, true, "200 字边界值必须通过")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - 防御 secondary === primary → 阻止", () => {
+  const { decideHealingIntent } = healingIntent
+  // pickSecondary 已拦截，但校验模块做兜底防御
+  const d = decideHealingIntent({
+    primary_goal: "sleep",
+    secondary_goal: "sleep",
+    custom_goal_text: null,
+  })
+  assert.equal(d.ok, false, "secondary 与 primary 同值必须阻止")
+  assert.equal(d.reason, "primary_required")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - serialize 字段名对齐合同", () => {
+  const { serializeHealingIntent } = healingIntent
+  const out = serializeHealingIntent({
+    primary_goal: "sleep",
+    secondary_goal: "relaxation",
+    custom_goal_text: "  abc  ",
+  })
+  // 必须使用合同权威字段名
+  assert.ok("primary_goal" in out, "必须含 primary_goal 字段")
+  assert.ok("secondary_goal" in out, "必须含 secondary_goal 字段")
+  assert.ok("custom_goal_text" in out, "必须含 custom_goal_text 字段")
+  // 不得出现已弃用字段
+  assert.ok(!("primary" in out), "不得出现已弃用字段 primary")
+  assert.ok(!("secondary" in out), "不得出现已弃用字段 secondary")
+  assert.ok(!("custom_text" in out), "不得出现已弃用字段 custom_text")
+  // 自定义文本应被 trim
+  assert.equal(out.custom_goal_text, "abc", "custom_goal_text 应 trim 首尾空白")
+})
+
+test("V3.1 review: v3-goal.vue 不再使用已弃用字段名 primary/secondary/custom_text 作为最终提交", () => {
+  const goal = readPage("v3-goal/v3-goal.vue")
+  // data 必须使用合同权威字段名
+  assert.ok(goal.includes("primary_goal:"), "data 中必须声明 primary_goal 字段")
+  assert.ok(goal.includes("secondary_goal:"), "data 中必须声明 secondary_goal 字段")
+  assert.ok(goal.includes("custom_goal_text:"), "data 中必须声明 custom_goal_text 字段")
+  // next() 中调用校验模块
+  assert.ok(goal.includes("decideHealingIntent"), "next() 必须走校验模块 decideHealingIntent")
+  assert.ok(goal.includes("HEALING_INTENT_REASON_MESSAGE"), "toast 提示必须使用 reason 文案映射")
+  // 不再使用旧字段名作为最终提交字段
+  assert.ok(!goal.includes("primary: this.primary"), "不应再使用 primary: this.primary")
+  assert.ok(!goal.includes("secondary: this.secondary"), "不应再使用 secondary: this.secondary")
+  assert.ok(!goal.includes("custom_text: this."), "不应再使用 custom_text: this.xxx")
+  // 校验逻辑（reason 字符串集中在 common/v3-healing-intent.js，.vue 通过 HEALING_INTENT_REASON_MESSAGE 映射）
+  assert.ok(HEALING_INTENT_REASON_MESSAGE.primary_required, "reason 文案映射必须含 primary_required")
+  assert.ok(HEALING_INTENT_REASON_MESSAGE.other_needs_text, "reason 文案映射必须含 other_needs_text")
+  assert.ok(HEALING_INTENT_REASON_MESSAGE.custom_too_long, "reason 文案映射必须含 custom_too_long")
 })
 
 test("V3.1: basis page is 五音调适解析 without a Generation Complete stopover", () => {

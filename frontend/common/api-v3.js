@@ -510,13 +510,16 @@ const realInputApi = {
 
   // V3.1 疗愈诉求（选填）：后端暂无对应保存能力 → 本机暂存，如实标注，
   // 不伪造已提交、不补默认偏好；后端交付后在此替换为真实请求
+  // 复审（合同校验）：payload 字段与 Read Model §10 一致
+  //   primary_goal / secondary_goal / custom_goal_text
+  // 不再使用 primary / secondary / custom_text 作为最终字段
   async submitHealingIntent(payload) {
     await delay(60)
     const clean = payload
       ? {
-          primary: payload.primary || null,
-          secondary: payload.secondary || null,
-          custom_text: payload.custom_text || null,
+          primary_goal: payload.primary_goal || null,
+          secondary_goal: payload.secondary_goal || null,
+          custom_goal_text: payload.custom_goal_text || null,
         }
       : null
     if (clean) {
@@ -1116,14 +1119,16 @@ const mockApi = {
   },
 
   // V3.1 疗愈诉求（选填）：演示状态机记录，不补默认偏好
+  // 复审（合同校验）：payload 字段与 Read Model §10 一致
+  //   primary_goal / secondary_goal / custom_goal_text
   async submitHealingIntent(payload) {
     await delay(200)
     ensureMockSession()
     MOCK.healingIntent = payload
       ? {
-          primary: payload.primary || null,
-          secondary: payload.secondary || null,
-          custom_text: payload.custom_text || null,
+          primary_goal: payload.primary_goal || null,
+          secondary_goal: payload.secondary_goal || null,
+          custom_goal_text: payload.custom_goal_text || null,
         }
       : null
     return { received: true, saved_locally: !!payload }

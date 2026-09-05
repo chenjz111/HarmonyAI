@@ -22,10 +22,10 @@
             v-for="it in intents"
             :key="it.code"
             class="chip"
-            :class="{ 'chip-active': primary === it.code }"
-            @click="pickPrimary(it.code)"
+            :class="{ 'chip-active': primary_goal === it.code }"
+            @click="pickPrimaryGoal(it.code)"
           >
-            <text class="chip-text" :class="{ 'chip-text-active': primary === it.code }">{{ it.label }}</text>
+            <text class="chip-text" :class="{ 'chip-text-active': primary_goal === it.code }">{{ it.label }}</text>
           </view>
         </view>
       </view>
@@ -40,10 +40,10 @@
             v-for="it in intents"
             :key="it.code"
             class="chip"
-            :class="{ 'chip-active': secondary === it.code, 'chip-dim': primary === it.code }"
-            @click="pickSecondary(it.code)"
+            :class="{ 'chip-active': secondary_goal === it.code, 'chip-dim': primary_goal === it.code }"
+            @click="pickSecondaryGoal(it.code)"
           >
-            <text class="chip-text" :class="{ 'chip-text-active': secondary === it.code }">{{ it.label }}</text>
+            <text class="chip-text" :class="{ 'chip-text-active': secondary_goal === it.code }">{{ it.label }}</text>
           </view>
         </view>
       </view>
@@ -55,11 +55,11 @@
         </view>
         <textarea
           class="custom-input"
-          v-model="custom"
+          v-model="custom_goal_text"
           :maxlength="200"
           placeholder="例如：希望音乐更舒缓一些、节奏慢一些……"
         />
-        <view class="custom-count"><text class="custom-count-text">{{ (custom || '').length }} / 200</text></view>
+        <view class="custom-count"><text class="custom-count-text">{{ (custom_goal_text || '').length }} / 200</text></view>
       </view>
 
       <!-- 如实标注：该信息本机暂存，不会丢失（此步无后端持久化依赖） -->
@@ -87,34 +87,42 @@
  *   sleep / relaxation / emotion_regulation / focus / energy / stress_relief / other
  * - 不使用自定义代码（如 relax/soothe/lift_mood 等），与后端契约字段一一对应，
  *   便于上游 Agent / 下游生成器直接消费。
- * - 整页选填、可整步跳过；最多 2 项：主诉求（primary）+ 次诉求（secondary）。
+ * - 整页选填、可整步跳过；最多 2 项：主诉求（primary_goal）+ 次诉求（secondary_goal）。
  * - "其他想法"补充输入 ≤ 200 字（前端 maxlength=200；后端写入时也按同样上限校验）。
  * - 不虚构、不默认补全任何偏好：用户未选择时不留占位、不提交空对象。
  * - 后端暂无对应保存能力 → 选择内容本机暂存（safeSet），页面如实标注，
  *   mock 状态机同步记录。后端交付后由 apiV3.submitHealingIntent 替换为本请求。
- * - 后续：v3-confirm（完成近期状态总结）。
+ *
+ * 复审指令（合同校验）：
+ *   1. 用户不能只填"其他想法"而不选择主要诉求
+ *   2. primary_goal === "other" 时，必须填写 1~200 字补充内容
+ *   3. 全空 → 视为整页跳过，可直接继续
+ *   4. secondary_goal 不能脱离 primary_goal 单独存在
+ *   5. 前端保存字段与正式合同对应：primary_goal / secondary_goal / custom_goal_text
+ *   6. 不再使用 primary / secondary / custom_text 作为最终提交字段
+ * - 校验逻辑集中在 common/v3-healing-intent.js（decideHealingIntent），
+ *   本组件只负责 UI 绑定 + 调用 + toast 提示。
+ *
+ * 后续：v3-confirm（完成近期状态总结）。
  */
 import { apiV3 } from "../../common/api-v3.js"
-
-// 合同权威意图代码（与前端 Read Model 一致；后端尚未交付保存能力，本机暂存）
-const INTENT_CODES = Object.freeze([
-  { code: "sleep", label: "睡得更安稳" },
-  { code: "relaxation", label: "让身心放松" },
-  { code: "emotion_regulation", label: "调节情绪起伏" },
-  { code: "focus", label: "更专注一些" },
-  { code: "energy", label: "更有精神一些" },
-  { code: "stress_relief", label: "缓解压力" },
-  { code: "other", label: "其他诉求" },
-])
+import {
+  INTENT_CODES,
+  decideHealingIntent,
+  HEALING_INTENT_REASON_MESSAGE,
+} from "../../common/v3-healing-intent.js"
 
 export default {
   data() {
     return {
       withDocument: false,
       intents: INTENT_CODES,
-      primary: null,
-      secondary: null,
-      custom: "",
+      // 合同权威字段名（primary_goal / secondary_goal / custom_goal_text），
+      // 与 Read Model §10 一一对应；后端未交付时本机暂存同样采用这套字段，
+      // 接入真实接口时无需再做映射。
+      primary_goal: null,
+      secondary_goal: null,
+      custom_goal_text: "",
       submitting: false,
     }
   },
@@ -126,39 +134,61 @@ export default {
       .catch(() => {})
   },
   methods: {
-    pickPrimary(code) {
-      if (this.primary === code) {
-        this.primary = null
+    pickPrimaryGoal(code) {
+      if (this.primary_goal === code) {
+        this.primary_goal = null
+        // 清空主诉求时，连带清掉"其他想法"——避免出现"只填文字、不选主要诉求"的状态
+        this.custom_goal_text = ""
         return
       }
-      this.primary = code
-      if (this.secondary === code) this.secondary = null
+      this.primary_goal = code
+      if (this.secondary_goal === code) this.secondary_goal = null
     },
-    pickSecondary(code) {
-      if (this.primary === code) {
+    pickSecondaryGoal(code) {
+      if (this.primary_goal === code) {
         uni.showToast({ title: "已在主要诉求中", icon: "none" })
         return
       }
-      if (this.secondary === code) {
-        this.secondary = null
+      if (!this.primary_goal) {
+        // 没有主诉求时不允许先选次要诉求
+        uni.showToast({ title: "请先选择主要诉求", icon: "none" })
         return
       }
-      this.secondary = code
+      if (this.secondary_goal === code) {
+        this.secondary_goal = null
+        return
+      }
+      this.secondary_goal = code
     },
-    // 无任何选择时等同跳过
+    /**
+     * 继续按钮：先走合同校验 → 全空 skip / 不合规 toast / 合规 submit
+     * 与原行为等价，仅：
+     *   - 字段名改为 primary_goal / secondary_goal / custom_goal_text
+     *   - 增加"只填文字不选主要诉求" / "other 必填文字" / "secondary 脱离 primary"
+     *     / "文字超长" 四类校验
+     */
     async next() {
       if (this.submitting) return
-      if (!this.primary && !this.secondary && !(this.custom || "").trim()) {
+      const decision = decideHealingIntent({
+        primary_goal: this.primary_goal,
+        secondary_goal: this.secondary_goal,
+        custom_goal_text: this.custom_goal_text,
+      })
+      // 规则 1：全空 → 整页跳过，与原行为一致
+      if (decision.skip) {
         this.skip()
+        return
+      }
+      // 校验失败 → toast 阻断，不提交、不跳转
+      if (!decision.ok) {
+        const msg = HEALING_INTENT_REASON_MESSAGE[decision.reason] || "请检查后重试"
+        uni.showToast({ title: msg, icon: "none" })
         return
       }
       this.submitting = true
       try {
-        await apiV3.submitHealingIntent({
-          primary: this.primary,
-          secondary: this.secondary,
-          custom_text: (this.custom || "").trim() || null,
-        })
+        // 提交 payload 使用合同权威字段名（primary_goal / secondary_goal / custom_goal_text）
+        await apiV3.submitHealingIntent(decision.payload)
         uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
       } catch (e) {
         uni.showToast({ title: (e && e.message) || "保存失败，请稍后重试", icon: "none" })
