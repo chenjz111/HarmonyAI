@@ -1,6 +1,6 @@
 # HarmonyAI V3.1 暂定版产品流程
 
-> 状态：**PROVISIONAL — Pending Teacher Confirmation**
+> 状态：**PROVISIONAL — FINAL FREEZE REVIEW**
 > 用途：供老师与团队确认 V3.1 用户流程。本文不是最终冻结合同，不授权合入业务实现。
 
 ## 1. 适用范围
@@ -15,7 +15,7 @@ flowchart TD
     B -->|有| C[上传 1~3 张资料]
     C --> D[识别与相关性判断]
     D -->|有效且相关| E[确认或原地修改资料摘要]
-    D -->|无效/不相关| F[资料暂不可用]
+    D -->|无效/不相关/信息不足| F[这份资料暂时无法用于本次分析]
     F -->|重新选择| C
     F -->|不使用资料| H[10 道近期状态问卷]
     E --> G{是否补充近期状态问卷}
@@ -44,8 +44,7 @@ flowchart TD
     C -->|是| B
     C -->|开始识别| D[OCR 与资料相关性判断]
     D -->|VALID| E[请确认资料摘要]
-    D -->|INVALID / IRRELEVANT| F[资料暂不可用]
-    D -->|INSUFFICIENT| G[处理方式待合同确认]
+    D -->|INVALID / IRRELEVANT / INSUFFICIENT| F[这份资料暂时无法用于本次分析]
     E -->|资料摘要基本无误| H{是否补充状态问卷}
     E -->|修改资料摘要| I[在当前页编辑 AI 通俗摘要]
     I --> H
@@ -68,14 +67,14 @@ flowchart TD
 
 ### 3.2 识别异常页
 
-当资料无法识别或与本次状态无关时，不进入摘要确认，也不将失败内容交给后续 Agent。
+当资料为 `INVALID`、`IRRELEVANT` 或 `INSUFFICIENT` 时，不进入摘要确认，也不将该资料交给 Evidence 或 Agent2。后端保留真实状态和原因；三种结果只在前端复用同一个异常页面。
 
 提供：
 
 - “重新选择资料”
 - “没有合适资料，通过状态问卷继续”
 
-`INSUFFICIENT` 的最终分流尚未冻结，必须等待合同确认。
+`INSUFFICIENT` 不伪装成 `INVALID`，但用户操作与另外两种异常一致：重新选择资料，或选择“没有合适资料，通过状态问卷继续”。
 
 ### 3.3 摘要确认页
 
@@ -154,9 +153,11 @@ flowchart TD
 
 Profile、收藏列表、历史生成记录不属于本轮 V3.1 核心主路径；旧 Narrative、旧 Welcome、独立 Generation Complete 也不得重新接入 V3.1 主路径。
 
-## 10. 待老师确认
+## 10. 最终冻结前仍需确认
 
 - App 最终名称与 Logo。
-- `INSUFFICIENT` 资料相关性结果的分流。
 - 反馈选项最终文案。
 - “五音调适解析”页面对医学措辞的最终审阅。
+- UserGoal 是否允许只填写 `custom_goal_text` 而不选择 goal code；正式 Q1～Q10 文件未定义这一小项。字段名、code set、0～2 项、整步可跳过和 200 字上限均不再待定。
+
+V3.1 精确对象、权威性、revision/checksum 绑定以 `docs/contracts/harmonyai-v3.1-freeze-candidate.md` 为准。
