@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.sql import func
@@ -44,6 +45,7 @@ class V3IdempotencyRecord(Base):
     resource_id = Column(String(64), nullable=True)
     status = Column(String(16), nullable=False)
     response_code = Column(Integer, nullable=True)
+    response_json = Column(Text, nullable=True, comment="Stored success payload for exact replay")
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
