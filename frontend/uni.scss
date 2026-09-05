@@ -1,23 +1,132 @@
-/* uni-app 全局 scss 变量 */
+/**
+ * HarmonyAI uni-app 全局 scss 变量
+ * 设计语言：中式水墨 · 茶空间 · 宣纸（v2 重写，参考 han-design + shuimo-ui）
+ * 色板：宣纸底 + 墨色 + 茶绿 + 朱砂印章
+ */
 
-/* 五行五音配色 */
-$color-mu: #4A9D6E;   /* 木-青-角调 */
-$color-huo: #E25C4E;  /* 火-赤-徵调 */
-$color-tu: #E8B547;   /* 土-黄-宫调 */
-$color-jin: #B8C5D6;  /* 金-白-商调 */
-$color-shui: #3B5067; /* 水-黑-羽调 */
+/* ===== 主色（v2 水墨国风） ===== */
+$ink-primary: #6B7C5E;        /* 茶绿 - 主色，对应五音调养 */
+$ink-primary-light: #8A9B7D;  /* 浅茶绿 */
+$ink-primary-dark: #55634B;   /* 深茶绿 */
+$ink-seal: #C0392B;           /* 朱砂红 - 印章强调 */
+$ink-seal-light: #D16E64;     /* 浅朱砂 */
+$ink-seal-dark: #8A251B;      /* 深朱砂 */
+$ink-accent: #B57152;         /* 赭石 - 辅色 */
+$ink-accent-light: #C68A6E;   /* 浅赭石 */
 
-/* 主题色 */
-$primary: #534AB7;
-$primary-light: #EEEDFE;
-$text-main: #2C2C2A;
-$text-secondary: #5F5E5A;
-$text-hint: #888780;
-$bg-page: #F8F8F8;
-$bg-card: #FFFFFF;
-$border-color: #E8E8E8;
+/* ===== 墨色阶（10 级焦浓重淡清） ===== */
+$ink-50:  #F7F6F3;
+$ink-100: #ECEBE6;
+$ink-200: #D8D6CF;
+$ink-300: #B5B2A9;
+$ink-400: #8A867D;
+$ink-500: #5E5A53;
+$ink-600: #3E3B36;
+$ink-700: #2A2824;            /* 浓墨：小标题 */
+$ink-800: #1A1916;            /* 焦墨：大标题 */
+$ink-900: #0D0C0A;            /* 宿墨：最深 */
 
-/* 圆角 */
-$radius-sm: 8px;
-$radius-md: 12px;
-$radius-lg: 16px;
+/* ===== 宣纸阶 ===== */
+$paper-50:  #FDFBF5;          /* 最白宣纸 */
+$paper-100: #FAF6EA;          /* 默认宣纸底 */
+$paper-200: #F4EEDB;          /* 旧宣纸 */
+$paper-300: #EBE2C4;          /* 年久宣纸 */
+$paper-400: #DDCFA4;          /* 古旧宣纸 */
+
+/* ===== 背景 ===== */
+$paper: #F6F3EE;              /* 茶空间底 */
+$paper-card: rgba(251, 249, 244, 0.88); /* 宣纸卡片（半透明） */
+$paper-card-solid: #FBF9F4;   /* 卡片白 */
+$paper-warm: #E8E3D8;         /* 暖底 */
+$paper-deep: #D9D2C3;         /* 装饰底 */
+$paper-veil: rgba(246, 243, 238, 0.92); /* 磨砂底 */
+
+/* ===== 文字 ===== */
+$text-primary: #3A352C;       /* 主文字 */
+$text-secondary: #6B6458;     /* 次文字 */
+$text-muted: #A39D90;         /* 弱文字 */
+$text-disabled: #C9C3B6;      /* 禁用文字 */
+$text-inverse: #FBF9F4;       /* 反色文字 */
+
+/* ===== 边框 / 分割 ===== */
+$border-soft: #CCC5B6;        /* 边框 */
+$border-light: #E8E3D8;       /* 分割线 */
+$divider: #D8D6CF;            /* 内容分割 */
+$divider-ink: #B5B2A9;        /* 墨线分割 */
+
+/* ===== 状态色 ===== */
+$success: #4A7C59;            /* 成功 - 竹青 */
+$warning: #C68A2E;            /* 警示 - 古金 */
+$danger: $ink-seal;           /* 危险 - 朱砂 */
+$info: #3A5285;               /* 信息 - 靛蓝 */
+
+/* ===== 字体 ===== */
+$font-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+$font-serif: "Noto Serif SC", "Songti SC", "SimSun", serif;
+$font-kai: "LXGW WenKai", "KaiTi", "STKaiti", "Noto Serif SC", serif;
+$font-brush: "LXGW WenKai", "KaiTi", "STKaiti", cursive;
+
+/* ===== 字号（rpx） ===== */
+$font-xs: 22rpx;              /* 辅助 / 角标 */
+$font-sm: 24rpx;              /* 次要文字 */
+$font-md: 28rpx;              /* 正文 */
+$font-lg: 32rpx;              /* 小标题 */
+$font-xl: 38rpx;              /* 中标题 */
+$font-2xl: 48rpx;             /* 大标题 */
+$font-3xl: 64rpx;             /* 超大标题 / 毛笔字 */
+$font-4xl: 80rpx;             /* Hero 书法 */
+
+/* ===== 字重 ===== */
+$font-weight-normal: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+$font-weight-bold: 700;
+
+/* ===== 间距（rpx） ===== */
+$space-1: 8rpx;
+$space-2: 16rpx;
+$space-3: 24rpx;
+$space-4: 32rpx;
+$space-5: 40rpx;
+$space-6: 48rpx;
+$space-7: 64rpx;
+$space-8: 80rpx;
+$space-9: 96rpx;
+$space-10: 128rpx;
+$space-11: 160rpx;
+
+/* ===== 圆角（rpx） ===== */
+$radius-xs: 2rpx;             /* 印章 */
+$radius-sm: 8rpx;
+$radius-md: 16rpx;
+$radius-lg: 24rpx;
+$radius-xl: 32rpx;
+$radius-pill: 999rpx;
+$radius-circle: 50%;
+$radius-seal: 6rpx;           /* 印章圆角 */
+
+/* ===== 阴影 ===== */
+$shadow-sm: 0 2rpx 12rpx rgba(58, 53, 44, 0.06);
+$shadow-md: 0 6rpx 24rpx rgba(58, 53, 44, 0.10);
+$shadow-lg: 0 12rpx 40rpx rgba(58, 53, 44, 0.14);
+$shadow-seal: 0 4rpx 16rpx rgba(192, 57, 43, 0.22);   /* 朱砂光晕 */
+$shadow-card: 0 8rpx 32rpx rgba(58, 53, 44, 0.08);
+
+/* ===== 行高 ===== */
+$line-tight: 1.2;             /* 毛笔标题 */
+$line-base: 1.6;
+$line-loose: 1.9;             /* 诗词/长文案 */
+
+/* ===== 边框宽度 ===== */
+$border-thin: 1rpx;
+$border-base: 2rpx;
+$border-thick: 3rpx;
+
+/* ===== 动画时长 ===== */
+$duration-fast: 0.2s;
+$duration-base: 0.4s;
+$duration-slow: 0.7s;
+$duration-ink: 1.2s;          /* 水墨晕染 */
+$ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+$ease-in-out: cubic-bezier(0.42, 0, 0.58, 1);
+$ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
