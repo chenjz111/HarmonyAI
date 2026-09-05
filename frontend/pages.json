@@ -1,6 +1,10 @@
 {
   "pages": [
     {
+      "path": "pages/entry/entry",
+      "style": { "navigationBarTitleText": "开始评估", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/welcome/welcome",
       "style": { "navigationBarTitleText": "HarmonyAI", "navigationStyle": "custom" }
     },
@@ -66,16 +70,20 @@
       "style": { "navigationBarTitleText": "安全支持" }
     },
     {
-      "path": "pages/entry/entry",
-      "style": { "navigationBarTitleText": "开始评估", "navigationStyle": "custom" }
-    },
-    {
       "path": "pages/v3-material/v3-material",
       "style": { "navigationBarTitleText": "上传就诊资料", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/v3-material-error/v3-material-error",
+      "style": { "navigationBarTitleText": "资料异常", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/v3-summary/v3-summary",
       "style": { "navigationBarTitleText": "确认资料摘要", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-supplement/v3-supplement",
+      "style": { "navigationBarTitleText": "补充近况", "navigationStyle": "custom" }
     },
     {
       "path": "pages/v3-narrative/v3-narrative",
@@ -84,6 +92,10 @@
     {
       "path": "pages/v3-questionnaire/v3-questionnaire",
       "style": { "navigationBarTitleText": "五脏状态问卷", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-goal/v3-goal",
+      "style": { "navigationBarTitleText": "疗愈诉求", "navigationStyle": "custom" }
     },
     {
       "path": "pages/v3-confirm/v3-confirm",

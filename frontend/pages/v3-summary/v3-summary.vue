@@ -14,10 +14,14 @@
  *  - 只编辑通俗摘要文本，不展示 OCR 原文/置信度/Provider/revision
  *  - 保存=提交修正并确认，成功直接进最近情况，无二次确认
  *  - 取消不写入、不增加 revision
+ *
+ * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
 import { apiV3 } from "../../common/api-v3.js"
+import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 export default {
+  components: { HanSideNav },
   data() {
     return {
       loading: true,
@@ -53,7 +57,8 @@ export default {
           decision: "confirm",
           changes: [],
         })
-        uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
+        // V3.1：摘要确认后进入选填补充页（补充近况）
+        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (e) {
         uni.showToast({ title: e.message || "确认失败，请重试", icon: "none" })
       } finally {
@@ -86,8 +91,8 @@ export default {
           edited_summary_text: text,
           reprocess_requested: true,
         })
-        // 保存成功直接进入最近情况，不再增加二次确认（Amendment §3.3）
-        uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
+        // 保存成功直接进入补充近况页，不再增加二次确认（Amendment §3.3）
+        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (e) {
         // 失败保留编辑输入、停留本页，旧摘要不变
         if (e.code === "FACT_EXTRACTION_UNAVAILABLE") {
@@ -120,7 +125,8 @@ export default {
       try {
         const session = await apiV3.discardDocument()
         apiV3.rememberSession(session)
-        uni.redirectTo({ url: "/pages/v3-narrative/v3-narrative" })
+        // 丢弃资料后走无资料路径：先到选填补充近况页
+        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (e) {
         uni.showToast({ title: e.message || "切换失败，请重试", icon: "none" })
       } finally {
@@ -132,163 +138,354 @@ export default {
 </script>
 
 <template>
-  <view class="container">
-    <view class="header">
-      <text class="step-tag">有资料流程 · 第 2 步</text>
-      <text class="page-title">请确认资料摘要</text>
-    </view>
-
-    <view v-if="loading" class="loading-wrap">
-      <view class="loading-ring"></view>
-      <text class="loading-text">正在整理资料摘要…</text>
-    </view>
-
-    <view v-else-if="error" class="error-wrap">
-      <text class="error-text">{{ error }}</text>
-      <view class="btn-retry" @click="load"><text class="btn-retry-text">重试</text></view>
-    </view>
-
-    <!-- 确认态 -->
-    <view v-else-if="!editing" class="summary-card">
-      <text class="source-notice">{{ summaryModel.source_notice }}</text>
-      <view class="summary-body">
-        <text class="summary-text">{{ summaryModel.summary }}</text>
-      </view>
-
-      <view class="actions">
-        <view class="btn-primary" :class="{ 'btn-disabled': submitting }" @click="confirmOk">
-          <text class="btn-primary-text">资料摘要基本无误</text>
-        </view>
-        <view class="btn-secondary" @click="startEdit">
-          <text class="btn-secondary-text">修改资料摘要</text>
-        </view>
-        <view class="btn-secondary" @click="reupload">
-          <text class="btn-secondary-text">重新上传资料</text>
-        </view>
-        <view class="btn-link" @click="switchToQuestionnaire">
-          <text class="btn-link-text">暂不使用这份资料，继续评估</text>
+  <view class="page han-page side-nav-page">
+    <han-side-nav current="material" />
+    <view class="han-page-content container">
+      <view class="header ink-fade-in">
+        <view class="header-row">
+          <view class="stage-seal">
+            <text class="stage-seal-text">声</text>
+          </view>
+          <view class="header-titles">
+            <text class="step-tag">有资料流程 · 第 2 步</text>
+            <text class="page-title han-title-brush revealed">请确认资料摘要</text>
+          </view>
         </view>
       </view>
-    </view>
 
-    <!-- 编辑态（Amendment §3.3：只编辑通俗摘要文本） -->
-    <view v-else class="edit-card">
-      <text class="edit-title">修改资料摘要</text>
-      <text class="edit-hint">你可以修正、补充或删减摘要内容。保存后我们会按修改后的内容继续。</text>
-      <textarea
-        class="edit-textarea"
-        v-model="editText"
-        :maxlength="2000"
-        placeholder="例如：资料中提到近期存在入睡困难、白天精神不足等情况。"
-      />
-      <view class="edit-count"><text class="edit-count-text">{{ (editText || '').length }} / 2000</text></view>
+      <view v-if="loading" class="loading-wrap">
+        <view class="loading-ring"></view>
+        <text class="loading-text">正在整理资料摘要…</text>
+      </view>
 
-      <view class="actions">
-        <view class="btn-primary" :class="{ 'btn-disabled': submitting }" @click="saveEdit">
-          <text class="btn-primary-text">保存修改并继续</text>
+      <view v-else-if="error" class="han-card error-card ink-fade-in">
+        <view class="error-seal">
+          <text class="error-seal-text">静</text>
         </view>
-        <view class="btn-secondary" @click="cancelEdit">
-          <text class="btn-secondary-text">取消修改</text>
+        <text class="error-title">暂时无法加载</text>
+        <text class="error-text">{{ error }}</text>
+        <view class="han-btn han-btn-primary btn-retry" @click="load">
+          <text class="btn-retry-text">重试</text>
+        </view>
+      </view>
+
+      <!-- 确认态 -->
+      <view v-else-if="!editing" class="han-card summary-card ink-fade-up">
+        <view class="source-notice-wrap">
+          <view class="source-seal"><text class="source-seal-text">要</text></view>
+          <text class="source-notice">{{ summaryModel.source_notice }}</text>
+        </view>
+        <view class="summary-body">
+          <text class="summary-text">{{ summaryModel.summary }}</text>
+        </view>
+
+        <view class="actions">
+          <view class="han-btn han-btn-primary btn-primary" :class="{ 'btn-disabled': submitting }" @click="confirmOk">
+            <text class="btn-primary-text">资料摘要基本无误</text>
+          </view>
+          <view class="han-btn han-btn-ghost btn-secondary" @click="startEdit">
+            <text class="btn-secondary-text">修改资料摘要</text>
+          </view>
+          <view class="han-btn han-btn-ghost btn-secondary" @click="reupload">
+            <text class="btn-secondary-text">重新上传资料</text>
+          </view>
+          <view class="btn-link" @click="switchToQuestionnaire">
+            <text class="btn-link-text">暂不使用这份资料，继续评估</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 编辑态（Amendment §3.3：只编辑通俗摘要文本） -->
+      <view v-else class="han-card edit-card ink-fade-up">
+        <view class="edit-title-row">
+          <view class="edit-seal"><text class="edit-seal-text">改</text></view>
+          <text class="edit-title">修改资料摘要</text>
+        </view>
+        <text class="edit-hint">你可以修正、补充或删减摘要内容。保存后我们会按修改后的内容继续。</text>
+        <textarea
+          class="edit-textarea"
+          v-model="editText"
+          :maxlength="2000"
+          placeholder="例如：资料中提到近期存在入睡困难、白天精神不足等情况。"
+        />
+        <view class="edit-count"><text class="edit-count-text">{{ (editText || '').length }} / 2000</text></view>
+
+        <view class="actions">
+          <view class="han-btn han-btn-primary btn-primary" :class="{ 'btn-disabled': submitting }" @click="saveEdit">
+            <text class="btn-primary-text">保存修改并继续</text>
+          </view>
+          <view class="han-btn han-btn-ghost btn-secondary" @click="cancelEdit">
+            <text class="btn-secondary-text">取消修改</text>
+          </view>
         </view>
       </view>
     </view>
   </view>
 </template>
 
-<style>
+<style scoped>
 .container {
   min-height: 100vh;
-  background: #f7f3eb;
-  padding: 80rpx 48rpx 60rpx;
+  padding: 72rpx 48rpx 60rpx;
   box-sizing: border-box;
 }
-.header { margin-bottom: 48rpx; }
+
+/* ===== 页头 ===== */
+.header {
+  margin-bottom: 44rpx;
+}
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+.stage-seal {
+  width: 88rpx;
+  height: 88rpx;
+  background: var(--ink-seal);
+  border-radius: var(--radius-seal);
+  transform: rotate(-4deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-seal);
+  flex-shrink: 0;
+}
+.stage-seal-text {
+  color: var(--text-inverse);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 44rpx;
+  font-weight: 700;
+}
+.header-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
 .step-tag {
   display: inline-block;
+  align-self: flex-start;
   font-size: 22rpx;
-  color: #4a6b5c;
-  background: #e6ebe5;
+  color: var(--ink-primary);
+  background: rgba(107, 124, 94, 0.12);
+  border: 1rpx solid rgba(107, 124, 94, 0.2);
   border-radius: 8rpx;
-  padding: 6rpx 16rpx;
-  margin-bottom: 20rpx;
+  padding: 4rpx 16rpx;
 }
-.page-title { display: block; font-size: 44rpx; font-weight: 600; color: #2f3d35; }
-.loading-wrap { display: flex; flex-direction: column; align-items: center; padding: 120rpx 0; }
+.page-title {
+  font-size: 44rpx;
+}
+
+/* ===== 加载 / 错误 ===== */
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 120rpx 0;
+}
 .loading-ring {
-  width: 72rpx; height: 72rpx;
-  border: 6rpx solid #e3ddcf;
-  border-top-color: #4a6b5c;
+  width: 72rpx;
+  height: 72rpx;
+  border: 6rpx solid var(--paper-deep);
+  border-top-color: var(--ink-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
-.loading-text { margin-top: 24rpx; font-size: 26rpx; color: #9c9585; }
-.error-wrap { display: flex; flex-direction: column; align-items: center; padding: 100rpx 0; }
-.error-text { font-size: 28rpx; color: #b0574f; margin-bottom: 32rpx; }
-.btn-retry { padding: 20rpx 64rpx; background: #4a6b5c; border-radius: 44rpx; }
-.btn-retry-text { color: #fff; font-size: 28rpx; }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.loading-text {
+  margin-top: 24rpx;
+  font-size: 26rpx;
+  color: var(--text-muted);
+}
+.error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80rpx 40rpx;
+  border-radius: var(--radius-lg);
+}
+.error-seal {
+  width: 108rpx;
+  height: 108rpx;
+  border: 3rpx solid var(--ink-seal);
+  border-radius: var(--radius-seal);
+  transform: rotate(-4deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28rpx;
+  background: rgba(192, 57, 43, 0.04);
+}
+.error-seal-text {
+  color: var(--ink-seal);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 52rpx;
+  font-weight: 700;
+}
+.error-title {
+  font-size: 32rpx;
+  color: var(--ink-700);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  margin-bottom: 12rpx;
+}
+.error-text {
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  margin-bottom: 36rpx;
+  text-align: center;
+  line-height: 1.6;
+}
+.btn-retry {
+  padding: 20rpx 72rpx;
+}
+.btn-retry-text {
+  color: var(--text-inverse);
+  font-size: 28rpx;
+}
+
+/* ===== 摘要卡 ===== */
 .summary-card {
-  background: #fffefa;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 24rpx;
+  border-radius: var(--radius-lg);
   padding: 40rpx;
 }
-.source-notice {
-  display: block;
-  font-size: 26rpx;
-  color: #7a8078;
-  line-height: 1.7;
+.source-notice-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
   margin-bottom: 32rpx;
 }
+.source-seal {
+  min-width: 40rpx;
+  height: 40rpx;
+  background: var(--ink-primary);
+  border-radius: var(--radius-seal);
+  transform: rotate(-3deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 4rpx;
+  box-shadow: 0 4rpx 14rpx rgba(107, 124, 94, 0.2);
+}
+.source-seal-text {
+  color: var(--text-inverse);
+  font-size: 22rpx;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+.source-notice {
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
 .summary-body {
-  background: #f6f3ea;
-  border-radius: 16rpx;
+  background: rgba(244, 238, 219, 0.5);
+  border: 1rpx solid var(--border-light);
+  border-radius: 14rpx;
   padding: 32rpx;
   margin-bottom: 48rpx;
 }
-.summary-text { font-size: 30rpx; color: #2f3d35; line-height: 1.8; }
-.actions { display: flex; flex-direction: column; }
+.summary-text {
+  font-size: 30rpx;
+  color: var(--ink-700);
+  line-height: 1.8;
+}
+
+/* ===== 按钮组 ===== */
+.actions {
+  display: flex;
+  flex-direction: column;
+}
 .btn-primary {
-  background: #4a6b5c;
-  border-radius: 48rpx;
-  padding: 26rpx 0;
-  display: flex;
-  justify-content: center;
   margin-bottom: 24rpx;
 }
-.btn-primary-text { color: #fff; font-size: 30rpx; }
+.btn-primary-text {
+  color: var(--text-inverse);
+  font-size: 30rpx;
+}
 .btn-secondary {
-  background: #fffefa;
-  border: 2rpx solid #4a6b5c;
-  border-radius: 48rpx;
-  padding: 24rpx 0;
-  display: flex;
-  justify-content: center;
   margin-bottom: 24rpx;
 }
-.btn-secondary-text { color: #4a6b5c; font-size: 30rpx; }
-.btn-link { display: flex; justify-content: center; padding: 12rpx 0; }
-.btn-link-text { color: #8a9188; font-size: 26rpx; text-decoration: underline; }
-.btn-disabled { opacity: 0.6; }
+.btn-secondary-text {
+  color: var(--ink-700);
+  font-size: 30rpx;
+}
+.btn-link {
+  display: flex;
+  justify-content: center;
+  padding: 12rpx 0;
+}
+.btn-link-text {
+  color: var(--text-muted);
+  font-size: 26rpx;
+  text-decoration: underline;
+}
+.btn-disabled {
+  opacity: 0.6;
+}
+
+/* ===== 编辑卡 ===== */
 .edit-card {
-  background: #fffefa;
-  border: 2rpx solid #e8e2d4;
-  border-radius: 24rpx;
+  border-radius: var(--radius-lg);
   padding: 40rpx;
 }
-.edit-title { display: block; font-size: 34rpx; font-weight: 600; color: #2f3d35; margin-bottom: 16rpx; }
-.edit-hint { display: block; font-size: 26rpx; color: #7a8078; line-height: 1.6; margin-bottom: 28rpx; }
+.edit-title-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+.edit-seal {
+  min-width: 48rpx;
+  height: 48rpx;
+  background: var(--ink-seal);
+  border-radius: var(--radius-seal);
+  transform: rotate(-3deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-seal);
+}
+.edit-seal-text {
+  color: var(--text-inverse);
+  font-size: 26rpx;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+.edit-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--ink-700);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+.edit-hint {
+  display: block;
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 28rpx;
+}
 .edit-textarea {
   width: 100%;
   min-height: 300rpx;
-  background: #f6f3ea;
-  border-radius: 16rpx;
+  background: rgba(244, 238, 219, 0.5);
+  border: 1rpx solid var(--border-light);
+  border-radius: 14rpx;
   padding: 28rpx;
   font-size: 28rpx;
-  color: #2f3d35;
+  color: var(--ink-700);
   line-height: 1.7;
   box-sizing: border-box;
 }
-.edit-count { display: flex; justify-content: flex-end; margin: 12rpx 0 32rpx; }
-.edit-count-text { font-size: 22rpx; color: #b3ac9c; }
+.edit-count {
+  display: flex;
+  justify-content: flex-end;
+  margin: 12rpx 0 32rpx;
+}
+.edit-count-text {
+  font-size: 22rpx;
+  color: var(--text-muted);
+}
 </style>
