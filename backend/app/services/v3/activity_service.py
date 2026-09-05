@@ -461,6 +461,78 @@ def validate_assessment_input_readiness(
             raise AssessmentInputNotReady(
                 "UNDERSTANDING_NOT_OWNED", "资料摘要不属于当前会话。"
             )
+        snapshot = (run.degradation_json or {}).get("input_snapshot") or {}
+        if not snapshot:
+            raise AssessmentInputNotReady(
+                "DOCUMENT_SET_NOT_READY", "资料集版本尚未绑定。"
+            )
+        # Questionnaire submission also advances input_revision, but it does
+        # not invalidate the confirmed document Understanding. Inspect the
+        # immutable revision audit instead of inferring the meaning from a
+        # numeric version delta.
+        if (
+            session_row.input_revision is None
+            or run.input_revision is None
+            or session_row.input_revision < run.input_revision
+        ):
+            raise AssessmentInputNotReady(
+                "DOCUMENT_SET_NOT_ACTIVE", "资料集已被替换或丢弃。"
+            )
+        document_mutation = (
+            db.query(SessionInputRevision)
+            .filter(
+                SessionInputRevision.session_row_id == session_row.id,
+                SessionInputRevision.input_revision > run.input_revision,
+                SessionInputRevision.input_revision <= session_row.input_revision,
+                SessionInputRevision.action.in_(
+                    {"replace_document", "discard_document"}
+                ),
+            )
+            .first()
+        )
+        if document_mutation is not None:
+            raise AssessmentInputNotReady(
+                "DOCUMENT_SET_NOT_ACTIVE", "资料集已被替换或丢弃。"
+            )
+        from backend.app.services.v3.understanding_service import (
+            InvalidChange as UnderstandingInvalidChange,
+            _load_active_document_set,
+        )
+
+        try:
+            active_set = _load_active_document_set(
+                db, session_row.user_id, session_row
+            )
+        except UnderstandingInvalidChange as error:
+            raise AssessmentInputNotReady(error.code, error.message) from None
+        if (
+            active_set.row.document_set_id != snapshot.get("document_set_id")
+            or active_set.row.revision != snapshot.get("document_set_revision")
+            or list(active_set.document_ids) != snapshot.get("document_ids")
+            or active_set.relevance_fingerprint
+            != snapshot.get("relevance_fingerprint")
+        ):
+            raise AssessmentInputNotReady(
+                "DOCUMENT_SET_NOT_ACTIVE", "资料集版本已发生变化。"
+            )
+        valid_document_ids = {
+            document_id
+            for document_id, relevance in active_set.relevance_by_document.items()
+            if relevance.outcome == "VALID"
+        }
+        normalized_facts = (revision.presentation_json or {}).get(
+            "normalized_facts"
+        ) or []
+        for fact in normalized_facts:
+            for source_ref in fact.get("source_refs") or []:
+                if (
+                    source_ref.get("source_type") == "document"
+                    and source_ref.get("source_id") not in valid_document_ids
+                ):
+                    raise AssessmentInputNotReady(
+                        "DOCUMENT_RELEVANCE_INVALID",
+                        "评估输入包含不可用资料。",
+                    )
         return
     submission_id = session_row.active_questionnaire_submission_id
     if submission_id is None:

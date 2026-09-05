@@ -1,6 +1,7 @@
 ﻿"""Agent 1 Assessment V3 — deterministic aggregation over approved assets."""
 
 import base64
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -16,12 +17,15 @@ from backend.ai_engine.v3.understanding_provider import (
     UnderstandingProviderChain,
 )
 from backend.app.main import app
+from backend.app.core.database import get_db
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
 from backend.app.models.v3.assessment import AssessmentV3
 from backend.app.models.v3.identity import UserIdentity
 from backend.app.models.v3.session import V3IdempotencyRecord
 from backend.app.models.v3.understanding import QuestionnaireSubmissionV3
+from backend.app.schemas.v3.common import AuthPrincipal
+from backend.app.schemas.v3.document import DocumentRelevanceRecordRequest
 from backend.app.schemas.v3.understanding import (
     TextSpan,
     UnderstandingProviderFact,
@@ -29,10 +33,20 @@ from backend.app.schemas.v3.understanding import (
 )
 from backend.app.schemas.v3.assessment import FactEvidence
 from backend.app.services.v3 import assessment_service, understanding_service
+from backend.app.services.v3.document_relevance_service import record_relevance
 from backend.app.services.v3.knowledge_assets import load_organ_mapping
 
 
 client = TestClient(app)
+
+
+@contextmanager
+def _seed_db():
+    generator = app.dependency_overrides[get_db]()
+    try:
+        yield next(generator)
+    finally:
+        generator.close()
 
 
 def _v3_data(response):
@@ -119,6 +133,26 @@ def _document_source(document_id):
     }
 
 
+def _principal(headers):
+    token = headers["Authorization"].split(" ")[1]
+    payload = token.split(".")[1]
+    payload += "=" * (-len(payload) % 4)
+    public_user_id = json.loads(base64.urlsafe_b64decode(payload))["sub"]
+    with _seed_db() as db:
+        internal_user_pk = (
+            db.query(UserIdentity)
+            .filter(UserIdentity.public_user_id == public_user_id)
+            .one()
+            .internal_user_pk
+        )
+    return AuthPrincipal(
+        internal_user_pk=internal_user_pk,
+        public_user_id=public_user_id,
+        auth_type="guest",
+        guest_expires_at="2030-01-01T00:00:00Z",
+    )
+
+
 def _replace_document_input(headers, session_id, document_id):
     response = client.post(
         f"/api/v3/sessions/{session_id}/input-transitions",
@@ -130,7 +164,37 @@ def _replace_document_input(headers, session_id, document_id):
         },
     )
     assert response.status_code == 201, response.text
-    return _v3_data(response)["input_revision"]
+    transition_revision = _v3_data(response)["input_revision"]
+    document_set = client.post(
+        f"/api/v3/sessions/{session_id}/document-sets",
+        headers={**headers, "Idempotency-Key": f"set-{uuid.uuid4().hex}"},
+        json={
+            "session_id": session_id,
+            "expected_input_revision": transition_revision,
+            "document_ids": [document_id],
+        },
+    )
+    assert document_set.status_code == 201, document_set.text
+    set_data = _v3_data(document_set)
+    with _seed_db() as db:
+        record_relevance(
+            db,
+            _principal(headers),
+            DocumentRelevanceRecordRequest(
+                document_set_id=set_data["document_set_id"],
+                document_set_revision=set_data["revision"],
+                items=[
+                    {
+                        "document_id": document_id,
+                        "outcome": "VALID",
+                        "reason_codes": [],
+                    }
+                ],
+                evaluator="test",
+                evaluator_version="v1",
+            ),
+        )
+    return set_data["input_revision"]
 
 
 def _confirmed_understanding(headers, session_id, db_session, facts):
@@ -226,6 +290,58 @@ def _seed_questionnaire(db, *, headers, session_id, answers):
     db.add(submission)
     db.commit()
     return submission.questionnaire_submission_id, manifest
+
+
+def _submit_questionnaire(headers, session_id, expected_input_revision):
+    manifest = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "knowledge"
+            / "v3"
+            / "questionnaire-v3.0.json"
+        ).read_text(encoding="utf-8")
+    )
+    answers = [
+        {"question_id": f"q{index:02d}", "answer_type": "frequency_0_4", "value": 0}
+        for index in range(1, 6)
+    ] + [
+        {
+            "question_id": f"q{index:02d}",
+            "answer_type": "multi_choice_evidence",
+            "value": ["none"],
+        }
+        for index in range(6, 11)
+    ]
+    response = client.post(
+        f"/api/v3/sessions/{session_id}/questionnaire",
+        headers={**headers, "Idempotency-Key": f"qsub-{uuid.uuid4().hex}"},
+        json={
+            "session_id": session_id,
+            "expected_input_revision": expected_input_revision,
+            "schema_id": manifest["schema_id"],
+            "schema_version": manifest["schema_version"],
+            "manifest_version": manifest["manifest_version"],
+            "content_checksum": manifest["content_checksum"],
+            "answers": answers,
+            "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": "2026-01-01T00:05:00Z",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return _v3_data(response)
+
+
+def _session_input_revision(db_session_factory, session_id):
+    db = db_session_factory()
+    try:
+        return (
+            db.query(SessionModel)
+            .filter(SessionModel.session_id == session_id)
+            .one()
+            .input_revision
+        )
+    finally:
+        db.close()
 
 
 def _aggregation_fact(claim_code, source_id, *, source_type="document", value=None):
@@ -357,7 +473,7 @@ def test_assessment_available_from_two_liver_claims(monkeypatch, db_session_fact
     response = client.post(
         "/api/v3/assessments",
         headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
-        json=_assessment_body(session_id, understanding_id, 3),
+        json=_assessment_body(session_id, understanding_id, 4),
     )
     assert response.status_code == 201, response.text
     assessment = _v3_data(response)
@@ -393,7 +509,7 @@ def test_assessment_insufficient_single_claim(monkeypatch, db_session_factory):
     response = client.post(
         "/api/v3/assessments",
         headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
-        json=_assessment_body(session_id, understanding_id, 3),
+        json=_assessment_body(session_id, understanding_id, 4),
     )
     assert response.status_code == 201, response.text
     assessment = _v3_data(response)
@@ -437,7 +553,7 @@ def test_assessment_rejects_understanding_from_another_session(
     response = client.post(
         "/api/v3/assessments",
         headers={**headers, "Idempotency-Key": f"asmt-{uuid.uuid4().hex}"},
-        json=_assessment_body(session_id, second_understanding_id, 3),
+        json=_assessment_body(session_id, second_understanding_id, 4),
     )
 
     assert response.status_code == 409, response.text
@@ -596,7 +712,7 @@ def test_assessment_combines_understanding_and_questionnaire_evidence(
     )
     db.close()
 
-    body = _assessment_body(session_id, understanding_id, 3)
+    body = _assessment_body(session_id, understanding_id, 4)
     body["questionnaire_ref"] = {
         "questionnaire_submission_id": questionnaire_id,
         "schema_id": manifest["schema_id"],
@@ -618,6 +734,86 @@ def test_assessment_combines_understanding_and_questionnaire_evidence(
         for item in assessment["fact_evidence"]
     } == {"document", "questionnaire"}
     assert assessment["source_diversity"] == 2
+
+
+def test_confirmed_document_assessment_succeeds_without_questionnaire(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
+    db.close()
+    input_revision = _session_input_revision(db_session_factory, session_id)
+
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-no-q-{uuid.uuid4().hex}"},
+        json=_assessment_body(session_id, understanding_id, input_revision),
+    )
+
+    assert response.status_code == 201, response.text
+    assert _v3_data(response)["understanding_ref"]["understanding_id"] == understanding_id
+
+
+def test_confirmed_document_assessment_succeeds_after_questionnaire_submission(
+    monkeypatch, db_session_factory
+):
+    monkeypatch.setattr(
+        understanding_service,
+        "build_provider_chain",
+        lambda: _mock_chain(
+            [_provider_fact("anger_tendency", "烦躁易怒倾向", "emotional_state")]
+        ),
+    )
+    headers, session_id = _setup_guest()
+    db = db_session_factory()
+    understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
+    db.close()
+    before_questionnaire = _session_input_revision(db_session_factory, session_id)
+    questionnaire = _submit_questionnaire(
+        headers, session_id, before_questionnaire
+    )
+
+    body = _assessment_body(
+        session_id,
+        understanding_id,
+        questionnaire["input_revision"],
+    )
+    body["questionnaire_ref"] = {
+        "questionnaire_submission_id": questionnaire[
+            "questionnaire_submission_id"
+        ],
+        "schema_id": questionnaire["schema_id"],
+        "schema_version": questionnaire["schema_version"],
+        "manifest_version": questionnaire["manifest_version"],
+        "content_checksum": questionnaire["content_checksum"],
+    }
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"asmt-with-q-{uuid.uuid4().hex}"},
+        json=body,
+    )
+
+    assert response.status_code == 201, response.text
+    assessment = _v3_data(response)
+    assert assessment["input_revision"] == questionnaire["input_revision"]
+    db = db_session_factory()
+    try:
+        stored = db.query(AssessmentV3).filter(
+            AssessmentV3.assessment_id == assessment["assessment_id"]
+        ).one()
+        assert stored.questionnaire_submission_id == questionnaire[
+            "questionnaire_submission_id"
+        ]
+    finally:
+        db.close()
 
 
 def test_assessment_rejects_questionnaire_from_another_session(
@@ -695,7 +891,7 @@ def test_assessment_rejects_user_goal_for_agent1(
     understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
     db.close()
 
-    body = _assessment_body(session_id, understanding_id, 3)
+    body = _assessment_body(session_id, understanding_id, 4)
     body["user_goal"] = {
         "primary_goal": "sleep",
         "secondary_goal": "relaxation",
@@ -726,7 +922,7 @@ def test_assessment_replays_same_key_and_payload_without_duplicate(
     understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
     db.close()
 
-    body = _assessment_body(session_id, understanding_id, 3)
+    body = _assessment_body(session_id, understanding_id, 4)
     key = f"asmt-replay-{uuid.uuid4().hex}"
     first = client.post(
         "/api/v3/assessments",
@@ -779,7 +975,7 @@ def test_assessment_reused_key_with_different_payload_conflicts_without_duplicat
     db.close()
 
     key = f"asmt-conflict-{uuid.uuid4().hex}"
-    first_body = _assessment_body(session_id, understanding_id, 3)
+    first_body = _assessment_body(session_id, understanding_id, 4)
     conflict_body = _assessment_body(session_id, understanding_id, 1)
     first = client.post(
         "/api/v3/assessments",
@@ -814,7 +1010,7 @@ def test_assessment_concurrent_same_key_replays_without_duplicate(
     understanding_id = _confirmed_understanding(headers, session_id, db, facts=None)
     db.close()
 
-    body = _assessment_body(session_id, understanding_id, 3)
+    body = _assessment_body(session_id, understanding_id, 4)
     key = f"asmt-concurrent-{uuid.uuid4().hex}"
     barrier = threading.Barrier(2)
     lock = threading.Lock()
@@ -887,8 +1083,8 @@ def test_assessment_concurrent_different_payload_returns_idempotency_conflict(
 
     key = f"asmt-concurrent-conflict-{uuid.uuid4().hex}"
     bodies = [
-        _assessment_body(first_session_id, first_understanding_id, 3),
-        _assessment_body(second_session_id, second_understanding_id, 3),
+        _assessment_body(first_session_id, first_understanding_id, 4),
+        _assessment_body(second_session_id, second_understanding_id, 4),
     ]
     barrier = threading.Barrier(2)
     lock = threading.Lock()
