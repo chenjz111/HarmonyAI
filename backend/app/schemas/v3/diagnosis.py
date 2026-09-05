@@ -6,7 +6,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field, RootModel, model_validator
 
-from .assessment import AssessmentRef, FactEvidence, OrganEvidenceLink
+from .assessment import AssessmentRef, AssessmentRefV31, FactEvidence, OrganEvidenceLink
 from .common import (
     Conflict,
     Degradation,
@@ -39,6 +39,33 @@ class DiagnosisV3Input(V3BaseModel):
             SafetyStatus.resolved,
         }:
             raise ValueError("diagnosis requires a clear or resolved safety status")
+        return self
+
+
+class DiagnosisV31Input(V3BaseModel):
+    """Owner Flow Amendment 001 §4.4 / §6 — Agent 2 input in the new flow.
+
+    The legacy clear/resolved safety gate is replaced by a policy check:
+    the confirmed Assessment must be bound to `deferred_v3` with a null
+    safety status; it must never be silently mapped through the old gate.
+    """
+
+    schema_version: Literal["diagnosis_v3.1"]
+    session_id: NonEmptyString
+    diagnosis_id: NonEmptyString
+    assessment_ref: AssessmentRefV31
+    organ_profile: OrganProfile
+    fact_evidence: list[FactEvidence]
+    organ_evidence_links: list[OrganEvidenceLink]
+    conflicts: list[Conflict]
+    missing_information: list[MissingInformation]
+
+    @model_validator(mode="after")
+    def validate_deferred_policy(self) -> "DiagnosisV31Input":
+        if self.assessment_ref.safety_policy != "deferred_v3":
+            raise ValueError("diagnosis_v3.1 requires deferred_v3 policy")
+        if self.assessment_ref.safety_status is not None:
+            raise ValueError("deferred_v3 assessment must carry null safety_status")
         return self
 
 

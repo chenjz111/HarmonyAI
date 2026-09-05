@@ -65,6 +65,18 @@ def _setup_guest() -> tuple[dict[str, str], str]:
     return headers, session_id
 
 
+def _setup_owner_flow() -> tuple[dict[str, str], str]:
+    headers = _guest_headers()
+    session_id = _v3_data(
+        client.post(
+            "/api/v3/sessions",
+            headers={**headers, "Idempotency-Key": f"owner-session-{uuid.uuid4().hex}"},
+            json={"flow_contract_version": "v3-owner-flow-1"},
+        )
+    )["session_id"]
+    return headers, session_id
+
+
 def _row_ids(session, public_user_id: str, session_id: str) -> tuple[int, int]:
     user = (
         session.query(UserIdentity)
@@ -147,6 +159,14 @@ def _post_understanding(headers, body, idempotency_key):
     )
 
 
+def _transition(headers, session_id, body, idempotency_key):
+    return client.post(
+        f"/api/v3/sessions/{session_id}/input-transitions",
+        headers={**headers, "Idempotency-Key": idempotency_key},
+        json=body,
+    )
+
+
 def _session_input_mode(session_id: str) -> str | None:
     with _seed_db() as session:
         row = session.query(SessionModel).filter(
@@ -199,6 +219,341 @@ def test_document_ingestion_uses_ocr_text_and_with_document_mode():
     assert data["source_statuses"][0]["status"] == "ready"
     assert data["case_summary"]["summary"].startswith("材料中提到近期睡眠")
     assert _session_input_mode(session_id) == "with_document"
+
+
+def test_v31_understanding_create_uses_expected_input_revision():
+    headers = _guest_headers()
+    session_id = _v3_data(
+        client.post(
+            "/api/v3/sessions",
+            headers={**headers, "Idempotency-Key": f"seed-session-{uuid.uuid4().hex}"},
+            json={"flow_contract_version": "v3-owner-flow-1"},
+        )
+    )["session_id"]
+    with _seed_db() as session:
+        user_pk, _ = _row_ids(
+            session,
+            _public_user_id(headers["Authorization"].split()[1]),
+            session_id,
+        )
+        document_id = _seed_document(
+            session,
+            user_pk=user_pk,
+            session_id=session_id,
+            ocr_text="资料中的近期睡眠信息。",
+        )
+    selected = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 1,
+            "action": "select_mode",
+            "input_mode": "with_document",
+        },
+        f"select-v31-{uuid.uuid4().hex}",
+    )
+    assert selected.status_code == 201, selected.text
+    replaced = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 2,
+            "action": "replace_document",
+            "document_id": document_id,
+        },
+        f"replace-v31-{uuid.uuid4().hex}",
+    )
+    assert replaced.status_code == 201, replaced.text
+
+    response = _post_understanding(
+        headers,
+        {
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 3,
+            "inputs": [_document_source(document_id)],
+        },
+        f"sha256:und-v31-{uuid.uuid4().hex}",
+    )
+
+    assert response.status_code == 201, response.text
+    data = _v3_data(response)
+    assert data["schema_version"] == "understanding_v3.1"
+    assert data["flow_contract_version"] == "v3-owner-flow-1"
+    assert data["safety_policy"] == "deferred_v3"
+    assert data["safety_evaluation_status"] == "not_run"
+    assert data["safety_status"] is None
+
+
+def test_v31_understanding_rejects_narrative_in_without_document_mode():
+    headers, session_id = _setup_owner_flow()
+    selected = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 1,
+            "action": "select_mode",
+            "input_mode": "without_document",
+        },
+        f"select-v31-no-doc-{uuid.uuid4().hex}",
+    )
+    assert selected.status_code == 201, selected.text
+
+    response = _post_understanding(
+        headers,
+        {
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "inputs": [_narrative_source("V3.1 不应接受自由描述。")],
+        },
+        f"und-v31-no-narrative-{uuid.uuid4().hex}",
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
+
+
+def test_v31_understanding_create_rejects_stale_expected_input_revision():
+    headers = _guest_headers()
+    session_id = _v3_data(
+        client.post(
+            "/api/v3/sessions",
+            headers={**headers, "Idempotency-Key": f"seed-session-{uuid.uuid4().hex}"},
+            json={"flow_contract_version": "v3-owner-flow-1"},
+        )
+    )["session_id"]
+    selected = _transition(
+        headers,
+        session_id,
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+        f"select-v31-stale-{uuid.uuid4().hex}",
+    )
+    assert selected.status_code == 201, selected.text
+
+    response = _post_understanding(
+        headers,
+        {
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 1,
+            "inputs": [_narrative_source("最近一周睡眠不太安稳。")],
+        },
+        f"sha256:und-v31-stale-{uuid.uuid4().hex}",
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
+
+
+def test_v31_rejects_narrative_when_document_mode_is_active():
+    headers, session_id = _setup_owner_flow()
+    with _seed_db() as session:
+        user_pk, _ = _row_ids(
+            session,
+            _public_user_id(headers["Authorization"].split()[1]),
+            session_id,
+        )
+        document_id = _seed_document(
+            session,
+            user_pk=user_pk,
+            session_id=session_id,
+            ocr_text="当前活动资料。",
+        )
+
+    replaced = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 1,
+            "action": "replace_document",
+            "document_id": document_id,
+        },
+        f"replace-narrative-{uuid.uuid4().hex}",
+    )
+    assert replaced.status_code == 201, replaced.text
+
+    response = _post_understanding(
+        headers,
+        {
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "inputs": [_narrative_source("不应切换输入模式。")],
+        },
+        f"und-mode-mismatch-{uuid.uuid4().hex}",
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
+    with _seed_db() as session:
+        row = session.query(SessionModel).filter(
+            SessionModel.session_id == session_id
+        ).one()
+        assert row.input_mode == "with_document"
+        assert row.active_document_id == document_id
+        assert row.input_revision == 2
+        assert session.query(UnderstandingRun).count() == 0
+
+
+def test_v31_rejects_replaced_document_and_keeps_authoritative_pointer():
+    headers, session_id = _setup_owner_flow()
+    with _seed_db() as session:
+        user_pk, _ = _row_ids(
+            session,
+            _public_user_id(headers["Authorization"].split()[1]),
+            session_id,
+        )
+        first_document_id = _seed_document(
+            session,
+            user_pk=user_pk,
+            session_id=session_id,
+            ocr_text="第一份资料。",
+        )
+        second_document_id = _seed_document(
+            session,
+            user_pk=user_pk,
+            session_id=session_id,
+            ocr_text="第二份资料。",
+        )
+
+    first = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 1,
+            "action": "replace_document",
+            "document_id": first_document_id,
+        },
+        f"replace-first-{uuid.uuid4().hex}",
+    )
+    second = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 2,
+            "action": "replace_document",
+            "document_id": second_document_id,
+        },
+        f"replace-second-{uuid.uuid4().hex}",
+    )
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+
+    response = _post_understanding(
+        headers,
+        {
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 3,
+            "inputs": [_document_source(first_document_id)],
+        },
+        f"und-stale-document-{uuid.uuid4().hex}",
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
+    with _seed_db() as session:
+        row = session.query(SessionModel).filter(
+            SessionModel.session_id == session_id
+        ).one()
+        assert row.active_document_id == second_document_id
+        assert row.input_revision == 3
+        assert session.query(UnderstandingRun).count() == 0
+
+
+def test_owner_flow_rejects_v30_understanding_shape():
+    headers, session_id = _setup_owner_flow()
+    response = _post_understanding(
+        headers,
+        _understanding_body(session_id, [_narrative_source("旧版本请求。")]),
+        f"und-v30-owner-{uuid.uuid4().hex}",
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "FLOW_CONTRACT_MISMATCH"
+
+
+def test_confirm_rejects_understanding_after_active_document_replacement():
+    headers, session_id = _setup_owner_flow()
+    with _seed_db() as session:
+        user_pk, _ = _row_ids(
+            session,
+            _public_user_id(headers["Authorization"].split()[1]),
+            session_id,
+        )
+        first_document_id = _seed_document(
+            session,
+            user_pk=user_pk,
+            session_id=session_id,
+            ocr_text="第一份资料。",
+        )
+        second_document_id = _seed_document(
+            session,
+            user_pk=user_pk,
+            session_id=session_id,
+            ocr_text="第二份资料。",
+        )
+
+    first = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 1,
+            "action": "replace_document",
+            "document_id": first_document_id,
+        },
+        f"confirm-first-{uuid.uuid4().hex}",
+    )
+    assert first.status_code == 201, first.text
+    understanding = _post_understanding(
+        headers,
+        {
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "inputs": [_document_source(first_document_id)],
+        },
+        f"und-before-replace-{uuid.uuid4().hex}",
+    )
+    assert understanding.status_code == 201, understanding.text
+    understanding_id = _v3_data(understanding)["understanding_id"]
+
+    second = _transition(
+        headers,
+        session_id,
+        {
+            "expected_input_revision": 2,
+            "action": "replace_document",
+            "document_id": second_document_id,
+        },
+        f"confirm-second-{uuid.uuid4().hex}",
+    )
+    assert second.status_code == 201, second.text
+
+    response = client.post(
+        f"/api/v3/understandings/{understanding_id}/confirmations",
+        headers={**headers, "Idempotency-Key": f"confirm-stale-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "understanding_v3.1",
+            "expected_revision": 1,
+            "expected_input_revision": 3,
+            "decision": "confirm",
+        },
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
+    with _seed_db() as session:
+        run = session.query(UnderstandingRun).filter(
+            UnderstandingRun.understanding_id == understanding_id
+        ).one()
+        assert run.current_revision == 1
+        row = session.query(SessionModel).filter(
+            SessionModel.session_id == session_id
+        ).one()
+        assert row.active_document_id == second_document_id
+        assert row.input_revision == 3
 
 
 def test_ocr_failure_is_explicit_and_never_confirms():

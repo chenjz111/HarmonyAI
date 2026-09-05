@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Response
+from fastapi import APIRouter, Body, Depends, Header, Response
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
@@ -12,6 +12,8 @@ from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.schemas.v3.understanding import (
     UnderstandingConfirmationRequest,
     UnderstandingRevisionResult,
+    UnderstandingV31Request,
+    UnderstandingV31Response,
     UnderstandingV3Request,
     UnderstandingV3Response,
 )
@@ -28,6 +30,12 @@ from backend.app.services.v3.understanding_service import (
 )
 
 
+UnderstandingCreateRequest = Annotated[
+    UnderstandingV3Request | UnderstandingV31Request,
+    Body(discriminator="schema_version"),
+]
+
+
 router = APIRouter()
 
 
@@ -37,16 +45,16 @@ def _not_found() -> V3APIError:
 
 @router.post(
     "/understandings",
-    response_model=V3SuccessEnvelope[UnderstandingV3Response],
+    response_model=V3SuccessEnvelope[UnderstandingV31Response | UnderstandingV3Response],
     status_code=201,
 )
 def create_run(
     response: Response,
-    body: UnderstandingV3Request,
+    body: UnderstandingCreateRequest,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
     principal: AuthPrincipal = Depends(get_current_v3_principal),
     db: Session = Depends(get_db),
-) -> V3SuccessEnvelope[UnderstandingV3Response]:
+) -> V3SuccessEnvelope[UnderstandingV31Response | UnderstandingV3Response]:
     if idempotency_key is None or not idempotency_key.strip():
         raise V3APIError(
             400,
@@ -62,12 +70,20 @@ def create_run(
         )
     except OwnedResourceNotFound:
         raise _not_found() from None
+    except InputRevisionConflict:
+        raise V3APIError(
+            409,
+            "INPUT_REVISION_CONFLICT",
+            "输入状态已更新，请基于最新版本重试。",
+        ) from None
     except IdempotencyConflict:
         raise V3APIError(
             422,
             "IDEMPOTENCY_KEY_REUSED",
             "相同的幂等键已被不同的请求使用。",
         ) from None
+    except InvalidChange as error:
+        raise V3APIError(422, error.code, error.message) from None
     if replayed:
         response.status_code = 200
     return v3_success(result)
@@ -75,14 +91,14 @@ def create_run(
 
 @router.get(
     "/understandings/{understanding_id}",
-    response_model=V3SuccessEnvelope[UnderstandingV3Response],
+    response_model=V3SuccessEnvelope[UnderstandingV31Response | UnderstandingV3Response],
 )
 def read_run(
     understanding_id: str,
     revision: int | None = None,
     principal: AuthPrincipal = Depends(get_current_v3_principal),
     db: Session = Depends(get_db),
-) -> V3SuccessEnvelope[UnderstandingV3Response]:
+) -> V3SuccessEnvelope[UnderstandingV31Response | UnderstandingV3Response]:
     try:
         return v3_success(
             get_understanding(db, principal, understanding_id, revision=revision)
