@@ -156,5 +156,12 @@
     "shape": "primary_goal 可空；secondary_goal 仅当 primary_goal 存在且须不同；custom_goal_text 独立：仅文本合法、other 无文本合法、≤200 字；全空归一 user_goal=null（契约边界处理）",
     "evidence_position": "preference-only：不是 MedicalEvidence / FactEvidence / OrganEvidence / source-validity 信号"
   },
-  "content_checksum": "sha256:3499228683cb3a1d6a1029548e4ddb07559e2738df9d11c1e448451c03a7b022"
+  "content_checksum": "sha256:02813bdf459f7b787e897a575f99c8660d1a6bf095162be3ddec035b3a7a2880",
+  "evidence_role": "preference",
+  "not_evidence": [
+    "MedicalEvidence",
+    "FactEvidence",
+    "OrganEvidence"
+  ],
+  "source_validity_signal": false
 }

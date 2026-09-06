@@ -1,63 +1,71 @@
-# Sprint5 Final Closeout · Medical（Issue #108）— 第一批提交说明
+# Sprint5 Final Closeout · Medical（Issue #108）— PR #114 交付说明
 
 > 作者：nob（肖宇翔，Medical Knowledge Engineer）
 > 日期：2026-09-06
 > Issue：#108 [S5-FINAL][Medical] Relevance, RAG Corpus & Medical Acceptance（Supersedes #97，Related PR #102）
 > Freeze Baseline：`83fe2f42069e126dbbfdccc252266964a58ce895`（V3.1_FREEZE_BASELINE）
-> 提交状态：**仅推送到个人分支 `feat/s5-final-medical-108`，未开 PR**（待 nob/Owner 过目后再决定 PR）
+> PR：#114（feat/s5-final-medical-108 → integration/sprint4-real-input）——更新中，未合并
 
 ---
 
-## 1. 本批文件（5，全部新增于 baseline 之上）
+## 1. 交付文件（5 资产/文档 + 1 测试文件）
 
-| 文件 | 对应 #108 章节 | canonical sha256 |
+| 文件 | 对应 #108 | canonical sha256 |
 | --- | --- | --- |
-| `knowledge/v3/document-relevance-rules-v3.1.json` | §1 Document Relevance 终审 | `9fe5aa90…eeb` |
-| `knowledge/v3/usergoal-vocabulary-v3.1.json` | §2 正式问卷 3.0.1 保护（UserGoal 语义） | `34992286…3cb` |
+| `knowledge/v3/document-relevance-rules-v3.1.json` | §1 Document Relevance 终审 | `19e4728e…d4`（R2 更新） |
+| `knowledge/v3/usergoal-vocabulary-v3.1.json` | §2 问卷 3.0.1 保护（UserGoal） | `02813bdf…9f`（R2 更新） |
 | `knowledge/v3/five-tone-safe-expression-rules-v3.1.json` | §5 Five-Tone Explainability | `c752d619…23f` |
-| `knowledge/v3/rag-corpus-manifest-v3.1.json` | §3 RAG Medical Corpus + §4 Corpus Boundary | `288cffbd…2c4` |
+| `knowledge/v3/rag-corpus-manifest-v3.1.json` | §3 RAG Medical Corpus + §4 Boundary | `daed8bdb…80`（R2 更新） |
 | `docs/sprint5/medical-issue108-closeout-20260906.md` | 本说明 | — |
+| `tests/knowledge/test_s5final_medical_assets.py` | #108 §6 Medical Tests（9 项） | — |
 
-## 2. #108 验收对照
+## 2. 状态声明（按 Owner review 修正）
 
-| #108 项 | 本批动作 | 状态 |
-| --- | --- | --- |
-| 1 Document Relevance 终审 | 四值语义+reason 码表定稿；对齐冻结 §3：仅 VALID 三项 downstream=true，其余不进 Evidence/Agent2；INSUFFICIENT 路由已冻结关闭 OD-DR-02 | ✅ 提交（待终审） |
-| 2 Formal Questionnaire 3.0.1 严格保护 | **未修改** questionnaire-v3.0.1.json；无 QUESTIONNAIRE_CONTRACT_DRIFT；本批资产只引用不覆盖 | ✅ 无漂移 |
-| 3 RAG Medical Corpus | 语料来源注册 v1（13 条解释类知识源，各带 reviewer/version/content_hash/approval） | ✅ v1 提交 |
-| 4 Corpus Boundary | manifest 内明确"不入向量"的确定性 Rule Assets 清单 | ✅ 已声明 |
-| 5 Five-Tone Explainability | 表达规则定稿；新增 FT-09 只读模型边界（对齐冻结 §9） | ✅ 提交 |
-| 6 Medical Tests | JSON 全量 parse + canonical checksum 通过；代码级 tests 待 PR 阶段补 | 🟡 待 PR |
+### RAG 完成状态（rag-corpus-manifest-v3.1）
+| 项 | 状态 |
+| --- | --- |
+| 医学来源审核 | **已完成**（13 条解释类来源，reviewer/hash/reference 齐备） |
+| 实际语料 / chunk | **未完成**——本 manifest 仅为医学来源登记，**无正文/chunk 伪造**；待 AI 侧 #109 接入 |
+| Embedding / Ingestion | **待 #109** |
+| Production RAG | **NOT_APPROVED_PENDING** |
 
-## 3. 关键对齐点（均按 FROZEN 契约）
+### 知识资产注册状态
+- 4 份资产 `registry_status = NOT_REGISTERED_OWNER_PENDING`，**未写入任何 knowledge manifest**；
+- 本 PR 仅交付医学资产；**Owner 审核通过后统一注册**；
+- **注册前生产代码不得读取这些资产**。
 
-1. **Relevance**：`reason_code` 语义化非空 + `reason` 公开文案（对齐 flow_v31）；白名单 14 项由本资产供给。
-2. **UserGoal**：label 权威 = `questionnaire-v3.0.1.json#user_goal.options[].label`（本资产不复写文案）；`primary_goal` 可空、`secondary_goal` 仅随 primary 且不同、custom-text 独立合法 ≤200 字、全空归 `null`；preference-only，非任何 Evidence。
-3. **只读模型**：解释类字段必填非空，read model 之外字段一律禁止（FT-09）。
+### Real / Mock
+- Real Mode Status = **`MEDICAL_ASSET_ONLY / NOT_PRODUCTION_REACHABLE`**（本批为规则与登记资产，无生产可达性）
 
-## 4. 与本批未涵盖 / 留待 Owner 的项（Remaining Medical Risks & Blockers）
+## 3. 自动化测试（#108 §6 / Owner review 第 1 项）
 
-- **Production RAG 放行**：corpus 医学复核完成但 `approval_status=MEDICAL_REVIEWED_PENDING_PRODUCTION`；embedding/chunk/ingestion 参数与正式 Ingestion Manifest 属 #109/Owner（manifest 3.0.1 rag_ingestion_status 仍 NOT_APPROVED_PENDING）——**未获 Owner 放行前不得进 Production RAG**。
-- **副音阈值**：冻结 §10 明确 secondary-tone 医学阈值是版本化 Rule Asset（未冻结）——待 #104/Agent3 对齐后由医学侧补阈值资产。
-- **注册**：4 份资产尚未注册入 knowledge-manifest（registry_status=NOT_REGISTERED_OWNER_PENDING），待 Owner 接受后注册（届时 checksum 三方对齐）。
-- **代码级 Medical Tests**：relevance/knowledge/mapping/safety/corpus validation 测试需在代码仓库跑（CI），随 PR 提交。
+文件：`tests/knowledge/test_s5final_medical_assets.py`（9 项）
 
-## 5. 验证
+覆盖：① 4 资产 JSON 可解析 ② canonical checksum 自洽 ③ Relevance verdicts/reason_codes 合法（reason 非空）④ 仅 VALID 进下游（downstream_gate 断言）⑤ UserGoal code 与 questionnaire-v3.0.1 完全一致 ⑥ UserGoal 非 Medical/Fact/Organ Evidence ⑦ RAG 仅解释类知识 + 确定性规则不入向量 + 无伪造 chunk ⑧ 五音表达无诊断/治疗承诺/夸大措辞 ⑨ questionnaire-v3.0.1 零修改（checksum = 冻结 `69a01d07…`）
 
-- 4 份 JSON 均通过 `json.loads`（UTF-8）；content_checksum 为移除自身字段后的 canonical sha256（仓库口径），见 §1 表。
-- 本批无代码改动，未触碰 questionnaire-v3.0.1 / 既有 v3.0 资产；基线契约文件零修改。
+命令：`python -m pytest tests/knowledge/test_s5final_medical_assets.py -q`
+结果（本地等价执行）：**9 passed**（CI 将以 PR #114 workflow `test` 复核）
 
-## 6. R1 自查修订（2026-09-06 晚）
+## 4. #108 验收对照
 
-- VALID 4 条 reason_code_whitelist 补 `reason` 公开文案（对齐冻结 §3 reason 必填非空）；
-- 清除资产正文中「诊断结论/诊断」类措辞（VALID/INSUFFICIENT criteria 改「病历记载内容/检查结论」表述）；
-- usergoal-vocabulary 移除 `user_label_candidate`，改 `label_ref` 指向 questionnaire-v3.0.1#user_goal.options；
-- 4 资产 `status_note` 与 `asset_status=medical_final_v3.1` 统一（final submitted / pending Owner registration）；
-- rag-corpus-manifest 每条 source 补 `source_reference` 与真实版本说明。
+| #108 项 | 状态 |
+| --- | --- |
+| 1 Document Relevance 终审 | ✅ 定稿 + 自动化断言 |
+| 2 正式问卷 3.0.1 保护 | ✅ 零修改（测试断言冻结 checksum） |
+| 3 RAG Medical Corpus | ✅ 医学来源登记（正文/chunk 明确未完成） |
+| 4 Corpus Boundary | ✅ 不入向量清单 + 测试断言 |
+| 5 Five-Tone Explainability | ✅ 定稿 + 措辞测试 |
+| 6 Medical Tests | ✅ 9 项已提交并通过本地执行 |
 
-## 7. 下一步（等 nob/Owner 指示）
+## 5. Remaining Blockers（未冻结项，不自行决定）
+- 「近期」时间范围（OD-DR-01，数值口径未冻结）
+- Relevance 置信判定方式（OD-DR-04）
+- secondary tone 医学阈值（冻结 §10 未冻结项）
+- 五音免责声明最终文案（OD-FT-01，待老师/产品）
+- 状态倾向措辞模板（OD-FT-02）
 
+另：Production RAG 放行与资产注册均待 Owner；Embedding/Chunk 待 #109。
 
-1. nob 复核本分支内容；
-2. Owner 决定是否开 PR（#108 完成格式要求的 13 字段回复将在 PR/Issue 阶段补充）；
-3. 医学测试与 CI 随 PR 阶段补齐。
+## 6. 修订记录
+- R1 自查修订（VALID reason/措辞/label_ref/status_note/source_reference）；
+- R2（Owner review #114）：新增结构化字段（downstream_gate / evidence_role / completion_status）+ 修正 RAG 完成状态表述 + 交付报告更新。

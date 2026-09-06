@@ -269,5 +269,16 @@
     "route": "INVALID / IRRELEVANT / INSUFFICIENT 共用同一前端异常页，仅可重新选资料或进入 no-document 问卷路径（冻结已定，OD-DR-02 关闭）",
     "reason_field": "reason_code 语义化非空字符串；reason 为可展示公开文案（对齐冻结 schema，本资产 reason_code_whitelist 供码表与 reason 文案）"
   },
-  "content_checksum": "sha256:9fe5aa90577b4efe7ba86de9c26f439074fe797bf20e8ce9557de5920c250eeb"
+  "content_checksum": "sha256:19e4728eadd45e880e8e648133c0835196ff7a2755a8299bfce4a28c5d1bf91c",
+  "downstream_gate": {
+    "may_enter_summary": [
+      "VALID"
+    ],
+    "may_form_evidence": [
+      "VALID"
+    ],
+    "may_enter_agent2": [
+      "VALID"
+    ]
+  }
 }

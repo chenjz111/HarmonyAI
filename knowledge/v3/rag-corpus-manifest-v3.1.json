@@ -239,6 +239,13 @@
     "语料是否扩展 V2 literature 转换条目（待医学复核）",
     "approval_status 转 PRODUCTION_APPROVED（待 Owner 放行）"
   ],
-  "content_checksum": "sha256:288cffbdf42c3708be7469f99b067b7cd450556d77984d6c38a1b59cfcba103b",
-  "status_note": "medical final corpus v1：已按 Issue #108 §3/§4 提交评审（2026-09-06）；13 条解释类来源经医学复核并登记 source_reference；Production RAG 放行仍待 Owner/#109 完成 embedding 与 Ingestion Manifest（NOT_APPROVED_PENDING 不变）。"
+  "content_checksum": "sha256:daed8bdb5a8080dcf4e99c111f71d667c688a7b9d210df3b9f57129b97a866b8",
+  "status_note": "rag-corpus-manifest-v3.1 = 医学来源登记与审核（source registry，非生产语料/非 ingestion manifest）：医学来源审核已完成；实际语料/chunk 未完成（待 AI 侧 #109）；Embedding/Ingestion 待 #109；Production RAG = NOT_APPROVED_PENDING。注册与放行均待 Owner。",
+  "completion_status": {
+    "medical_source_review": "COMPLETED",
+    "actual_corpus_chunks": "NOT_DONE_PENDING_AI_SIDE",
+    "embedding_ingestion": "PENDING_109",
+    "production_rag": "NOT_APPROVED_PENDING",
+    "note": "本 manifest 仅为医学来源登记（无语料正文/chunk 伪造）；实际可分块语料与 embedding 由 AI 侧 #109 接入"
+  }
 }
