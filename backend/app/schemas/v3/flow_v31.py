@@ -9,7 +9,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Literal
 
-from pydantic import Field, StringConstraints, model_validator
+from pydantic import BeforeValidator, Field, StringConstraints, model_validator
 
 from .common import (
     NonEmptyString,
@@ -175,9 +175,9 @@ class QuestionnaireResult(V3BaseModel):
 
 
 class UserGoalV31(V3BaseModel):
-    """Optional boundary object; a skipped step is represented by ``None``."""
+    """Optional music preference; a skipped or empty step is canonically ``None``."""
 
-    primary_goal: UserGoalCode
+    primary_goal: UserGoalCode | None = None
     secondary_goal: UserGoalCode | None = None
     custom_goal_text: Annotated[
         str,
@@ -186,15 +186,31 @@ class UserGoalV31(V3BaseModel):
 
     @model_validator(mode="after")
     def validate_goal_combination(self) -> "UserGoalV31":
+        if self.secondary_goal is not None and self.primary_goal is None:
+            raise ValueError("secondary_goal requires primary_goal")
         if self.secondary_goal is not None and self.secondary_goal == self.primary_goal:
             raise ValueError("secondary_goal must differ from primary_goal")
-        uses_other = UserGoalCode.other in {self.primary_goal, self.secondary_goal}
-        if uses_other and self.custom_goal_text is None:
-            raise ValueError("custom_goal_text is required when other is selected")
-        if not uses_other and self.custom_goal_text is not None:
-            raise ValueError("custom_goal_text is only allowed when other is selected")
         return self
 
+
+def _empty_user_goal_to_none(value: object) -> object:
+    if isinstance(value, dict):
+        custom_text = value.get("custom_goal_text")
+        if (
+            value.get("primary_goal") is None
+            and value.get("secondary_goal") is None
+            and (
+                custom_text is None
+                or (isinstance(custom_text, str) and not custom_text.strip())
+            )
+        ):
+            return None
+    return value
+
+
+UserGoalSubmissionV31 = Annotated[
+    UserGoalV31 | None, BeforeValidator(_empty_user_goal_to_none)
+]
 
 class FinalConfirmedSummaryRef(V3BaseModel):
     summary_id: NonEmptyString
