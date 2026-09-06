@@ -54,7 +54,7 @@
  *    Understanding 追加源；在此之前有资料路径的描述仅本机暂存（页面如实标注）。
  */
 
-import { QUESTIONNAIRE_MANIFEST, FREQUENCY_OPTIONS } from "./questionnaire-v3-manifest.js"
+import QUESTIONNAIRE_MANIFEST from "./questionnaire-v3-generated.js"
 
 // ===== 配置 =====
 
@@ -1136,9 +1136,6 @@ const mockApi = {
 }
 
 // ===== 对外接口（按模式分发） =====
-
-// 频率题 0..4 选项标签（权威清单同源，页面渲染 frequency_0_4 题型使用）
-export { FREQUENCY_OPTIONS }
 
 export const apiV3 = {
   MODE,

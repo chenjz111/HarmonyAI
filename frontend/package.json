@@ -4,6 +4,8 @@
   "private": true,
   "description": "HarmonyAI 中医知识驱动的 AI 音乐辅助调养平台前端",
   "scripts": {
+    "generate:questionnaire": "node scripts/generate-questionnaire-v31.mjs",
+    "check:questionnaire": "node scripts/generate-questionnaire-v31.mjs --check",
     "dev:h5": "node scripts/run-uni.mjs",
     "dev:mp-weixin": "node scripts/run-uni.mjs -p mp-weixin",
     "build:h5": "node scripts/run-uni.mjs build",

@@ -331,9 +331,10 @@ test("P1-2: V3 pages and API errors use stable user copy without internal dev in
   for (const forbidden of ["PR #", "Agent1", "Agent2", "尚未合并", "待补齐"]) {
     assert.ok(!apiSrc.includes(forbidden), `api-v3.js source leaks internal dev info: ${forbidden}`)
   }
-  // 权威清单模块同样不携带 PR 引用
-  const manifestSrc = readFileSync(resolve(frontendRoot, "common/questionnaire-v3-manifest.js"), "utf8")
+  // 确定性生成物同样不携带 PR 引用，且明确禁止手工编辑
+  const manifestSrc = readFileSync(resolve(frontendRoot, "common/questionnaire-v3-generated.js"), "utf8")
   assert.ok(!manifestSrc.includes("PR #"), "manifest must not reference PR numbers")
+  assert.ok(manifestSrc.includes("DO NOT EDIT MANUALLY"), "generated manifest must carry a DO NOT EDIT marker")
 })
 
 test("no music goal wording or fields in V3 flow", () => {
@@ -474,18 +475,20 @@ test("V3.1 review: 疗愈诉求合同校验 - 全空允许整页跳过", () => {
   assert.equal(d.reason, null, "全空无 reason")
 })
 
-test("V3.1 review: 疗愈诉求合同校验 - 只填文字、不选主要诉求 → 阻止", () => {
+test("V3.1 review: 疗愈诉求合同校验 - 自由文字可独立存在", () => {
   const { decideHealingIntent } = healingIntent
   const d = decideHealingIntent({ primary_goal: null, secondary_goal: null, custom_goal_text: "希望更舒缓一些" })
-  assert.equal(d.ok, false, "仅文字必须阻止")
-  assert.equal(d.reason, "primary_required", "reason 必须是 primary_required")
+  assert.equal(d.ok, true, "仅文字必须允许")
+  assert.equal(d.skip, false)
+  assert.equal(d.payload.custom_goal_text, "希望更舒缓一些")
 })
 
-test("V3.1 review: 疗愈诉求合同校验 - 选择 other 但文字为空 → 阻止", () => {
+test("V3.1 review: 疗愈诉求合同校验 - 选择 other 且文字为空仍允许", () => {
   const { decideHealingIntent } = healingIntent
   const d = decideHealingIntent({ primary_goal: "other", secondary_goal: null, custom_goal_text: "" })
-  assert.equal(d.ok, false, "other + 空文字必须阻止")
-  assert.equal(d.reason, "other_needs_text", "reason 必须是 other_needs_text")
+  assert.equal(d.ok, true, "other + 空文字必须允许")
+  assert.equal(d.skip, false)
+  assert.equal(d.payload.primary_goal, "other")
 })
 
 test("V3.1 review: 疗愈诉求合同校验 - other + 合法文字 → 通过", () => {
@@ -559,7 +562,7 @@ test("V3.1 review: 疗愈诉求合同校验 - 防御 secondary === primary → �
     custom_goal_text: null,
   })
   assert.equal(d.ok, false, "secondary 与 primary 同值必须阻止")
-  assert.equal(d.reason, "primary_required")
+  assert.equal(d.reason, "duplicate_goal")
 })
 
 test("V3.1 review: 疗愈诉求合同校验 - serialize 字段名对齐合同", () => {
@@ -596,7 +599,6 @@ test("V3.1 review: v3-goal.vue 不再使用已弃用字段名 primary/secondary/
   assert.ok(!goal.includes("custom_text: this."), "不应再使用 custom_text: this.xxx")
   // 校验逻辑（reason 字符串集中在 common/v3-healing-intent.js，.vue 通过 HEALING_INTENT_REASON_MESSAGE 映射）
   assert.ok(HEALING_INTENT_REASON_MESSAGE.primary_required, "reason 文案映射必须含 primary_required")
-  assert.ok(HEALING_INTENT_REASON_MESSAGE.other_needs_text, "reason 文案映射必须含 other_needs_text")
   assert.ok(HEALING_INTENT_REASON_MESSAGE.custom_too_long, "reason 文案映射必须含 custom_too_long")
 })
 
@@ -686,7 +688,8 @@ test("feedback page: mutex adjustment groups match backend contract", () => {
 
 test("questionnaire page renders frequency questions from the canonical manifest", () => {
   const page = readPage("v3-questionnaire/v3-questionnaire.vue")
-  assert.ok(page.includes("FREQUENCY_OPTIONS"), "page must import FREQUENCY_OPTIONS")
+  assert.ok(page.includes('v-for="opt in q.options"'), "page must render each question's canonical options")
+  assert.ok(!page.includes("FREQUENCY_OPTIONS"), "page must not use one generic option-label set")
   assert.ok(page.includes("frequency_0_4"), "page must branch on frequency question type")
   assert.ok(page.includes("answer_type"), "page must dispatch by answer_type")
 })
@@ -708,14 +711,17 @@ test("V3.1: questionnaire is paginated 5 pages x 2 questions with step progress"
 })
 
 test("manifest matches the authoritative questionnaire structure", async () => {
-  const { apiV3, FREQUENCY_OPTIONS } = await import("../common/api-v3.js")
+  const { apiV3 } = await import("../common/api-v3.js")
   const schema = await apiV3.getQuestionnaireSchema()
   assert.equal(schema.questions.length, 10)
   const freq = schema.questions.filter((q) => q.answer_type === "frequency_0_4")
   const multi = schema.questions.filter((q) => q.answer_type === "multi_choice_evidence")
   assert.equal(freq.length, 5, "q01-q05 are frequency questions")
   assert.equal(multi.length, 5, "q06-q10 are multi-choice questions")
-  assert.equal(FREQUENCY_OPTIONS.length, 5, "5 frequency labels (0..4)")
+  for (const question of freq) {
+    assert.deepEqual(question.options.map((option) => option.score), [0, 1, 2, 3, 4])
+    assert.equal(question.options.length, 5, question.question_id + " has its own five labels")
+  }
   assert.ok(schema.content_checksum, "manifest checksum required")
   assert.equal(schema.schema_id, "questionnaire_v3")
 })

@@ -3,9 +3,9 @@
  * V3.1 五脏状态问卷页（Issue #100：10 题分 5 页，每页 2 题）
  * 合同依据：frontend-read-model-contract-v3.md §6 QuestionnaireReadModel
  *          harmonyai-v3-owner-flow-amendment-001.md §2 / §4.3
- *          knowledge/v3/questionnaire-v3.0.json（权威清单，前端不内置另一套题目）
+ *          knowledge/v3/questionnaire-v3.0.1.json（权威清单，前端不内置另一套题目）
  *
- * - 题目数据来自权威清单模块（与后端同源），频率题渲染 FREQUENCY_OPTIONS
+ * - 题目与逐题选项直接来自 canonical questionnaire 3.0.1 asset
  * - 展示分页：PAGE_SIZE = 2，共 5 步（进度以页为单位 1/5 ~ 5/5）；提交时仍一次性提交全部答案
  * - 无资料模式：必填，全部 10 题完成才能提交（不能跳过）
  * - 有资料模式：整份选填，可跳过；一旦进入作答，本页 2 题都完成后才能进入下一页
@@ -14,7 +14,7 @@
  *
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
-import { apiV3, FREQUENCY_OPTIONS } from "../../common/api-v3.js"
+import { apiV3 } from "../../common/api-v3.js"
 import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 const PAGE_SIZE = 2 // V3.1：每页展示 2 题
@@ -33,7 +33,6 @@ export default {
       submittingAssessment: false,
       agentPending: false, // real 模式：等待后端综合评估能力接入
       simulated: false, // hybrid/mock：演示数据标识
-      frequencyOptions: FREQUENCY_OPTIONS,
     }
   },
   computed: {
@@ -117,7 +116,7 @@ export default {
     selectFrequency(q, option) {
       const qid = q.question_id
       const cur = this.answers[qid]
-      this.answers[qid] = typeof cur === "number" && cur === option.value ? null : option.value
+      this.answers[qid] = typeof cur === "number" && cur === option.score ? null : option.score
     },
     // 多选题：处理"都很少出现"互斥（is_none + exclusive_with）
     toggleOption(q, option) {
@@ -310,14 +309,14 @@ export default {
             <!-- 频率题（q01-q05）：单选 0..4 -->
             <view v-if="isFrequency(q)" class="q-options">
               <view
-                v-for="opt in frequencyOptions"
-                :key="'f' + q.question_id + opt.value"
+                v-for="opt in q.options"
+                :key="'f' + q.question_id + opt.score"
                 class="q-option"
-                :class="{ 'q-option-active': currentFrequencyValue(q) === opt.value }"
+                :class="{ 'q-option-active': currentFrequencyValue(q) === opt.score }"
                 @click="selectFrequency(q, opt)"
               >
-                <view class="q-radio" :class="{ 'q-radio-active': currentFrequencyValue(q) === opt.value }">
-                  <view v-if="currentFrequencyValue(q) === opt.value" class="q-radio-dot"></view>
+                <view class="q-radio" :class="{ 'q-radio-active': currentFrequencyValue(q) === opt.score }">
+                  <view v-if="currentFrequencyValue(q) === opt.score" class="q-radio-dot"></view>
                 </view>
                 <text class="q-option-label">{{ opt.label }}</text>
               </view>
