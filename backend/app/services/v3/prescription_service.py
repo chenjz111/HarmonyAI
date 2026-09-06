@@ -19,9 +19,8 @@ from backend.app.models.session import Session as SessionModel
 from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.schemas.v3.common import AuthPrincipal, ToneCode
-from backend.app.schemas.v3.flow_v31 import UserGoalV31
+from backend.app.schemas.v3.flow_v31 import ToneProfileBasisV31, ToneProfileV31, UserGoalV31
 from backend.app.schemas.v3.prescription import (
-    FallbackToneProfile,
     GenerationFallbackPolicy,
     GenerationSpec,
     GenerationStructure,
@@ -31,7 +30,6 @@ from backend.app.schemas.v3.prescription import (
     PrescriptionV31Request,
     PrescriptionV3 as PrescriptionV3Schema,
     PreferenceProfileRef,
-    ToneBasis,
 )
 from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
 
@@ -67,11 +65,12 @@ class DiagnosisNotReady(RuntimeError):
 
 def _conservative_generation_spec(
     diagnosis_id: str,
+    diagnosis_revision: int,
     preference,
     user_goal: UserGoalV31 | None,
 ) -> GenerationSpec:
-    tone_profile = FallbackToneProfile(
-        schema_version="tone_profile_v3.0",
+    tone_profile = ToneProfileV31(
+        schema_version="tone_profile_v3.1",
         weights={
             ToneCode.jiao: 0.1,
             ToneCode.zhi: 0.1,
@@ -79,11 +78,15 @@ def _conservative_generation_spec(
             ToneCode.shang: 0.1,
             ToneCode.yu: 0.1,
         },
-        dominant_tone=ToneCode.gong,
+        primary_tone=ToneCode.gong,
+        secondary_tone=None,
         score_semantics="relative_tone_distribution",
         mapping_version="tone_mapping_v3.0",
-        basis=ToneBasis(diagnosis_id=diagnosis_id, supporting_fact_ids=[]),
-        status="fallback",
+        basis=ToneProfileBasisV31(
+            diagnosis_id=diagnosis_id,
+            diagnosis_revision=diagnosis_revision,
+            supporting_evidence_refs=[],
+        ),
     )
     # 疗愈诉求先定基调，历史偏好再微调。primary_goal 可空（custom-text-only）。
     bpm = 62
@@ -170,7 +173,12 @@ def create_prescription(
 
     user_goal = _session_user_goal(db, diagnosis.session_row_id)
     preference = get_latest_preference_snapshot(db, principal)
-    spec = _conservative_generation_spec(request.diagnosis_id, preference, user_goal)
+    spec = _conservative_generation_spec(
+        request.diagnosis_id,
+        diagnosis.assessment_revision,
+        preference,
+        user_goal,
+    )
 
     if preference is not None:
         personalization = PrescriptionPersonalization(

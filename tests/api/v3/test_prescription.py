@@ -160,8 +160,8 @@ def test_create_and_read_prescription():
     data = _v3_data(created)
     assert data["status"] == "degraded"
     assert data["prescription_mode"] == "wellness"
-    assert data["generation_spec"]["tone_profile"]["dominant_tone"] == "gong"
-    assert data["generation_spec"]["tone_profile"]["status"] == "fallback"
+    assert data["generation_spec"]["tone_profile"]["primary_tone"] == "gong"
+    assert data["generation_spec"]["tone_profile"]["secondary_tone"] is None
 
     read = _v3_data(
         client.get(f"/api/v3/prescriptions/{data['prescription_id']}", headers=headers)

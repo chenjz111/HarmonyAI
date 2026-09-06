@@ -13,6 +13,7 @@ from .common import (
     UserGoal,
     V3BaseModel,
 )
+from .flow_v31 import ToneProfileV31
 
 
 class ToneBasis(V3BaseModel):
@@ -129,7 +130,7 @@ class GenerationFallbackPolicy(V3BaseModel):
 
 class GenerationSpec(V3BaseModel):
     schema_version: Literal["generation_spec_v3.0"]
-    tone_profile: ToneProfile
+    tone_profile: ToneProfileV31
     bpm: Annotated[int, Field(ge=40, le=120)]
     duration_seconds: Annotated[int, Field(gt=0)]
     instruments: Annotated[list[NonEmptyString], Field(min_length=1)]
