@@ -9,6 +9,7 @@ so they work offline even when enabled.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -72,3 +73,11 @@ def get_llm_provider():
     from backend.ai_engine.providers import qwen_provider_from_env
 
     return qwen_provider_from_env()
+
+
+def get_v31_embedding_provider(environment: Mapping[str, str] | None = None):
+    """Build the V3.1 approved embedding adapter without enabling demo mode."""
+    from backend.ai_engine.v3.embedding_provider import embedding_provider_from_environment
+
+    values = environment if environment is not None else os.environ
+    return embedding_provider_from_environment(values)
