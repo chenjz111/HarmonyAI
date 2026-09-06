@@ -47,7 +47,7 @@
 - 4 份 JSON 均通过 `json.loads`（UTF-8）；content_checksum 为移除自身字段后的 canonical sha256（仓库口径），见 §1 表。
 - 本批无代码改动，未触碰 questionnaire-v3.0.1 / 既有 v3.0 资产；基线契约文件零修改。
 
-## 6. R1 修订（2026-09-06 晚，回应 CodeX 第一批核查）
+## 6. R1 自查修订（2026-09-06 晚）
 
 - VALID 4 条 reason_code_whitelist 补 `reason` 公开文案（对齐冻结 §3 reason 必填非空）；
 - 清除资产正文中「诊断结论/诊断」类措辞（VALID/INSUFFICIENT criteria 改「病历记载内容/检查结论」表述）；
