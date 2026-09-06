@@ -175,7 +175,7 @@ def _submit_questionnaire(headers, session_id):
     manifest = json.loads(
         (
             Path(__file__).resolve().parents[3]
-            / "knowledge" / "v3" / "questionnaire-v3.0.json"
+            / "knowledge" / "v3" / "questionnaire-v3.0.1.json"
         ).read_text(encoding="utf-8")
     )
     client.post(

@@ -57,7 +57,7 @@ class DocumentSetReplaceRequest(V3BaseModel):
 class DocumentSetReadModel(V3BaseModel):
     document_set_id: NonEmptyString
     revision: Annotated[int, Field(ge=1)]
-    status: Literal["active", "superseded", "discarded"]
+    status: Literal["current", "superseded", "discarded"]
     documents: list[DocumentReadModel]
     input_revision: Annotated[int, Field(ge=1)]
 

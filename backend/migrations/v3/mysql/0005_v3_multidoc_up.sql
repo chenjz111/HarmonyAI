@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS document_sets (
     CONSTRAINT ck_document_sets_revision
         CHECK (revision >= 1),
     CONSTRAINT ck_document_sets_status
-        CHECK (status IN ('active', 'superseded', 'discarded'))
+        CHECK (status IN ('current', 'superseded', 'discarded'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE INDEX ix_document_sets_user
