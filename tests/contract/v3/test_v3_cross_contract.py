@@ -4,10 +4,9 @@ from pydantic import TypeAdapter, ValidationError
 import pytest
 
 
-def _tone_profile(*, status: str = "available") -> dict:
+def _tone_profile() -> dict:
     return {
-        "schema_version": "tone_profile_v3.0",
-        "status": status,
+        "schema_version": "tone_profile_v3.1",
         "weights": {
             "jiao": 0.16,
             "zhi": 0.24,
@@ -15,17 +14,18 @@ def _tone_profile(*, status: str = "available") -> dict:
             "shang": 0.08,
             "yu": 0.10,
         },
-        "dominant_tone": "gong",
+        "primary_tone": "gong",
+        "secondary_tone": None,
         "score_semantics": "relative_tone_distribution",
         "mapping_version": "five_tone_mapping_v3.0",
-        "basis": {"diagnosis_id": "diag_1", "supporting_fact_ids": ["fev_1"]},
+        "basis": {"diagnosis_id": "diag_1", "diagnosis_revision": 1, "supporting_evidence_refs": ["fev_1"]},
     }
 
 
-def _generation_spec(*, tone_status: str = "available") -> dict:
+def _generation_spec() -> dict:
     return {
         "schema_version": "generation_spec_v3.0",
-        "tone_profile": _tone_profile(status=tone_status),
+        "tone_profile": _tone_profile(),
         "bpm": 58,
         "duration_seconds": 900,
         "instruments": ["guqin", "xiao"],
@@ -81,7 +81,7 @@ def test_abstained_diagnosis_can_feed_conservative_prescription():
         "diagnosis_id": "diag_abstained",
         "status": "success",
         "prescription_mode": "wellness",
-        "generation_spec": _generation_spec(tone_status="fallback"),
+        "generation_spec": _generation_spec(),
         "personalization": {
             "applied": False,
             "profile_ref": None,
@@ -97,7 +97,7 @@ def test_abstained_diagnosis_can_feed_conservative_prescription():
     prescription = PrescriptionV3.model_validate(payload)
     assert prescription.prescription_mode == "wellness"
     assert prescription.generation_spec is not None
-    assert prescription.generation_spec.tone_profile.status == "fallback"
+    assert prescription.generation_spec.tone_profile.primary_tone == "gong"
 
     withheld = deepcopy(payload)
     withheld["status"] = "withheld"
@@ -240,7 +240,6 @@ def test_diagnosis_input_rejects_untyped_missing_information():
             "safety_status": "clear",
         },
         "organ_profile": {
-            "status": "insufficient",
             "weights": None,
             "score_semantics": "relative_evidence_distribution",
         },
@@ -337,7 +336,6 @@ def test_diagnosis_input_rejects_confirmed_safety_risk():
             "safety_status": "confirmed_mental_health_risk",
         },
         "organ_profile": {
-            "status": "insufficient",
             "weights": None,
             "score_semantics": "relative_evidence_distribution",
         },

@@ -37,6 +37,20 @@ def _create_legacy_foundation(engine):
         )
         connection.execute(
             text(
+                "CREATE TABLE documents ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, "
+                "session_id VARCHAR(64) NOT NULL, "
+                "document_id VARCHAR(64) NOT NULL UNIQUE, "
+                "original_filename VARCHAR(256) NOT NULL, "
+                "file_type VARCHAR(16) NOT NULL, "
+                "file_size_bytes INTEGER NOT NULL, "
+                "storage_path VARCHAR(512) NOT NULL, "
+                "status VARCHAR(16) DEFAULT 'uploaded', "
+                "created_at DATETIME, updated_at DATETIME)"
+            )
+        )
+        connection.execute(
+            text(
                 "INSERT INTO sessions (user_id, session_id, status) "
                 "VALUES (7, 'sess_legacy', 'active')"
             )
@@ -54,6 +68,10 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
         "0001_v3_foundation",
         "0002_v3_business",
         "0003_v3_owner_flow",
+        "0005_v3_multidoc",
+        "0006_v3_relevance",
+        "0007_v3_doc_fk",
+        "0008_v3_prescription_mode",
     ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)
@@ -78,11 +96,7 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
 
 
 def test_owner_goal_migration_is_not_registered_or_present():
-    assert V3_MIGRATION_VERSIONS == [
-        "0001_v3_foundation",
-        "0002_v3_business",
-        "0003_v3_owner_flow",
-    ]
+    assert "0004_v3_owner_goal" not in V3_MIGRATION_VERSIONS
     migration_root = Path(__file__).parents[3] / "backend" / "migrations" / "v3"
     for dialect in ("sqlite", "mysql"):
         assert not (migration_root / dialect / "0004_v3_owner_goal_up.sql").exists()

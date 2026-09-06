@@ -41,6 +41,11 @@ BUSINESS_TABLES = {
     "favorites",
     # 0003 owner flow amendment (session activity audit)
     "session_input_revisions",
+    # 0005 multi-document (document set)
+    "document_sets",
+    "document_set_items",
+    # 0006 document relevance
+    "document_relevances",
 }
 
 
@@ -63,6 +68,20 @@ def _create_foundation(engine):
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, "
                 "session_id VARCHAR(64) NOT NULL UNIQUE, status VARCHAR(16), "
                 "current_agent VARCHAR(32), metadata_json TEXT, "
+                "created_at DATETIME, updated_at DATETIME)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE documents ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, "
+                "session_id VARCHAR(64) NOT NULL, "
+                "document_id VARCHAR(64) NOT NULL UNIQUE, "
+                "original_filename VARCHAR(256) NOT NULL, "
+                "file_type VARCHAR(16) NOT NULL, "
+                "file_size_bytes INTEGER NOT NULL, "
+                "storage_path VARCHAR(512) NOT NULL, "
+                "status VARCHAR(16) DEFAULT 'uploaded', "
                 "created_at DATETIME, updated_at DATETIME)"
             )
         )
@@ -113,9 +132,13 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0001_v3_foundation",
         "0002_v3_business",
         "0003_v3_owner_flow",
+        "0005_v3_multidoc",
+        "0006_v3_relevance",
+        "0007_v3_doc_fk",
+        "0008_v3_prescription_mode",
     ]
     assert second["applied_versions"] == []
-    assert second["current_version"] == "0003_v3_owner_flow"
+    assert second["current_version"] == "0008_v3_prescription_mode"
 
     tables = set(inspect(engine).get_table_names())
     assert BUSINESS_TABLES <= tables
@@ -130,6 +153,10 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0001_v3_foundation",
         "0002_v3_business",
         "0003_v3_owner_flow",
+        "0005_v3_multidoc",
+        "0006_v3_relevance",
+        "0007_v3_doc_fk",
+        "0008_v3_prescription_mode",
     }
 
 

@@ -7,7 +7,8 @@ from typing import Annotated, Literal, TypeAlias
 from pydantic import Field, model_validator
 
 from .common import NonEmptyString, Score01, V3BaseModel
-from .prescription import GenerationSpec, ToneProfile
+from .prescription import GenerationSpec
+from .flow_v31 import ToneProfileV31
 
 
 class MusicProviderPolicy(V3BaseModel):
@@ -72,7 +73,7 @@ class AudioAsset(V3BaseModel):
     duration_seconds: Annotated[int, Field(gt=0)]
     format: Literal["mp3", "wav", "m4a"]
     checksum: Annotated[str, Field(pattern=r"^sha256:.+")]
-    tone_profile: ToneProfile
+    tone_profile: ToneProfileV31
     bpm: Annotated[int, Field(ge=40, le=120)]
     instruments: Annotated[list[NonEmptyString], Field(min_length=1)]
 
