@@ -76,6 +76,7 @@ def test_closeout_runs_grounded_agent2_then_public_agent3_without_internal_field
         RagResult,
     )
     from backend.ai_engine.v3.agent3 import (
+        build_generation_spec_v31,
         build_five_tone_analysis_v31,
         build_tone_profile_v31,
     )
@@ -147,6 +148,27 @@ def test_closeout_runs_grounded_agent2_then_public_agent3_without_internal_field
         supporting_evidence_refs=["fact_1", "chunk_1"],
         mapping=_mapping(),
     )
+    generation_spec = build_generation_spec_v31(
+        profile=profile,
+        parameter_rules={
+            "schema_id": "music_generation_rules_v3.1",
+            "schema_version": "test-approved-v1",
+            "review_status": "approved",
+            "default": {
+                "bpm": 60,
+                "instruments": ["古琴"],
+                "ambience": ["细雨"],
+                "duration_seconds": 900,
+                "explanations": {
+                    "bpm": "按已批准规则提供速度参考。",
+                    "instruments": "按已批准规则提供配器参考。",
+                    "ambience": "按已批准规则提供环境参考。",
+                    "duration": "按已批准规则提供时长参考。",
+                },
+            },
+            "goals": {},
+        },
+    )
     read_model = build_five_tone_analysis_v31(
         confirmed_user_state_ref={
             "confirmed_user_state_id": "cus_1",
@@ -158,12 +180,7 @@ def test_closeout_runs_grounded_agent2_then_public_agent3_without_internal_field
         profile=profile,
         evidence_refs=["fact_1", "chunk_1"],
         mapping=_mapping(),
-        generation_parameters={
-            "bpm": 60,
-            "instruments": ["古琴"],
-            "ambience": ["细雨"],
-            "duration_seconds": 900,
-        },
+        generation_spec=generation_spec,
     )
 
     assert read_model.primary_tone.tone.value == "zhi"

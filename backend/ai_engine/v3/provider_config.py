@@ -34,8 +34,6 @@ class V31ProviderConfig:
         if real_agents:
             if dimension is None:
                 readiness_error = "EMBEDDING_DIMENSION_INVALID"
-            elif embedding_model == "hash-v1" or dimension != 1024:
-                readiness_error = "PRODUCTION_EMBEDDING_NOT_APPROVED"
             elif not all(
                 _value(environment, key)
                 for key in (
@@ -46,6 +44,8 @@ class V31ProviderConfig:
                 )
             ):
                 readiness_error = "EMBEDDING_PROVIDER_NOT_CONFIGURED"
+            elif embedding_model != "text-embedding-v4" or dimension != 1024:
+                readiness_error = "PRODUCTION_EMBEDDING_NOT_APPROVED"
             elif not _value(environment, "CHROMA_PERSIST_DIRECTORY") or not _value(
                 environment, "CHROMA_COLLECTION"
             ):

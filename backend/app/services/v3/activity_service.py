@@ -377,7 +377,7 @@ def _approved_questionnaire_manifest() -> dict | None:
 
     manifest_path = (
         Path(__file__).resolve().parents[4]
-        / "knowledge" / "v3" / "questionnaire-v3.0.json"
+        / "knowledge" / "v3" / "questionnaire-v3.0.1.json"
     )
     if not manifest_path.is_file():
         return None

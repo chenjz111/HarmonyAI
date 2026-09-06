@@ -207,7 +207,7 @@ def _seed_questionnaire(db, *, headers, session_id, answers):
             Path(__file__).resolve().parents[3]
             / "knowledge"
             / "v3"
-            / "questionnaire-v3.0.json"
+            / "questionnaire-v3.0.1.json"
         ).read_text(encoding="utf-8")
     )
     submission = QuestionnaireSubmissionV3(
@@ -492,7 +492,7 @@ def test_assessment_consumes_complete_questionnaire_without_document(
             Path(__file__).resolve().parents[3]
             / "knowledge"
             / "v3"
-            / "questionnaire-v3.0.json"
+            / "questionnaire-v3.0.1.json"
         ).read_text(encoding="utf-8")
     )
     answers = [

@@ -8,8 +8,9 @@ medical evidence calculation.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
+from backend.app.schemas.v3.common import NonEmptyString, Score01, ToneCode, V3BaseModel
 from backend.app.schemas.v3.flow_v31 import (
     BpmExplanation,
     ConfirmedUserStateRef,
@@ -30,6 +31,132 @@ class Agent3Blocked(ValueError):
 
 
 _TONE_CODES = ("jiao", "zhi", "gong", "shang", "yu")
+
+
+class GenerationSpecV31(V3BaseModel):
+    """Internal deterministic GenerationSpec for the V3.1 Agent 3 boundary.
+
+    This is intentionally separate from the existing V3.0 music transport
+    schema.  The V3.1 public page consumes the frozen read model; this object
+    is produced from approved rule data and is never chosen by an LLM.
+    """
+
+    schema_version: Literal["generation_spec_v3.1"]
+    primary_tone: ToneCode
+    secondary_tone: ToneCode | None
+    tone_weights: dict[ToneCode, Score01]
+    bpm: int
+    instruments: list[NonEmptyString]
+    ambience: list[NonEmptyString]
+    duration_seconds: int
+    explanations: dict[NonEmptyString, NonEmptyString]
+    readiness: Literal["ready", "not_ready"]
+    blocking_reasons: list[NonEmptyString]
+    secondary_tone_blocked: bool
+
+
+def build_generation_spec_v31(
+    *,
+    profile: ToneProfileV31,
+    parameter_rules: Mapping[str, Any] | None,
+    user_goal: Mapping[str, Any] | Any | None = None,
+    secondary_threshold: float | None = None,
+) -> GenerationSpecV31:
+    """Build music parameters from a reviewed, versioned deterministic rule asset.
+
+    UserGoal is only a selector for an explicitly named rule row.  It never
+    changes the medical tone profile, and the goal payload is not copied into
+    the GenerationSpec.  Missing or unapproved music rules are an explicit
+    readiness block rather than an invented default.
+    """
+
+    if not isinstance(parameter_rules, Mapping):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_UNAVAILABLE")
+    if (
+        parameter_rules.get("schema_id") != "music_generation_rules_v3.1"
+        or parameter_rules.get("review_status") != "approved"
+    ):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_UNAVAILABLE")
+    default = parameter_rules.get("default")
+    if not isinstance(default, Mapping):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
+    selected = dict(default)
+    goal_code = _goal_code(user_goal)
+    if goal_code is not None:
+        goals = parameter_rules.get("goals")
+        goal_rules = goals.get(goal_code) if isinstance(goals, Mapping) else None
+        if not isinstance(goal_rules, Mapping):
+            raise Agent3Blocked("USER_GOAL_RULE_NOT_APPROVED")
+        selected.update(goal_rules)
+
+    bpm = selected.get("bpm")
+    instruments = selected.get("instruments")
+    ambience = selected.get("ambience")
+    duration = selected.get("duration_seconds")
+    if type(bpm) is not int or not 40 <= bpm <= 120:
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    if not _string_list(instruments) or not _string_list(ambience):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    if type(duration) is not int or duration <= 0:
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
+    explanations = selected.get("explanations") or default.get("explanations")
+    if not isinstance(explanations, Mapping):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    explanation_keys = {"bpm", "instruments", "ambience", "duration"}
+    if set(explanations) != explanation_keys or any(
+        not isinstance(value, str) or not value.strip()
+        for value in explanations.values()
+    ):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
+    blocking_reasons: list[str] = []
+    if secondary_threshold is None:
+        blocking_reasons.append("SECONDARY_TONE_RULE_NOT_APPROVED")
+    spec = GenerationSpecV31(
+        schema_version="generation_spec_v3.1",
+        primary_tone=profile.primary_tone,
+        secondary_tone=profile.secondary_tone,
+        tone_weights=profile.weights,
+        bpm=bpm,
+        instruments=_string_list(instruments),
+        ambience=_string_list(ambience),
+        duration_seconds=duration,
+        explanations={
+            key: validate_public_text(str(explanations[key]))
+            for key in sorted(explanation_keys)
+        },
+        readiness="not_ready" if blocking_reasons else "ready",
+        blocking_reasons=blocking_reasons,
+        secondary_tone_blocked=secondary_threshold is None,
+    )
+    return spec
+
+
+def _goal_code(user_goal: Mapping[str, Any] | Any | None) -> str | None:
+    if user_goal is None:
+        return None
+    from backend.app.schemas.v3.flow_v31 import UserGoalV31
+
+    try:
+        parsed = UserGoalV31.model_validate(user_goal)
+    except (TypeError, ValueError) as error:
+        raise Agent3Blocked("USER_GOAL_INVALID") from error
+    if (
+        parsed.primary_goal is None
+        and parsed.secondary_goal is None
+        and parsed.custom_goal_text is None
+    ):
+        return None
+    return parsed.primary_goal.value if parsed.primary_goal is not None else "__custom_goal__"
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    values = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+    return values if len(values) == len(value) else []
 
 
 def _as_float(value: Any, *, context: str) -> float:
@@ -188,15 +315,13 @@ def build_five_tone_analysis_v31(
     profile: ToneProfileV31,
     evidence_refs: Sequence[str],
     mapping: Mapping[str, Any],
-    generation_parameters: Mapping[str, Any],
-    generation_status: str = "not_ready",
-    generation_message: str | None = None,
+    generation_spec: GenerationSpecV31 | Mapping[str, Any],
 ) -> FiveToneAnalysisReadModel:
     """Assemble the public-only V3.1 Five-Tone Analysis read model.
 
-    Music parameters are supplied by the approved downstream parameter
-    selector; this function only validates and presents them. It does not
-    infer medical claims, call a provider, or expose provider internals.
+    Music parameters are supplied by ``build_generation_spec_v31`` from an
+    approved deterministic rule asset. This function only presents that
+    object and never accepts caller-selected raw parameters.
     """
 
     if profile.mapping_version != _mapping_version(mapping):
@@ -205,44 +330,25 @@ def build_five_tone_analysis_v31(
     if not refs or any(not ref for ref in refs):
         raise Agent3Blocked("INVALID_PUBLIC_READ_MODEL:evidence_refs")
     tendency = validate_public_text(_required_text(state_tendency, field="state_tendency"))
-    params = generation_parameters
-    if not isinstance(params, Mapping):
-        raise Agent3Blocked("INVALID_PUBLIC_READ_MODEL:generation_parameters")
-    bpm = params.get("bpm")
-    instruments = params.get("instruments")
-    ambience = params.get("ambience")
-    duration_seconds = params.get("duration_seconds")
-    if type(bpm) is not int or not 40 <= bpm <= 120:
-        raise Agent3Blocked("INVALID_PUBLIC_READ_MODEL:bpm")
-    if (
-        not isinstance(instruments, Sequence)
-        or isinstance(instruments, (str, bytes))
-        or not instruments
-        or any(not isinstance(item, str) or not item.strip() for item in instruments)
-    ):
-        raise Agent3Blocked("INVALID_PUBLIC_READ_MODEL:instruments")
-    if (
-        not isinstance(ambience, Sequence)
-        or isinstance(ambience, (str, bytes))
-        or not ambience
-        or any(not isinstance(item, str) or not item.strip() for item in ambience)
-    ):
-        raise Agent3Blocked("INVALID_PUBLIC_READ_MODEL:ambience")
-    if type(duration_seconds) is not int or duration_seconds <= 0:
-        raise Agent3Blocked("INVALID_PUBLIC_READ_MODEL:duration_seconds")
-    if generation_status not in {"ready", "not_ready"}:
-        raise Agent3Blocked("INVALID_PUBLIC_READ_MODEL:generation_status")
+    try:
+        spec = GenerationSpecV31.model_validate(generation_spec)
+    except (TypeError, ValueError) as error:
+        raise Agent3Blocked("INVALID_GENERATION_SPEC") from error
+    if spec.primary_tone != profile.primary_tone or spec.tone_weights != profile.weights:
+        raise Agent3Blocked("GENERATION_SPEC_TONE_MISMATCH")
 
     table = _tone_table(mapping)
-    primary = _tone_explanation(profile.primary_tone.value, table, secondary=False)
+    primary = _tone_explanation(spec.primary_tone.value, table, secondary=False)
     secondary = (
-        _tone_explanation(profile.secondary_tone.value, table, secondary=True)
-        if profile.secondary_tone is not None
+        _tone_explanation(spec.secondary_tone.value, table, secondary=True)
+        if spec.secondary_tone is not None
         else None
     )
-    message = generation_message or (
+    message = (
         "音乐参数已准备，可以进入后续生成流程。"
-        if generation_status == "ready"
+        if spec.readiness == "ready"
+        else "音乐参数已整理；次要音调规则尚未获批准，当前仅提供主要音调参考。"
+        if "SECONDARY_TONE_RULE_NOT_APPROVED" in spec.blocking_reasons
         else "音乐参数已整理，后续生成能力尚未就绪。"
     )
     return FiveToneAnalysisReadModel(
@@ -259,23 +365,23 @@ def build_five_tone_analysis_v31(
         primary_tone=primary,
         secondary_tone=secondary,
         bpm=BpmExplanation(
-            value=bpm,
-            explanation=validate_public_text("按已确认的音乐参数提供参考。"),
+            value=spec.bpm,
+            explanation=spec.explanations["bpm"],
         ),
         instruments=ListParameterExplanation(
-            values=[item.strip() for item in instruments],
-            explanation=validate_public_text("作为本次音乐调适的配器参考。"),
+            values=spec.instruments,
+            explanation=spec.explanations["instruments"],
         ),
         ambience=ListParameterExplanation(
-            values=[item.strip() for item in ambience],
-            explanation=validate_public_text("作为本次音乐调适的环境参考。"),
+            values=spec.ambience,
+            explanation=spec.explanations["ambience"],
         ),
         duration=DurationExplanation(
-            seconds=duration_seconds,
-            explanation=validate_public_text("按本次音乐调适需求提供参考时长。"),
+            seconds=spec.duration_seconds,
+            explanation=spec.explanations["duration"],
         ),
         generation=GenerationReadiness(
-            status=generation_status,
+            status=spec.readiness,
             message=validate_public_text(message),
         ),
         disclaimer=validate_public_text("仅用于音乐调适参考，不构成医学诊断。"),

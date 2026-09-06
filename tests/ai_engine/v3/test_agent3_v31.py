@@ -24,6 +24,27 @@ def _mapping():
     }
 
 
+def _generation_rules():
+    return {
+        "schema_id": "music_generation_rules_v3.1",
+        "schema_version": "test-approved-v1",
+        "review_status": "approved",
+        "default": {
+            "bpm": 60,
+            "instruments": ["古琴"],
+            "ambience": ["细雨"],
+            "duration_seconds": 900,
+            "explanations": {
+                "bpm": "按已批准规则提供速度参考。",
+                "instruments": "按已批准规则提供配器参考。",
+                "ambience": "按已批准规则提供环境参考。",
+                "duration": "按已批准规则提供时长参考。",
+            },
+        },
+        "goals": {},
+    }
+
+
 def test_agent3_builds_v31_tone_profile_deterministically_from_approved_mapping():
     from backend.ai_engine.v3.agent3 import build_tone_profile_v31
 
@@ -129,6 +150,7 @@ def test_agent3_user_goal_is_not_part_of_medical_tone_calculation():
 
 def test_agent3_builds_public_read_model_without_internal_provider_fields():
     from backend.ai_engine.v3.agent3 import (
+        build_generation_spec_v31,
         build_five_tone_analysis_v31,
         build_tone_profile_v31,
     )
@@ -138,6 +160,10 @@ def test_agent3_builds_public_read_model_without_internal_provider_fields():
         organ_weights={"heart": 0.6, "spleen": 0.4},
         supporting_evidence_refs=["fact_1", "fact_2"],
         mapping=_mapping(),
+    )
+    generation_spec = build_generation_spec_v31(
+        profile=profile,
+        parameter_rules=_generation_rules(),
     )
     read_model = build_five_tone_analysis_v31(
         confirmed_user_state_ref={
@@ -150,12 +176,7 @@ def test_agent3_builds_public_read_model_without_internal_provider_fields():
         profile=profile,
         evidence_refs=["fact_1", "fact_2"],
         mapping=_mapping(),
-        generation_parameters={
-            "bpm": 60,
-            "instruments": ["古琴"],
-            "ambience": ["细雨"],
-            "duration_seconds": 900,
-        },
+        generation_spec=generation_spec,
     )
 
     assert read_model.primary_tone.tone.value == "zhi"
