@@ -1,7 +1,14 @@
-# HarmonyAI V3.1 暂定版产品流程
+# HarmonyAI V3.1 正式冻结产品流程
 
-> 状态：**PROVISIONAL — FINAL FREEZE REVIEW**
-> 用途：供老师与团队确认 V3.1 用户流程。本文不是最终冻结合同，不授权合入业务实现。
+> 状态：**FROZEN**
+> Frozen by Owner: 陈家智（Project Leader & AI Architect）
+> Freeze date: 2026-09-06
+> Teacher Flow authority: docs/product/app-v3.1-teacher-user-flow.md
+> Questionnaire human authority: docs/product/v3-questionnaire-final-20260822.md
+> Executable questionnaire: knowledge/v3/questionnaire-v3.0.1.json
+> Questionnaire checksum: sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031
+> Executable contract: backend/app/schemas/v3/flow_v31.py
+> 用途：记录已由 Owner 正式冻结的 V3.1 产品流程；用户页面顺序以 Teacher Flow authority 为唯一依据。
 
 ## 1. 适用范围
 

@@ -1,11 +1,18 @@
-# HarmonyAI V3.1 Flow Amendment Draft
+# HarmonyAI V3.1 Flow Amendment — FROZEN
 
-> Status: **FREEZE CANDIDATE — OWNER FINAL FREEZE REVIEW REQUIRED**
-> This document is not frozen. Exact executable shapes are defined by `harmonyai-v3.1-freeze-candidate.md` and its companion schema PR.
+> Status: **FROZEN**
+> Frozen by Owner: 陈家智（Project Leader & AI Architect）
+> Freeze date: 2026-09-06
+> Teacher Flow authority: docs/product/app-v3.1-teacher-user-flow.md
+> Questionnaire human authority: docs/product/v3-questionnaire-final-20260822.md
+> Executable questionnaire: knowledge/v3/questionnaire-v3.0.1.json
+> Questionnaire checksum: sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031
+> Executable contract: backend/app/schemas/v3/flow_v31.py
+> This amendment is formally frozen; its exact executable shapes are defined by the frozen contract and companion schema.
 
 ## 1. Relationship to Existing Contracts
 
-This draft proposes a V3.1 flow delta over `harmonyai-v3-contract-freeze-v3.0.0-draft.3.md` and `harmonyai-v3-owner-flow-amendment-001.md`. Unchanged V3 object semantics remain reusable. Conflicting flow clauses are proposed replacements only after teacher confirmation and a final freeze review.
+This frozen amendment defines the V3.1 flow delta over `harmonyai-v3-contract-freeze-v3.0.0-draft.3.md` and `harmonyai-v3-owner-flow-amendment-001.md`. Unchanged V3 object semantics remain reusable. Conflicting flow clauses are replaced by this Owner-approved amendment. Any later change requires an explicit V3.1 Contract Amendment.
 
 `docs/product/app-v3.1-teacher-user-flow.md` is the sole authority for the V3.1 **USER-FACING FLOW**. Agent diagrams, schemas, and internal objects may describe backend execution only; they cannot add, remove, reorder, or rename user-facing pages or actions.
 
@@ -53,7 +60,7 @@ This draft proposes a V3.1 flow delta over `harmonyai-v3-contract-freeze-v3.0.0-
 - No-document path: questionnaire is required.
 - Recent-document path: questionnaire is optional; if entered, all ten answers are required.
 - Q11/Q12 are not part of the V3.1 primary questionnaire.
-- This draft does not modify the authoritative medical knowledge or question mapping file.
+- This frozen amendment does not modify the authoritative medical knowledge or question mapping semantics.
 
 ### G. UserGoal
 
@@ -105,7 +112,7 @@ Each result must carry source references, confirmation revision, and a stable ch
 
 ## 3. Schema Delta Register
 
-| Area | Existing baseline | V3.1 draft requirement | Status |
+| Area | Existing baseline | V3.1 frozen requirement | Status |
 | --- | --- | --- | --- |
 | Entry | Session `input_mode` | Same meaning; new routes | REUSE_WITH_FLOW_CHANGE |
 | Document reference | Single `active_document_id` | Active 1～3 page DocumentSet reference | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
@@ -126,7 +133,7 @@ The V3.1 object discriminators, enums, validation, authority, and revision/check
 - V3.0/Sprint 4 stored data remains readable.
 - Removing a page from the main path does not authorize destructive migration.
 - V3.1 schema discriminators are defined in `harmonyai-v3.1-freeze-candidate.md`; implementations must use the matching version rather than silently overload V3.0 fields.
-- Current Safety backend capabilities remain intact. Safety is not reintroduced into the V3.1 user path by this draft.
+- Current Safety backend capabilities remain intact. Safety is not reintroduced into the V3.1 user path by this frozen amendment.
 - Provider failures must remain explicit; mock output cannot be serialized as real success.
 
 ## 5. Open Contract Decisions
