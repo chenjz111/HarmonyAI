@@ -7,6 +7,8 @@
 
 This draft proposes a V3.1 flow delta over `harmonyai-v3-contract-freeze-v3.0.0-draft.3.md` and `harmonyai-v3-owner-flow-amendment-001.md`. Unchanged V3 object semantics remain reusable. Conflicting flow clauses are proposed replacements only after teacher confirmation and a final freeze review.
 
+`docs/product/app-v3.1-teacher-user-flow.md` is the sole authority for the V3.1 **USER-FACING FLOW**. Agent diagrams, schemas, and internal objects may describe backend execution only; they cannot add, remove, reorder, or rename user-facing pages or actions.
+
 ## 2. Normative Flow Amendments
 
 ### A. Entry
@@ -76,6 +78,8 @@ Exactly three primary source combinations are accepted:
 | Recent document, no questionnaire | FinalConfirmedSummary | None | ConfirmedUserState |
 | Recent document plus questionnaire | FinalConfirmedSummary + complete QuestionnaireResult | UserGoal | ConfirmedUserState |
 | No document | complete QuestionnaireResult | UserGoal | ConfirmedUserState |
+
+`ConfirmedUserState` is an internal contract object, not a user-facing page. For `document_only`, confirmation authority is inherited from the user-confirmed `FinalConfirmedSummary`; assembly must not create a second “近期状态总结” page, confirmation CTA, or user action. For `document_plus_questionnaire` and `questionnaire_only`, confirmation authority comes from the user-confirmed recent-state summary.
 
 Each result must carry source references, confirmation revision, and a stable checksum. Downstream Agent 1/2 input must resolve from this authoritative object rather than stale client state.
 

@@ -7,6 +7,8 @@
 > Executable schema: `backend/app/schemas/v3/flow_v31.py` in companion Draft PR #106.
 > This document is not `FROZEN`; only the Owner may make the final freeze decision.
 
+`docs/product/app-v3.1-teacher-user-flow.md` is the sole authority for the V3.1 **USER-FACING FLOW**. Agent diagrams, schemas, and internal objects may describe backend execution only; they cannot add, remove, reorder, or rename user-facing pages or actions.
+
 ## 1. Frozen questionnaire identity
 
 | Field | Authoritative value |
@@ -180,6 +182,8 @@ Exactly three source unions are legal:
 | `document_only` | required | absent |
 | `document_plus_questionnaire` | required | required |
 | `questionnaire_only` | absent | required |
+
+`ConfirmedUserState` is an **INTERNAL CONTRACT OBJECT**, not a user-facing page or CTA. In `document_only`, its confirmation authority is the already user-confirmed `FinalConfirmedSummary`; no second “近期状态总结” page or confirmation is permitted. In `document_plus_questionnaire` and `questionnaire_only`, confirmation authority comes from the recent-state summary confirmation.
 
 `user_goal_ref` is independent and nullable, so it never changes source
 validity. Agent2 may consume only `authority_status=current` and

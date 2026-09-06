@@ -2,6 +2,8 @@
 
 > Status: **FREEZE CANDIDATE — OWNER FINAL FREEZE REVIEW REQUIRED**
 > Scope: semantic ownership plus frozen V3.1 executable boundaries. Exact fields and examples are authoritative in `harmonyai-v3.1-freeze-candidate.md` and the companion executable-schema PR.
+>
+> `docs/product/app-v3.1-teacher-user-flow.md` is the sole authority for the V3.1 **USER-FACING FLOW**. Agent diagrams, schemas, and internal objects may describe backend execution only; they cannot add, remove, reorder, or rename user-facing pages or actions.
 
 ## 1. DocumentSet
 
@@ -57,10 +59,11 @@
 
 ## 6. ConfirmedUserState
 
+- **Classification:** **INTERNAL CONTRACT OBJECT**, not a user-facing page, route, or confirmation CTA.
 - **Purpose:** Provide one authoritative, versioned input boundary for downstream assessment/diagnosis.
 - **Produced By:** Confirmation service from one of the three legal source combinations.
 - **Consumed By:** Agent 1 Assessment, Agent 2 query preparation, user-facing analysis read model.
-- **Authority:** Server-side confirmed revision and checksum.
+- **Authority:** Server-side confirmed revision and checksum. `document_only` inherits user confirmation from `FinalConfirmedSummary` and does not require a second user confirmation. Questionnaire paths inherit confirmation from the recent-state summary confirmation.
 - **V3.1 Changes:** Unifies document-only, document-plus-questionnaire, and questionnaire-only paths; carries source references and optional UserGoal separately.
 - **Existing Mapping:** No single object currently provides this authority boundary.
 - **Freeze Candidate:** Exact `document_only`, `document_plus_questionnaire`, and `questionnaire_only` unions, normalized projection, authority, confirmation, upstream revisions and checksums are executable. Persistence location remains an implementation detail.

@@ -7,6 +7,8 @@
 
 本文只定义用户在 App 中看到的主流程、页面分支与必填规则。Agent、数据库与 Provider 的技术实现以对应合同草案为准。App 名称、Logo、部分提示文案和反馈标签仍待确认。
 
+`docs/product/app-v3.1-teacher-user-flow.md` is the sole authority for the V3.1 **USER-FACING FLOW**. Agent diagrams, schemas, and internal objects may describe backend execution only; they cannot add, remove, reorder, or rename user-facing pages or actions.
+
 ## 2. 总体流程
 
 ```mermaid
@@ -127,7 +129,9 @@ flowchart TD
 2. 有资料、填写问卷：用户确认的资料摘要与完整问卷综合结果。
 3. 无资料：完整问卷结果及用户确认的状态摘要。
 
-若展示的状态摘要有误，用户应在确认页原地修改；确认后的版本才可交给后续分析。
+对于 `document_only`，用户在“确认资料摘要”页确认的 `FinalConfirmedSummary` 已经是用户确认来源；随后组装 `ConfirmedUserState` 只是内部处理，不得再展示“近期状态总结”页面或第二次确认按钮。只有 `document_plus_questionnaire` 与 `questionnaire_only` 路径展示并确认“近期状态总结”。
+
+若展示的状态摘要有误，用户应在对应的既有确认页原地修改；确认后的版本才可交给后续分析。
 
 ## 7. 五音调适解析与音乐
 
