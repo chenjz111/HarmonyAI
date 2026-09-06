@@ -54,8 +54,8 @@
 - **V3.1 Changes:** Independent and optional; must be tagged as preference, never Medical Evidence, FactEvidence, or OrganEvidence.
 - **Existing Mapping:** A common UserGoal model already defines the approved codes, primary/secondary fields and 200-character text bound, but requires a primary goal whenever the object is present.
 - **Freeze Candidate:** `UserGoalV31 | null` with canonical `primary_goal`, `secondary_goal`, `custom_goal_text` fields and executable validation.
-- **Frozen Product Semantics:** Approved codes are `sleep`, `relaxation`, `emotion_regulation`, `focus`, `energy`, `stress_relief`, and `other`; the whole step is skippable; 0～2 selections are allowed; the first is `primary_goal`, the second is `secondary_goal`; optional `custom_goal_text` is limited to 200 characters.
-- **Open Question:** Only whether custom text may be submitted without a goal code; the Q1～Q10 asset contains no UserGoal definition. Persistence location and endpoint mapping remain implementation details, not product-field decisions.
+- **Frozen Product Semantics:** Approved codes are `sleep`, `relaxation`, `emotion_regulation`, `focus`, `energy`, `stress_relief`, and `other`; the whole step is skippable; 0～2 selections are allowed; the first is `primary_goal`, the second is `secondary_goal`; optional `custom_goal_text` is limited to 200 characters and may exist independently. `other` does not require text at contract level.
+- **Canonical Empty Semantics:** All-null fields or blank custom text with no selected goals normalize to `user_goal = null`. Persistence location and endpoint mapping remain implementation details, not product-field decisions.
 
 ## 6. ConfirmedUserState
 
