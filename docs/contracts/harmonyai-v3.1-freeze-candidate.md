@@ -140,17 +140,15 @@ Boundary type: `UserGoalV31 | null`.
 - Approved codes are `sleep`, `relaxation`, `emotion_regulation`, `focus`,
   `energy`, `stress_relief`, and `other`.
 - The whole step is optional; skip serializes as `null`.
-- A present object carries one primary and at most one distinct secondary code.
+- A present object carries zero to two codes. `primary_goal` may be null; `secondary_goal` may be present only when `primary_goal` is present and must be distinct.
 - `custom_goal_text` is trimmed, non-empty when present, and at most 200 chars.
-- `other` currently follows the existing conservative V3 rule: it requires
-  `custom_goal_text`, and text is not accepted for a non-`other` code.
+- `custom_goal_text` is independent: custom-text-only is valid, goal plus text is valid, and selecting `other` without text is valid. Any prompt encouraging text for `other` is UX guidance only.
 - UserGoal is a preference input only: it is not Medical Evidence,
   FactEvidence, OrganEvidence, or a source-validity signal.
 
-The approved Q1–Q10 asset explicitly contains no UserGoal and therefore does
-not define whether custom-text-only (no goal code) is allowed. This is the only
-remaining narrow Owner review item; it does not reopen the field names, code
-set, optionality, maximum selection count, or evidence boundary.
+An object whose three fields are null or whose custom text is blank is canonically
+`user_goal = null`. This normalization belongs to the contract boundary and does
+not require Service-layer changes.
 
 ## 7. ConfirmedUserState
 
@@ -257,10 +255,9 @@ this candidate and are not repaired in the contract PR.
 
 All core path behavior, questionnaire identity, INSUFFICIENT behavior,
 DocumentSet, relevance, confirmed summary, ConfirmedUserState, ToneProfile,
-and Five-Tone public read-model semantics are executable and testable. The
-only remaining product clarification is custom-text-only UserGoal behavior;
-the candidate retains the current conservative V3 rule until the Owner says
-otherwise.
+and Five-Tone public read-model semantics are executable and testable. UserGoal
+custom-text-only behavior, `other` without text, and canonical empty-to-null
+semantics are explicit and no longer open product questions.
 
 **Candidate review result: READY_TO_FREEZE**
 

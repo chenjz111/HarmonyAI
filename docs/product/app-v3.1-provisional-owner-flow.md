@@ -117,7 +117,7 @@ flowchart TD
 - 完成 Q1～Q10 后进入独立的“疗愈诉求”选填页。
 - 整页可跳过；跳过时 `user_goal = null`。
 - 用户最多选择 2 项：第 1 项为 `primary_goal`，第 2 项为 `secondary_goal`。
-- 支持可选的 `custom_goal_text` 自由补充，最多 200 字。
+- 支持可选的 `custom_goal_text` 自由补充，最多 200 字；它可以在不选择任何 goal code 时独立存在。选择 `other` 时建议填写文字只属于 UX guidance，不是合同强制校验。
 - 批准的 goal code 固定为：`sleep`、`relaxation`、`emotion_regulation`、`focus`、`energy`、`stress_relief`、`other`。
 - UserGoal 不属于 Medical Evidence，也不能覆盖资料与问卷事实。
 
@@ -162,6 +162,6 @@ Profile、收藏列表、历史生成记录不属于本轮 V3.1 核心主路径�
 - App 最终名称与 Logo。
 - 反馈选项最终文案。
 - “五音调适解析”页面对医学措辞的最终审阅。
-- UserGoal 是否允许只填写 `custom_goal_text` 而不选择 goal code；正式 Q1～Q10 文件未定义这一小项。字段名、code set、0～2 项、整步可跳过和 200 字上限均不再待定。
+
 
 V3.1 精确对象、权威性、revision/checksum 绑定以 `docs/contracts/harmonyai-v3.1-freeze-candidate.md` 为准。

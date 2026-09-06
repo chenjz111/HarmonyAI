@@ -61,13 +61,13 @@ Authoritative product semantics:
 
 - UserGoal is an independent, optional step after Q1～Q10 and the whole step is skippable.
 - A user may select 0～2 goals. The first selection maps to `primary_goal`; the second maps to `secondary_goal`.
-- `custom_goal_text` is optional and limited to 200 characters.
+- `custom_goal_text` is optional, limited to 200 characters, and may exist without any goal code.
 - Approved goal codes are `sleep`, `relaxation`, `emotion_regulation`, `focus`, `energy`, `stress_relief`, and `other`.
 - Skipping the step produces `user_goal = null`.
 - `UserGoal != FactEvidence` and `UserGoal != OrganEvidence`.
 - UserGoal is a music-design preference and cannot override user-confirmed clinical/state facts.
-- The canonical boundary is `UserGoalV31 | null`, with fields `primary_goal`, `secondary_goal`, and `custom_goal_text`; approved codes, 0～2 selections, distinct primary/secondary, and the 200-character bound are executable.
-- The Q1～Q10 asset does not define custom-text-only behavior. Until Owner review of this one narrow point, a present object follows the existing conservative V3 rule: it has a primary code and text accompanies `other` only.
+- The canonical boundary is `UserGoalV31 | null`, with nullable `primary_goal`, nullable `secondary_goal`, and nullable `custom_goal_text`; approved codes, 0～2 selections, secondary-requires-primary, distinct primary/secondary, independent custom text, and the 200-character bound are executable.
+- Custom-text-only is valid. Selecting `other` without text is also valid; encouraging text for `other` is UX guidance only.
 
 ### H. ConfirmedUserState
 
@@ -131,8 +131,7 @@ The V3.1 object discriminators, enums, validation, authority, and revision/check
 
 ## 5. Open Contract Decisions
 
-1. Whether UserGoal permits custom text without any goal code; the formal Q1～Q10 asset does not define this.
-2. The versioned medical threshold for selecting a secondary tone.
-3. Endpoint and persistence implementation mapping without changing frozen transport semantics.
-4. Final feedback option vocabulary.
-5. Owner approval and subsequent final freeze decision.
+1. The versioned medical threshold for selecting a secondary tone.
+2. Endpoint and persistence implementation mapping without changing frozen transport semantics.
+3. Final feedback option vocabulary.
+4. Owner approval and subsequent final freeze decision.
