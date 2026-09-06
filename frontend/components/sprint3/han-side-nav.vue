@@ -2,21 +2,21 @@
 /**
  * 左侧印章导航（重水墨国风 · 统一切换区）
  *
- * 5 枚印章对应 V3.1 五阶段：入静 / 呈声 / 问询 / 确认 / 聆听
+ * 5 枚印章对应 V3.1 五阶段（冻结 teacher-user-flow）：首页 / 呈声 / 问询 / 确认 / 聆听
  * 页面归属：
- *   入  welcome
- *   声  v3-material / v3-summary
- *   问  v3-narrative / v3-supplement / v3-questionnaire / v3-goal
+ *   入  entry（首页 tabBar 页）
+ *   声  v3-material / v3-summary / v3-material-error / v3-supplement
+ *   问  v3-questionnaire / v3-goal
  *   承  v3-confirm / v3-basis
  *   听  v3-player（tabBar 页）
  *
  * 跳转规则（tabBar 契约）：
- *   - 目标是 tabBar 页（v3-player）→ switchTab
+ *   - 目标是 tabBar 页（entry / v3-player）→ switchTab
  *   - 从 tabBar 页跳出 → navigateTo
  *   - 普通页之间 → redirectTo（避免层级堆叠）
  */
 const NAV_ITEMS = [
-  { key: "welcome", glyph: "入", step: "01", tip: "入静", path: "/pages/welcome/welcome", tab: false },
+  { key: "home", glyph: "入", step: "01", tip: "首页", path: "/pages/entry/entry", tab: true },
   { key: "material", glyph: "声", step: "02", tip: "呈声", path: "/pages/v3-material/v3-material", tab: false },
   { key: "question", glyph: "问", step: "03", tip: "问询", path: "/pages/v3-questionnaire/v3-questionnaire", tab: false },
   { key: "confirm", glyph: "承", step: "04", tip: "确认", path: "/pages/v3-confirm/v3-confirm", tab: false },

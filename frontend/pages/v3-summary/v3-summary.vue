@@ -4,11 +4,10 @@
  * 合同依据：frontend-read-model-contract-v3.md §4 Case Summary Page
  *          harmonyai-v3-owner-flow-amendment-001.md §3.2 / §3.3
  *
- * 四个操作（Sprint 5 组长指令，覆盖 Amendment §3.2 旧措辞）：
+ * 三个操作（冻结 §4.3；原"放弃资料"弱按钮已前移到异常页，摘要页不再提供该出口）：
  *  1. 主按钮：资料摘要基本无误
  *  2. 次按钮：修改资料摘要（进入同页编辑状态）
  *  3. 次按钮：重新上传资料
- *  4. 弱按钮：暂不使用这份资料，继续评估
  *
  * 编辑状态（Amendment §3.3）：
  *  - 只编辑通俗摘要文本，不展示 OCR 原文/置信度/Provider/revision
@@ -118,21 +117,6 @@ export default {
     reupload() {
       uni.redirectTo({ url: "/pages/v3-material/v3-material" })
     },
-    // 操作4：暂不使用这份资料，继续评估（必须调用后端 Input Transition discard_document）
-    async switchToQuestionnaire() {
-      if (this.submitting) return
-      this.submitting = true
-      try {
-        const session = await apiV3.discardDocument()
-        apiV3.rememberSession(session)
-        // 丢弃资料后走无资料路径：先到选填补充近况页
-        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
-      } catch (e) {
-        uni.showToast({ title: e.message || "切换失败，请重试", icon: "none" })
-      } finally {
-        this.submitting = false
-      }
-    },
   },
 }
 </script>
@@ -188,9 +172,6 @@ export default {
           </view>
           <view class="han-btn han-btn-ghost btn-secondary" @click="reupload">
             <text class="btn-secondary-text">重新上传资料</text>
-          </view>
-          <view class="btn-link" @click="switchToQuestionnaire">
-            <text class="btn-link-text">暂不使用这份资料，继续评估</text>
           </view>
         </view>
       </view>
@@ -412,16 +393,6 @@ export default {
 .btn-secondary-text {
   color: var(--ink-700);
   font-size: 30rpx;
-}
-.btn-link {
-  display: flex;
-  justify-content: center;
-  padding: 12rpx 0;
-}
-.btn-link-text {
-  color: var(--text-muted);
-  font-size: 26rpx;
-  text-decoration: underline;
 }
 .btn-disabled {
   opacity: 0.6;

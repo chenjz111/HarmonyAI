@@ -20,15 +20,16 @@
  * 后端尚未交付保存能力 → 调用方根据 ok 判断，本模块只负责判定 + 序列化。
  */
 
-// 合同权威意图代码（与 Read Model 一致；后端尚未交付保存能力，本机暂存）
+// 合同权威意图代码（V3.1 冻结 questionnaire-v3.0.1.json user_goal 配置，逐字一致；
+// 后端尚未交付保存能力，本机暂存并如实标注）
 export const INTENT_CODES = Object.freeze([
-  { code: "sleep",               label: "睡得更安稳" },
-  { code: "relaxation",          label: "让身心放松" },
-  { code: "emotion_regulation",  label: "调节情绪起伏" },
-  { code: "focus",               label: "更专注一些" },
-  { code: "energy",              label: "更有精神一些" },
-  { code: "stress_relief",       label: "缓解压力" },
-  { code: "other",               label: "其他诉求" },
+  { code: "sleep",               label: "帮我睡得安稳一点" },
+  { code: "relaxation",          label: "让我放松、静下来" },
+  { code: "emotion_regulation",  label: "帮我把情绪释放出来" },
+  { code: "focus",               label: "让我更容易专注" },
+  { code: "energy",              label: "帮我恢复点精力" },
+  { code: "stress_relief",       label: "让我减轻点压力" },
+  { code: "other",               label: "其他" },
 ])
 
 export const MAX_CUSTOM_LEN = 200

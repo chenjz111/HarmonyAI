@@ -175,11 +175,11 @@ export default {
           <text class="demo-banner-text">演示模式：当前音乐为模拟数据</text>
         </view>
 
-        <!-- 唱片：水墨渐变 + 朱砂印章角标 -->
+        <!-- 唱片：水墨渐变 + 朱砂印章角标（主视觉占位，冻结 §9：后续重新设计） -->
         <view class="disc-wrap">
           <view class="disc" :class="{ 'disc-spinning': playing }">
             <view class="disc-inner">
-              <text class="disc-tone">{{ music.tone_label ? music.tone_label.substring(0, 1) : "宫" }}</text>
+              <text class="disc-tone">乐</text>
             </view>
             <view class="disc-groove"></view>
           </view>
@@ -189,7 +189,6 @@ export default {
         </view>
 
         <text class="music-title">{{ music.title }}</text>
-        <text class="music-source">{{ music.source_label }} · {{ music.tone_label }}</text>
         <text class="music-instruments">{{ music.instrument_labels.join(" · ") }}</text>
 
         <!-- 控制区 -->

@@ -1,6 +1,5 @@
 <template>
-  <view class="page han-page side-nav-page">
-    <han-side-nav current="welcome" />
+  <view class="page han-page">
     <view class="han-page-content page-inner">
       <!-- 顶部水墨首屏 -->
       <view class="hero ink-fade-in">
@@ -99,10 +98,8 @@
  *
  * 跳转逻辑：entry 是 tabBar 页面，须用 reLaunch
  */
-import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 export default {
-  components: { HanSideNav },
   data() {
     return {
       steps: [

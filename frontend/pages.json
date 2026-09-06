@@ -86,10 +86,6 @@
       "style": { "navigationBarTitleText": "补充近况", "navigationStyle": "custom" }
     },
     {
-      "path": "pages/v3-narrative/v3-narrative",
-      "style": { "navigationBarTitleText": "最近情况", "navigationStyle": "custom" }
-    },
-    {
       "path": "pages/v3-questionnaire/v3-questionnaire",
       "style": { "navigationBarTitleText": "五脏状态问卷", "navigationStyle": "custom" }
     },

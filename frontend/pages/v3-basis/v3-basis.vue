@@ -185,54 +185,87 @@ export default {
         </view>
       </view>
 
-      <!-- 解析页（Read Model §10） -->
+      <!-- 解析页（冻结 FiveToneAnalysisReadModel，flow_v31.py） -->
       <view v-else-if="phase === 'basis' || phase === 'generating' || phase === 'cancelled'" class="han-card basis-card ink-fade-up">
         <!-- hybrid 演示标识 -->
         <view v-if="simulated" class="demo-banner">
           <text class="demo-banner-text">演示模式：以下解析与生成过程为模拟数据</text>
         </view>
 
-        <view class="tendency-box">
-          <text class="tendency-label">{{ basis.tendency.label }}</text>
-          <view class="tendency-divider han-divider han-divider--seal"></view>
-          <text class="tendency-disclaimer">{{ basis.tendency.disclaimer }}</text>
+        <!-- 近期状态 -->
+        <view class="basis-section">
+          <view class="section-head">
+            <view class="section-seal"><text class="section-seal-text">近</text></view>
+            <text class="section-title">近期状态</text>
+          </view>
+          <view class="state-box">
+            <text class="state-text">{{ basis.confirmed_state }}</text>
+          </view>
+          <text class="tendency-line">{{ basis.state_tendency }}</text>
         </view>
 
+        <!-- 分析依据 -->
         <view class="basis-section">
           <view class="section-head">
             <view class="section-seal"><text class="section-seal-text">据</text></view>
-            <text class="section-title">主要依据</text>
+            <text class="section-title">分析依据</text>
           </view>
           <view class="basis-items">
-            <view v-for="(b, idx) in basis.basis_summaries" :key="idx" class="basis-item">
+            <view v-for="(r, idx) in basis.analysis_rationales" :key="idx" class="basis-item">
               <view class="item-dot"></view>
-              <text class="item-text">{{ b }}</text>
+              <text class="item-text">{{ r.summary }}</text>
             </view>
           </view>
         </view>
 
+        <!-- 五音配置 -->
         <view class="basis-section">
           <view class="section-head">
             <view class="section-seal"><text class="section-seal-text">音</text></view>
-            <text class="section-title">音调方案</text>
+            <text class="section-title">五音配置</text>
           </view>
           <view class="tone-box">
-            <text class="tone-main">{{ basis.tone_profile.dominant_label }}为主</text>
-            <text class="tone-sub">{{ basis.tone_profile.summary }}</text>
+            <text class="tone-main">{{ basis.primary_tone.display_name }}为主</text>
+            <text class="tone-sub">{{ basis.primary_tone.explanation }}</text>
+          </view>
+          <view v-if="basis.secondary_tone" class="tone-box tone-box--secondary">
+            <text class="tone-secondary">{{ basis.secondary_tone.display_name }}为辅</text>
+            <text class="tone-sub">{{ basis.secondary_tone.explanation }}</text>
           </view>
         </view>
 
+        <!-- 音乐设计 -->
         <view class="basis-section">
           <view class="section-head">
             <view class="section-seal"><text class="section-seal-text">参</text></view>
-            <text class="section-title">音乐参数</text>
+            <text class="section-title">音乐设计</text>
           </view>
           <view class="params-grid">
-            <view class="param-cell"><text class="param-value">{{ basis.music_parameters.bpm }}</text><text class="param-label">节拍 (BPM)</text></view>
-            <view class="param-cell"><text class="param-value">{{ formatDuration(basis.music_parameters.duration_seconds) }}</text><text class="param-label">时长</text></view>
-            <view class="param-cell"><text class="param-value">{{ basis.music_parameters.instrument_labels.join('、') }}</text><text class="param-label">乐器</text></view>
-            <view class="param-cell"><text class="param-value">{{ basis.music_parameters.ambient_labels.join('、') }}</text><text class="param-label">氛围</text></view>
+            <view class="param-cell">
+              <text class="param-value">{{ basis.bpm.value }}</text>
+              <text class="param-label">节拍 (BPM)</text>
+              <text class="param-reason">{{ basis.bpm.explanation }}</text>
+            </view>
+            <view class="param-cell">
+              <text class="param-value">{{ formatDuration(basis.duration.seconds) }}</text>
+              <text class="param-label">时长</text>
+              <text class="param-reason">{{ basis.duration.explanation }}</text>
+            </view>
+            <view class="param-cell">
+              <text class="param-value">{{ basis.instruments.values.join('、') }}</text>
+              <text class="param-label">乐器</text>
+              <text class="param-reason">{{ basis.instruments.explanation }}</text>
+            </view>
+            <view class="param-cell">
+              <text class="param-value">{{ basis.ambience.values.join('、') }}</text>
+              <text class="param-label">氛围</text>
+              <text class="param-reason">{{ basis.ambience.explanation }}</text>
+            </view>
           </view>
+        </view>
+
+        <view class="tendency-box">
+          <text class="tendency-disclaimer">{{ basis.disclaimer }}</text>
         </view>
 
         <text class="personal-note">{{ basis.personalization_summary }}</text>
@@ -328,26 +361,32 @@ export default {
   background: rgba(107, 124, 94, 0.08);
   border: 1rpx solid rgba(107, 124, 94, 0.16);
   border-radius: 14rpx;
-  padding: 36rpx 32rpx;
+  padding: 28rpx 32rpx;
   text-align: center;
-  margin-bottom: 36rpx;
-}
-.tendency-label {
-  display: block;
-  font-size: 36rpx;
-  font-weight: 600;
-  color: var(--ink-primary-dark);
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-  margin-bottom: 6rpx;
-}
-.tendency-divider {
-  width: 180rpx;
-  margin: 6rpx auto 20rpx;
+  margin-bottom: 24rpx;
 }
 .tendency-disclaimer {
   display: block;
   font-size: 22rpx;
   color: var(--text-muted);
+}
+.state-box {
+  background: rgba(244, 238, 219, 0.5);
+  border: 1rpx solid var(--border-light);
+  border-radius: 14rpx;
+  padding: 28rpx;
+  margin-bottom: 16rpx;
+}
+.state-text {
+  font-size: 28rpx;
+  color: var(--ink-700);
+  line-height: 1.7;
+}
+.tendency-line {
+  display: block;
+  font-size: 24rpx;
+  color: var(--text-secondary);
+  line-height: 1.7;
 }
 
 .basis-section {
@@ -402,6 +441,10 @@ export default {
   border: 1rpx solid var(--border-light);
   border-radius: 14rpx;
   padding: 28rpx;
+  margin-bottom: 16rpx;
+}
+.tone-box--secondary {
+  background: rgba(107, 124, 94, 0.06);
 }
 .tone-main {
   display: block;
@@ -411,10 +454,19 @@ export default {
   margin-bottom: 8rpx;
   font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
 }
+.tone-secondary {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--ink-primary-dark);
+  margin-bottom: 8rpx;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
 .tone-sub {
   display: block;
   font-size: 24rpx;
   color: var(--text-secondary);
+  line-height: 1.6;
 }
 .params-grid {
   display: flex;
@@ -441,6 +493,13 @@ export default {
 .param-label {
   font-size: 22rpx;
   color: var(--text-muted);
+  margin-bottom: 12rpx;
+}
+.param-reason {
+  font-size: 22rpx;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  text-align: center;
 }
 .personal-note {
   display: block;

@@ -1,16 +1,19 @@
 <script>
 /**
- * V3.1 资料异常页（Issue #100）
- * 承接资料上传/识别失败后的独立分流，替代原先内嵌在本页的失败卡片。
+ * V3.1 资料异常页（统一异常分流）
  *
- * 依据：
- *  - harmonyai-v3-owner-flow-amendment-001.md §3.1（OCR 失败标准文案）
- *  - Sprint 5 组长指令：按钮二固定为"暂不使用资料，通过描述和问卷继续"
- *  - Issue #100：资料异常独立成页
+ * 合同依据（V3.1_FREEZE_BASELINE 83fe2f4）：
+ *  - docs/product/app-v3.1-teacher-user-flow.md §4.2（Relevance Error 统一页面）
+ *  - Issue #111 §4 Path D（INVALID / IRRELEVANT / INSUFFICIENT → 统一异常页面）
  *
  * 两种异常类型（?type=）：
- *  - ocr     ：资料已上传但未能识别成功（固定文案，不带技术细节）
- *  - network ：上传/网络/服务失败（不冒充 OCR 失败，可重试）
+ *  - ocr     ：资料已上传但未能识别/不适用于本次分析（冻结标准文案，不带技术细节）
+ *  - network ：上传/网络/服务失败（Path E 异常降级，可重试）
+ *
+ * 冻结按钮（§4.2）：
+ *  - 重新选择资料 → 返回上传页
+ *  - 我没有合适的资料 → 转入无资料流程，直接进入问卷（不经描述页）
+ * 页面不得出现任何暗示资料本身有医学问题或诊断出错的措辞（冻结 §4.2 禁用词清单）。
  *
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
@@ -34,21 +37,21 @@ export default {
   },
   methods: {
     retry() {
-      // 重新上传资料（按钮一）：回到资料上传页重新选择
+      // 重新选择资料（按钮一）：回到资料上传页重新选择
       if (this.retrying) return
       this.retrying = true
       uni.redirectTo({ url: "/pages/v3-material/v3-material" })
     },
     async switchToQuestionnaire() {
-      // 暂不使用资料，通过描述和问卷继续（按钮二）
+      // 我没有合适的资料（按钮二）：转入无资料流程，直接进入问卷
       // 必须调用后端 Input Transition（discard_document）切换为无资料模式，不是前端隐藏
       if (this.discarding) return
       this.discarding = true
       try {
         const session = await apiV3.discardDocument()
         apiV3.rememberSession(session)
-        // V3.1：丢弃资料后走无资料路径 → 选填补充近况页
-        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
+        // V3.1 冻结：无资料流程直接进入 5 页问卷（不经描述/补充页）
+        uni.redirectTo({ url: "/pages/v3-questionnaire/v3-questionnaire" })
       } catch (e) {
         uni.showToast({ title: e.message || "切换失败，请重试", icon: "none" })
       } finally {
@@ -70,11 +73,11 @@ export default {
           </view>
           <view class="header-titles">
             <text class="step-tag">有资料流程 · 异常分流</text>
-            <text class="page-title han-title-brush revealed">{{ type === "network" ? "资料暂时没有上传成功" : "资料暂未识别成功" }}</text>
+            <text class="page-title han-title-brush revealed">{{ type === "network" ? "资料暂时没有上传成功" : "这份资料暂时无法用于本次分析" }}</text>
           </view>
         </view>
         <text class="page-subtitle" v-if="type === 'ocr'">
-          我们暂时无法从这份资料中提取有效内容，请重新上传清晰的图片或 PDF。
+          未识别到与本次状态评估相关的有效信息，请检查是否上传了合适的就诊资料。
         </text>
         <text class="page-subtitle" v-else>
           网络或服务暂时不可用，请稍后重试。
@@ -85,22 +88,22 @@ export default {
         <view class="fail-seal">
           <text class="fail-seal-text">{{ type === "network" ? "静" : "失" }}</text>
         </view>
-        <text class="fail-title">{{ type === "network" ? "上传没有完成" : "没有识别到有效内容" }}</text>
+        <text class="fail-title">{{ type === "network" ? "上传没有完成" : "资料暂时无法使用" }}</text>
         <text class="fail-desc" v-if="type === 'ocr'">
-          你可以重新上传清晰、完整的资料；也可以暂时不使用资料，通过描述和问卷继续评估。
+          你可以重新选择合适的资料；也可以不使用资料，直接通过问卷完成本次评估。
         </text>
         <text class="fail-desc" v-else>
-          请检查网络后重新上传；也可以暂时不使用资料，通过描述和问卷继续评估。
+          请检查网络后重新选择资料；也可以不使用资料，直接通过问卷完成本次评估。
         </text>
 
         <view class="fail-actions">
           <view class="han-btn han-btn-primary btn-primary" :class="{ 'btn-disabled': retrying }" @click="retry">
-            <text class="btn-primary-text">{{ retrying ? "正在返回…" : "重新上传资料" }}</text>
+            <text class="btn-primary-text">{{ retrying ? "正在返回…" : "重新选择资料" }}</text>
           </view>
           <view class="han-btn han-btn-ghost btn-secondary" :class="{ 'btn-disabled': discarding }" @click="switchToQuestionnaire">
-            <text class="btn-secondary-text">{{ discarding ? "正在切换…" : "暂不使用资料，通过描述和问卷继续" }}</text>
+            <text class="btn-secondary-text">{{ discarding ? "正在切换…" : "我没有合适的资料" }}</text>
           </view>
-          <text class="fail-note">描述可以跳过，状态问卷需要完成。</text>
+          <text class="fail-note">问卷共 10 题，大约需要 3 分钟。</text>
         </view>
       </view>
 

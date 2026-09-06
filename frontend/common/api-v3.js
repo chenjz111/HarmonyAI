@@ -48,13 +48,13 @@
  *  - V2 上传接口 /api/v2/documents 固定把资料写入默认用户，而 V3 访客是独立用户，
  *    replace_document/understanding 的归属校验会失败（DOCUMENT_NOT_FOUND）。
  *    有资料流程真实联调需要后端提供与会话绑定的上传端点（owner-aware upload）。
- *  - 问卷提交端点（POST /api/v3/questionnaire/submissions）与 V3 评估创建端点尚未交付。
- *  - 音乐生成依赖辨证处方标识，该能力尚未交付。
- *  - 有资料流程"已确认摘要 + 追加最近情况描述"需要后端支持向已确认
- *    Understanding 追加源；在此之前有资料路径的描述仅本机暂存（页面如实标注）。
+ *  - 问卷提交端点（POST /api/v3/questionnaire/submissions）尚未交付
+ *    （V3.1 冻结基线已含 POST /api/v3/assessments，但 questionnaire_ref 依赖
+ *    问卷提交产物，全链路仍待后端 Issue #110）。
+ *  - 音乐生成依赖辨证处方标识，该能力尚未交付（Five-Tone Read Model 端点未暴露）。
  */
 
-import { QUESTIONNAIRE_MANIFEST, FREQUENCY_OPTIONS } from "./questionnaire-v3-manifest.js"
+import { QUESTIONNAIRE_MANIFEST } from "./questionnaire-v3-manifest.js"
 
 // ===== 配置 =====
 
@@ -457,6 +457,33 @@ const realInputApi = {
     return data
   },
 
+  // 评估创建（V3.1 冻结基线已交付 POST /api/v3/assessments，Idempotency-Key 必填）
+  // - document_only：understanding_ref 携带已确认摘要，questionnaire_ref=null，可直接创建
+  // - 问卷路径：questionnaire_ref 依赖问卷提交端点（Issue #110 未交付）→ 如实等待
+  async createAssessment() {
+    const state = loadFlowState()
+    if (!state.session_id) throw apiError("会话未创建", "SESSION_NOT_FOUND")
+    if (!state.understanding_id) {
+      // questionnaire_only / document_plus_questionnaire：等待问卷提交端点交付
+      throw agentPendingError("问卷提交与评估创建")
+    }
+    const data = await realRequest("/api/v3/assessments", {
+      method: "POST",
+      data: {
+        schema_version: "assessment_v3.1",
+        session_id: state.session_id,
+        expected_input_revision: state.input_revision || 1,
+        understanding_ref: {
+          understanding_id: state.understanding_id,
+          revision: state.understanding_revision || 1,
+        },
+        questionnaire_ref: null,
+      },
+      headers: { "Idempotency-Key": idempotencyKey() },
+    })
+    return data
+  },
+
   // 最近情况描述真实提交（narrative 源，inline text）
   // 仅用于无资料流程（without_document）：narrative-only 源创建 Understanding 后
   // 立即确认（decision=confirm），经 CAS 绑定为会话活跃引用并递增 input_revision，
@@ -651,13 +678,15 @@ function clone(obj) {
   return JSON.parse(JSON.stringify(obj))
 }
 
-// ---- mock: 问卷（与后端权威清单 knowledge/v3/questionnaire-v3.0.json 逐字一致） ----
+// ---- mock: 问卷（与冻结权威清单 knowledge/v3/questionnaire-v3.0.1.json 逐字一致） ----
 function buildMockQuestionnaireSchema() {
   const schema = clone(QUESTIONNAIRE_MANIFEST)
   schema.page = "questionnaire_v3"
   schema.title = "五脏状态问卷"
   schema.required_for_flow = false // 由 session 权威模式决定（无资料=true）
-  schema.skip_action = { id: "skip_questionnaire", label: "跳过问卷，继续评估", style: "link", enabled: true }
+  // V3.1 冻结流程：Q1-Q10 全部必答，问卷内不再提供跳过出口
+  // （"是否填写问卷"的选择在资料摘要后的轻量选择页完成）
+  schema.skip_action = null
   schema.estimated_minutes = 3
   return schema
 }
@@ -723,32 +752,52 @@ function mockAssessment() {
   }
 }
 
-// ---- mock: 音乐生成依据（Read Model §10） ----
+// ---- mock: 五音调适解析（冻结 FiveToneAnalysisReadModel，flow_v31.py §Five-Tone） ----
+// 字段与 backend/app/schemas/v3/flow_v31.py FiveToneAnalysisReadModel 逐一对齐：
+// confirmed_state / state_tendency / analysis_rationales / primary_tone /
+// secondary_tone(可空) / bpm / instruments / ambience / duration / generation / disclaimer
 function mockBasis() {
   return {
-    page: "music_basis",
-    diagnosis_id: "diag_mock_001",
-    prescription_id: "rx_mock_001",
-    title: "本次音乐生成依据",
-    tendency: { label: "心脾两虚倾向", disclaimer: "仅用于音乐调养参考，不构成医学诊断。" },
-    basis_summaries: ["思虑偏多", "睡眠恢复不足", "精力下降"],
-    tone_profile: { dominant_tone: "gong", dominant_label: "宫音", summary: "本次以宫音为主。" },
-    music_parameters: { bpm: 58, duration_seconds: 300, instrument_labels: ["古琴", "洞箫"], ambient_labels: ["流水"] },
-    personalization_summary: "已参考你过去的音乐偏好。",
-    actions: [{ id: "generate", label: "生成本次音乐", style: "primary", enabled: true }],
+    page: "five_tone_analysis",
+    schema_version: "five_tone_analysis_read_model_v3.1",
+    confirmed_state: "近期入睡偏慢、睡眠恢复不足，白天精神状态一般，思虑偏多。",
+    state_tendency: "近期状态呈现思虑偏多、心神不易安定与精力恢复不足的倾向。",
+    analysis_rationales: [
+      { summary: "思虑偏多、注意力不易放松，提示心神安定需求较高。", evidence_refs: ["fev_mock_overthinking"] },
+      { summary: "入睡偏慢、睡眠恢复不足，提示需要助眠与收敛性的音乐设计。", evidence_refs: ["fev_mock_sleep"] },
+      { summary: "白天精力一般，提示节奏宜缓、避免强刺激。", evidence_refs: ["fev_mock_energy"] },
+    ],
+    primary_tone: {
+      tone: "gong",
+      display_name: "宫音",
+      explanation: "宫音沉稳、中正平和，与当前思虑偏多、需要安定的状态相合，作为本次主音。",
+    },
+    secondary_tone: {
+      tone: "yu",
+      display_name: "羽音",
+      explanation: "辅以少量羽音，帮助收敛浮越的心神、支持入睡。",
+    },
+    bpm: { value: 58, explanation: "接近静息心率下沿的慢速节拍，帮助身体从紧绷状态缓下来。" },
+    instruments: { values: ["古琴", "洞箫"], explanation: "音色温润、起音柔和的乐器，减少听觉刺激。" },
+    ambience: { values: ["流水"], explanation: "低强度的自然声底，营造安静而不空寂的氛围。" },
+    duration: { seconds: 300, explanation: "5 分钟左右的时长，足以完成一段放松而不增加聆听负担。" },
+    generation: { status: "ready", message: "可以开始生成本次音乐。" },
+    disclaimer: "以上解析仅用于音乐调养参考，不构成医学诊断。",
+    // 兼容字段（页面旧渲染路径渐进迁移，最终以冻结字段为准）
+    personalization_summary: "已参考你填写的疗愈诉求与音乐偏好。",
   }
 }
 
-// ---- mock: 播放器（Read Model §12） ----
+// ---- mock: 播放器（冻结 §9：不再展示"AI生成音乐/宫音为主/本次"等重复文案） ----
+// music_ref.source_type 区分 generated 与 matched_fallback（数据层区分，不伪装实时生成），
+// 但不在用户界面上重复展示来源/主音标签。
 function mockMusic(sourceType) {
   return {
     page: "player",
     music_ref: { music_id: "asset_mock_001", source_type: sourceType || "generated" },
-    title: "宫调·静心",
+    title: "静水流深",
     stream_url: "/static/music/jiao-demo.wav", // mock：本地示例音频（仅显式 mock/hybrid 模式）
     duration_seconds: 300,
-    source_label: sourceType === "matched" ? "审核曲库匹配音乐" : "AI生成音乐",
-    tone_label: "宫音为主",
     instrument_labels: ["古琴", "洞箫"],
     favorite: false,
     disclaimer: "音乐调养不能替代专业医疗或心理帮助。",
@@ -1137,9 +1186,8 @@ const mockApi = {
 
 // ===== 对外接口（按模式分发） =====
 
-// 频率题 0..4 选项标签（权威清单同源，页面渲染 frequency_0_4 题型使用）
-export { FREQUENCY_OPTIONS }
-
+// V3.1 冻结问卷（3.0.1）：频率题选项文案内嵌于每题 options，
+// 不再提供跨题通用的 FREQUENCY_OPTIONS。
 export const apiV3 = {
   MODE,
   // hybrid 模式下 Agent 段为 mock 演示数据：页面需显示"演示数据"标识
@@ -1191,9 +1239,11 @@ export const apiV3 = {
     return mockApi.submitQuestionnaire(answers)
   },
 
-  // 评估（依赖后端综合评估能力，尚未交付）
+  // 评估：V3.1 冻结基线已交付 POST /api/v3/assessments。
+  // document_only（有资料+不填问卷）可直接创建；问卷路径依赖问卷提交端点（未交付）。
+  // 评估读取/确认（近期状态总结）端点未交付：real 如实等待。
   createAssessment() {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估"))
+    if (!AGENT_MOCK) return realInputApi.createAssessment()
     return mockApi.createAssessment()
   },
   getAssessment() {

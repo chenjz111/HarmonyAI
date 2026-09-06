@@ -1,20 +1,22 @@
 <script>
 /**
- * V3.1 五脏状态问卷页（Issue #100：10 题分 5 页，每页 2 题）
- * 合同依据：frontend-read-model-contract-v3.md §6 QuestionnaireReadModel
- *          harmonyai-v3-owner-flow-amendment-001.md §2 / §4.3
- *          knowledge/v3/questionnaire-v3.0.json（权威清单，前端不内置另一套题目）
+ * V3.1 五脏状态问卷页（10 题分 5 页，每页 2 题）
+ * 合同依据（V3.1_FREEZE_BASELINE 83fe2f4）：
+ *   - docs/product/app-v3.1-teacher-user-flow.md §5/§6（唯一 USER-FACING FLOW）
+ *   - knowledge/v3/questionnaire-v3.0.1.json（唯一可执行问卷，checksum 69a01d…）
+ *   - backend/app/schemas/v3/flow_v31.py QuestionnaireResult（q01-q10 完整有序提交）
  *
- * - 题目数据来自权威清单模块（与后端同源），频率题渲染 FREQUENCY_OPTIONS
- * - 展示分页：PAGE_SIZE = 2，共 5 步（进度以页为单位 1/5 ~ 5/5）；提交时仍一次性提交全部答案
- * - 无资料模式：必填，全部 10 题完成才能提交（不能跳过）
- * - 有资料模式：整份选填，可跳过；一旦进入作答，本页 2 题都完成后才能进入下一页
+ * - 题目与选项文案来自权威清单模块（与后端同源，逐字一致，前端不维护第二套）
+ * - 频率题（q01-q05）选项文案内嵌于每题 options（V3.0.1：每题 5 个个性化文案）
+ * - 展示分页：PAGE_SIZE = 2，共 5 步（进度以页为单位 1/5 ~ 5/5）；提交时一次性提交全部答案
+ * - 冻结规则：Q1-Q10 全部必答，问卷内不提供跳过出口
+ *   （"是否填写问卷"的选择在资料摘要后的轻量选择页完成）
  * - real 模式下提交/评估依赖后端综合评估能力（尚未交付）：
  *   捕获 AGENT_PENDING 后进入明确等待状态，不伪造结果、不静默失败
  *
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
-import { apiV3, FREQUENCY_OPTIONS } from "../../common/api-v3.js"
+import { apiV3 } from "../../common/api-v3.js"
 import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 const PAGE_SIZE = 2 // V3.1：每页展示 2 题
@@ -26,14 +28,13 @@ export default {
       loading: true,
       error: "",
       schema: null,
-      required: false, // 无资料模式=true
+      withDocument: false, // 会话来源：有资料流程（仅用于步骤标签显示）
       current: 0, // 当前页索引（每页 PAGE_SIZE 题）
       answers: {}, // { question_id: number | [option_code, ...] }
       submitting: false,
       submittingAssessment: false,
       agentPending: false, // real 模式：等待后端综合评估能力接入
       simulated: false, // hybrid/mock：演示数据标识
-      frequencyOptions: FREQUENCY_OPTIONS,
     }
   },
   computed: {
@@ -77,15 +78,13 @@ export default {
       this.loading = true
       this.error = ""
       try {
-        // 必填性必须读取当前权威 Session —— schema.required_for_flow 是历史
-        // 冗余字段，不能作为唯一来源；防止过期的本地缓存 / 上一个会话的选项
-        // 误判当前 10 题的必填性（强制读取 session.input_mode）
+        // 会话来源仅用于步骤标签显示；冻结规则下 Q1-Q10 一旦进入问卷全部必答
         const [schema, session] = await Promise.all([
           apiV3.getQuestionnaireSchema(),
           apiV3.getSession(),
         ])
         this.schema = schema
-        this.required = !!session && session.input_mode !== "with_document"
+        this.withDocument = !!session && session.input_mode === "with_document"
         this.simulated = !!apiV3.AGENT_SIMULATED
         this.current = 0
         this.answers = {}
@@ -113,11 +112,11 @@ export default {
       const a = this.answers[q.question_id]
       return typeof a === "number" ? a : null
     },
-    // 频率题：单选 0..4（再点一次同选项可取消）
+    // 频率题：单选 0..4（按权威清单 score 取值；再点一次同选项可取消）
     selectFrequency(q, option) {
       const qid = q.question_id
       const cur = this.answers[qid]
-      this.answers[qid] = typeof cur === "number" && cur === option.value ? null : option.value
+      this.answers[qid] = typeof cur === "number" && cur === option.score ? null : option.score
     },
     // 多选题：处理"都很少出现"互斥（is_none + exclusive_with）
     toggleOption(q, option) {
@@ -170,25 +169,8 @@ export default {
         this.submitting = false
       }
     },
-    // V3.1 复审修订：有资料用户**跳过**问卷时，直接进入状态总结确认
-    // （v3-confirm）—— 不显示疗愈诉求页（v3-goal）。意图与行为一致：
-    // "整份选填、不需引导再做选择"的用户无需额外的偏好页。
-    async skip() {
-      if (this.required || this.submitting) return
-      try {
-        // 直接尝试推进到"完成近期状态总结"；评估依赖后端能力时如实报错。
-        await apiV3.createAssessment()
-        uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
-      } catch (e) {
-        if (e && e.agentPending) {
-          // 综合评估能力未接入：保留问卷的等待卡
-          this.agentPending = true
-          return
-        }
-        uni.showToast({ title: e.message || "操作失败，请重试", icon: "none" })
-      }
-    },
-    // V3.1：完成 10 题走"提交→评估→选填疗愈诉求"路径
+    // V3.1 冻结流程：完成 10 题 → 提交 → 评估 → 选填疗愈诉求 → 近期状态总结。
+    // 问卷内不再提供跳过出口（"是否填写问卷"的选择已前移到轻量选择页）。
     async goAssessment() {
       this.submittingAssessment = true
       try {
@@ -206,13 +188,6 @@ export default {
       } finally {
         this.submittingAssessment = false
       }
-    },
-    // V3.1 复审修订：有资料用户**跳过**问卷，不再经过疗愈诉求（Goal）页，
-    // 直接进入"完成近期状态总结"（v3-confirm）。无资料用户这条分支永远走不到
-    // （required 守卫阻断 + skip-row 仅在 !required 时渲染）。
-    skipToFinalConfirm() {
-      if (this.required || this.submitting) return
-      uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
     },
     // submit 阶段的 AGENT_PENDING：同样进入等待状态
     handleAgentPending(e) {
@@ -236,7 +211,7 @@ export default {
             <text class="stage-seal-text">问</text>
           </view>
           <view class="header-titles">
-            <text class="step-tag">{{ required ? "无资料流程 · 第 2 步 · 必填" : "有资料流程 · 第 4 步 · 选填" }}</text>
+            <text class="step-tag">{{ withDocument ? "有资料流程 · 第 4 步 · 必答" : "无资料流程 · 第 2 步 · 必答" }}</text>
             <text class="page-title han-title-brush revealed">{{ schema ? schema.title : "五脏状态问卷" }}</text>
           </view>
         </view>
@@ -303,21 +278,21 @@ export default {
           >
             <view class="q-card-head">
               <text class="q-index">第 {{ pageStartIndex + i + 1 }} 题 · 共 {{ total }} 题</text>
-              <text v-if="required" class="q-required">必答</text>
+              <text class="q-required">必答</text>
             </view>
             <text class="q-prompt">{{ q.prompt }}</text>
 
-            <!-- 频率题（q01-q05）：单选 0..4 -->
+            <!-- 频率题（q01-q05）：单选 0..4，选项文案内嵌于每题（V3.0.1） -->
             <view v-if="isFrequency(q)" class="q-options">
               <view
-                v-for="opt in frequencyOptions"
-                :key="'f' + q.question_id + opt.value"
+                v-for="opt in q.options"
+                :key="'f' + q.question_id + opt.score"
                 class="q-option"
-                :class="{ 'q-option-active': currentFrequencyValue(q) === opt.value }"
+                :class="{ 'q-option-active': currentFrequencyValue(q) === opt.score }"
                 @click="selectFrequency(q, opt)"
               >
-                <view class="q-radio" :class="{ 'q-radio-active': currentFrequencyValue(q) === opt.value }">
-                  <view v-if="currentFrequencyValue(q) === opt.value" class="q-radio-dot"></view>
+                <view class="q-radio" :class="{ 'q-radio-active': currentFrequencyValue(q) === opt.score }">
+                  <view v-if="currentFrequencyValue(q) === opt.score" class="q-radio-dot"></view>
                 </view>
                 <text class="q-option-label">{{ opt.label }}</text>
               </view>
@@ -367,12 +342,9 @@ export default {
           </view>
         </view>
 
-        <!-- 有资料模式：跳过整份问卷；跳过 = 直接进入状态总结确认，不经过疗愈诉求页 -->
-        <view v-if="!required" class="skip-row" @click="skip">
-          <text class="skip-text">跳过问卷，直接进入状态总结</text>
-        </view>
-        <view v-else class="must-note">
-          <text class="must-note-text">无资料流程需要完成全部 {{ total }} 题后才能继续 · 已答 {{ answeredCount }} / {{ total }}</text>
+        <!-- 冻结规则：Q1-Q10 全部必答，问卷内无跳过出口 -->
+        <view class="must-note">
+          <text class="must-note-text">需要完成全部 {{ total }} 题后才能继续 · 已答 {{ answeredCount }} / {{ total }}</text>
         </view>
       </view>
     </view>
@@ -569,17 +541,6 @@ export default {
   opacity: 0.5;
   box-shadow: none;
   background: var(--text-disabled);
-}
-.skip-row {
-  display: flex;
-  justify-content: center;
-  margin-top: 36rpx;
-  padding: 12rpx 0;
-}
-.skip-text {
-  color: var(--text-muted);
-  font-size: 26rpx;
-  text-decoration: underline;
 }
 .must-note {
   display: flex;

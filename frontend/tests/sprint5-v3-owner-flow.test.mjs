@@ -53,7 +53,6 @@ test("V3 owner-flow pages are all registered", () => {
     "pages/v3-material-error/v3-material-error",
     "pages/v3-summary/v3-summary",
     "pages/v3-supplement/v3-supplement",
-    "pages/v3-narrative/v3-narrative",
     "pages/v3-questionnaire/v3-questionnaire",
     "pages/v3-goal/v3-goal",
     "pages/v3-confirm/v3-confirm",
@@ -65,7 +64,10 @@ test("V3 owner-flow pages are all registered", () => {
     assert.ok(routes.includes(route), `missing V3 route: ${route}`)
     assert.ok(existsSync(resolve(frontendRoot, `${route}.vue`)), `missing V3 page: ${route}`)
   }
-  // Issue #100：entry 是启动首页（见 pages[0]）
+  // V3.1 冻结：自由描述页（v3-narrative）从用户流程与路由中删除
+  assert.ok(!routes.includes("pages/v3-narrative/v3-narrative"), "narrative page must be removed from routes")
+  assert.ok(!existsSync(resolve(frontendRoot, "pages/v3-narrative/v3-narrative.vue")), "narrative page file must be deleted")
+  // entry 是启动首页（pages[0]）
   assert.equal(routes[0], "pages/entry/entry", "entry must be the launch home page")
 })
 
@@ -90,12 +92,25 @@ test("Sprint 3/4 legacy routes remain (compatibility not removed)", () => {
 
 // ===== Owner Amendment 文案约束（Sprint 5 组长指令版本） =====
 
-test("entry page uses the approved dual-entry wording", () => {
+test("entry page uses the frozen dual-entry wording (V3.1 freeze §3)", () => {
   const entry = readPage("entry/entry.vue")
-  assert.ok(entry.includes("我有近期就诊资料"), "entry must use approved wording: with document")
-  assert.ok(entry.includes("我没有近期就诊资料"), "entry must use approved wording: without document")
-  assert.ok(!entry.includes("有近期材料"), "obsolete wording must not appear")
-  assert.ok(!entry.includes("无近期材料"), "obsolete wording must not appear")
+  // 冻结首页两张入口卡片：我有就诊资料（上传资料）/ 我没有就诊资料（填写问卷）
+  assert.ok(entry.includes("我有就诊资料"), "entry must use frozen wording: with document")
+  assert.ok(entry.includes("我没有就诊资料"), "entry must use frozen wording: without document")
+  assert.ok(entry.includes("上传资料"), "with-document card auxiliary text")
+  assert.ok(entry.includes("填写问卷"), "without-document card auxiliary text")
+  // 冻结 §1/§5：无资料入口直接进问卷，不经过任何描述/补充页
+  assert.ok(
+    entry.includes('"/pages/v3-questionnaire/v3-questionnaire"'),
+    "without-document entry must route directly to the questionnaire",
+  )
+  assert.ok(
+    !entry.includes("/pages/v3-supplement/v3-supplement"),
+    "home must not route into the supplement page",
+  )
+  // 冻结 §3 首页副标语
+  assert.ok(entry.includes("了解你的近况"), "frozen hero line 1")
+  assert.ok(entry.includes("为你生成专属音乐"), "frozen hero line 2")
 })
 
 test("V3.1: material page uploads 1-3 files; OCR failure routes to the standalone error page", () => {
@@ -116,14 +131,28 @@ test("V3.1: material page uploads 1-3 files; OCR failure routes to the standalon
   )
 })
 
-test("OCR failure page (v3-material-error) follows Amendment 3.1 + Sprint 5 wording", () => {
+test("OCR failure page (v3-material-error) uses the frozen unified wording (freeze §4.2)", () => {
   const errPage = readPage("v3-material-error/v3-material-error.vue")
-  assert.ok(errPage.includes("资料暂未识别成功"), "failure title")
-  assert.ok(errPage.includes("重新上传资料"), "primary action")
-  assert.ok(errPage.includes("暂不使用资料，通过描述和问卷继续"), "secondary action (Sprint 5 wording)")
-  assert.ok(errPage.includes("描述可以跳过，状态问卷需要完成"), "side note")
-  // 暂不使用资料必须调用后端 Input Transition（discard_document），不是前端隐藏
+  // 冻结统一异常页标题与说明
+  assert.ok(errPage.includes("这份资料暂时无法用于本次分析"), "frozen failure title")
+  assert.ok(
+    errPage.includes("未识别到与本次状态评估相关的有效信息"),
+    "frozen failure description",
+  )
+  // 冻结按钮：重新选择资料 / 我没有合适的资料
+  assert.ok(errPage.includes("重新选择资料"), "frozen primary action")
+  assert.ok(errPage.includes("我没有合适的资料"), "frozen secondary action")
+  // 禁用的误导性说法（冻结 §4.2）
+  assert.ok(!errPage.includes("病例无效"), "must not say invalid medical record")
+  assert.ok(!errPage.includes("诊断失败"), "must not say diagnosis failed")
+  assert.ok(!errPage.includes("医学错误"), "must not say medical error")
+  // 我没有合适的资料必须调用后端 Input Transition（discard_document），不是前端隐藏
   assert.ok(errPage.includes("discardDocument"), "must call backend input transition")
+  // 冻结 §4.2/§5：转无资料流程直接进问卷（不经描述/补充页）
+  assert.ok(
+    errPage.includes('"/pages/v3-questionnaire/v3-questionnaire"'),
+    "no-suitable-document must route directly to the questionnaire",
+  )
   // 网络错误与 OCR 失败分流（?type=network）
   assert.ok(errPage.includes('query.type === "network"'), "must distinguish network error from OCR failure")
   // 原内嵌失败卡片已从 material 页移除
@@ -131,19 +160,25 @@ test("OCR failure page (v3-material-error) follows Amendment 3.1 + Sprint 5 word
   assert.ok(!material.includes("资料暂未识别成功"), "failure copy must live on the error page, not material")
 })
 
-test("summary page exposes the four approved actions (Sprint 5 wording)", () => {
+test("summary page exposes the three frozen actions (freeze §4.3)", () => {
   const summary = readPage("v3-summary/v3-summary.vue")
+  // 冻结：信息无误 / 修改内容 / 重新上传（discard 已前移到异常页，不再出现在摘要页）
   assert.ok(summary.includes("资料摘要基本无误"), "primary action")
   assert.ok(summary.includes("修改资料摘要"), "edit action")
   assert.ok(summary.includes("重新上传资料"), "reupload action")
-  assert.ok(summary.includes("暂不使用这份资料，继续评估"), "discard action")
   assert.ok(summary.includes("保存修改并继续"), "editor save")
   assert.ok(summary.includes("取消修改"), "editor cancel")
   assert.ok(summary.includes("edited_summary_text"), "editor must submit edited_summary_text")
   assert.ok(summary.includes("reprocess_requested"), "editor must set reprocess_requested")
-  assert.ok(summary.includes("discardDocument"), "discard must call backend input transition")
+  // 冻结流程图 §11：摘要页没有"暂不使用资料"出口
+  assert.ok(!summary.includes("暂不使用这份资料"), "discard action must not appear on the summary page")
   // FACT_EXTRACTION_UNAVAILABLE 友好处理
   assert.ok(summary.includes("FACT_EXTRACTION_UNAVAILABLE"), "must handle FACT_EXTRACTION_UNAVAILABLE")
+  // 确认后进入轻量选择页（想再补充一些近况吗？）
+  assert.ok(
+    summary.includes('"/pages/v3-supplement/v3-supplement"'),
+    "confirm must route to the lightweight choice page",
+  )
 })
 
 test("V3 pages do not leak internal fields to users", () => {
@@ -193,42 +228,22 @@ test("P1-3: tabBar and feedback go-home route to V3 pages, never Sprint 3", () =
   assert.ok(routes.includes("pages/player/player"), "legacy player page remains for compatibility")
 })
 
-test("P0-1: narrative voice input never fabricates transcripts outside explicit mock", () => {
-  const src = readPage("v3-narrative/v3-narrative.vue")
-  // 语音入口按显式 mock 模式分流：INPUT_SIMULATED 才提供模拟转写
-  assert.ok(src.includes("voiceSimulated: apiV3.INPUT_SIMULATED"), "voice must be gated by explicit mock mode")
-  assert.ok(src.includes('v-if="voiceSimulated"'), "recording UI must be inside the simulated branch")
-  assert.ok(src.includes("语音描述暂不可用"), "non-mock mode must show voice-unavailable notice")
-  // 模拟转写必须标注演示数据，不得伪装成真实 ASR 结果
-  assert.ok(src.includes("演示数据"), "simulated transcript must be labeled as demo data")
-})
-
-test("P1-1: with-document narrative keeps honest local-save wording (backend gap)", () => {
-  const src = readPage("v3-narrative/v3-narrative.vue")
-  assert.ok(
-    src.includes("保存在本机"),
-    "with-document path must tell users the text is saved locally (append-source is a backend gap)",
-  )
-  // 本机暂存提示只能出现在有资料路径（无资料路径为真实提交，不得使用暂存话术）
-  assert.ok(
-    /v-if="!voiceSimulated && withDocument"/.test(src),
-    "local-save note must be scoped to the with-document path",
-  )
-})
-
-test("narrative real submission: without-document path submits on continue (Sprint 5 review fix)", () => {
-  const src = readPage("v3-narrative/v3-narrative.vue")
-  // 无资料路径必须调用真实提交（narrative 源 → Understanding → 确认绑定会话）
-  assert.ok(src.includes("apiV3.submitNarrative"), "narrative page must call the real submission API")
-  // 提交失败必须如实报错并停留本页（不静默当作已提交）
-  assert.ok(src.includes("提交失败"), "submission failure must surface an honest error and stay on page")
-  // API 层必须存在真实提交实现（POST /api/v3/understandings + narrative inline text + confirm）
+test("V3.1 freeze: free-text narrative page is deleted from the user flow (freeze §1/§5)", () => {
+  // 冻结 teacher-user-flow §1/§5：原"说说最近发生了什么"自由描述页删除，
+  // 有资料和无资料流程都不再经过文字或语音描述页。
+  const narrativePage = resolve(frontendRoot, "pages/v3-narrative/v3-narrative.vue")
+  assert.ok(!existsSync(narrativePage), "v3-narrative page file must be deleted")
+  assert.ok(!routes.includes("pages/v3-narrative/v3-narrative"), "v3-narrative route must be removed")
+  // 轻量选择页（v3-supplement）不得包含任何文字/语音输入
+  const supplement = readPage("v3-supplement/v3-supplement.vue")
+  assert.ok(!supplement.includes("<textarea"), "choice page must not contain text input")
+  assert.ok(!supplement.includes("录音"), "choice page must not contain voice input")
+  // API 层保留真实 narrative 提交能力（后端 Understanding 契约），但用户流程不触达
   const apiSrc = readFileSync(resolve(frontendRoot, "common/api-v3.js"), "utf8")
   assert.ok(
     /async submitNarrative[\s\S]*?source_type: "narrative"[\s\S]*?decision: "confirm"/.test(apiSrc),
-    "api-v3 must implement real narrative submission (create + auto-confirm)",
+    "api-v3 must keep the real narrative submission implementation (backend contract)",
   )
-  // 有资料路径后端缺口必须如实报错，不把本机暂存伪装成已提交
   assert.ok(
     apiSrc.includes("NARRATIVE_APPEND_UNSUPPORTED"),
     "with-document append must fail honestly instead of faking submission",
@@ -280,12 +295,12 @@ test("P0-3: backend audio streams are fetched with auth headers before playback"
   )
 })
 
-test("P0-2: upload failures still offer the describe-and-questionnaire path", () => {
-  // V3.1：网络/OCR 失败收敛到独立异常页，出口同样提供"不用资料继续"，避免用户被卡死
+test("P0-2: upload failures still offer the questionnaire-only path (freeze §4.2)", () => {
+  // V3.1 冻结：网络/OCR 失败收敛到独立异常页，"我没有合适的资料"转入无资料问卷流程
   const errPage = readPage("v3-material-error/v3-material-error.vue")
   assert.ok(
-    errPage.includes("暂不使用资料，通过描述和问卷继续"),
-    "error page must offer the continue-without-material action",
+    errPage.includes("我没有合适的资料"),
+    "error page must offer the no-suitable-document action",
   )
   assert.ok(
     errPage.includes("switchToQuestionnaire"),
@@ -303,7 +318,6 @@ test("P1-2: V3 pages and API errors use stable user copy without internal dev in
     "v3-summary/v3-summary.vue",
     "v3-supplement/v3-supplement.vue",
     "v3-goal/v3-goal.vue",
-    "v3-narrative/v3-narrative.vue",
     "v3-questionnaire/v3-questionnaire.vue",
     "v3-confirm/v3-confirm.vue",
     "v3-basis/v3-basis.vue",
@@ -344,7 +358,6 @@ test("no music goal wording or fields in V3 flow", () => {
     "v3-summary/v3-summary.vue",
     "v3-supplement/v3-supplement.vue",
     "v3-goal/v3-goal.vue",
-    "v3-narrative/v3-narrative.vue",
     "v3-questionnaire/v3-questionnaire.vue",
     "v3-confirm/v3-confirm.vue",
     "v3-basis/v3-basis.vue",
@@ -377,36 +390,44 @@ test("V3.1: final confirm is titled 完成近期状态总结 and sits after opti
   assert.ok(goal.includes('"/pages/v3-confirm/v3-confirm"'), "goal page must route to the final confirm")
 })
 
-test("V3.1: with-document skip in questionnaire bypasses goal and lands on confirm", () => {
-  // 复审修订：有资料用户**跳过**问卷时，直接进入"完成近期状态总结"（v3-confirm），
-  // 不经过疗愈诉求（v3-goal）。无资料用户这条分支走不到（required 守卫 + skip-row
-  // 仅在 !required 时渲染）。
+test("V3.1 freeze: questionnaire has no skip exit; Q1-Q10 are all mandatory (freeze §5/§6)", () => {
+  // 冻结：Q1-Q10 全部必答，不可跳过；"是否填写问卷"的选择前移到轻量选择页
   const questionnaire = readPage("v3-questionnaire/v3-questionnaire.vue")
-  // skip 的"继续"路径必须包含 v3-confirm
+  assert.ok(!questionnaire.includes("skipToFinalConfirm"), "skipToFinalConfirm must be removed")
   assert.ok(
-    questionnaire.includes('"/pages/v3-confirm/v3-confirm"'),
-    "skip path must land on v3-confirm",
+    !/async skip\(\)/.test(questionnaire),
+    "skip() method must be removed from the questionnaire",
   )
-  // 提取 skip() 函数体，单独断言其内 redirectTo 目标
-  const m = questionnaire.match(/async skip\(\)\s*\{[\s\S]*?\n\s{4}\}/)
-  assert.ok(m, "skip() method must exist in v3-questionnaire")
-  const skipBody = m[0]
-  assert.ok(skipBody.includes("/pages/v3-confirm/v3-confirm"), "skip() must redirect to v3-confirm")
+  assert.ok(!questionnaire.includes("跳过问卷"), "no skip wording in the questionnaire UI")
+  // 完成路径：提交 → 评估 → 疗愈诉求 → 近期状态总结
   assert.ok(
-    !skipBody.includes("/pages/v3-goal/v3-goal"),
-    "skip() must not route to v3-goal",
+    questionnaire.includes('"/pages/v3-goal/v3-goal"'),
+    "submit path must route to the goal page",
   )
-  // 守卫：required 或 submitting 时 skip 立即返回
-  assert.match(
-    skipBody,
-    /if\s*\(this\.required\s*\|\|\s*this\.submitting\)\s*return/,
-    "skip() must guard against required or in-flight state",
+  // "是否填写问卷"的选择在轻量选择页（v3-supplement）完成
+  const supplement = readPage("v3-supplement/v3-supplement.vue")
+  assert.ok(supplement.includes("想再补充一些近况吗？"), "choice page title (freeze §4.4)")
+  assert.ok(
+    supplement.includes("填写问卷可以帮助我们更完整地了解你最近的状态。"),
+    "choice page description (freeze §4.4)",
+  )
+  assert.ok(
+    supplement.includes('"/pages/v3-questionnaire/v3-questionnaire"'),
+    "choice: fill questionnaire routes to v3-questionnaire",
+  )
+  assert.ok(
+    supplement.includes('"/pages/v3-basis/v3-basis"'),
+    "choice: continue-directly routes to v3-basis (document_only, no second confirmation)",
+  )
+  // document_only：直接继续不经过 近期状态总结（v3-confirm）
+  assert.ok(
+    !supplement.includes('"/pages/v3-confirm/v3-confirm"'),
+    "direct-continue must NOT route through v3-confirm",
   )
 })
 
-test("V3.1: questionnaire required comes from authoritative session, not stale cache", () => {
-  // 复审修订：必填性必须读当前权威 Session，防止 schema.required_for_flow / 本地缓存 /
-  // 上一个会话的选项误判当前 10 题。
+test("V3.1 freeze: questionnaire step label reads session input_mode for display only", () => {
+  // 冻结规则下 Q1-Q10 无条件必答；session.input_mode 仅用于步骤标签显示
   const questionnaire = readPage("v3-questionnaire/v3-questionnaire.vue")
   assert.match(
     questionnaire,
@@ -415,13 +436,14 @@ test("V3.1: questionnaire required comes from authoritative session, not stale c
   )
   assert.match(
     questionnaire,
-    /session\.input_mode\s*!==\s*["']with_document["']/,
-    "required must be derived from session.input_mode",
+    /session\.input_mode\s*===\s*["']with_document["']/,
+    "withDocument display flag must be derived from session.input_mode",
   )
   assert.ok(
-    !/this\.required\s*=\s*!!this\.schema\.required_for_flow/.test(questionnaire),
-    "schema.required_for_flow must no longer be the source of truth",
+    !/this\.required\s*=/.test(questionnaire),
+    "no conditional required flag: Q1-Q10 are unconditionally mandatory",
   )
+  assert.ok(questionnaire.includes("必答"), "questions must be marked mandatory")
 })
 
 test("V3.1: goal page is an optional healing-intent page without removed goal concepts", () => {
@@ -684,11 +706,18 @@ test("feedback page: mutex adjustment groups match backend contract", () => {
 
 // ===== 问卷题型（权威清单） =====
 
-test("questionnaire page renders frequency questions from the canonical manifest", () => {
+test("questionnaire page renders per-question options from the canonical manifest (v3.0.1)", () => {
   const page = readPage("v3-questionnaire/v3-questionnaire.vue")
-  assert.ok(page.includes("FREQUENCY_OPTIONS"), "page must import FREQUENCY_OPTIONS")
+  // V3.0.1：频率题选项文案内嵌于每题 options（每题 5 个个性化文案），
+  // 不再使用跨题通用的 FREQUENCY_OPTIONS
+  assert.ok(!page.includes("FREQUENCY_OPTIONS"), "page must not use generic FREQUENCY_OPTIONS")
   assert.ok(page.includes("frequency_0_4"), "page must branch on frequency question type")
   assert.ok(page.includes("answer_type"), "page must dispatch by answer_type")
+  assert.ok(
+    page.includes('v-for="opt in q.options"'),
+    "frequency options must render from each question's own options",
+  )
+  assert.ok(page.includes("opt.score"), "frequency selection must use the authoritative score")
 })
 
 test("V3.1: questionnaire is paginated 5 pages x 2 questions with step progress", () => {
@@ -707,17 +736,33 @@ test("V3.1: questionnaire is paginated 5 pages x 2 questions with step progress"
   assert.ok(page.includes("submitQuestionnaire(this.answers)"), "submit must send the whole answer set once")
 })
 
-test("manifest matches the authoritative questionnaire structure", async () => {
-  const { apiV3, FREQUENCY_OPTIONS } = await import("../common/api-v3.js")
+test("manifest matches the frozen questionnaire v3.0.1 structure (checksum 69a01d…)", async () => {
+  const { apiV3 } = await import("../common/api-v3.js")
   const schema = await apiV3.getQuestionnaireSchema()
   assert.equal(schema.questions.length, 10)
   const freq = schema.questions.filter((q) => q.answer_type === "frequency_0_4")
   const multi = schema.questions.filter((q) => q.answer_type === "multi_choice_evidence")
   assert.equal(freq.length, 5, "q01-q05 are frequency questions")
   assert.equal(multi.length, 5, "q06-q10 are multi-choice questions")
-  assert.equal(FREQUENCY_OPTIONS.length, 5, "5 frequency labels (0..4)")
-  assert.ok(schema.content_checksum, "manifest checksum required")
+  // V3.0.1 冻结版本标识与 checksum（与 knowledge/v3/questionnaire-v3.0.1.json 一致）
+  assert.equal(schema.schema_version, "3.0.1", "frozen schema_version 3.0.1")
+  assert.equal(schema.manifest_version, "medical_v3.0.1", "frozen manifest_version medical_v3.0.1")
+  assert.equal(
+    schema.content_checksum,
+    "sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031",
+    "frozen content checksum",
+  )
   assert.equal(schema.schema_id, "questionnaire_v3")
+  // 每道频率题含 5 个个性化选项（V3.0.1 新增）
+  for (const q of freq) {
+    assert.equal(q.options.length, 5, `${q.question_id} must have 5 per-question options`)
+    assert.ok(q.options.every((o) => typeof o.label === "string" && o.label), "options need labels")
+  }
+  // user_goal 疗愈诉求配置（7 code，max_selections=2，custom ≤200）
+  assert.ok(schema.user_goal, "frozen user_goal section required")
+  assert.equal(schema.user_goal.options.length, 7)
+  assert.equal(schema.user_goal.max_selections, 2)
+  assert.equal(schema.user_goal.custom_goal_text.max_length, 200)
 })
 
 // ===== api-v3 mock 状态机行为（显式 mock 模式） =====
@@ -843,7 +888,19 @@ test("api-v3 mock: confirmed assessment unlocks music basis and generation", asy
   await apiV3.confirmAssessment({ expected_revision: 1, decision: "confirm", changes: [] })
 
   const basis = await apiV3.getMusicBasis()
-  assert.ok(basis.tendency.disclaimer.includes("不构成医学诊断"))
+  // 冻结 FiveToneAnalysisReadModel（flow_v31.py）字段全覆盖
+  assert.ok(basis.confirmed_state, "confirmed_state (近期状态) required")
+  assert.ok(basis.state_tendency, "state_tendency (状态分析) required")
+  assert.ok(basis.analysis_rationales.length >= 1, "analysis_rationales (分析依据) required")
+  assert.ok(basis.primary_tone.display_name, "primary_tone with display_name required")
+  assert.ok(basis.primary_tone.explanation, "primary_tone needs a reason")
+  assert.ok(basis.secondary_tone === null || basis.secondary_tone.explanation, "secondary_tone optional but needs a reason when present")
+  assert.ok(basis.bpm.value >= 40 && basis.bpm.value <= 120, "bpm.value within frozen range")
+  assert.ok(basis.bpm.explanation, "bpm needs a reason")
+  assert.ok(basis.instruments.values.length >= 1 && basis.instruments.explanation, "instruments with reason")
+  assert.ok(basis.ambience.values.length >= 1 && basis.ambience.explanation, "ambience with reason")
+  assert.ok(basis.duration.seconds > 0 && basis.duration.explanation, "duration with reason")
+  assert.ok(basis.disclaimer.includes("不构成医学诊断"), "disclaimer must state no medical diagnosis")
 
   let task = await apiV3.startMusicGeneration()
   assert.ok(["queued", "running"].includes(task.status))
@@ -858,6 +915,9 @@ test("api-v3 mock: confirmed assessment unlocks music basis and generation", asy
   assert.ok(music.stream_url, "player needs stream_url")
   assert.ok(music.disclaimer.includes("不能替代专业"))
   assert.ok(music.music_ref && music.music_ref.music_id, "favorites need music_ref.music_id")
+  // 冻结 §9：播放器不再展示"AI生成音乐/宫音为主"等重复文案
+  assert.ok(!("source_label" in music), "player model must not carry source_label")
+  assert.ok(!("tone_label" in music), "player model must not carry tone_label")
 })
 
 test("api-v3 mock: revision conflict rejected on understanding confirm", async () => {
@@ -900,7 +960,7 @@ test("api-v3 real mode (default): agent functions return AGENT_PENDING without f
     assert.equal(apiV3.INPUT_SIMULATED, false, "real mode must not simulate input (voice transcript)")
 
     // 智能化能力（后端尚未交付）：明确等待状态
-    for (const fn of ["submitQuestionnaire", "createAssessment", "getAssessment", "getMusicBasis"]) {
+    for (const fn of ["submitQuestionnaire", "getAssessment", "getMusicBasis"]) {
       await assert.rejects(
         () => apiV3[fn](),
         (e) => e.code === "AGENT_PENDING" && e.agentPending === true && !e.message.includes("PR"),
@@ -911,6 +971,13 @@ test("api-v3 real mode (default): agent functions return AGENT_PENDING without f
       () => apiV3.startMusicGeneration(),
       (e) => e.code === "AGENT_PENDING",
       "music generation depends on the syndrome-analysis capability (not yet delivered)",
+    )
+    // V3.1 冻结基线已交付 POST /api/v3/assessments：real 模式不再返回 AGENT_PENDING，
+    // 而是走真实端点 —— 无会话时如实报 SESSION_NOT_FOUND（不伪造成功）
+    await assert.rejects(
+      () => apiV3.createAssessment(),
+      (e) => e.code === "SESSION_NOT_FOUND",
+      "real createAssessment must call the delivered endpoint and fail honestly without a session",
     )
   } finally {
     process.env.HARMONYAI_V3_MODE = prev
@@ -976,43 +1043,44 @@ test("V3.1: material page documents the multi-document ownership dependency with
   )
 })
 
-test("V3.1: supplement page documents the narrative endpoint dependency without restoring legacy required rule", () => {
-  // 复审要求：与钟睿宸对齐补充信息字段 / 保存位置 / 调用方式**不擅自恢复旧规则**；
-  // 本页头部必须明确记录该依赖。
+test("V3.1 freeze: supplement page is the lightweight questionnaire choice page (§4.4)", () => {
+  // 冻结：v3-supplement 不再是文字/语音输入页，而是"想再补充一些近况吗？"轻量选择页。
+  // 旧 narrative 依赖注记已随页面删除（自由描述页冻结删除，不再有补充提交语义）。
   const supplement = readPage("v3-supplement/v3-supplement.vue")
-  assert.match(
-    supplement,
-    /等待钟睿宸对齐|与钟睿宸对齐/,
-    "supplement page must surface the alignment owner (钟睿宸) in the header",
-  )
-  assert.match(
-    supplement,
-    /source_type:\s*["']narrative["']|source_type\s*=\s*["']narrative["']/,
-    "supplement header must reference the narrative source_type on /api/v3/understandings",
-  )
-  // V3.1：supplement 整页选填 / 两条路径均可整步跳过 —— 不得恢复旧 narrative 必填规则
+  assert.ok(supplement.includes("想再补充一些近况吗？"), "frozen choice page title")
   assert.ok(
-    !/必填[\s\S]*?narrative|narrative[\s\S]*?必填/.test(
-      supplement
-        // 只看用户可见文案（template 区），防止注释中\"必填\"被误判
-        .match(/<template>[\s\S]*?<\/template>/)[0],
-    ),
-    "supplement template must not reintroduce the legacy narrative required rule",
+    supplement.includes("填写问卷可以帮助我们更完整地了解你最近的状态。"),
+    "frozen choice page description",
   )
-  // 补充近况 fail-fast：失败 / 缺口仍按 apiV3.submitNarrative 抛错（NARRATIVE_APPEND_UNSUPPORTED 等）
-  assert.match(
-    supplement,
-    /apiV3\.submitNarrative/,
-    "supplement must keep calling apiV3.submitNarrative on the no-document path",
+  // 两个出口：填写问卷 / 直接继续
+  assert.ok(supplement.includes("填写问卷"), "fill-questionnaire action")
+  assert.ok(supplement.includes("直接继续"), "continue-directly action")
+  // 不再调用 narrative 提交（页面语义已删除）
+  assert.ok(
+    !supplement.includes("apiV3.submitNarrative"),
+    "choice page must not call narrative submission",
   )
+  // 直接继续 = document_only：先创建评估（内部分析）再进五音调适解析
+  assert.ok(
+    supplement.includes("apiV3.createAssessment"),
+    "continue-directly must create the assessment (internal analysis) before v3-basis",
+  )
+  // 无文字输入、无语音输入
+  assert.ok(!supplement.includes("<textarea"), "no text input on the choice page")
+  assert.ok(!supplement.includes("录音"), "no voice input on the choice page")
 })
 
-test("V3.1: supplement page must not fake successful narrative submission in the with-document gap path", () => {
-  // 接口未确定前**绝不**把本机暂存伪装成已提交（NARRATIVE_APPEND_UNSUPPORTED 错误码保留）
+test("V3.1 freeze: supplement direct-continue creates assessment and never fakes analysis", () => {
   const supplement = readPage("v3-supplement/v3-supplement.vue")
+  // document_only 直接继续必须先真实创建评估；real 模式能力未就绪时进入明确等待态
   assert.match(
     supplement,
-    /NARRATIVE_APPEND_UNSUPPORTED|apiV3\.submitNarrative|提交失败/,
-    "supplement must keep honest failure semantics for the with-document append gap",
+    /agentPending/,
+    "choice page must handle AGENT_PENDING with an explicit waiting state (no faked analysis)",
+  )
+  assert.match(
+    supplement,
+    /e\.agentPending/,
+    "createAssessment failure must be classified as agent-pending, not silently swallowed",
   )
 })

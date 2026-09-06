@@ -37,8 +37,8 @@
 
         <!-- 正常态 -->
         <view v-else class="entry-content ink-fade-up">
-          <text class="hero-title">今天感觉如何？</text>
-          <text class="hero-desc">通过近期资料或状态问卷，生成专属于你的音乐调养建议。</text>
+          <text class="hero-title">了解你的近况</text>
+          <text class="hero-desc">为你生成专属音乐。</text>
 
           <view class="choice-stack">
             <view
@@ -62,7 +62,7 @@
           </view>
 
           <view class="footer-seal-wrap">
-            <text class="footer-hint">若文字方式无法满足 · 全程数据仅用于本次聆听</text>
+            <text class="footer-hint">全程数据仅用于本次聆听</text>
           </view>
         </view>
       </view>
@@ -72,10 +72,15 @@
 
 <script>
 /**
- * V3 首页（双入口选择）
- * 合同依据：frontend-read-model-contract-v3.md §3.1 EntryReadModel
- *          harmonyai-v3-owner-flow-amendment-001.md §2（最终用户流程）
- *          Issue #100：Welcome 退出主流程，entry 直接作为首页。
+ * V3.1 首页（双入口选择）
+ * 合同依据（V3.1_FREEZE_BASELINE 83fe2f4）：
+ *   - docs/product/app-v3.1-teacher-user-flow.md §3（首页只保留核心入口）
+ *   - Issue #111 §2：打开 APP 直接进入首页，不再经过旧 Welcome 页
+ *
+ * 首页两张入口卡片：
+ *   - 我有就诊资料（上传资料）→ 资料上传页
+ *   - 我没有就诊资料（填写问卷）→ 直接进入近期状态问卷
+ * 品牌名称/Logo 为占位（冻结 §13 待设计，不阻塞功能收口）。
  *
  * v2 重写（水墨国风）：
  *   - 全页 .han-page 山水背景
@@ -109,11 +114,12 @@ export default {
         this.entry = {
           page: "entry",
           session_id: session.session_id,
-          title: "今天感觉如何？",
-          description: "通过近期资料或状态问卷，生成专属于你的音乐调养建议。",
+          title: "了解你的近况",
+          description: "为你生成专属音乐。",
+          // 冻结 §3：首页只保留两个核心入口
           choices: [
-            { id: "with_document", label: "我有近期就诊资料", desc: "可上传近期病历、检查报告或相关就诊记录，让建议更贴合你的情况。", route: "/pages/v3-material/v3-material" },
-            { id: "without_document", label: "我没有近期就诊资料", desc: "可以先补充一些近况，也可以直接完成近期状态问卷。", route: "/pages/v3-supplement/v3-supplement" },
+            { id: "with_document", label: "我有就诊资料", desc: "上传资料", route: "/pages/v3-material/v3-material" },
+            { id: "without_document", label: "我没有就诊资料", desc: "填写问卷", route: "/pages/v3-questionnaire/v3-questionnaire" },
           ],
         }
       } catch (e) {
