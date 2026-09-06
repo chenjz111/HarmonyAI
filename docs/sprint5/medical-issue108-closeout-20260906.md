@@ -19,7 +19,7 @@
 | `docs/sprint5/medical-issue108-closeout-20260906.md` | 本说明 | — |
 | `tests/knowledge/test_s5final_medical_assets.py` | #108 §6 Medical Tests（9 项） | — |
 
-## 2. 状态声明（按 Owner review 修正）
+## 2. 状态声明（按 PR #114 评审意见修正）
 
 ### RAG 完成状态（rag-corpus-manifest-v3.1）
 | 项 | 状态 |
@@ -37,7 +37,7 @@
 ### Real / Mock
 - Real Mode Status = **`MEDICAL_ASSET_ONLY / NOT_PRODUCTION_REACHABLE`**（本批为规则与登记资产，无生产可达性）
 
-## 3. 自动化测试（#108 §6 / Owner review 第 1 项）
+## 3. 自动化测试（#108 §6 / 评审意见第 1 项）
 
 文件：`tests/knowledge/test_s5final_medical_assets.py`（9 项）
 
@@ -68,4 +68,4 @@
 
 ## 6. 修订记录
 - R1 自查修订（VALID reason/措辞/label_ref/status_note/source_reference）；
-- R2（Owner review #114）：新增结构化字段（downstream_gate / evidence_role / completion_status）+ 修正 RAG 完成状态表述 + 交付报告更新。
+- R2（按 PR #114 评审意见）：新增结构化字段（downstream_gate / evidence_role / completion_status）+ 修正 RAG 完成状态表述 + 交付报告更新。
