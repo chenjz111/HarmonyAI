@@ -80,7 +80,7 @@ def record_relevance(
     set_row = _owned_document_set(db, principal, request.document_set_id)
 
     # Must target the currently-active set and its real revision.
-    if set_row.status != "active":
+    if set_row.status != "current":
         raise InvalidRelevance(
             "RELEVANCE_SET_NOT_ACTIVE", "该资料集不是当前活动资料集。"
         )

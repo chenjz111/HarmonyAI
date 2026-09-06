@@ -214,7 +214,7 @@ def replace_document_set(
         .first()
     )
     new_revision = (previous.revision + 1) if previous else 1
-    if previous is not None and previous.status == "active":
+    if previous is not None and previous.status == "current":
         previous.status = "superseded"
 
     set_id = f"dset_{uuid.uuid4().hex}"
@@ -223,7 +223,7 @@ def replace_document_set(
         internal_user_pk=principal.internal_user_pk,
         session_row_id=session_row.id,
         revision=new_revision,
-        status="active",
+        status="current",
     )
     db.add(set_row)
     db.flush()
@@ -318,7 +318,7 @@ def get_active_document_set(
         db.query(DocumentSet)
         .filter(
             DocumentSet.session_row_id == session_row.id,
-            DocumentSet.status == "active",
+            DocumentSet.status == "current",
         )
         .order_by(DocumentSet.revision.desc())
         .first()

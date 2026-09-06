@@ -29,7 +29,7 @@ class DocumentSet(Base):
         ),
         CheckConstraint("revision >= 1", name="ck_document_sets_revision"),
         CheckConstraint(
-            "status IN ('active', 'superseded', 'discarded')",
+            "status IN ('current', 'superseded', 'discarded')",
             name="ck_document_sets_status",
         ),
     )

@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 from backend.app.models.session import Session as SessionModel
 from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.models.v3.prescription import PrescriptionV3
-from backend.app.schemas.v3.common import AuthPrincipal, ToneCode, UserGoal
+from backend.app.schemas.v3.common import AuthPrincipal, ToneCode
+from backend.app.schemas.v3.flow_v31 import UserGoalV31
 from backend.app.schemas.v3.prescription import (
     FallbackToneProfile,
     GenerationFallbackPolicy,
@@ -67,7 +68,7 @@ class DiagnosisNotReady(RuntimeError):
 def _conservative_generation_spec(
     diagnosis_id: str,
     preference,
-    user_goal: UserGoal | None,
+    user_goal: UserGoalV31 | None,
 ) -> GenerationSpec:
     tone_profile = FallbackToneProfile(
         schema_version="tone_profile_v3.0",
@@ -84,10 +85,10 @@ def _conservative_generation_spec(
         basis=ToneBasis(diagnosis_id=diagnosis_id, supporting_fact_ids=[]),
         status="fallback",
     )
-    # 疗愈诉求先定基调，历史偏好再微调。
+    # 疗愈诉求先定基调，历史偏好再微调。primary_goal 可空（custom-text-only）。
     bpm = 62
     energy_curve = "平稳舒缓"
-    if user_goal is not None:
+    if user_goal is not None and user_goal.primary_goal is not None:
         bpm = _USER_GOAL_BPM.get(user_goal.primary_goal.value, 68)
         energy_curve = _USER_GOAL_ENERGY.get(
             user_goal.primary_goal.value, "平稳舒缓"
@@ -138,7 +139,7 @@ def _to_schema(row: PrescriptionV3) -> PrescriptionV3Schema:
     )
 
 
-def _session_user_goal(db: Session, session_row_id: int) -> UserGoal | None:
+def _session_user_goal(db: Session, session_row_id: int) -> UserGoalV31 | None:
     session = (
         db.query(SessionModel)
         .filter(SessionModel.id == session_row_id)
@@ -146,7 +147,7 @@ def _session_user_goal(db: Session, session_row_id: int) -> UserGoal | None:
     )
     if session is None or session.user_goal_json is None:
         return None
-    return UserGoal.model_validate(session.user_goal_json)
+    return UserGoalV31.model_validate(session.user_goal_json)
 
 
 def create_prescription(

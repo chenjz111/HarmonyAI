@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS document_sets (
     FOREIGN KEY (session_row_id) REFERENCES sessions(id),
     UNIQUE (session_row_id, document_set_id),
     CHECK (revision >= 1),
-    CHECK (status IN ('active', 'superseded', 'discarded'))
+    CHECK (status IN ('current', 'superseded', 'discarded'))
 );
 CREATE INDEX IF NOT EXISTS ix_document_sets_user
     ON document_sets(internal_user_pk, created_at DESC);

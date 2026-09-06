@@ -306,7 +306,7 @@ def apply_input_transition(
             db.query(DocumentSet)
             .filter(
                 DocumentSet.document_set_id == session_row.active_document_set_id,
-                DocumentSet.status == "active",
+                DocumentSet.status == "current",
             )
             .one_or_none()
         )
@@ -397,7 +397,7 @@ def _approved_questionnaire_manifest() -> dict | None:
 
     manifest_path = (
         Path(__file__).resolve().parents[4]
-        / "knowledge" / "v3" / "questionnaire-v3.0.json"
+        / "knowledge" / "v3" / "questionnaire-v3.0.1.json"
     )
     if not manifest_path.is_file():
         return None
