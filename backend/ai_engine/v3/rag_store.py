@@ -132,15 +132,23 @@ class VersionedRagStore:
         documents = (raw.get("documents") or [[]])[0]
         metadatas = (raw.get("metadatas") or [[]])[0]
         distances = (raw.get("distances") or [[]])[0]
+        ids = (raw.get("ids") or [[]])[0]
         hits: list[RagHit] = []
-        for document, metadata, distance in zip(documents, metadatas, distances):
+        for index, (document, metadata, distance) in enumerate(
+            zip(documents, metadatas, distances)
+        ):
             score = 1.0 / (1.0 + float(distance))
             metadata = metadata or {}
             if score < manifest.minimum_score or metadata.get("review_status") != "approved":
                 continue
+            if index >= len(ids):
+                raise RagStoreFailure(
+                    "RAG_INVALID_RESULT",
+                    "RAG 返回结果缺少稳定标识。",
+                )
             hits.append(
                 RagHit(
-                    chunk_id=str((raw.get("ids") or [[]])[0][len(hits)]),
+                    chunk_id=str(ids[index]),
                     source_id=str(metadata["source_id"]),
                     source_title=str(metadata["source_title"]),
                     section=str(metadata["section"]),

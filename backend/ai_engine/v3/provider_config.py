@@ -50,6 +50,11 @@ class V31ProviderConfig:
                 environment, "CHROMA_COLLECTION"
             ):
                 readiness_error = "CHROMA_NOT_CONFIGURED"
+            elif not all(
+                _value(environment, key)
+                for key in ("QWEN_BASE_URL", "QWEN_API_KEY", "QWEN_MODEL")
+            ):
+                readiness_error = "QWEN_PROVIDER_NOT_CONFIGURED"
 
         return cls(
             real_agents=real_agents,

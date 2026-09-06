@@ -96,6 +96,39 @@ def test_diagnosis_response_requires_approved_syndrome_and_evidence_references()
         )
 
 
+def test_diagnosis_response_rejects_duplicate_evidence_references():
+    from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse, ProviderCandidateTendency
+    from backend.ai_engine.v3.diagnosis_pipeline import (
+        DiagnosisPipelineFailure,
+        validate_diagnosis_provider_response,
+    )
+
+    duplicate = DiagnosisProviderResponse(
+        status="success",
+        candidate_tendencies=[
+            ProviderCandidateTendency(
+                syndrome_code="syndrome_1",
+                display_name="safe tendency",
+                relative_support=0.8,
+                supporting_fact_ids=["fact_1", "fact_1"],
+                contradicting_fact_ids=[],
+                knowledge_chunk_ids=["chunk_1", "chunk_1"],
+                reasoning_summary="grounded summary",
+            )
+        ],
+        abstained=False,
+        abstain_reason=None,
+    )
+
+    with pytest.raises(DiagnosisPipelineFailure, match="DUPLICATE_EVIDENCE_REFERENCE"):
+        validate_diagnosis_provider_response(
+            duplicate,
+            allowed_syndrome_codes={"syndrome_1"},
+            allowed_fact_ids={"fact_1"},
+            allowed_chunk_ids={"chunk_1"},
+        )
+
+
 def test_diagnosis_provider_repairs_schema_once_then_accepts_grounded_response():
     from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
 
@@ -157,3 +190,189 @@ def test_diagnosis_provider_maps_provider_failure_without_user_text():
 
     assert caught.value.error_code == "DIAGNOSIS_PROVIDER_TIMEOUT"
     assert "private user text" not in str(caught.value)
+
+
+def test_diagnosis_provider_maps_typed_provider_error_code_without_raw_message():
+    from backend.ai_engine.sprint4_contracts import ProviderError, ProviderErrorCode
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider, DiagnosisProviderFailure
+
+    class Backend:
+        async def acomplete_json(self, system_prompt, user_prompt):
+            raise ProviderError(
+                ProviderErrorCode.RATE_LIMITED,
+                True,
+                "private user text must not escape",
+            )
+
+    provider = DiagnosisProvider(
+        backend=Backend(),
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+
+    with pytest.raises(DiagnosisProviderFailure) as caught:
+        __import__("asyncio").run(
+            provider.acomplete_json(
+                request={"assessment_id": "asmt_1", "revision": 1},
+                facts=["fact_1"],
+                rag_chunk_ids=["chunk_1"],
+            )
+        )
+
+    assert caught.value.error_code == "DIAGNOSIS_PROVIDER_RATE_LIMITED"
+    assert caught.value.retryable is True
+    assert "private user text" not in str(caught.value)
+
+
+def test_diagnosis_provider_factory_requires_explicit_qwen_configuration():
+    from backend.ai_engine.v3.diagnosis_provider import diagnosis_provider_from_environment
+
+    assert (
+        diagnosis_provider_from_environment(
+            {},
+            allowed_syndrome_codes={"syndrome_1"},
+            allowed_fact_ids={"fact_1"},
+            allowed_chunk_ids={"chunk_1"},
+        )
+        is None
+    )
+    provider = diagnosis_provider_from_environment(
+        {
+            "QWEN_BASE_URL": "https://qwen.example/v1",
+            "QWEN_API_KEY": "secret",
+            "QWEN_MODEL": "qwen-approved",
+        },
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+    assert provider is not None
+    assert provider.backend.model == "qwen-approved"
+
+
+def test_diagnosis_execution_does_not_call_qwen_when_rag_is_empty_or_degraded():
+    from backend.app.schemas.v3.common import Degradation
+    from backend.app.schemas.v3.diagnosis import RagResult
+    from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
+
+    class Provider:
+        calls = 0
+
+        async def acomplete_json(self, **kwargs):
+            self.calls += 1
+            raise AssertionError("Qwen must not run without grounded RAG")
+
+    provider = Provider()
+    empty = RagResult(
+        retrieval_id="rag_empty",
+        status="empty",
+        knowledge_version="medical_v3.1",
+        embedding_version="text-embedding-v4@1024",
+        retrieval_score_semantics="normalized_similarity",
+        hits=[],
+        degradation=Degradation(active=False, reason_codes=[]),
+    )
+    degraded = empty.model_copy(
+        update={
+            "retrieval_id": "rag_degraded",
+            "status": "degraded",
+            "degradation": Degradation(active=True, reason_codes=["RAG_UNAVAILABLE"]),
+        }
+    )
+
+    import asyncio
+
+    empty_result = asyncio.run(
+        execute_diagnosis_provider(
+            provider=provider,
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[],
+            rag_result=empty,
+        )
+    )
+    degraded_result = asyncio.run(
+        execute_diagnosis_provider(
+            provider=provider,
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[],
+            rag_result=degraded,
+        )
+    )
+
+    assert empty_result.status == "abstained"
+    assert empty_result.reason_code == "RAG_EMPTY"
+    assert degraded_result.status == "degraded"
+    assert degraded_result.reason_code == "RAG_UNAVAILABLE"
+    assert provider.calls == 0
+
+
+def test_diagnosis_execution_passes_only_approved_rag_chunk_ids_to_qwen():
+    from backend.app.schemas.v3.common import Degradation
+    from backend.app.schemas.v3.diagnosis import (
+        DiagnosisProviderResponse,
+        ProviderCandidateTendency,
+        RagHit,
+        RagResult,
+    )
+    from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
+
+    class Provider:
+        def __init__(self):
+            self.kwargs = None
+
+        async def acomplete_json(self, **kwargs):
+            self.kwargs = kwargs
+            return DiagnosisProviderResponse(
+                status="success",
+                candidate_tendencies=[
+                    ProviderCandidateTendency(
+                        syndrome_code="syndrome_1",
+                        display_name="safe tendency",
+                        relative_support=0.8,
+                        supporting_fact_ids=["fact_1"],
+                        contradicting_fact_ids=[],
+                        knowledge_chunk_ids=["chunk_1"],
+                        reasoning_summary="grounded summary",
+                    )
+                ],
+                abstained=False,
+                abstain_reason=None,
+            )
+
+    provider = Provider()
+    rag = RagResult(
+        retrieval_id="rag_1",
+        status="success",
+        knowledge_version="medical_v3.1",
+        embedding_version="text-embedding-v4@1024",
+        retrieval_score_semantics="normalized_similarity",
+        hits=[
+            RagHit(
+                chunk_id="chunk_1",
+                source_id="src_1",
+                source_title="approved source",
+                section="section",
+                retrieval_score=0.9,
+                text="approved text",
+                display_summary="approved summary",
+                review_status="approved",
+            )
+        ],
+        degradation=Degradation(active=False, reason_codes=[]),
+    )
+
+    import asyncio
+
+    result = asyncio.run(
+        execute_diagnosis_provider(
+            provider=provider,
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=["fact_1"],
+            rag_result=rag,
+        )
+    )
+
+    assert result.status == "success"
+    assert result.response is not None
+    assert provider.kwargs["rag_chunk_ids"] == ["chunk_1"]

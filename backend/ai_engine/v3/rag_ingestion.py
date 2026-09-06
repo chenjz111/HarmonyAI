@@ -42,10 +42,13 @@ def validate_production_corpus(
             "医学语料清单格式无效。",
         ) from error
 
-    if checked_manifest.embedding_version.startswith("hash-v1") or checked_manifest.embedding_model == "hash-v1":
+    if (
+        checked_manifest.embedding_model != "text-embedding-v4"
+        or checked_manifest.embedding_version != "text-embedding-v4@1024"
+    ):
         raise ProductionCorpusNotReady(
             "EMBEDDING_NOT_APPROVED",
-            "演示 Embedding 不能用于生产医学语料。",
+            "生产医学语料必须使用已批准的 text-embedding-v4 1024 维 Embedding。",
         )
     if len(chunks) != checked_manifest.chunk_count:
         raise ProductionCorpusNotReady(

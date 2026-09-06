@@ -35,6 +35,18 @@ class FakeCollection:
         }
 
 
+class MultiResultCollection(FakeCollection):
+    def query(self, *, query_embeddings, n_results, include):
+        del query_embeddings, n_results, include
+        rows = list(self.rows.values())
+        return {
+            "ids": [[row[0] for row in rows]],
+            "documents": [[row[1] for row in rows]],
+            "metadatas": [[row[2] for row in rows]],
+            "distances": [[10.0, 0.1]],
+        }
+
+
 class FakeClient:
     def __init__(self):
         self.collections = {}
@@ -45,7 +57,14 @@ class FakeClient:
         return self.collections[name]
 
 
-def _manifest():
+class MultiResultClient(FakeClient):
+    def get_or_create_collection(self, *, name, metadata, embedding_function):
+        del metadata, embedding_function
+        self.collections.setdefault(name, MultiResultCollection(name))
+        return self.collections[name]
+
+
+def _manifest(chunk_count=1):
     from backend.app.schemas.v3.diagnosis import IngestionManifest
 
     return IngestionManifest(
@@ -56,17 +75,17 @@ def _manifest():
         distance_metric="cosine",
         retrieval_score_semantics="normalized_similarity",
         minimum_score=0.5,
-        chunk_count=1,
+        chunk_count=chunk_count,
         manifest_checksum="sha256:manifest-v31",
         review_status="approved",
     )
 
 
-def _chunk():
+def _chunk(chunk_id="chunk_001"):
     from backend.app.schemas.v3.diagnosis import KnowledgeChunk
 
     return KnowledgeChunk(
-        chunk_id="chunk_001",
+        chunk_id=chunk_id,
         source_id="src_001",
         source_title="approved source",
         section="section-1",
@@ -151,3 +170,20 @@ def test_versioned_rag_store_rejects_manifest_mismatch_without_returning_hits():
 
     with pytest.raises(RagStoreFailure, match="RAG_MANIFEST_MISMATCH"):
         store.query(query)
+
+
+def test_versioned_rag_store_preserves_chunk_ids_after_filtering_low_score_hits():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=FakeEmbedding(),
+        client=MultiResultClient(),
+        production=False,
+    )
+    store.ingest(_manifest(chunk_count=2), [_chunk(), _chunk("chunk_002")])
+
+    result = store.query(_query())
+
+    assert [hit.chunk_id for hit in result.hits] == ["chunk_002"]

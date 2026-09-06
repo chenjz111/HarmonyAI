@@ -73,3 +73,16 @@ def test_production_ingestion_rejects_demo_hash_embedding_identity():
             _manifest(embedding_version="hash-v1@64"),
             [_chunk()],
         )
+
+
+def test_production_ingestion_requires_approved_text_embedding_v4_1024_identity():
+    from backend.ai_engine.v3.rag_ingestion import (
+        ProductionCorpusNotReady,
+        validate_production_corpus,
+    )
+
+    with pytest.raises(ProductionCorpusNotReady, match="EMBEDDING_NOT_APPROVED"):
+        validate_production_corpus(
+            _manifest(embedding_version="text-embedding-v4@1536"),
+            [_chunk()],
+        )

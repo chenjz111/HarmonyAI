@@ -12,6 +12,7 @@ from backend.ai_engine.v3.diagnosis_pipeline import (
     DiagnosisPipelineFailure,
     validate_diagnosis_provider_response,
 )
+from backend.ai_engine.sprint4_contracts import ProviderError
 from backend.ai_engine.v3.understanding_provider import ProviderFailureV3
 from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse
 
@@ -101,6 +102,8 @@ class DiagnosisProvider:
                     "辨证服务暂时不可用。",
                     retryable=error.retryable,
                 ) from None
+            except ProviderError as error:
+                raise _map_provider_error(error) from None
             except TimeoutError:
                 raise DiagnosisProviderFailure(
                     "DIAGNOSIS_PROVIDER_TIMEOUT",
@@ -114,6 +117,67 @@ class DiagnosisProvider:
                     retryable=True,
                 ) from None
         raise AssertionError("diagnosis schema repair loop exhausted")
+
+
+def diagnosis_provider_from_environment(
+    environment: Mapping[str, str],
+    *,
+    allowed_syndrome_codes: set[str],
+    allowed_fact_ids: set[str],
+    allowed_chunk_ids: set[str],
+) -> DiagnosisProvider | None:
+    """Build the Qwen-backed Agent2 adapter only from explicit env values."""
+
+    base_url = environment.get("QWEN_BASE_URL", "").strip()
+    api_key = environment.get("QWEN_API_KEY", "").strip()
+    model = environment.get("QWEN_MODEL", "").strip()
+    if not all((base_url, api_key, model)):
+        return None
+    from backend.ai_engine.providers import QwenCompatibleProvider
+
+    return DiagnosisProvider(
+        backend=QwenCompatibleProvider(
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+        ),
+        allowed_syndrome_codes=allowed_syndrome_codes,
+        allowed_fact_ids=allowed_fact_ids,
+        allowed_chunk_ids=allowed_chunk_ids,
+    )
+
+
+def _map_provider_error(error: ProviderError) -> DiagnosisProviderFailure:
+    code = error.error_code
+    if code == "NOT_CONFIGURED":
+        return DiagnosisProviderFailure(
+            "DIAGNOSIS_PROVIDER_NOT_CONFIGURED",
+            "辨证服务尚未配置。",
+            retryable=False,
+        )
+    if code in {"CONNECTION_TIMEOUT", "READ_TIMEOUT"}:
+        return DiagnosisProviderFailure(
+            "DIAGNOSIS_PROVIDER_TIMEOUT",
+            "辨证服务响应超时。",
+            retryable=bool(error.retryable),
+        )
+    if code == "RATE_LIMITED":
+        return DiagnosisProviderFailure(
+            "DIAGNOSIS_PROVIDER_RATE_LIMITED",
+            "辨证服务繁忙，请稍后重试。",
+            retryable=bool(error.retryable),
+        )
+    if code in {"INVALID_JSON", "JSON_REPAIR_FAILED", "SCHEMA_VIOLATION", "EMPTY_RESPONSE"}:
+        return DiagnosisProviderFailure(
+            "DIAGNOSIS_SCHEMA_INVALID",
+            "辨证服务返回格式无效。",
+            retryable=False,
+        )
+    return DiagnosisProviderFailure(
+        "DIAGNOSIS_PROVIDER_UNAVAILABLE",
+        "辨证服务暂时不可用。",
+        retryable=bool(error.retryable),
+    )
 
 
 def _safe_model_dump(value: object) -> object:

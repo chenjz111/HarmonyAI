@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from hashlib import sha256
 import json
+from typing import Literal
 
 from pydantic import ValidationError
 
-from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse, RagQuery
+from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse, RagQuery, RagResult
 
 
 class DiagnosisPipelineFailure(RuntimeError):
@@ -18,6 +20,15 @@ class DiagnosisPipelineFailure(RuntimeError):
         self.error_code = error_code
         self.safe_message = safe_message
         super().__init__(f"{error_code}: {safe_message}")
+
+
+@dataclass(frozen=True)
+class DiagnosisProviderExecution:
+    """Provider-neutral execution result before service persistence mapping."""
+
+    status: Literal["success", "degraded", "abstained", "failed"]
+    response: DiagnosisProviderResponse | None
+    reason_code: str | None
 
 
 def build_diagnosis_query(snapshot: Mapping[str, object]) -> RagQuery:
@@ -72,6 +83,21 @@ def validate_diagnosis_provider_response(
                 "SYNDROME_NOT_APPROVED",
                 "辨证结果包含未批准的证型。",
             )
+        if len(candidate.supporting_fact_ids) != len(set(candidate.supporting_fact_ids)):
+            raise DiagnosisPipelineFailure(
+                "DUPLICATE_EVIDENCE_REFERENCE",
+                "辨证结果包含重复事实引用。",
+            )
+        if len(candidate.contradicting_fact_ids) != len(set(candidate.contradicting_fact_ids)):
+            raise DiagnosisPipelineFailure(
+                "DUPLICATE_EVIDENCE_REFERENCE",
+                "辨证结果包含重复事实引用。",
+            )
+        if len(candidate.knowledge_chunk_ids) != len(set(candidate.knowledge_chunk_ids)):
+            raise DiagnosisPipelineFailure(
+                "DUPLICATE_EVIDENCE_REFERENCE",
+                "辨证结果包含重复知识片段引用。",
+            )
         if not set(candidate.supporting_fact_ids) <= allowed_fact_ids:
             raise DiagnosisPipelineFailure(
                 "FACT_REFERENCE_INVALID",
@@ -88,6 +114,55 @@ def validate_diagnosis_provider_response(
                 "辨证结果引用了无效知识片段。",
             )
     return checked
+
+
+async def execute_diagnosis_provider(
+    *,
+    provider,
+    request: Mapping[str, object] | object,
+    facts: list[object] | tuple[object, ...],
+    rag_result: RagResult,
+) -> DiagnosisProviderExecution:
+    """Run Agent2 only when the approved RAG gate provides grounded hits.
+
+    The envelope deliberately stays separate from the frozen diagnosis
+    transport model so that a degraded index never gets represented as a
+    fabricated successful candidate list.
+    """
+
+    if rag_result.status == "empty":
+        return DiagnosisProviderExecution(
+            status="abstained",
+            response=None,
+            reason_code="RAG_EMPTY",
+        )
+    if rag_result.status != "success":
+        reasons = rag_result.degradation.reason_codes
+        return DiagnosisProviderExecution(
+            status="degraded",
+            response=None,
+            reason_code=str(reasons[0]) if reasons else "RAG_UNAVAILABLE",
+        )
+
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProviderFailure
+
+    try:
+        response = await provider.acomplete_json(
+            request=request,
+            facts=facts,
+            rag_chunk_ids=[hit.chunk_id for hit in rag_result.hits],
+        )
+    except DiagnosisProviderFailure as error:
+        return DiagnosisProviderExecution(
+            status="degraded" if error.retryable else "abstained",
+            response=None,
+            reason_code=error.error_code,
+        )
+    return DiagnosisProviderExecution(
+        status=response.status,
+        response=response,
+        reason_code=None if response.status in {"success", "degraded"} else response.abstain_reason,
+    )
 
 
 def _strings(value: object) -> list[str]:

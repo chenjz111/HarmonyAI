@@ -223,7 +223,11 @@ def embedding_provider_from_environment(
     api_key = environment.get("EMBEDDING_API_KEY", "").strip()
     model = environment.get("EMBEDDING_MODEL", "").strip()
     dimension = _parse_dimension(environment.get("EMBEDDING_DIMENSION", "1024"))
-    if not all((base_url, api_key, model)) or dimension is None:
+    if (
+        not all((base_url, api_key, model))
+        or dimension != 1024
+        or model != "text-embedding-v4"
+    ):
         return None
     return EmbeddingProvider(
         base_url=base_url,

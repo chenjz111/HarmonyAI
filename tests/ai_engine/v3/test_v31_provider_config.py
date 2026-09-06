@@ -54,6 +54,25 @@ def test_v31_provider_config_rejects_hash_embedding_in_real_mode():
     assert config.readiness_error == "PRODUCTION_EMBEDDING_NOT_APPROVED"
 
 
+def test_v31_provider_config_reports_missing_qwen_after_embedding_and_chroma_are_ready():
+    from backend.ai_engine.v3.provider_config import V31ProviderConfig
+
+    config = V31ProviderConfig.from_environment(
+        {
+            "HARMONYAI_REAL_AGENTS": "true",
+            "EMBEDDING_PROVIDER": "aliyun",
+            "EMBEDDING_BASE_URL": "https://embedding.example",
+            "EMBEDDING_API_KEY": "embedding-secret",
+            "EMBEDDING_MODEL": "text-embedding-v4",
+            "EMBEDDING_DIMENSION": "1024",
+            "CHROMA_PERSIST_DIRECTORY": "data/chroma",
+            "CHROMA_COLLECTION": "harmony_v31",
+        }
+    )
+
+    assert config.readiness_error == "QWEN_PROVIDER_NOT_CONFIGURED"
+
+
 def test_agent_config_exposes_v31_embedding_provider_from_explicit_environment():
     from backend.app.core.agent_config import get_v31_embedding_provider
 
@@ -69,3 +88,19 @@ def test_agent_config_exposes_v31_embedding_provider_from_explicit_environment()
     assert provider is not None
     assert provider.model == "text-embedding-v4"
     assert provider.dimension == 1024
+
+
+def test_agent_config_does_not_expose_unapproved_v31_embedding_provider():
+    from backend.app.core.agent_config import get_v31_embedding_provider
+
+    assert (
+        get_v31_embedding_provider(
+            {
+                "EMBEDDING_BASE_URL": "https://embedding.example",
+                "EMBEDDING_API_KEY": "secret",
+                "EMBEDDING_MODEL": "hash-v1",
+                "EMBEDDING_DIMENSION": "64",
+            }
+        )
+        is None
+    )
