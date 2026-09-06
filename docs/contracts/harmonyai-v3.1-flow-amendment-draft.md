@@ -111,7 +111,7 @@ Each result must carry source references, confirmation revision, and a stable ch
 | Document reference | Single `active_document_id` | Active 1～3 page DocumentSet reference | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
 | Case summary | `source_document_ids` list and revision model exist | Final user-confirmed summary authority | REUSE_WITH_AUTHORITY_CLARIFICATION |
 | Relevance | No dedicated V3 result | `DocumentRelevanceResult` with explicit outcome | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
-| Questionnaire | `questionnaire_v3` / `3.0.0` | Q1～Q10, `medical_v3.0`, checksum `sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211` | FROZEN_IDENTITY |
+| Questionnaire | `questionnaire_v3` / `3.0.1` | Q1～Q10, `medical_v3.0.1`, checksum `sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031` | FROZEN_IDENTITY |
 | UserGoal | Existing common object is required-primary oriented | Independent optional post-questionnaire preference | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
 | Unified input | Separate understanding/questionnaire references | Versioned `ConfirmedUserState` | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |
 | ToneProfile | Five weights + dominant tone | Primary + optional secondary and explainable references | EXECUTABLE_CONTRACT_DEFINED / IMPLEMENTATION_DELTA_REQUIRED |

@@ -7,7 +7,7 @@
 
 本文只定义用户在 App 中看到的主流程、页面分支与必填规则。Agent、数据库与 Provider 的技术实现以对应合同草案为准。App 名称、Logo、部分提示文案和反馈标签仍待确认。
 
-`docs/product/app-v3.1-teacher-user-flow.md` is the sole authority for the V3.1 **USER-FACING FLOW**. Agent diagrams, schemas, and internal objects may describe backend execution only; they cannot add, remove, reorder, or rename user-facing pages or actions.
+`docs/product/app-v3.1-teacher-user-flow.md` is the sole authority for the V3.1 **USER-FACING FLOW**. `docs/product/v3-questionnaire-final-20260822.md` is the immutable human-readable authority for Q1～Q10 and “疗愈诉求”; `knowledge/v3/questionnaire-v3.0.1.json` is its V3.1 canonical executable representation. Agent diagrams, schemas, and internal objects may describe backend execution only; they cannot add, remove, reorder, or rename user-facing pages or actions.
 
 ## 2. 总体流程
 
