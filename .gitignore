@@ -32,3 +32,6 @@ deploy/data/
 
 # 本地隔离开发工作树
 .worktrees/
+
+# 探索期 OCR 样例（含疑似真实病历，不入库）
+tests/ocr_samples/
