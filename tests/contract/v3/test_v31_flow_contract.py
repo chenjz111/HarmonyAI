@@ -23,7 +23,7 @@ from backend.app.schemas.v3.flow_v31 import (
 
 
 QUESTIONNAIRE_CHECKSUM = (
-    "sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211"
+    "sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031"
 )
 
 
@@ -76,8 +76,8 @@ def _questionnaire_result(input_mode: str = "without_document") -> dict:
             "required" if input_mode == "without_document" else "optional"
         ),
         "schema_id": "questionnaire_v3",
-        "questionnaire_schema_version": "3.0.0",
-        "manifest_version": "medical_v3.0",
+        "questionnaire_schema_version": "3.0.1",
+        "manifest_version": "medical_v3.0.1",
         "content_checksum": QUESTIONNAIRE_CHECKSUM,
         "answers": _answers(),
         "started_at": "2026-09-05T01:00:00Z",
@@ -300,7 +300,7 @@ def test_final_confirmed_summary_separates_user_text_from_ai_and_ocr_sources():
 
 
 def test_authoritative_questionnaire_asset_identity_and_five_page_structure():
-    path = Path(__file__).parents[3] / "knowledge" / "v3" / "questionnaire-v3.0.json"
+    path = Path(__file__).parents[3] / "knowledge" / "v3" / "questionnaire-v3.0.1.json"
     questionnaire = json.loads(path.read_text(encoding="utf-8"))
     declared_checksum = questionnaire["content_checksum"]
     canonical = {key: value for key, value in questionnaire.items() if key != "content_checksum"}
@@ -335,6 +335,106 @@ def test_authoritative_questionnaire_asset_identity_and_five_page_structure():
         ["q09", "q10"],
     ]
 
+
+def test_questionnaire_v31_content_and_evidence_refs_match_human_authority():
+    root = Path(__file__).parents[3]
+    questionnaire = json.loads(
+        (root / "knowledge" / "v3" / "questionnaire-v3.0.1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    claim_dictionary = json.loads(
+        (root / "knowledge" / "v3" / "claim-dictionary-v3.0.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    organ_mapping = json.loads(
+        (root / "knowledge" / "v3" / "organ-mapping-v3.0.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    claim_codes = {item["claim_code"] for item in claim_dictionary["entries"]}
+    mapped_codes = {item["claim_code"] for item in organ_mapping["single_mappings"]}
+
+    questions = questionnaire["questions"]
+    assert all(len(item["options"]) == 5 for item in questions[:9])
+    assert len(questions[9]["options"]) == 4
+    for question in questions:
+        for option in question["options"]:
+            assert option["option_code"]
+            assert option["label"]
+            if option["claim_code"] is not None:
+                assert option["claim_code"] in claim_codes
+                assert option["claim_code"] in mapped_codes
+                assert option["evidence_semantic_ref"].endswith(
+                    f"#{option['claim_code']}"
+                )
+    assert [[option["score"] for option in item["options"]] for item in questions[:5]] == [
+        [0, 1, 2, 3, 4]
+    ] * 5
+
+    goal = questionnaire["user_goal"]
+    assert goal["title"] == "疗愈诉求"
+    assert goal["page_kind"] == "optional_supplement"
+    assert goal["is_question"] is False
+    assert goal["required"] is False
+    assert goal["skippable"] is True
+    assert goal["max_selections"] == 2
+    assert [(item["code"], item["label"]) for item in goal["options"]] == [
+        ("sleep", "帮我睡得安稳一点"),
+        ("relaxation", "让我放松、静下来"),
+        ("emotion_regulation", "帮我把情绪释放出来"),
+        ("focus", "让我更容易专注"),
+        ("energy", "帮我恢复点精力"),
+        ("stress_relief", "让我减轻点压力"),
+        ("other", "其他"),
+    ]
+    assert goal["custom_goal_text"] == {
+        "required": False,
+        "max_length": 200,
+        "independent": True,
+    }
+    assert goal["evidence_role"] == "music_design_preference_only"
+
+def test_knowledge_manifest_v301_binds_questionnaire_and_preserves_medical_assets():
+    root = Path(__file__).parents[3]
+    manifest = json.loads(
+        (root / "knowledge" / "v3" / "knowledge-manifest-v3.0.1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    declared_checksum = manifest["content_checksum"]
+    canonical = {key: value for key, value in manifest.items() if key != "content_checksum"}
+    calculated = "sha256:" + hashlib.sha256(
+        json.dumps(
+            canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+
+    assert declared_checksum == calculated
+    assert manifest["schema_version"] == "3.0.1"
+    assert manifest["manifest_version"] == "medical_v3.0.1"
+    questionnaire = next(
+        item for item in manifest["assets"] if item["asset"].startswith("questionnaire-")
+    )
+    assert questionnaire == {
+        "asset": "questionnaire-v3.0.1.json",
+        "role": "10 题五脏问卷 + 独立疗愈诉求补充页（V3.1 正式产品版）",
+        "version": "medical_v3.0.1",
+        "content_checksum": QUESTIONNAIRE_CHECKSUM,
+        "review_status": "approved",
+        "review_metadata": "Q1-Q10 全部必答；Q1-Q5 单选 0-4 且逐题文案独立；Q6-Q10 多选；疗愈诉求为独立 optional page、0-2 项、自由文本可独立存在且不超过 200 字；有资料问卷 optional / 无资料问卷 required。",
+    }
+    unchanged_assets = {
+        item["asset"]: item["content_checksum"]
+        for item in manifest["assets"]
+        if not item["asset"].startswith("questionnaire-")
+    }
+    assert unchanged_assets == {
+        "claim-dictionary-v3.0.json": "sha256:9a20931048e775fbf1b4c02861e02c912d26b3b8d409bee33428efaded1f77b9",
+        "organ-mapping-v3.0.json": "sha256:771ca8d799a2df6fedd789beabe90e840432862fb72500d52cb15cf90b5ea495",
+        "five-tone-mapping-v3.0.json": "sha256:8f6bd8b91a5989201bc5605d6ddc55ac76162ad566f932bd89a901f19c4fe36e",
+    }
 
 def test_questionnaire_result_requires_complete_canonical_q1_to_q10():
     result = QuestionnaireResult.model_validate(_questionnaire_result())
