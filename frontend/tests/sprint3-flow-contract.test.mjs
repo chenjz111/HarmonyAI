@@ -9,7 +9,7 @@ const pagesConfig = JSON.parse(readFileSync(resolve(frontendRoot, "pages.json"),
 const routes = pagesConfig.pages.map((page) => page.path)
 
 
-test("welcome starts an eight-page Sprint 3 flow", () => {
+test("V3.1: entry is the launch home page; welcome keeps a registered sprint-3 entry", () => {
   const sprint3Routes = [
     "pages/welcome/welcome",
     "pages/material/material",
@@ -20,7 +20,8 @@ test("welcome starts an eight-page Sprint 3 flow", () => {
     "pages/feedback-v2/feedback-v2",
     "pages/complete/complete",
   ]
-  assert.equal(routes[0], sprint3Routes[0])
+  // Issue #100: Welcome leaves the main flow; entry becomes the home/launch page.
+  assert.equal(routes[0], "pages/entry/entry")
   for (const route of sprint3Routes) {
     assert.ok(routes.includes(route), `missing route: ${route}`)
     assert.ok(existsSync(resolve(frontendRoot, `${route}.vue`)), `missing page: ${route}`)

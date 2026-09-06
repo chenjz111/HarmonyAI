@@ -1,18 +1,25 @@
 <script>
 /**
- * V3 最近情况页（文字/语音，选填）
- * 合同依据：frontend-read-model-contract-v3.md §5 Narrative / Voice Page
- *          harmonyai-v3-owner-flow-amendment-001.md §2
+ * V3.1 近况补充页（Issue #100："想再补充一些近况吗？" 选填）
  *
- * 两条路径此步均为选填、可整步跳过；跳过不创建空 Understanding。
- * 转写结果先展示给用户确认后才有效；ASR 不可用时文字输入始终可用。
+ * V3.1 流程变更：最近情况（Narrative）退出主流程，改为主流程中一个可选的
+ * 补充页。两条路径（有资料 / 无资料）此步均为选填、可整步跳过。
  *
- * P0-1：语音转写仅在显式 mock 模式提供模拟数据（并明确标注演示）；
- * real/hybrid 模式没有真实 ASR 时，语音入口显示"暂不可用"，绝不注入虚构 transcript。
- * P1-1：有资料路径的描述文本暂存本机（后端暂不支持向已确认摘要追加描述源），
- * 页面明确告知"已保存待提交"，不声称已实时提交；
- * 无资料路径在"继续"时通过 narrative 源真实提交并确认绑定会话（进入评估输入链），
- * 提交失败如实报错并停留本页，可重试或暂不填写继续。
+ * 输入语义与 v3-narrative 保持一致（该页保留为兼容）：
+ *  - 有资料路径：后端暂不支持向已确认摘要追加描述源 → 文本本机暂存，如实标注
+ *  - 无资料路径：填写则通过 narrative 源真实提交并确认绑定会话，失败如实报错
+ *  - 语音转写仅在显式 mock 模式提供模拟数据并标注演示；real/hybrid 不伪造
+ *
+ * ===== 后端对齐依赖（复审注明：等待钟睿宸对齐，未确定前不擅自恢复旧流程） =====
+ *  - 字段：narrative inline text（已提交）
+ *  - 端点：POST /api/v3/understandings，inputs[].source_type = "narrative"
+ *  - 保存位置：Understanding + Source；CAS 确认后写入 session understanding_ref
+ *  - 调用方式：apiV3.submitNarrative(text) → create → confirmUnderstanding(decision="confirm")
+ *  - 当前缺口：与钟睿宸对齐的"补充信息"新字段 / 保存方式仍在协议中
+ *    —— 在此之前本页面**绝不**自行恢复旧版 narrative 必填规则，也**绝不**把本机暂存伪装成已提交；
+ *    失败/缺口一律如实抛错（错误码 NARRATIVE_APPEND_UNSUPPORTED 等）。
+ *
+ * 后续：v3-questionnaire
  *
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
@@ -25,9 +32,8 @@ export default {
   components: { HanSideNav },
   data() {
     return {
-      withDocument: false, // 有资料模式（显示步骤标签差异）
+      withDocument: false, // 有资料模式（步骤标签差异）
       text: "",
-      // 仅显式 mock 模式提供模拟语音转写；real/hybrid 语音入口显示暂不可用
       voiceSimulated: apiV3.INPUT_SIMULATED,
       recording: false,
       recordSeconds: 0,
@@ -38,7 +44,6 @@ export default {
     }
   },
   onLoad() {
-    // 从 session 判断模式（mock：读 api 状态）
     apiV3.getSession().then((s) => {
       this.withDocument = s.input_mode === "with_document"
     }).catch(() => {})
@@ -47,7 +52,7 @@ export default {
     this.stopRecordTimer()
   },
   methods: {
-    // ---- 录音（仅 mock 演示模式可用；real/hybrid 无真实 ASR，不伪造转写） ----
+    // ---- 录音（仅 mock 演示模式；real/hybrid 无真实 ASR，不伪造转写） ----
     async toggleRecord() {
       if (!this.voiceSimulated || !this.voiceAvailable) return
       if (this.recording) {
@@ -69,7 +74,6 @@ export default {
     stopRecording() {
       this.stopRecordTimer()
       this.recording = false
-      // 模拟 ASR（仅 mock 演示模式可达）：返回演示转写文本，需用户确认后才作为输入
       this.transcript = {
         text: "最近一段时间事情比较多，晚上躺下后脑子停不下来，入睡比较慢，白天容易累。",
         confirmed: false,
@@ -101,25 +105,24 @@ export default {
       if (this.submitting) return
       this.submitting = true
       try {
-        // 文字/语音均选填（有资料=选填 / 无资料=选填，无资料流程由问卷必填兜底）
         const text = (this.text || "").trim()
         if (text && this.withDocument) {
-          // 有资料路径：后端暂不支持向已确认摘要追加描述源 → 本机暂存（页面如实标注）
+          // 有资料路径：后端暂不支持向已确认摘要追加描述源 → 本机暂存（如实标注）
           try { uni.setStorageSync("v3_narrative_text", text) } catch (e) { /* ignore */ }
         } else if (text) {
-          // 无资料路径：narrative 源真实提交 + 确认绑定会话，进入评估输入链
+          // 无资料路径：narrative 源真实提交 + 确认绑定会话
           await apiV3.submitNarrative(text)
         }
         uni.redirectTo({ url: "/pages/v3-questionnaire/v3-questionnaire" })
       } catch (e) {
-        // 提交失败：如实报错并停留本页，用户可重试或选择"暂不填写，继续"
+        // 提交失败：如实报错并停留本页，可重试或跳过
         uni.showToast({ title: (e && e.message) || "提交失败，请稍后重试", icon: "none" })
       } finally {
         this.submitting = false
       }
     },
     skip() {
-      // 整步跳过：不创建空 Understanding（Read Model §5.1）
+      // 整步跳过：不创建空 Understanding
       uni.redirectTo({ url: "/pages/v3-questionnaire/v3-questionnaire" })
     },
   },
@@ -136,11 +139,11 @@ export default {
             <text class="stage-seal-text">问</text>
           </view>
           <view class="header-titles">
-            <text class="step-tag">{{ withDocument ? "有资料流程 · 第 3 步 · 选填" : "无资料流程 · 第 1 步 · 选填" }}</text>
-            <text class="page-title han-title-brush revealed">说说最近发生了什么</text>
+            <text class="step-tag">{{ withDocument ? "有资料流程 · 补充近况（选填）" : "无资料流程 · 补充近况（选填）" }}</text>
+            <text class="page-title han-title-brush revealed">想再补充一些近况吗？</text>
           </view>
         </view>
-        <text class="page-subtitle">可以写下最近的事情、感受、睡眠或身体状态，不需要先判断自己的情绪。</text>
+        <text class="page-subtitle">可以写下最近的事情、感受、睡眠或身体状态，不需要先判断自己的情绪。这一步选填，也可以跳过。</text>
       </view>
 
       <!-- 文字输入（始终可用） -->
@@ -153,13 +156,13 @@ export default {
           class="text-input"
           v-model="text"
           :maxlength="2000"
-          placeholder="自由填写，也可以跳过这一步。"
+          placeholder="自由填写，也可以直接跳过这一步。"
         />
         <view class="text-count"><text class="text-count-text">{{ (text || '').length }} / 2000</text></view>
       </view>
 
-      <!-- 有资料路径：描述本机暂存（后端追加源能力缺失），如实标注"待提交"；
-           无资料路径：点击"继续"即真实提交，不使用暂存话术 -->
+      <!-- 有资料路径：本机暂存（后端追加源能力缺失），如实标注；
+           无资料路径：点击"继续"即真实提交 -->
       <view v-if="!voiceSimulated && withDocument" class="save-note">
         <view class="save-note-dot"></view>
         <text class="save-note-text">你填写的内容会先保存在本机，待服务支持后随评估一并提交，不会丢失。</text>
@@ -169,7 +172,7 @@ export default {
         <text class="save-note-text">你填写的内容将在点击"继续"时提交，作为生成评估的参考。</text>
       </view>
 
-      <!-- 语音输入（P0-1：仅显式 mock 演示模式提供模拟转写；real/hybrid 明确暂不可用） -->
+      <!-- 语音输入（仅显式 mock 演示模式提供模拟转写；real/hybrid 明确暂不可用） -->
       <view class="han-card voice-card ink-fade-up">
         <view class="voice-head">
           <view class="card-head-seal card-head-seal--ink"><text class="card-head-seal-text">声</text></view>
@@ -206,7 +209,7 @@ export default {
         <view v-else class="voice-unavailable">
           <view class="voice-mic"><text class="mic-icon">🎤</text></view>
           <text class="voice-unavailable-title">语音描述暂不可用</text>
-          <text class="voice-unavailable-desc">当前版本暂不支持语音输入，你可以使用上方文字填写，内容会一并保留。</text>
+          <text class="voice-unavailable-desc">当前版本暂不支持语音输入，你可以使用上方文字填写。</text>
         </view>
       </view>
 
@@ -215,7 +218,7 @@ export default {
           <text class="btn-primary-text">继续</text>
         </view>
         <view class="btn-link" @click="skip">
-          <text class="btn-link-text">暂不填写，继续</text>
+          <text class="btn-link-text">暂不补充，继续</text>
         </view>
       </view>
     </view>
@@ -282,7 +285,7 @@ export default {
   line-height: 1.6;
 }
 
-/* ===== 卡片头（小印章 + 标题） ===== */
+/* ===== 卡片头 ===== */
 .card-head {
   display: flex;
   align-items: center;
