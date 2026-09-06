@@ -91,6 +91,20 @@ def test_agent3_abstained_diagnosis_cannot_produce_syndrome_tone_profile():
         )
 
 
+def test_agent3_can_render_a_grounded_degraded_result_without_claiming_abstention():
+    from backend.ai_engine.v3.agent3 import build_tone_profile_v31
+
+    profile = build_tone_profile_v31(
+        diagnosis_id="diag_degraded",
+        diagnosis_status="degraded",
+        organ_weights={"heart": 1.0},
+        supporting_evidence_refs=["fact_1"],
+        mapping=_mapping(),
+    )
+
+    assert profile.primary_tone.value == "zhi"
+
+
 def test_agent3_user_goal_is_not_part_of_medical_tone_calculation():
     from backend.ai_engine.v3.agent3 import build_tone_profile_v31
 
