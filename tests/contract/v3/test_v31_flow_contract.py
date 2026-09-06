@@ -1,6 +1,9 @@
 """Executable HarmonyAI V3.1 flow freeze-candidate contracts."""
 
 from copy import deepcopy
+import hashlib
+import json
+from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
 import pytest
@@ -15,6 +18,7 @@ from backend.app.schemas.v3.flow_v31 import (
     RelevanceOutcome,
     ToneProfileV31,
     UserGoalV31,
+    UserGoalSubmissionV31,
 )
 
 
@@ -295,6 +299,43 @@ def test_final_confirmed_summary_separates_user_text_from_ai_and_ocr_sources():
     assert summary.confirmed_text != summary.source_ai_summary_ref.summary_id
 
 
+def test_authoritative_questionnaire_asset_identity_and_five_page_structure():
+    path = Path(__file__).parents[3] / "knowledge" / "v3" / "questionnaire-v3.0.json"
+    questionnaire = json.loads(path.read_text(encoding="utf-8"))
+    declared_checksum = questionnaire["content_checksum"]
+    canonical = {key: value for key, value in questionnaire.items() if key != "content_checksum"}
+    payload = json.dumps(
+        canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+
+    assert declared_checksum == f"sha256:{hashlib.sha256(payload).hexdigest()}"
+    assert declared_checksum == QUESTIONNAIRE_CHECKSUM
+    assert questionnaire["question_count"] == 10
+
+    questions = sorted(questionnaire["questions"], key=lambda item: item["position"])
+    assert [item["question_id"] for item in questions] == [
+        f"q{index:02d}" for index in range(1, 11)
+    ]
+    assert [item["position"] for item in questions] == list(range(1, 11))
+    assert all(item["required"] is True for item in questions)
+    assert [item["answer_type"] for item in questions[:5]] == [
+        "frequency_0_4"
+    ] * 5
+    assert [item["answer_type"] for item in questions[5:]] == [
+        "multi_choice_evidence"
+    ] * 5
+    assert [
+        [item["question_id"] for item in questions[offset : offset + 2]]
+        for offset in range(0, 10, 2)
+    ] == [
+        ["q01", "q02"],
+        ["q03", "q04"],
+        ["q05", "q06"],
+        ["q07", "q08"],
+        ["q09", "q10"],
+    ]
+
+
 def test_questionnaire_result_requires_complete_canonical_q1_to_q10():
     result = QuestionnaireResult.model_validate(_questionnaire_result())
     assert len(result.answers) == 10
@@ -331,6 +372,57 @@ def test_user_goal_is_nullable_and_accepts_one_or_two_distinct_codes():
         }
     )
     assert two.secondary_goal.value == "relaxation"
+
+
+def test_user_goal_accepts_custom_text_only_and_other_without_text():
+    custom_only = UserGoalV31.model_validate(
+        {
+            "primary_goal": None,
+            "secondary_goal": None,
+            "custom_goal_text": "希望音乐像流水一样",
+        }
+    )
+    assert custom_only.primary_goal is None
+    assert custom_only.custom_goal_text == "希望音乐像流水一样"
+
+    other_without_text = UserGoalV31.model_validate(
+        {"primary_goal": "other", "secondary_goal": None, "custom_goal_text": None}
+    )
+    assert other_without_text.primary_goal.value == "other"
+
+
+def test_user_goal_accepts_goal_with_independent_custom_text():
+    goal = UserGoalV31.model_validate(
+        {
+            "primary_goal": "sleep",
+            "secondary_goal": "relaxation",
+            "custom_goal_text": "想有一点雨声",
+        }
+    )
+    assert goal.custom_goal_text == "想有一点雨声"
+
+
+def test_empty_and_skipped_user_goal_are_canonical_null():
+    adapter = TypeAdapter(UserGoalSubmissionV31)
+
+    assert adapter.validate_python(None) is None
+    assert adapter.validate_python(
+        {"primary_goal": None, "secondary_goal": None, "custom_goal_text": None}
+    ) is None
+    assert adapter.validate_python(
+        {"primary_goal": None, "secondary_goal": None, "custom_goal_text": "   "}
+    ) is None
+
+
+def test_user_goal_rejects_secondary_without_primary():
+    with pytest.raises(ValidationError):
+        UserGoalV31.model_validate(
+            {
+                "primary_goal": None,
+                "secondary_goal": "relaxation",
+                "custom_goal_text": None,
+            }
+        )
 
 
 def test_user_goal_rejects_three_invalid_duplicate_and_long_text():
