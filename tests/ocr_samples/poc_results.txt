@@ -1,7 +1,0 @@
-sample1_outpatient.jpg | failed | cn=0 | 2751ms
-sample2_labreport.jpg | failed | cn=0 | 2141ms
-sample3_diagnosis.png | failed | cn=0 | 2151ms
-sample4_prescription.png | failed | cn=0 | 2156ms
-sample5_report.pdf | failed | cn=0 | 2902ms
-
-成功: 0/5
