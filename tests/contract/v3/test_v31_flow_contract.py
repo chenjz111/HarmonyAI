@@ -359,6 +359,18 @@ def test_confirmed_user_state_accepts_exactly_three_source_combinations(mode: st
     assert state.authority_status == "current"
 
 
+def test_confirmed_user_state_documents_internal_confirmation_authority():
+    description = ConfirmedUserState.model_json_schema().get("description", "")
+
+    assert "INTERNAL CONTRACT OBJECT" in description
+    assert "not a user-facing page" in description
+    assert "document_only inherits" in description
+    assert "FinalConfirmedSummary" in description
+    assert "does not require a second user confirmation" in description
+    assert "questionnaire paths" in description
+    assert "recent state summary confirmation" in description
+
+
 def test_confirmed_user_state_rejects_source_mode_mismatch_and_stale_authority():
     mismatch = _confirmed_state("document_only")
     mismatch["questionnaire_result_ref"] = _questionnaire_ref()

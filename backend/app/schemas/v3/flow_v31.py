@@ -223,6 +223,13 @@ class ConfirmedStateFact(V3BaseModel):
 
 
 class ConfirmedUserState(V3BaseModel):
+    """INTERNAL CONTRACT OBJECT, not a user-facing page.
+
+    document_only inherits user confirmation from FinalConfirmedSummary.
+    It does not require a second user confirmation. For questionnaire paths,
+    confirmation authority comes from the recent state summary confirmation.
+    """
+
     schema_version: Literal["confirmed_user_state_v3.1"]
     confirmed_user_state_id: NonEmptyString
     session_id: NonEmptyString
