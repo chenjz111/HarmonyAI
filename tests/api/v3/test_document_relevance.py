@@ -1,6 +1,7 @@
-"""V3.1 document relevance tests (Issue #99 step 3).
+"""V3.1 document relevance tests (Issue #110 closeout).
 
-Write is internal (record_relevance service); the frontend reads outcome only.
+Write is internal (record_relevance service); the frontend reads the frozen
+per-set DocumentRelevanceResult only.
 """
 
 import base64
@@ -124,33 +125,35 @@ def test_record_and_read_relevance():
         {"expected_input_revision": 1, "action": "select_mode", "input_mode": "with_document"},
     )
     doc_a = _create_document(headers, session_id)
-    doc_b = _create_document(headers, session_id)
-    set_id = _make_set(headers, session_id, [doc_a, doc_b], 2)["document_set_id"]
+    set_id = _make_set(headers, session_id, [doc_a], 2)["document_set_id"]
 
     principal = _principal(headers)
     request = DocumentRelevanceRecordRequest(
         document_set_id=set_id,
         document_set_revision=1,
+        run_id="run_1",
+        revision=1,
+        outcome="VALID",
+        reason_code="VALID_RECENT_CLINICAL_DOCUMENT",
+        reason="资料可用于本次状态理解。",
         evaluator="understanding_rule",
         evaluator_version="v1",
-        items=[
-            {"document_id": doc_a, "outcome": "VALID", "reason_codes": []},
-            {"document_id": doc_b, "outcome": "IRRELEVANT", "reason_codes": ["UNRELATED_TOPIC"]},
-        ],
     )
     with _seed_db() as session:
         data = record_relevance(session, principal, request)
-    outcomes = {item.document_id: item.outcome for item in data.items}
-    assert outcomes[doc_a] == "VALID"
-    assert outcomes[doc_b] == "IRRELEVANT"
+    assert data.outcome.value == "VALID"
+    assert data.may_enter_summary is True
+    assert data.may_form_evidence is True
+    assert data.may_enter_agent2 is True
 
     read = _v3_data(
         client.get(f"/api/v3/document-sets/{set_id}/relevance", headers=headers)
     )
-    assert {item["document_id"]: item["outcome"] for item in read["items"]} == outcomes
+    assert read["outcome"] == "VALID"
+    assert read["reason_code"] == "VALID_RECENT_CLINICAL_DOCUMENT"
 
 
-def test_relevance_rejects_partial_coverage():
+def test_relevance_non_valid_gates_are_false():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
     _transition(
@@ -158,21 +161,51 @@ def test_relevance_rejects_partial_coverage():
         {"expected_input_revision": 1, "action": "select_mode", "input_mode": "with_document"},
     )
     doc_a = _create_document(headers, session_id)
-    doc_b = _create_document(headers, session_id)
-    set_id = _make_set(headers, session_id, [doc_a, doc_b], 2)["document_set_id"]
+    set_id = _make_set(headers, session_id, [doc_a], 2)["document_set_id"]
 
     principal = _principal(headers)
     request = DocumentRelevanceRecordRequest(
         document_set_id=set_id,
         document_set_revision=1,
-        items=[{"document_id": doc_a, "outcome": "VALID", "reason_codes": []}],
+        run_id="run_1",
+        revision=1,
+        outcome="IRRELEVANT",
+        reason_code="UNRELATED_TOPIC",
+        reason="与本次健康状态评估无关。",
+    )
+    with _seed_db() as session:
+        data = record_relevance(session, principal, request)
+    assert data.may_enter_summary is False
+    assert data.may_form_evidence is False
+    assert data.may_enter_agent2 is False
+
+
+def test_relevance_rejects_revision_mismatch():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers, session_id, "sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "with_document"},
+    )
+    doc_a = _create_document(headers, session_id)
+    set_id = _make_set(headers, session_id, [doc_a], 2)["document_set_id"]
+
+    principal = _principal(headers)
+    request = DocumentRelevanceRecordRequest(
+        document_set_id=set_id,
+        document_set_revision=99,
+        run_id="run_1",
+        revision=1,
+        outcome="VALID",
+        reason_code="VALID_RECENT_CLINICAL_DOCUMENT",
+        reason="资料可用于本次状态理解。",
     )
     with _seed_db() as session:
         try:
             record_relevance(session, principal, request)
             raise AssertionError("expected InvalidRelevance")
         except InvalidRelevance as exc:
-            assert exc.code == "RELEVANCE_COVERAGE_INCOMPLETE"
+            assert exc.code == "RELEVANCE_REVISION_MISMATCH"
 
 
 def test_relevance_is_cross_user_isolated():

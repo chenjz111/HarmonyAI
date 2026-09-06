@@ -11,6 +11,7 @@ from typing import Annotated, Literal
 from pydantic import Field, model_validator
 
 from .common import NonEmptyString, V3BaseModel
+from .flow_v31 import DocumentRelevanceResult, RelevanceOutcome
 
 
 class DocumentCreateRequest(V3BaseModel):
@@ -62,31 +63,22 @@ class DocumentSetReadModel(V3BaseModel):
     input_revision: Annotated[int, Field(ge=1)]
 
 
-RelevanceOutcome = Literal["VALID", "INVALID", "IRRELEVANT", "INSUFFICIENT"]
-
-
-class DocumentRelevanceItem(V3BaseModel):
-    document_id: NonEmptyString
-    outcome: RelevanceOutcome
-    reason_codes: list[NonEmptyString] = Field(default_factory=list)
-
-
 class DocumentRelevanceRecordRequest(V3BaseModel):
+    """Internal write request from the Understanding layer (not an HTTP DTO).
+
+    Produces one per-set frozen `DocumentRelevanceResult`.
+    """
+
     document_set_id: NonEmptyString
     document_set_revision: Annotated[int, Field(ge=1)]
-    items: Annotated[list[DocumentRelevanceItem], Field(min_length=1)]
+    run_id: NonEmptyString
+    revision: Annotated[int, Field(ge=1)]
+    outcome: RelevanceOutcome
+    reason_code: NonEmptyString
+    reason: NonEmptyString
     evaluator: NonEmptyString | None = None
     evaluator_version: NonEmptyString | None = None
 
 
-class DocumentRelevanceItemRead(V3BaseModel):
-    document_id: NonEmptyString
-    outcome: RelevanceOutcome
-    reason_codes: list[NonEmptyString]
-    evaluated_at: str
-
-
-class DocumentRelevanceReadModel(V3BaseModel):
-    document_set_id: NonEmptyString
-    document_set_revision: Annotated[int, Field(ge=1)]
-    items: list[DocumentRelevanceItemRead]
+# The frozen per-set relevance result is the public read model.
+DocumentRelevanceReadModel = DocumentRelevanceResult
