@@ -1,11 +1,18 @@
-# HarmonyAI V3.1 Contract Freeze Candidate
+# HarmonyAI V3.1 Contract — FROZEN
 
-> Status: **FREEZE CANDIDATE — OWNER FINAL FREEZE REVIEW REQUIRED**
+> Status: **FROZEN**
+> Frozen by Owner: 陈家智（Project Leader & AI Architect）
+> Freeze date: 2026-09-06
+> Teacher Flow authority: docs/product/app-v3.1-teacher-user-flow.md
+> Questionnaire human authority: docs/product/v3-questionnaire-final-20260822.md
+> Executable questionnaire: knowledge/v3/questionnaire-v3.0.1.json
+> Questionnaire checksum: sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031
+> Executable contract: backend/app/schemas/v3/flow_v31.py
 >
 > Baseline: `origin/integration/sprint4-real-input@d16876d6fcd4cd664370b963bfa545e7e6f1fc00`
 >
 > Executable schema: `backend/app/schemas/v3/flow_v31.py` in companion Draft PR #106.
-> This document is not `FROZEN`; only the Owner may make the final freeze decision.
+> This document is FROZEN by formal Owner decision.
 
 `docs/product/app-v3.1-teacher-user-flow.md` is the sole authority for the V3.1 **USER-FACING FLOW**. Agent diagrams, schemas, and internal objects may describe backend execution only; they cannot add, remove, reorder, or rename user-facing pages or actions.
 
@@ -227,16 +234,16 @@ read model and must not derive medical or music parameters itself.
 
 ## 10. Freeze boundary
 
-This candidate freezes request/response shape, enums, validation, authority,
+This frozen contract defines request/response shape, enums, validation, authority,
 revision/checksum binding, and cross-layer semantics. It does not freeze final
 database table or ORM names, a Music Provider, provider prompts, or the
 secondary-tone medical threshold.
 
 ## 11. PR #102–#105 consistency matrix
 
-| PR | Contract area | Current implementation | Freeze Candidate | Status |
+| PR | Contract area | Current implementation | Frozen Contract | Status |
 | --- | --- | --- | --- | --- |
-| #102 | Relevance / UserGoal medical boundary | Candidate medical rules define four outcomes and keep UserGoal outside evidence | Same four outcomes; UserGoal preference-only | `ALIGNED` |
+| #102 | Relevance / UserGoal medical boundary | Frozen medical rules define four outcomes and keep UserGoal outside evidence | Same four outcomes; UserGoal preference-only | `ALIGNED` |
 | #103 | UserGoal | Uses canonical `primary_goal`, `secondary_goal`, `custom_goal_text` and generated questionnaire source | Same canonical fields and optional semantics | `ALIGNED` |
 | #103 | Multi-document / questionnaire identity | Supports 1–3 UI items and V3 questionnaire flow | Must bind authoritative DocumentSet revision and exact checksum | `MINOR_DELTA` |
 | #103 | Confirmed state / Five-Tone read model | No canonical ConfirmedUserState or complete public analysis read model consumption | Consume the frozen server read models only | `NOT_IMPLEMENTED` |
@@ -249,9 +256,9 @@ secondary-tone medical threshold.
 | #105 | ConfirmedUserState binding | Understanding/Assessment inputs remain separate | One current confirmed source-union object required before Agent2 | `NOT_IMPLEMENTED` |
 
 These deltas are implementation work for their owning PRs. They do not alter
-this candidate and are not repaired in the contract PR.
+this frozen contract and are not repaired in the contract PR.
 
-## 12. Final review candidate result
+## 12. Formal freeze decision
 
 All core path behavior, questionnaire identity, INSUFFICIENT behavior,
 DocumentSet, relevance, confirmed summary, ConfirmedUserState, ToneProfile,
@@ -259,7 +266,6 @@ and Five-Tone public read-model semantics are executable and testable. UserGoal
 custom-text-only behavior, `other` without text, and canonical empty-to-null
 semantics are explicit and no longer open product questions.
 
-**Candidate review result: READY_TO_FREEZE**
+**Formal Owner decision: FROZEN**
 
-This result means the contract is ready for Owner decision. It does not itself
-change the status to `FROZEN` and does not authorize merging implementation PRs.
+The frozen flow, questionnaire authority, and executable schema are binding across Frontend, Backend, AI, and Medical work. Implementation PRs remain subject to their own alignment and quality gates. Any later contract change requires an explicit V3.1 Contract Amendment.

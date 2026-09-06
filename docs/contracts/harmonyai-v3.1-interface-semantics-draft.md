@@ -1,6 +1,13 @@
-# HarmonyAI V3.1 Interface Semantics Draft
+# HarmonyAI V3.1 Interface Semantics — FROZEN
 
-> Status: **FREEZE CANDIDATE — OWNER FINAL FREEZE REVIEW REQUIRED**
+> Status: **FROZEN**
+> Frozen by Owner: 陈家智（Project Leader & AI Architect）
+> Freeze date: 2026-09-06
+> Teacher Flow authority: docs/product/app-v3.1-teacher-user-flow.md
+> Questionnaire human authority: docs/product/v3-questionnaire-final-20260822.md
+> Executable questionnaire: knowledge/v3/questionnaire-v3.0.1.json
+> Questionnaire checksum: sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031
+> Executable contract: backend/app/schemas/v3/flow_v31.py
 > Scope: semantic ownership plus frozen V3.1 executable boundaries. Exact fields and examples are authoritative in `harmonyai-v3.1-freeze-candidate.md` and the companion executable-schema PR.
 >
 > `docs/product/app-v3.1-teacher-user-flow.md` is the sole authority for the V3.1 **USER-FACING FLOW**. Agent diagrams, schemas, and internal objects may describe backend execution only; they cannot add, remove, reorder, or rename user-facing pages or actions.
@@ -13,7 +20,7 @@
 - **Authority:** The active server-side session revision; client thumbnails are not authoritative.
 - **V3.1 Changes:** Replaces single-document flow semantics with an ordered multi-page set. Page deletion/addition must update a new revision.
 - **Existing Mapping:** Individual document records and single `active_document_id` exist.
-- **Freeze Candidate:** `document_set_id`, `session_id`, ordered unique 1～3 document references, set revision, session input revision and authority status are executable. Database replacement/retention remains implementation detail.
+- **Frozen Contract:** `document_set_id`, `session_id`, ordered unique 1～3 document references, set revision, session input revision and authority status are executable. Database replacement/retention remains implementation detail.
 
 ## 2. DocumentRelevanceResult
 
@@ -23,7 +30,7 @@
 - **Authority:** Latest completed server-side relevance run for the active DocumentSet revision.
 - **V3.1 Changes:** Freezes `VALID`, `INVALID`, `IRRELEVANT`, and `INSUFFICIENT` with reasons and source-set revision binding.
 - **Existing Mapping:** No dedicated V3 object.
-- **Freeze Candidate:** Only `VALID` may enter summary, Evidence or Agent2. The other three outcomes retain distinct backend status/reason and share the same frontend exception route. Reason-code vocabulary and retry implementation may be versioned without changing the enum or gate.
+- **Frozen Contract:** Only `VALID` may enter summary, Evidence or Agent2. The other three outcomes retain distinct backend status/reason and share the same frontend exception route. Reason-code vocabulary and retry implementation may be versioned without changing the enum or gate.
 
 ## 3. FinalConfirmedSummary
 
@@ -33,7 +40,7 @@
 - **Authority:** Latest confirmed revision; raw OCR and pre-confirmation AI summaries are supporting sources only.
 - **V3.1 Changes:** Makes inline-edited summary explicitly authoritative and binds it to DocumentSet/relevance revisions.
 - **Existing Mapping:** CaseSummary and understanding revision/confirmation models are reusable.
-- **Freeze Candidate:** User-confirmed text is a separate authoritative revision with explicit source DocumentSet, VALID relevance, AI draft, OCR references and checksum. Re-extraction execution remains an implementation responsibility.
+- **Frozen Contract:** User-confirmed text is a separate authoritative revision with explicit source DocumentSet, VALID relevance, AI draft, OCR references and checksum. Re-extraction execution remains an implementation responsibility.
 
 ## 4. QuestionnaireResult
 
@@ -43,7 +50,7 @@
 - **Authority:** Server-validated manifest version, checksum, answers, and revision.
 - **V3.1 Changes:** Required in no-document mode; optional in recent-document mode, but complete once started/submitted.
 - **Existing Mapping:** Questionnaire payload/readiness logic exists but requires V3.1 flow validation.
-- **Freeze Candidate:** `questionnaire_v3` / `3.0.1`, manifest `medical_v3.0.1`, canonical checksum `sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031`; exactly Q1～Q10 when submitted.
+- **Frozen Contract:** `questionnaire_v3` / `3.0.1`, manifest `medical_v3.0.1`, canonical checksum `sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031`; exactly Q1～Q10 when submitted.
 
 ## 5. UserGoal
 
@@ -53,7 +60,7 @@
 - **Authority:** Latest explicit user selection for the current session; a skipped step is authoritative as `user_goal = null`.
 - **V3.1 Changes:** Independent and optional; must be tagged as preference, never Medical Evidence, FactEvidence, or OrganEvidence.
 - **Existing Mapping:** A common UserGoal model already defines the approved codes, primary/secondary fields and 200-character text bound, but requires a primary goal whenever the object is present.
-- **Freeze Candidate:** `UserGoalV31 | null` with canonical `primary_goal`, `secondary_goal`, `custom_goal_text` fields and executable validation.
+- **Frozen Contract:** `UserGoalV31 | null` with canonical `primary_goal`, `secondary_goal`, `custom_goal_text` fields and executable validation.
 - **Frozen Product Semantics:** Approved codes are `sleep`, `relaxation`, `emotion_regulation`, `focus`, `energy`, `stress_relief`, and `other`; the whole step is skippable; 0～2 selections are allowed; the first is `primary_goal`, the second is `secondary_goal`; optional `custom_goal_text` is limited to 200 characters and may exist independently. `other` does not require text at contract level.
 - **Canonical Empty Semantics:** All-null fields or blank custom text with no selected goals normalize to `user_goal = null`. Persistence location and endpoint mapping remain implementation details, not product-field decisions.
 
@@ -66,7 +73,7 @@
 - **Authority:** Server-side confirmed revision and checksum. `document_only` inherits user confirmation from `FinalConfirmedSummary` and does not require a second user confirmation. Questionnaire paths inherit confirmation from the recent-state summary confirmation.
 - **V3.1 Changes:** Unifies document-only, document-plus-questionnaire, and questionnaire-only paths; carries source references and optional UserGoal separately.
 - **Existing Mapping:** No single object currently provides this authority boundary.
-- **Freeze Candidate:** Exact `document_only`, `document_plus_questionnaire`, and `questionnaire_only` unions, normalized projection, authority, confirmation, upstream revisions and checksums are executable. Persistence location remains an implementation detail.
+- **Frozen Contract:** Exact `document_only`, `document_plus_questionnaire`, and `questionnaire_only` unions, normalized projection, authority, confirmation, upstream revisions and checksums are executable. Persistence location remains an implementation detail.
 
 ## 7. Agent2Result / AnalysisResult
 
@@ -87,7 +94,7 @@
 - **Authority:** Accepted prescription run.
 - **V3.1 Changes:** Retains `jiao`, `zhi`, `gong`, `shang`, `yu`; identifies a primary tone and optional secondary tone with supporting rationale references.
 - **Existing Mapping:** Five weights and `dominant_tone` exist.
-- **Freeze Candidate:** All five weights, primary tone, nullable distinct secondary tone, score semantics, mapping version and evidence-bound basis are executable. The medical threshold/tie rule remains a versioned rule-asset decision.
+- **Frozen Contract:** All five weights, primary tone, nullable distinct secondary tone, score semantics, mapping version and evidence-bound basis are executable. The medical threshold/tie rule remains a versioned rule-asset decision.
 
 ## 9. GenerationSpec
 
@@ -108,7 +115,7 @@
 - **Authority:** References accepted evidence/diagnosis/prescription runs; presentation text is not new evidence.
 - **V3.1 Changes:** Requires structured sections for state tendency, tone selection, BPM, instruments, ambience and duration, each traceable to real output.
 - **Existing Mapping:** Partial summary/presentation strings exist.
-- **Freeze Candidate:** A PUBLIC-only read model requires confirmed state, tendency, rationale/evidence refs, primary/optional secondary explanations, BPM/instruments/ambience/duration explanations, generation readiness and disclaimer. Extra/internal fields are forbidden; localization remains presentation work.
+- **Frozen Contract:** A PUBLIC-only read model requires confirmed state, tendency, rationale/evidence refs, primary/optional secondary explanations, BPM/instruments/ambience/duration explanations, generation readiness and disclaimer. Extra/internal fields are forbidden; localization remains presentation work.
 
 ## 11. FeedbackPreference
 
