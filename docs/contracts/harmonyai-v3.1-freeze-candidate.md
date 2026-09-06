@@ -237,7 +237,7 @@ secondary-tone medical threshold.
 | PR | Contract area | Current implementation | Freeze Candidate | Status |
 | --- | --- | --- | --- | --- |
 | #102 | Relevance / UserGoal medical boundary | Candidate medical rules define four outcomes and keep UserGoal outside evidence | Same four outcomes; UserGoal preference-only | `ALIGNED` |
-| #103 | UserGoal | Uses canonical `primary_goal`, `secondary_goal`, `custom_goal_text` and generated questionnaire source | Same canonical fields and optional semantics | `ALIGNED_PENDING_PR_UPDATE` |
+| #103 | UserGoal | Uses canonical `primary_goal`, `secondary_goal`, `custom_goal_text` and generated questionnaire source | Same canonical fields and optional semantics | `ALIGNED` |
 | #103 | Multi-document / questionnaire identity | Supports 1–3 UI items and V3 questionnaire flow | Must bind authoritative DocumentSet revision and exact checksum | `MINOR_DELTA` |
 | #103 | Confirmed state / Five-Tone read model | No canonical ConfirmedUserState or complete public analysis read model consumption | Consume the frozen server read models only | `NOT_IMPLEMENTED` |
 | #104 | DocumentSet / relevance persistence | Normalized set/revision and four relevance outcomes exist | Add exact checksums/authority flags and aggregate downstream gate semantics | `MINOR_DELTA` |
