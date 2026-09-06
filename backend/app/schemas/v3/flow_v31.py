@@ -26,10 +26,10 @@ PositiveRevision = Annotated[int, Field(ge=1)]
 PublicText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 QUESTIONNAIRE_SCHEMA_ID = "questionnaire_v3"
-QUESTIONNAIRE_SCHEMA_VERSION = "3.0.0"
-QUESTIONNAIRE_MANIFEST_VERSION = "medical_v3.0"
+QUESTIONNAIRE_SCHEMA_VERSION = "3.0.1"
+QUESTIONNAIRE_MANIFEST_VERSION = "medical_v3.0.1"
 QUESTIONNAIRE_CONTENT_CHECKSUM = (
-    "sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211"
+    "sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031"
 )
 
 
