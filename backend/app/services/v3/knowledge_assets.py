@@ -65,6 +65,11 @@ def load_organ_mapping() -> dict:
     return _load_checked("organ-mapping-v3.0.json")
 
 
+def load_five_tone_mapping() -> dict:
+    """Load the approved organ-to-five-tone mapping for Agent3."""
+    return _load_checked("five-tone-mapping-v3.0.json")
+
+
 def load_approved_assets() -> tuple[str, Mapping[str, ClaimDictionaryEntry]]:
     """Convenience loader for the Understanding/A1/A2 provider wiring."""
     return load_claim_dictionary()
