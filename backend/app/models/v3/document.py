@@ -12,8 +12,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
-    JSON,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.sql import func
@@ -88,16 +88,18 @@ class DocumentSetItem(Base):
 
 
 class DocumentRelevance(Base):
-    """Relevance assessment of a source document within a document set.
+    """Per-set relevance result (frozen `DocumentRelevanceResult` transport).
 
-    Produced by the Information Understanding layer after OCR. Outcome is the
-    only field the client reads; reason_codes / evaluator are internal audit.
+    Produced by the Information Understanding layer after OCR. One result per
+    (document_set, revision) with a single outcome; only VALID may enter
+    summary/evidence/Agent2 (derived gates, not stored). run_id / evaluator /
+    evaluator_version are internal audit.
     """
 
     __tablename__ = "document_relevances"
     __table_args__ = (
         UniqueConstraint(
-            "document_set_id", "document_id", name="uq_document_relevances_document"
+            "document_set_id", "revision", name="uq_document_relevances_revision"
         ),
         CheckConstraint(
             "outcome IN ('VALID', 'INVALID', 'IRRELEVANT', 'INSUFFICIENT')",
@@ -113,9 +115,11 @@ class DocumentRelevance(Base):
         index=True,
     )
     document_set_revision = Column(Integer, nullable=False)
-    document_id = Column(String(64), nullable=False)
+    run_id = Column(String(64), nullable=False)
+    revision = Column(Integer, nullable=False)
     outcome = Column(String(16), nullable=False)
-    reason_codes_json = Column(JSON, nullable=False)
+    reason_code = Column(String(64), nullable=False)
+    reason = Column(Text, nullable=False)
     evaluator = Column(String(32), nullable=True)
     evaluator_version = Column(String(32), nullable=True)
     evaluated_at = Column(DateTime(timezone=True), nullable=False)
