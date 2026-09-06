@@ -12,10 +12,10 @@
 
 | 文件 | 对应 #108 章节 | canonical sha256 |
 | --- | --- | --- |
-| `knowledge/v3/document-relevance-rules-v3.1.json` | §1 Document Relevance 终审 | `0689aa50…ca5a` |
-| `knowledge/v3/usergoal-vocabulary-v3.1.json` | §2 正式问卷 3.0.1 保护（UserGoal 语义） | `951b2cc5…d740` |
-| `knowledge/v3/five-tone-safe-expression-rules-v3.1.json` | §5 Five-Tone Explainability | `561f9786…e058` |
-| `knowledge/v3/rag-corpus-manifest-v3.1.json` | §3 RAG Medical Corpus + §4 Corpus Boundary | `d47f4500…e561` |
+| `knowledge/v3/document-relevance-rules-v3.1.json` | §1 Document Relevance 终审 | `9fe5aa90…eeb` |
+| `knowledge/v3/usergoal-vocabulary-v3.1.json` | §2 正式问卷 3.0.1 保护（UserGoal 语义） | `34992286…3cb` |
+| `knowledge/v3/five-tone-safe-expression-rules-v3.1.json` | §5 Five-Tone Explainability | `c752d619…23f` |
+| `knowledge/v3/rag-corpus-manifest-v3.1.json` | §3 RAG Medical Corpus + §4 Corpus Boundary | `288cffbd…2c4` |
 | `docs/sprint5/medical-issue108-closeout-20260906.md` | 本说明 | — |
 
 ## 2. #108 验收对照
@@ -47,7 +47,16 @@
 - 4 份 JSON 均通过 `json.loads`（UTF-8）；content_checksum 为移除自身字段后的 canonical sha256（仓库口径），见 §1 表。
 - 本批无代码改动，未触碰 questionnaire-v3.0.1 / 既有 v3.0 资产；基线契约文件零修改。
 
-## 6. 下一步（等 nob/Owner 指示）
+## 6. R1 修订（2026-09-06 晚，回应 CodeX 第一批核查）
+
+- VALID 4 条 reason_code_whitelist 补 `reason` 公开文案（对齐冻结 §3 reason 必填非空）；
+- 清除资产正文中「诊断结论/诊断」类措辞（VALID/INSUFFICIENT criteria 改「病历记载内容/检查结论」表述）；
+- usergoal-vocabulary 移除 `user_label_candidate`，改 `label_ref` 指向 questionnaire-v3.0.1#user_goal.options；
+- 4 资产 `status_note` 与 `asset_status=medical_final_v3.1` 统一（final submitted / pending Owner registration）；
+- rag-corpus-manifest 每条 source 补 `source_reference` 与真实版本说明。
+
+## 7. 下一步（等 nob/Owner 指示）
+
 
 1. nob 复核本分支内容；
 2. Owner 决定是否开 PR（#108 完成格式要求的 13 字段回复将在 PR/Issue 阶段补充）；

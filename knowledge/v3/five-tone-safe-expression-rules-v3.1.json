@@ -13,7 +13,7 @@
     "knowledge/v3/knowledge-manifest-v3.0.json（forbidden_expressions 与 usage_boundaries 基线）"
   ],
   "purpose": "为‘五音调适解析’页面（及任何向用户呈现的解析/解释文本）制定医学安全表达规则：展示状态倾向、调式选择理由与音乐参数时，不形成确诊式、疗效承诺式或越界医疗建议式表述。消费方为 Agent2/Agent3 输出的解释装配器与前端只读渲染。",
-  "status_note": "PROVISIONAL / CANDIDATE —— 未冻结；免责声明最终文案与页面措辞待老师审阅（flow §10）。",
+  "status_note": "medical final v3.1：已按 Issue #108 §5 提交评审（2026-09-06）；表达边界对齐 freeze-candidate §9 只读模型；免责声明最终文案仍待老师/产品审阅（OD-FT-01）；注册入 manifest 待 Owner 接受。",
   "presentation_sections": [
     {
       "section": "confirmed_state",
@@ -211,5 +211,5 @@
     "frontend_rule": "前端只消费 read model，不得自行推导医学或音乐参数",
     "tone_field_note": "冻结字段 primary_tone + nullable secondary_tone（非旧 dominant_tone）；医学侧只用主音/辅音措辞"
   },
-  "content_checksum": "sha256:561f9786c572d29338d05a31fa4b7f4b819adcf0264c61887f89dbe561a9e058"
+  "content_checksum": "sha256:c752d619d23f944b138365abff52b531036ad8a99c8a86b95cf98043b04e5b1f"
 }
