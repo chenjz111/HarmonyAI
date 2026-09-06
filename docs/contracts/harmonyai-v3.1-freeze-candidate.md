@@ -14,10 +14,10 @@
 | Field | Authoritative value |
 | --- | --- |
 | Schema ID | `questionnaire_v3` |
-| Schema version | `3.0.0` |
-| Manifest version | `medical_v3.0` |
-| Canonical path | `knowledge/v3/questionnaire-v3.0.json` |
-| Canonical checksum | `sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211` |
+| Schema version | `3.0.1` |
+| Manifest version | `medical_v3.0.1` |
+| Canonical path | `knowledge/v3/questionnaire-v3.0.1.json` |
+| Canonical checksum | `sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031` |
 | Manifest path | `knowledge/v3/knowledge-manifest-v3.0.json` |
 | Manifest schema/version | `knowledge_manifest_v3` / `3.0.0` |
 | Manifest review | `approved`, `medical_v3.0-r1` |
@@ -112,7 +112,7 @@ with the confirmed revision.
   "schema_id": "questionnaire_v3",
   "questionnaire_schema_version": "3.0.0",
   "manifest_version": "medical_v3.0",
-  "content_checksum": "sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211",
+  "content_checksum": "sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031",
   "answers": ["exactly q01 through q10 in order"],
   "started_at": "2026-09-05T01:00:00Z",
   "completed_at": "2026-09-05T01:03:00Z"
@@ -159,7 +159,7 @@ not require Service-layer changes.
   "session_id": "sess_xxx",
   "source_mode": "document_plus_questionnaire",
   "final_confirmed_summary_ref": {"summary_id": "sum_xxx", "revision": 2, "content_checksum": "sha256:...", "confirmation_status": "confirmed"},
-  "questionnaire_result_ref": {"questionnaire_result_id": "qres_xxx", "revision": 1, "content_checksum": "sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211", "completion_status": "complete"},
+  "questionnaire_result_ref": {"questionnaire_result_id": "qres_xxx", "revision": 1, "content_checksum": "sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031", "completion_status": "complete"},
   "user_goal_ref": null,
   "confirmed_state_text": "用户确认后的状态摘要。",
   "normalized_projection": [{"fact_id": "fact_xxx", "claim_code": "unrefreshing_sleep", "display_text": "睡后恢复感不足", "source_refs": ["qres_xxx:q01"]}],
@@ -237,7 +237,7 @@ secondary-tone medical threshold.
 | PR | Contract area | Current implementation | Freeze Candidate | Status |
 | --- | --- | --- | --- | --- |
 | #102 | Relevance / UserGoal medical boundary | Candidate medical rules define four outcomes and keep UserGoal outside evidence | Same four outcomes; UserGoal preference-only | `ALIGNED` |
-| #103 | UserGoal | Sends `primary`, `secondary`, `custom_text` | Requires `primary_goal`, `secondary_goal`, `custom_goal_text` | `BLOCKING_DELTA` |
+| #103 | UserGoal | Uses canonical `primary_goal`, `secondary_goal`, `custom_goal_text` and generated questionnaire source | Same canonical fields and optional semantics | `ALIGNED_PENDING_PR_UPDATE` |
 | #103 | Multi-document / questionnaire identity | Supports 1–3 UI items and V3 questionnaire flow | Must bind authoritative DocumentSet revision and exact checksum | `MINOR_DELTA` |
 | #103 | Confirmed state / Five-Tone read model | No canonical ConfirmedUserState or complete public analysis read model consumption | Consume the frozen server read models only | `NOT_IMPLEMENTED` |
 | #104 | DocumentSet / relevance persistence | Normalized set/revision and four relevance outcomes exist | Add exact checksums/authority flags and aggregate downstream gate semantics | `MINOR_DELTA` |

@@ -43,7 +43,7 @@
 - **Authority:** Server-validated manifest version, checksum, answers, and revision.
 - **V3.1 Changes:** Required in no-document mode; optional in recent-document mode, but complete once started/submitted.
 - **Existing Mapping:** Questionnaire payload/readiness logic exists but requires V3.1 flow validation.
-- **Freeze Candidate:** `questionnaire_v3` / `3.0.0`, manifest `medical_v3.0`, canonical checksum `sha256:fef9830e3d269236a58213f95e2fd3449baf0ef52c0ffd74f516792f96910211`; exactly Q1～Q10 when submitted.
+- **Freeze Candidate:** `questionnaire_v3` / `3.0.1`, manifest `medical_v3.0.1`, canonical checksum `sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031`; exactly Q1～Q10 when submitted.
 
 ## 5. UserGoal
 
