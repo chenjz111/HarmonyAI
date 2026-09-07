@@ -67,6 +67,7 @@ from backend.ai_engine.v3.v31_pipeline import (
 from backend.ai_engine.v3.agent3 import Agent3Blocked
 from backend.app.services.v3.idempotency import (
     IdempotencyConflict,
+    IdempotencyFailureReplay,
     IdempotencyInProgress,
     reserve_v3_idempotency,
 )
@@ -87,6 +88,7 @@ class V31ReadinessError(RuntimeError):
         self.error_code = error_code
         self.safe_message = safe_message
         self.retryable = False
+        self.request_id: str | None = None
         super().__init__(f"{error_code}: {safe_message}")
 
 
@@ -105,6 +107,7 @@ class V31PipelineFailure(RuntimeError):
         self.safe_message = safe_message
         self.audit_context = audit_context
         self.retryable = retryable
+        self.request_id: str | None = None
         super().__init__(f"{error_code}: {safe_message}")
 
 
@@ -794,7 +797,7 @@ def _persist_failed_pipeline_audit(
     element_profile: ElementProfile,
     audit: V31PipelineAuditContext,
 ) -> None:
-    """Commit a failed/abstained Agent2 attempt without a public result."""
+    """Stage a failed/abstained Agent2 attempt before idempotency commit."""
 
     execution = audit.diagnosis_execution
     abstained = execution.status == "abstained"
@@ -843,7 +846,8 @@ def _persist_failed_pipeline_audit(
         diagnosis_id=diagnosis_id,
         pipeline=audit,
     )
-    db.commit()
+    # The caller persists the matching safe error envelope and commits both
+    # the audit rows and idempotency terminal state in one transaction.
 
 
 def run_diagnosis(
@@ -862,6 +866,8 @@ def run_diagnosis(
         request_hash=request_hash,
     )
     if replayed:
+        if record.status == "failed":
+            raise IdempotencyFailureReplay.from_record(record)
         return DiagnosisV3.model_validate_json(record.response_json), True
 
     ref: AssessmentRefV31 = request.assessment_ref
@@ -963,7 +969,14 @@ def run_diagnosis(
                     element_profile=element_profile,
                     audit=error.audit_context,
                 )
-            _mark_idempotency_failed(db, record)
+            error.request_id = _mark_idempotency_failed(
+                db,
+                record,
+                status_code=503 if isinstance(error, V31ReadinessError) else 502,
+                error_code=error.error_code,
+                safe_message=error.safe_message,
+                retryable=error.retryable,
+            )
             raise
         result = _diagnosis_from_v31_pipeline(
             pipeline,
@@ -994,8 +1007,16 @@ def run_diagnosis(
     else:
         # Element evidence is available but no approved syndrome whitelist /
         # production RAG exists: fabricating syndromes is forbidden.
-        _mark_idempotency_failed(db, record)
-        raise MedicalAssetUnavailable
+        failure = MedicalAssetUnavailable()
+        failure.request_id = _mark_idempotency_failed(
+            db,
+            record,
+            status_code=503,
+            error_code="MEDICAL_ASSET_UNAVAILABLE",
+            safe_message="辨证所需的医学知识资产尚未批准，暂不能输出证型倾向。",
+            retryable=False,
+        )
+        raise failure
 
     db.add(
         DiagnosisRun(
@@ -1026,14 +1047,32 @@ def run_diagnosis(
     return result, False
 
 
-def _mark_idempotency_failed(db: Session, record) -> None:
-    """Release a reserved key after a non-replayable execution failure.
+def _mark_idempotency_failed(
+    db: Session,
+    record,
+    *,
+    status_code: int,
+    error_code: str,
+    safe_message: str,
+    retryable: bool,
+) -> str:
+    """Persist the first safe failure envelope for deterministic replay."""
 
-    A failed key is deliberately retained for conflict detection, while the
-    reservation helper may safely retry the same request hash later.
-    """
-
+    request_id = f"req_{uuid.uuid4().hex}"
     record.status = "failed"
-    record.response_code = 502
-    record.response_json = None
+    record.response_code = status_code
+    record.response_json = json.dumps(
+        {
+            "status_code": status_code,
+            "code": error_code,
+            "message": safe_message,
+            "retryable": bool(retryable),
+            "next_actions": [],
+            "request_id": request_id,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     db.commit()
+    return request_id

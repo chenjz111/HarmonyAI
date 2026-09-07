@@ -472,11 +472,10 @@ def test_formal_router_persists_provider_abstain_and_replays_without_duplicate(
         audit_db.close()
 
 
-def test_formal_router_retries_failed_idempotency_key_without_stuck_processing(
+def test_formal_router_replays_failed_idempotency_result_without_rerunning_provider(
     db_session_factory, monkeypatch
 ):
     from backend.ai_engine.v3.diagnosis_provider import DiagnosisProviderFailure
-    from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse
     from backend.app.models.v3.session import V3IdempotencyRecord
 
     headers = _guest_headers()
@@ -503,36 +502,17 @@ def test_formal_router_retries_failed_idempotency_key_without_stuck_processing(
     calls = 0
     dependencies = _dependencies([])
 
-    async def fail_once(**kwargs):
+    async def always_fail(**kwargs):
         nonlocal calls
         del kwargs
         calls += 1
-        if calls == 1:
-            raise DiagnosisProviderFailure(
-                "DIAGNOSIS_PROVIDER_TIMEOUT",
-                "辨证服务响应超时。",
-                retryable=True,
-            )
-        return DiagnosisProviderResponse.model_validate(
-            {
-                "status": "success",
-                "candidate_tendencies": [
-                    {
-                        "syndrome_code": "syndrome_1",
-                        "display_name": "safe tendency",
-                        "relative_support": 0.8,
-                        "supporting_fact_ids": [],
-                        "contradicting_fact_ids": [],
-                        "knowledge_chunk_ids": ["chunk_1"],
-                        "reasoning_summary": "grounded summary",
-                    }
-                ],
-                "abstained": False,
-                "abstain_reason": None,
-            }
+        raise DiagnosisProviderFailure(
+            "DIAGNOSIS_PROVIDER_TIMEOUT",
+            "辨证服务响应超时。",
+            retryable=True,
         )
 
-    dependencies.diagnosis_provider.acomplete_json = fail_once
+    dependencies.diagnosis_provider.acomplete_json = always_fail
     monkeypatch.setattr(diagnosis_service, "_v31_real_mode", lambda: True)
     monkeypatch.setattr(
         agent_config,
@@ -558,19 +538,29 @@ def test_formal_router_retries_failed_idempotency_key_without_stuck_processing(
         headers={**headers, "Idempotency-Key": key},
         json=body,
     )
+    conflict_body = {**body, "diagnosis_id": "different_diagnosis_id"}
+    conflict = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": key},
+        json=conflict_body,
+    )
 
     assert first.status_code == 502
     assert first.json()["error"]["retryable"] is True
-    assert retry.status_code == 201, retry.text
-    assert retry.json()["data"]["diagnosis_id"] == "diag_requested_id"
-    assert calls == 2
+    assert retry.status_code == 502, retry.text
+    assert retry.json() == first.json()
+    assert conflict.status_code == 422, conflict.text
+    assert conflict.json()["error"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert calls == 1
     audit_db = db_session_factory()
     try:
         assert audit_db.query(DiagnosisRun).count() == 1
         assert audit_db.query(DiagnosisRun).one().diagnosis_id == "diag_requested_id"
+        assert audit_db.query(AiProviderRun).count() == 1
         record = audit_db.query(V3IdempotencyRecord).filter(
             V3IdempotencyRecord.idempotency_key == key
         ).one()
-        assert record.status == "succeeded"
+        assert record.status == "failed"
+        assert record.response_json is not None
     finally:
         audit_db.close()

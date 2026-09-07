@@ -13,6 +13,7 @@ from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.services.v3.auth_service import get_current_v3_principal
 from backend.app.services.v3.diagnosis_service import (
     IdempotencyConflict,
+    IdempotencyFailureReplay,
     IdempotencyInProgress,
     MedicalAssetUnavailable,
     OwnedResourceNotFound,
@@ -65,12 +66,22 @@ def create_run(
             "相同幂等键的请求仍在处理中，请稍后重试。",
             retryable=True,
         ) from None
-    except MedicalAssetUnavailable:
+    except IdempotencyFailureReplay as error:
+        raise V3APIError(
+            error.status_code,
+            error.code,
+            error.message,
+            retryable=error.retryable,
+            next_actions=error.next_actions,
+            request_id=error.request_id,
+        ) from None
+    except MedicalAssetUnavailable as error:
         raise V3APIError(
             503,
             "MEDICAL_ASSET_UNAVAILABLE",
             "辨证所需的医学知识资产尚未批准，暂不能输出证型倾向。",
             retryable=False,
+            request_id=getattr(error, "request_id", None),
         ) from None
     except V31ReadinessError as error:
         raise V3APIError(
@@ -78,6 +89,7 @@ def create_run(
             error.error_code,
             error.safe_message,
             retryable=False,
+            request_id=error.request_id,
         ) from None
     except V31PipelineFailure as error:
         raise V3APIError(
@@ -85,6 +97,7 @@ def create_run(
             error.error_code,
             error.safe_message,
             retryable=error.retryable,
+            request_id=error.request_id,
         ) from None
     if replayed:
         response.status_code = 200

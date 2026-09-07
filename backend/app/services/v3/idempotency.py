@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 import uuid
 
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +18,54 @@ class IdempotencyConflict(RuntimeError):
 
 class IdempotencyInProgress(RuntimeError):
     """An older request owns the key but has not produced a replay yet."""
+
+
+class IdempotencyFailureReplay(RuntimeError):
+    """A previously failed request whose public error is safe to replay."""
+
+    def __init__(
+        self,
+        *,
+        status_code: int,
+        code: str,
+        message: str,
+        retryable: bool,
+        next_actions: list[str],
+        request_id: str | None,
+    ) -> None:
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+        self.retryable = retryable
+        self.next_actions = next_actions
+        self.request_id = request_id
+        super().__init__(f"{code}: {message}")
+
+    @classmethod
+    def from_record(cls, record: V3IdempotencyRecord) -> "IdempotencyFailureReplay":
+        try:
+            payload = json.loads(record.response_json or "")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raise IdempotencyInProgress from None
+        if not isinstance(payload, dict):
+            raise IdempotencyInProgress
+
+        next_actions = payload.get("next_actions", [])
+        if not isinstance(next_actions, list) or not all(
+            isinstance(item, str) for item in next_actions
+        ):
+            next_actions = []
+        request_id = payload.get("request_id")
+        if not isinstance(request_id, str):
+            request_id = None
+        return cls(
+            status_code=int(payload.get("status_code") or record.response_code or 502),
+            code=str(payload.get("code") or "V31_PIPELINE_FAILED"),
+            message=str(payload.get("message") or "V3.1 AI 链路执行失败。"),
+            retryable=bool(payload.get("retryable", False)),
+            next_actions=next_actions,
+            request_id=request_id,
+        )
 
 
 def _utc_now() -> datetime:
@@ -56,11 +105,14 @@ def _replay_or_raise(
         raise IdempotencyConflict
     if record.status == "succeeded" and record.resource_id and record.response_json:
         return record, True
+    if record.status == "failed" and record.response_json:
+        # A completed failure is still a completed first result.  Keep it for
+        # exact replay and for hash-conflict detection; never rerun the
+        # provider for the same key and payload.
+        return record, True
     if record.status == "failed":
-        # Keep the failed reservation for hash-conflict detection, but allow
-        # the exact request to retry after the previous transaction released
-        # its processing state.  This prevents a provider outage from
-        # creating a permanent IDEMPOTENCY_IN_PROGRESS response.
+        # Rows written by an older implementation did not persist an error
+        # envelope.  Preserve a safe one-time retry for that legacy shape.
         record.status = "processing"
         record.resource_type = None
         record.resource_id = None
