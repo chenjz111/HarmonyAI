@@ -21,6 +21,6 @@ DROP TABLE document_set_items_old;
 CREATE INDEX IF NOT EXISTS ix_document_set_items_set
     ON document_set_items(document_set_id);
 
-DELETE FROM schema_migrations WHERE version = '0007_v3_doc_fk';
+DELETE FROM schema_migrations WHERE version = '0006_v3_doc_fk';
 COMMIT;
 PRAGMA foreign_keys=ON;

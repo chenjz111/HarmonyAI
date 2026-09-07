@@ -2,7 +2,7 @@ PRAGMA foreign_keys=OFF;
 PRAGMA legacy_alter_table=ON;
 BEGIN IMMEDIATE;
 
--- 0007_v3_doc_fk — add the real FK document_set_items.document_id ->
+-- 0006_v3_doc_fk — add the real FK document_set_items.document_id ->
 -- documents.document_id (SQLite table rebuild).
 
 ALTER TABLE document_set_items RENAME TO document_set_items_old;

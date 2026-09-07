@@ -1,4 +1,4 @@
--- 0008_v3_prescription_mode rollback.
+-- 0007_v3_prescription_mode rollback.
 
 ALTER TABLE prescription_v3
     DROP CHECK ck_prescription_v3_mode,
@@ -7,4 +7,4 @@ ALTER TABLE prescription_v3
         ('syndrome_based', 'conservative_fallback')
     );
 
-DELETE FROM schema_migrations WHERE version = '0008_v3_prescription_mode';
+DELETE FROM schema_migrations WHERE version = '0007_v3_prescription_mode';

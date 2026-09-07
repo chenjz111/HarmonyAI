@@ -68,10 +68,10 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
         "0001_v3_foundation",
         "0002_v3_business",
         "0003_v3_owner_flow",
-        "0005_v3_multidoc",
-        "0006_v3_relevance",
-        "0007_v3_doc_fk",
-        "0008_v3_prescription_mode",
+        "0004_v3_multidoc",
+        "0005_v3_relevance",
+        "0006_v3_doc_fk",
+        "0007_v3_prescription_mode",
     ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)

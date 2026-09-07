@@ -1,5 +1,5 @@
 -- ============================================================
--- 0006_v3_relevance — per-set document relevance result (MySQL 8)
+-- 0005_v3_relevance — per-set document relevance result (MySQL 8)
 -- Mirrors frozen DocumentRelevanceResult: one result per (set, revision)
 -- with a single outcome + reason_code/reason; downstream gates derived.
 -- ============================================================

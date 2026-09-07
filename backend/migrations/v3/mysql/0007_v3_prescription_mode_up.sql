@@ -1,4 +1,4 @@
--- 0008_v3_prescription_mode — unify the prescription_mode CHECK with the
+-- 0007_v3_prescription_mode — unify the prescription_mode CHECK with the
 -- V3.1-approved four modes.
 
 ALTER TABLE prescription_v3
