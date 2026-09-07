@@ -48,10 +48,12 @@ class V31PipelineBlocked(ValueError):
         safe_message: str = "V3.1 AI 链路尚未就绪。",
         *,
         audit_context: "V31PipelineAuditContext | None" = None,
+        retryable: bool = False,
     ) -> None:
         self.error_code = error_code
         self.safe_message = safe_message
         self.audit_context = audit_context
+        self.retryable = retryable
         super().__init__(f"{error_code}: {safe_message}")
 
 
@@ -127,6 +129,7 @@ async def execute_v31_ai_pipeline(
             if assessment_snapshot.get("medical_rule_version") is not None
             else None
         ),
+        rag_chunk_checksums=dict(getattr(rag_store, "chunk_checksums", {})),
     )
     audit_context = V31PipelineAuditContext(
         query=query,
@@ -138,16 +141,14 @@ async def execute_v31_ai_pipeline(
         mapping_version=_mapping_version(tone_mapping),
     )
     if execution.status == "abstained":
-        raise V31PipelineBlocked(
-            "DIAGNOSIS_ABSTAINED",
-            audit_context=audit_context,
-        )
+        pass
     if execution.status == "failed":
         raise V31PipelineBlocked(
             execution.reason_code or "DIAGNOSIS_FAILED",
             audit_context=audit_context,
+            retryable=execution.retryable,
         )
-    if execution.response is None:
+    if execution.response is None and execution.status != "abstained":
         raise V31PipelineBlocked("DIAGNOSIS_FAILED", audit_context=audit_context)
 
     diagnosis_id = str(assessment_snapshot.get("diagnosis_id") or f"diag_{uuid.uuid4().hex}")
@@ -156,7 +157,12 @@ async def execute_v31_ai_pipeline(
         for item in (
             assessment_snapshot.get("supporting_fact_ids") or []
         )
+    ] + [
+        str(item)
+        for item in (assessment_snapshot.get("contradicting_fact_ids") or [])
     ] + [hit.chunk_id for hit in rag_result.hits]
+    if not evidence_refs:
+        evidence_refs = [f"confirmed_state:{state.confirmed_user_state_id}"]
     profile = build_tone_profile_v31(
         diagnosis_id=diagnosis_id,
         diagnosis_revision=int(assessment_snapshot.get("diagnosis_revision", 1)),

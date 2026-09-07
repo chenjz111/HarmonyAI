@@ -123,7 +123,14 @@ class QwenCompatibleProvider:
         return self._complete_sync(system_prompt, user_prompt)
 
     async def acomplete_json(self, system_prompt: str, user_prompt: str) -> dict[str, object]:
-        return (await self._complete_async(system_prompt, user_prompt)).data
+        return (await self.acomplete_json_with_metadata(system_prompt, user_prompt)).data
+
+    async def acomplete_json_with_metadata(
+        self, system_prompt: str, user_prompt: str
+    ) -> "_Completion":
+        """Return the structured result together with real transport attempts."""
+
+        return await self._complete_async(system_prompt, user_prompt)
 
     def _request_body(self, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, str], bytes]:
         if not self.base_url or not self.api_key or not self.model:

@@ -84,7 +84,7 @@ def create_run(
             502,
             error.error_code,
             error.safe_message,
-            retryable=False,
+            retryable=error.retryable,
         ) from None
     if replayed:
         response.status_code = 200

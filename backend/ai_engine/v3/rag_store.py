@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 import re
 import uuid
 
@@ -87,6 +87,17 @@ class VersionedRagStore:
                     "CORPUS_CHUNK_COUNT_MISMATCH",
                     "医学语料块数量与清单不一致。",
                 )
+        checked_chunks = [KnowledgeChunk.model_validate(chunk) for chunk in chunks]
+        incoming_checksums = {
+            chunk.chunk_id: chunk.content_checksum for chunk in checked_chunks
+        }
+        if (
+            self._manifest is not None
+            and self._collection is not None
+            and self._manifest.manifest_checksum == checked.manifest_checksum
+            and self._chunk_checksums == incoming_checksums
+        ):
+            return self._versioned_collection_name(checked)
         collection_name = self._versioned_collection_name(checked)
         try:
             collection = self._client.get_or_create_collection(
@@ -100,11 +111,11 @@ class VersionedRagStore:
             )
             embeddings = [
                 self.embedding_provider.embed(chunk.text, input_type="document")
-                for chunk in chunks
+                for chunk in checked_chunks
             ]
             collection.upsert(
-                ids=[chunk.chunk_id for chunk in chunks],
-                documents=[chunk.text for chunk in chunks],
+                ids=[chunk.chunk_id for chunk in checked_chunks],
+                documents=[chunk.text for chunk in checked_chunks],
                 metadatas=[
                     {
                         "source_id": chunk.source_id,
@@ -115,7 +126,7 @@ class VersionedRagStore:
                         "knowledge_version": chunk.knowledge_version,
                         "content_checksum": chunk.content_checksum,
                     }
-                    for chunk in chunks
+                    for chunk in checked_chunks
                 ],
                 embeddings=embeddings,
             )
@@ -127,13 +138,11 @@ class VersionedRagStore:
                 "RAG 索引暂时不可用。",
             ) from error
         self._manifest = checked
-        self._approved_chunk_ids = frozenset(chunk.chunk_id for chunk in chunks)
+        self._approved_chunk_ids = frozenset(chunk.chunk_id for chunk in checked_chunks)
         self._medical_review_versions = frozenset(
-            chunk.medical_review_version for chunk in chunks
+            chunk.medical_review_version for chunk in checked_chunks
         )
-        self._chunk_checksums = {
-            chunk.chunk_id: chunk.content_checksum for chunk in chunks
-        }
+        self._chunk_checksums = incoming_checksums
         self._collection = collection
         return collection_name
 

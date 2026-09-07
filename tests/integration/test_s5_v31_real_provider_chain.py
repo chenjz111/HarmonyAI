@@ -211,4 +211,7 @@ def test_mock_adapter_classes_execute_the_v31_chain_without_network_or_secrets()
     assert result.read_model.primary_tone.tone.value == "zhi"
     assert qwen_transport.calls[0][1]["X-DashScope-WorkSpace"] == "workspace-test"
     assert qwen_transport.calls[0][2]["response_format"] == {"type": "json_object"}
-    assert "approved corpus text" not in str(qwen_transport.calls[0][2])
+    user_prompt = qwen_transport.calls[0][2]["messages"][1]["content"]
+    assert "approved corpus text" in user_prompt
+    assert "chunk_1" in user_prompt
+    assert chunk.content_checksum in user_prompt

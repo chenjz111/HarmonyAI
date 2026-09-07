@@ -393,6 +393,7 @@ def test_v31_real_rag_factory_loads_approved_corpus_before_returning_store(
         return "harmony_v31_medical_v3_1"
 
     monkeypatch.setattr(VersionedRagStore, "ingest", capture_ingest)
+    fake_client = object()
 
     store = agent_config.get_v31_rag_store(
         {
@@ -405,9 +406,23 @@ def test_v31_real_rag_factory_loads_approved_corpus_before_returning_store(
             "RAG_CORPUS_MANIFEST_PATH": str(manifest_path),
             "RAG_CORPUS_CHUNKS_PATH": str(chunks_path),
         },
-        client=object(),
+        client=fake_client,
+    )
+    store_again = agent_config.get_v31_rag_store(
+        {
+            "HARMONYAI_REAL_AGENTS": "true",
+            "DASHSCOPE_API_KEY": "configured-value",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
+            "QWEN_MODEL": "qwen-approved",
+            "CHROMA_PERSIST_DIRECTORY": str(tmp_path / "chroma"),
+            "CHROMA_COLLECTION": "harmony_v31",
+            "RAG_CORPUS_MANIFEST_PATH": str(manifest_path),
+            "RAG_CORPUS_CHUNKS_PATH": str(chunks_path),
+        },
+        client=fake_client,
     )
 
     assert isinstance(store, VersionedRagStore)
+    assert store_again is store
     assert captured["manifest"].manifest_checksum == manifest.manifest_checksum
     assert [item.chunk_id for item in captured["chunks"]] == ["chunk_001"]

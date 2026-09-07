@@ -50,6 +50,7 @@ def use_real_agents() -> bool:
 _knowledge_store: object | None = None
 _feedback_store: object | None = None
 _data_dir: Path | None = None
+_v31_rag_store_cache: dict[tuple[object, ...], object] = {}
 
 
 def _get_data_dir() -> Path:
@@ -146,6 +147,20 @@ def get_v31_rag_store(environment: Mapping[str, str] | None = None, *, client=No
         raise V31ReadinessFailure("EMBEDDING_FACTORY_NOT_READY")
     try:
         manifest, chunks = load_production_corpus(manifest_path, chunks_path)
+        chunk_identity = tuple(
+            sorted((chunk.chunk_id, chunk.content_checksum) for chunk in chunks)
+        )
+        cache_key = (
+            str(Path(config.chroma_persist_directory)),
+            config.chroma_collection,
+            manifest.manifest_checksum,
+            chunk_identity,
+            str(getattr(embedding_provider, "base_url", "")),
+            id(client) if client is not None else "persistent",
+        )
+        cached = _v31_rag_store_cache.get(cache_key)
+        if cached is not None:
+            return cached
         store = VersionedRagStore(
             persist_directory=config.chroma_persist_directory,
             collection_name=config.chroma_collection,
@@ -154,6 +169,7 @@ def get_v31_rag_store(environment: Mapping[str, str] | None = None, *, client=No
             production=True,
         )
         store.ingest(manifest, chunks)
+        _v31_rag_store_cache[cache_key] = store
         return store
     except ProductionCorpusNotReady as error:
         raise V31ReadinessFailure(error.error_code, error.safe_message) from None

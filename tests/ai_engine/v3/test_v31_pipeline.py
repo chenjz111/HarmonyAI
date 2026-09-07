@@ -201,6 +201,47 @@ def test_v31_pipeline_reaches_query_rag_qwen_agent3_and_public_read_model_withou
     assert "user_goal" not in result.diagnosis_request.model_dump(mode="json")
 
 
+def test_v31_pipeline_runs_agent3_fallback_for_medical_abstain():
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
+    from backend.ai_engine.v3.v31_pipeline import execute_v31_ai_pipeline
+
+    class Rag:
+        manifest = None
+        chunk_checksums = {}
+
+        def query(self, query):
+            del query
+            return _rag_result().model_copy(update={"status": "empty", "hits": []})
+
+    class Backend:
+        async def acomplete_json(self, system_prompt, user_prompt):
+            del system_prompt, user_prompt
+            raise AssertionError("medical abstain must not call Qwen")
+
+    provider = DiagnosisProvider(
+        backend=Backend(),
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+    result = __import__("asyncio").run(
+        execute_v31_ai_pipeline(
+            confirmed_user_state=_confirmed_state(),
+            assessment_snapshot=_snapshot(),
+            rag_store=Rag(),
+            diagnosis_provider=provider,
+            tone_mapping=_mapping(),
+            generation_parameter_rules=_rules(),
+        )
+    )
+
+    assert result.diagnosis is None
+    assert result.diagnosis_execution.status == "abstained"
+    assert result.tone_profile.primary_tone.value == "zhi"
+    assert result.generation_spec.readiness == "ready"
+    assert result.read_model.generation.status == "ready"
+
+
 def test_v31_pipeline_rejects_non_current_or_unconfirmed_state_before_rag():
     from backend.ai_engine.v3.v31_pipeline import V31PipelineBlocked, execute_v31_ai_pipeline
 

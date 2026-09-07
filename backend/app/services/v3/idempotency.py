@@ -56,6 +56,17 @@ def _replay_or_raise(
         raise IdempotencyConflict
     if record.status == "succeeded" and record.resource_id and record.response_json:
         return record, True
+    if record.status == "failed":
+        # Keep the failed reservation for hash-conflict detection, but allow
+        # the exact request to retry after the previous transaction released
+        # its processing state.  This prevents a provider outage from
+        # creating a permanent IDEMPOTENCY_IN_PROGRESS response.
+        record.status = "processing"
+        record.resource_type = None
+        record.resource_id = None
+        record.response_code = None
+        record.response_json = None
+        return record, False
     raise IdempotencyInProgress
 
 
@@ -86,7 +97,12 @@ def reserve_v3_idempotency(
             db.flush()
             record = None
         if record is not None:
-            return _replay_or_raise(record, request_hash=request_hash)
+            result = _replay_or_raise(record, request_hash=request_hash)
+            if not result[1] and record.status == "processing":
+                # Publish the retry reservation before any business writes so
+                # a concurrent identical retry cannot also execute it.
+                db.commit()
+            return result
 
         candidate = V3IdempotencyRecord(
             idempotency_record_id=f"idem_{uuid.uuid4().hex}",
@@ -112,7 +128,10 @@ def reserve_v3_idempotency(
                 if attempt == 0:
                     continue
                 raise error
-            return _replay_or_raise(winner, request_hash=request_hash)
+            result = _replay_or_raise(winner, request_hash=request_hash)
+            if not result[1] and winner.status == "processing":
+                db.commit()
+            return result
         return candidate, False
 
     raise RuntimeError("idempotency reservation retry exhausted")

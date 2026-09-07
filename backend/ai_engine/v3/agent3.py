@@ -233,7 +233,7 @@ def build_tone_profile_v31(
     """
 
     del user_goal
-    if diagnosis_status not in {"available", "success", "degraded"}:
+    if diagnosis_status not in {"available", "success", "degraded", "abstained"}:
         raise Agent3Blocked("DIAGNOSIS_NOT_AVAILABLE")
     if not diagnosis_id or diagnosis_revision < 1:
         raise Agent3Blocked("INVALID_DIAGNOSIS_REFERENCE")

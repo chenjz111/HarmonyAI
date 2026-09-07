@@ -99,17 +99,18 @@ def test_agent3_only_emits_secondary_tone_when_an_explicit_threshold_is_supplied
     assert with_threshold.secondary_tone != with_threshold.primary_tone
 
 
-def test_agent3_abstained_diagnosis_cannot_produce_syndrome_tone_profile():
-    from backend.ai_engine.v3.agent3 import Agent3Blocked, build_tone_profile_v31
+def test_agent3_uses_safe_tone_fallback_for_medical_abstain():
+    from backend.ai_engine.v3.agent3 import build_tone_profile_v31
 
-    with pytest.raises(Agent3Blocked, match="DIAGNOSIS_NOT_AVAILABLE"):
-        build_tone_profile_v31(
-            diagnosis_id="diag_1",
-            diagnosis_status="abstained",
-            organ_weights={"heart": 1.0},
-            supporting_evidence_refs=["fact_1"],
-            mapping=_mapping(),
-        )
+    profile = build_tone_profile_v31(
+        diagnosis_id="diag_1",
+        diagnosis_status="abstained",
+        organ_weights={"heart": 1.0},
+        supporting_evidence_refs=["fact_1"],
+        mapping=_mapping(),
+    )
+
+    assert profile.primary_tone.value == "zhi"
 
 
 def test_agent3_can_render_a_grounded_degraded_result_without_claiming_abstention():

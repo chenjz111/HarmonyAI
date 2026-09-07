@@ -86,6 +86,7 @@ class V31ReadinessError(RuntimeError):
     def __init__(self, error_code: str, safe_message: str = "V3.1 AI 链路尚未就绪。"):
         self.error_code = error_code
         self.safe_message = safe_message
+        self.retryable = False
         super().__init__(f"{error_code}: {safe_message}")
 
 
@@ -98,10 +99,12 @@ class V31PipelineFailure(RuntimeError):
         safe_message: str = "V3.1 AI 链路执行失败。",
         *,
         audit_context: V31PipelineAuditContext | None = None,
+        retryable: bool = False,
     ):
         self.error_code = error_code
         self.safe_message = safe_message
         self.audit_context = audit_context
+        self.retryable = retryable
         super().__init__(f"{error_code}: {safe_message}")
 
 
@@ -463,6 +466,7 @@ def _run_v31_pipeline(
             error.error_code,
             error.safe_message,
             audit_context=error.audit_context,
+            retryable=error.retryable,
         ) from None
     except (DiagnosisPipelineFailure, Agent3Blocked) as error:
         error_code = getattr(error, "error_code", "V31_PIPELINE_FAILED")
@@ -478,6 +482,54 @@ def _diagnosis_from_v31_pipeline(
     element_profile: ElementProfile,
 ) -> DiagnosisV3:
     response = pipeline.diagnosis
+    execution = pipeline.diagnosis_execution
+    rag_refs = [
+        KnowledgeReference(title=hit.source_title, summary=hit.display_summary)
+        for hit in pipeline.rag_result.hits
+    ]
+    if execution.status == "abstained" or (
+        response is not None and response.status == "abstained"
+    ):
+        reason_code = (
+            execution.reason_code
+            or (response.abstain_reason if response is not None else None)
+            or "DIAGNOSIS_ABSTAINED"
+        )
+        root = AbstainedDiagnosis(
+            schema_version="diagnosis_v3.0",
+            agent_id="diagnosis_agent",
+            diagnosis_id=diagnosis_id,
+            assessment_ref={
+                "assessment_id": assessment_ref.assessment_id,
+                "revision": assessment_ref.revision,
+            },
+            rag_result_ref=pipeline.rag_result.retrieval_id,
+            execution_versions=ExecutionVersions(
+                prompt_version=pipeline.diagnosis_request.prompt_version,
+                response_schema_version=pipeline.diagnosis_request.response_schema_version,
+                knowledge_version=pipeline.rag_result.knowledge_version,
+                mapping_version=pipeline.tone_profile.mapping_version,
+            ),
+            degradation=Degradation(active=True, reason_codes=[reason_code]),
+            presentation=DiagnosisPresentation(
+                title="辨证分析",
+                primary_tendency=None,
+                basis_summaries=["当前检索证据不足以形成证型倾向，已安全保留为医学性暂缓结果。"],
+                knowledge_references=rag_refs,
+                disclaimer="本结果不构成医学诊断或治疗建议。",
+            ),
+            status="abstained",
+            abstained=True,
+            abstain_reason=reason_code,
+            candidate_tendencies=[],
+            primary_tendency_id=None,
+            element_profile=ElementProfile(
+                status="insufficient",
+                weights=None,
+                score_semantics=element_profile.score_semantics,
+            ),
+        )
+        return DiagnosisV3(root=root)
     if response is None or response.status not in {"success", "degraded"}:
         raise V31PipelineFailure("DIAGNOSIS_RESPONSE_INVALID")
     candidates = [
@@ -489,10 +541,6 @@ def _diagnosis_from_v31_pipeline(
     ]
     if not candidates:
         raise V31PipelineFailure("DIAGNOSIS_RESPONSE_INVALID")
-    rag_refs = [
-        KnowledgeReference(title=hit.source_title, summary=hit.display_summary)
-        for hit in pipeline.rag_result.hits
-    ]
     root = {
         "schema_version": "diagnosis_v3.0",
         "agent_id": "diagnosis_agent",
@@ -611,7 +659,7 @@ def _persist_pipeline_audit(
     *,
     diagnosis_id: str,
     pipeline: V31AiPipelineResult | V31PipelineAuditContext,
-) -> tuple[str, str]:
+) -> tuple[str, str | None]:
     """Persist safe RAG/provider audit rows and return their linked IDs.
 
     The audit chain keeps versions, hashes, public summaries and stable chunk
@@ -667,67 +715,72 @@ def _persist_pipeline_audit(
         raise V31ReadinessError("RAG_MANIFEST_ID_MISMATCH")
 
     rag_run_id = audit.rag_result.retrieval_id
-    db.add(
-        RagRetrievalRun(
-            rag_run_id=rag_run_id,
-            diagnosis_id=diagnosis_id,
-            query_hash=_request_hash(audit.query.model_dump(mode="json")),
-            query_builder_version="diagnosis_query_v3.1",
-            knowledge_manifest_id=manifest_row.knowledge_manifest_id,
-            knowledge_version=audit.rag_result.knowledge_version,
-            manifest_checksum=manifest_checksum,
-            embedding_version=audit.rag_result.embedding_version,
-            distance_metric=str(manifest.distance_metric),
-            score_semantics=audit.rag_result.retrieval_score_semantics,
-            status=audit.rag_result.status,
-            top_k=audit.query.top_k,
-            minimum_score=float(manifest.minimum_score),
-            degradation_json=audit.rag_result.degradation.model_dump(mode="json"),
-        )
-    )
+    rag_run = db.get(RagRetrievalRun, rag_run_id)
+    if rag_run is None:
+        rag_run = RagRetrievalRun(rag_run_id=rag_run_id)
+        db.add(rag_run)
+    for field, value in {
+        "diagnosis_id": diagnosis_id,
+        "query_hash": _request_hash(audit.query.model_dump(mode="json")),
+        "query_builder_version": "diagnosis_query_v3.1",
+        "knowledge_manifest_id": manifest_row.knowledge_manifest_id,
+        "knowledge_version": audit.rag_result.knowledge_version,
+        "manifest_checksum": manifest_checksum,
+        "embedding_version": audit.rag_result.embedding_version,
+        "distance_metric": str(manifest.distance_metric),
+        "score_semantics": audit.rag_result.retrieval_score_semantics,
+        "status": audit.rag_result.status,
+        "top_k": audit.query.top_k,
+        "minimum_score": float(manifest.minimum_score),
+        "degradation_json": audit.rag_result.degradation.model_dump(mode="json"),
+    }.items():
+        setattr(rag_run, field, value)
+    db.flush()
     chunk_checksums = audit.rag_chunk_checksums
     for hit in audit.rag_result.hits:
         chunk_checksum = chunk_checksums.get(hit.chunk_id) or _request_hash(
             {"chunk_id": hit.chunk_id, "text": hit.text}
         )
-        db.add(
-            RagRetrievalHit(
-                rag_run_id=rag_run_id,
-                chunk_id=hit.chunk_id,
-                source_id=hit.source_id,
-                source_title=hit.source_title,
-                section=hit.section,
-                retrieval_score=float(hit.retrieval_score),
-                display_summary=hit.display_summary,
-                text_ciphertext=_request_hash({"text": hit.text}),
-                review_status=hit.review_status,
-                knowledge_version=audit.rag_result.knowledge_version,
-                chunk_content_checksum=chunk_checksum,
-            )
-        )
+        hit_row = db.get(RagRetrievalHit, (rag_run_id, hit.chunk_id))
+        if hit_row is None:
+            hit_row = RagRetrievalHit(rag_run_id=rag_run_id, chunk_id=hit.chunk_id)
+            db.add(hit_row)
+        for field, value in {
+            "source_id": hit.source_id,
+            "source_title": hit.source_title,
+            "section": hit.section,
+            "retrieval_score": float(hit.retrieval_score),
+            "display_summary": hit.display_summary,
+            "text_ciphertext": _request_hash({"text": hit.text}),
+            "review_status": hit.review_status,
+            "knowledge_version": audit.rag_result.knowledge_version,
+            "chunk_content_checksum": chunk_checksum,
+        }.items():
+            setattr(hit_row, field, value)
 
     execution = audit.diagnosis_execution
-    db.add(
-        AiProviderRun(
-            provider_run_id=execution.provider_run_id,
-            purpose="diagnosis",
-            resource_id=diagnosis_id,
-            provider=execution.provider_name,
-            model=execution.provider_model,
-            prompt_version=audit.diagnosis_request.prompt_version,
-            response_schema_version=audit.diagnosis_request.response_schema_version,
-            status=execution.status,
-            error_code=execution.reason_code,
-            attempts=max(1, execution.attempts),
-            latency_ms=max(0, execution.latency_ms),
-            input_tokens=None,
-            output_tokens=None,
-            request_hash=execution.request_hash,
-            response_hash=execution.response_hash,
-            knowledge_version=audit.rag_result.knowledge_version,
-            mapping_version=audit.mapping_version,
+    if execution.provider_run_id is not None:
+        db.add(
+            AiProviderRun(
+                provider_run_id=execution.provider_run_id,
+                purpose="diagnosis",
+                resource_id=diagnosis_id,
+                provider=execution.provider_name,
+                model=execution.provider_model,
+                prompt_version=audit.diagnosis_request.prompt_version,
+                response_schema_version=audit.diagnosis_request.response_schema_version,
+                status=execution.status,
+                error_code=execution.reason_code,
+                attempts=max(1, execution.attempts),
+                latency_ms=max(0, execution.latency_ms),
+                input_tokens=None,
+                output_tokens=None,
+                request_hash=execution.request_hash,
+                response_hash=execution.response_hash,
+                knowledge_version=audit.rag_result.knowledge_version,
+                mapping_version=audit.mapping_version,
+            )
         )
-    )
     return rag_run_id, execution.provider_run_id
 
 
@@ -747,32 +800,43 @@ def _persist_failed_pipeline_audit(
     abstained = execution.status == "abstained"
     status = "abstained" if abstained else "failed"
     reason_code = execution.reason_code if abstained else None
-    run = DiagnosisRun(
-        diagnosis_id=diagnosis_id,
-        internal_user_pk=principal.internal_user_pk,
-        session_row_id=session_row.id,
-        assessment_id=assessment_ref.assessment_id,
-        assessment_revision=assessment_ref.revision,
-        status=status,
-        abstained=1 if abstained else 0,
-        abstain_reason=reason_code,
-        primary_tendency_id=None,
-        element_profile_json=element_profile.model_dump(mode="json"),
-        degradation_json=Degradation(
+    run = db.get(DiagnosisRun, diagnosis_id)
+    if run is None:
+        run = DiagnosisRun(
+            diagnosis_id=diagnosis_id,
+            internal_user_pk=principal.internal_user_pk,
+            session_row_id=session_row.id,
+            assessment_id=assessment_ref.assessment_id,
+            assessment_revision=assessment_ref.revision,
+            status=status,
+            abstained=1 if abstained else 0,
+            abstain_reason=reason_code,
+            primary_tendency_id=None,
+            element_profile_json=element_profile.model_dump(mode="json"),
+            degradation_json=Degradation(
+                active=True,
+                reason_codes=[execution.reason_code] if execution.reason_code else [],
+            ).model_dump(mode="json"),
+            presentation_json={
+                "title": "辨证分析",
+                "primary_tendency": None,
+                "basis_summaries": ["当前请求未生成可展示的辨证结果。"],
+                "knowledge_references": [],
+                "disclaimer": "本结果不构成医学诊断或治疗建议。",
+            },
+            provider_run_id=None,
+            rag_run_id=None,
+        )
+        db.add(run)
+    else:
+        run.status = status
+        run.abstained = 1 if abstained else 0
+        run.abstain_reason = reason_code
+        run.element_profile_json = element_profile.model_dump(mode="json")
+        run.degradation_json = Degradation(
             active=True,
             reason_codes=[execution.reason_code] if execution.reason_code else [],
-        ).model_dump(mode="json"),
-        presentation_json={
-            "title": "辨证分析",
-            "primary_tendency": None,
-            "basis_summaries": ["当前请求未生成可展示的辨证结果。"],
-            "knowledge_references": [],
-            "disclaimer": "本结果不构成医学诊断或治疗建议。",
-        },
-        provider_run_id=None,
-        rag_run_id=None,
-    )
-    db.add(run)
+        ).model_dump(mode="json")
     db.flush()
     run.rag_run_id, run.provider_run_id = _persist_pipeline_audit(
         db,
@@ -835,7 +899,7 @@ def run_diagnosis(
     element_profile = _element_profile_from_organ(
         assessment_revision.organ_profile_json
     )
-    diagnosis_id = f"diag_{uuid.uuid4().hex}"
+    diagnosis_id = request.diagnosis_id
     rag_degraded = Degradation(
         active=True,
         reason_codes=["RAG_INGESTION_NOT_APPROVED"],
@@ -888,8 +952,8 @@ def run_diagnosis(
                 assessment_revision=assessment_revision,
                 session_row=session_row,
             )
-        except V31PipelineFailure as error:
-            if error.audit_context is not None:
+        except (V31PipelineFailure, V31ReadinessError) as error:
+            if getattr(error, "audit_context", None) is not None:
                 _persist_failed_pipeline_audit(
                     db,
                     principal=principal,
@@ -899,6 +963,7 @@ def run_diagnosis(
                     element_profile=element_profile,
                     audit=error.audit_context,
                 )
+            _mark_idempotency_failed(db, record)
             raise
         result = _diagnosis_from_v31_pipeline(
             pipeline,
@@ -929,6 +994,7 @@ def run_diagnosis(
     else:
         # Element evidence is available but no approved syndrome whitelist /
         # production RAG exists: fabricating syndromes is forbidden.
+        _mark_idempotency_failed(db, record)
         raise MedicalAssetUnavailable
 
     db.add(
@@ -958,3 +1024,16 @@ def run_diagnosis(
     record.response_json = result.model_dump_json()
     db.commit()
     return result, False
+
+
+def _mark_idempotency_failed(db: Session, record) -> None:
+    """Release a reserved key after a non-replayable execution failure.
+
+    A failed key is deliberately retained for conflict detection, while the
+    reservation helper may safely retry the same request hash later.
+    """
+
+    record.status = "failed"
+    record.response_code = 502
+    record.response_json = None
+    db.commit()

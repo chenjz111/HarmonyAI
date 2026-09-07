@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
+import inspect
 import json
 import time
 from typing import Literal
@@ -40,7 +41,7 @@ class DiagnosisProviderExecution:
     status: Literal["success", "degraded", "abstained", "failed"]
     response: DiagnosisProviderResponse | None
     reason_code: str | None
-    provider_run_id: str
+    provider_run_id: str | None
     provider_name: str
     provider_model: str | None
     medical_rule_version: str | None
@@ -48,6 +49,7 @@ class DiagnosisProviderExecution:
     latency_ms: int
     request_hash: str
     response_hash: str | None
+    retryable: bool
 
 
 def build_diagnosis_query(snapshot: Mapping[str, object]) -> RagQuery:
@@ -156,6 +158,7 @@ async def execute_diagnosis_provider(
     facts: list[object] | tuple[object, ...],
     rag_result: RagResult,
     medical_rule_version: str | None = None,
+    rag_chunk_checksums: Mapping[str, str] | None = None,
 ) -> DiagnosisProviderExecution:
     """Run Agent2 only when the approved RAG gate provides grounded hits.
 
@@ -165,7 +168,7 @@ async def execute_diagnosis_provider(
     """
 
     started = time.perf_counter()
-    provider_run_id = f"provider_{uuid.uuid4().hex}"
+    provider_run_id: str | None = None
     provider_name = str(getattr(provider, "provider_name", "qwen"))
     provider_backend = getattr(provider, "backend", None)
     provider_model = getattr(provider_backend, "model", None)
@@ -177,6 +180,8 @@ async def execute_diagnosis_provider(
         *,
         response: DiagnosisProviderResponse | None,
         reason_code: str | None,
+        attempts: int = 0,
+        retryable: bool = False,
     ) -> DiagnosisProviderExecution:
         response_hash = (
             _request_hash(response.model_dump(mode="json"))
@@ -193,42 +198,86 @@ async def execute_diagnosis_provider(
             medical_rule_version=(
                 str(medical_release) if medical_release is not None else None
             ),
-            attempts=1,
+            attempts=max(0, int(attempts)),
             latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
             request_hash=request_hash,
             response_hash=response_hash,
+            retryable=retryable,
         )
 
     if rag_result.status == "empty":
-        return execution("abstained", response=None, reason_code="RAG_EMPTY")
+        return execution(
+            "abstained", response=None, reason_code="RAG_EMPTY", attempts=0
+        )
     if rag_result.status != "success":
         reasons = rag_result.degradation.reason_codes
         return execution(
             "failed",
             response=None,
             reason_code=str(reasons[0]) if reasons else "RAG_UNAVAILABLE",
+            attempts=0,
+            retryable=rag_result.status == "degraded",
         )
+
+    approved_chunk_ids = set(getattr(provider, "allowed_chunk_ids", ()))
+    for hit in rag_result.hits:
+        if getattr(hit, "review_status", None) != "approved":
+            return execution(
+                "failed",
+                response=None,
+                reason_code="RAG_UNAPPROVED_CHUNK",
+                attempts=0,
+            )
+        if approved_chunk_ids and hit.chunk_id not in approved_chunk_ids:
+            return execution(
+                "failed",
+                response=None,
+                reason_code="CHUNK_REFERENCE_INVALID",
+                attempts=0,
+            )
 
     if medical_rule_version is not None and getattr(provider, "medical_rule_version", None) != medical_rule_version:
         return execution(
             "failed",
             response=None,
             reason_code="MEDICAL_RULE_VERSION_MISMATCH",
+            attempts=0,
         )
 
     from backend.ai_engine.v3.diagnosis_provider import DiagnosisProviderFailure
 
+    provider_run_id = f"provider_{uuid.uuid4().hex}"
+    rag_context = _rag_context(rag_result, rag_chunk_checksums or {})
     try:
-        response = await provider.acomplete_json(
-            request=request,
-            facts=facts,
-            rag_chunk_ids=[hit.chunk_id for hit in rag_result.hits],
-        )
+        provider_kwargs = {
+            "request": request,
+            "facts": facts,
+            "rag_chunk_ids": [hit.chunk_id for hit in rag_result.hits],
+        }
+        metadata_call = getattr(provider, "acomplete_json_with_metadata", None)
+        if callable(metadata_call):
+            response, attempts = await metadata_call(**provider_kwargs, rag_context=rag_context)
+        else:
+            call = provider.acomplete_json
+            parameters = inspect.signature(call).parameters
+            supports_context = "rag_context" in parameters or any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            )
+            if supports_context:
+                response = await call(**provider_kwargs, rag_context=rag_context)
+            else:
+                response = await call(**provider_kwargs)
+            attempts = 1
     except DiagnosisProviderFailure as error:
+        if error.attempts == 0:
+            provider_run_id = None
         return execution(
             "failed",
             response=None,
             reason_code=error.error_code,
+            attempts=error.attempts,
+            retryable=error.retryable,
         )
     return execution(
         response.status,
@@ -238,7 +287,32 @@ async def execute_diagnosis_provider(
             if response.status in {"success", "degraded"}
             else response.abstain_reason
         ),
+        attempts=attempts,
     )
+
+
+def _rag_context(
+    rag_result: RagResult,
+    chunk_checksums: Mapping[str, str],
+) -> list[dict[str, str]]:
+    """Project only the current approved retrieval hits into the Qwen prompt."""
+
+    context: list[dict[str, str]] = []
+    for hit in rag_result.hits:
+        checksum = chunk_checksums.get(hit.chunk_id)
+        if not checksum:
+            checksum = f"sha256:{sha256(hit.text.encode('utf-8')).hexdigest()}"
+        context.append(
+            {
+                "chunk_id": hit.chunk_id,
+                "source": hit.source_id,
+                "source_title": hit.source_title,
+                "content_checksum": checksum,
+                "content": hit.text,
+                "display_summary": hit.display_summary,
+            }
+        )
+    return context
 
 
 def _build_diagnosis_provider_request(

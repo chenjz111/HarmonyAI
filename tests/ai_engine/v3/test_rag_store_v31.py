@@ -155,6 +155,24 @@ def test_versioned_rag_store_uses_document_embedding_for_ingestion_and_query_emb
     assert embedding.input_types == ["document", "query"]
 
 
+def test_versioned_rag_store_reuses_matching_manifest_without_reembedding():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    embedding = FakeEmbedding()
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=embedding,
+        client=FakeClient(),
+        production=False,
+    )
+
+    store.ingest(_manifest(), [_chunk()])
+    store.ingest(_manifest(), [_chunk()])
+
+    assert embedding.input_types == ["document"]
+
+
 def test_versioned_rag_store_rejects_manifest_mismatch_without_returning_hits():
     from backend.ai_engine.v3.rag_store import RagStoreFailure, VersionedRagStore
 

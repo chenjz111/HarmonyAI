@@ -374,8 +374,8 @@ def test_formal_router_persists_abstained_retrieval_audit(
         json=_diagnosis_body(session_id, assessment_id, 1),
     )
 
-    assert response.status_code == 502
-    assert response.json()["error"]["code"] == "DIAGNOSIS_ABSTAINED"
+    assert response.status_code == 201, response.text
+    assert response.json()["data"]["status"] == "abstained"
     audit_db = db_session_factory()
     try:
         diagnosis = audit_db.query(DiagnosisRun).one()
@@ -383,11 +383,194 @@ def test_formal_router_persists_abstained_retrieval_audit(
         assert diagnosis.abstained == 1
         assert diagnosis.abstain_reason == "RAG_EMPTY"
         assert diagnosis.rag_run_id == "rag_formal_abstained"
-        assert diagnosis.provider_run_id
+        assert diagnosis.provider_run_id is None
         rag_run = audit_db.query(RagRetrievalRun).one()
         assert rag_run.status == "empty"
+        assert audit_db.query(AiProviderRun).count() == 0
+    finally:
+        audit_db.close()
+
+
+def test_formal_router_persists_provider_abstain_and_replays_without_duplicate(
+    db_session_factory, monkeypatch
+):
+    from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse
+
+    headers = _guest_headers()
+    db = db_session_factory()
+    session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    assessment_id = _seed_confirmed_assessment(
+        db,
+        user_pk=user_pk,
+        session_row=session_row,
+        organ_profile_json={
+            "status": "available",
+            "weights": {
+                "liver": 0.0,
+                "heart": 1.0,
+                "spleen": 0.0,
+                "lung": 0.0,
+                "kidney": 0.0,
+            },
+            "score_semantics": "relative_evidence_distribution",
+        },
+    )
+    db.close()
+
+    calls: list[str] = []
+    dependencies = _dependencies(calls)
+
+    async def abstain_provider(**kwargs):
+        del kwargs
+        calls.append("qwen-abstain")
+        return DiagnosisProviderResponse(
+            status="abstained",
+            candidate_tendencies=[],
+            abstained=True,
+            abstain_reason="NO_LEGAL_CANDIDATE",
+        )
+
+    dependencies.diagnosis_provider.acomplete_json = abstain_provider
+    monkeypatch.setattr(diagnosis_service, "_v31_real_mode", lambda: True)
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_ai_pipeline_dependencies",
+        lambda: dependencies,
+    )
+    monkeypatch.setattr(
+        diagnosis_service,
+        "_load_confirmed_user_state",
+        lambda *args, **kwargs: _confirmed_state_for(session_id),
+    )
+
+    body = _diagnosis_body(session_id, assessment_id, 1)
+    key = f"provider-abstain-{uuid.uuid4().hex}"
+    first = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": key},
+        json=body,
+    )
+    replay = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": key},
+        json=body,
+    )
+
+    assert first.status_code == 201, first.text
+    assert first.json()["data"]["status"] == "abstained"
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["data"] == first.json()["data"]
+    assert calls.count("qwen-abstain") == 1
+    audit_db = db_session_factory()
+    try:
+        assert audit_db.query(DiagnosisRun).count() == 1
         provider_run = audit_db.query(AiProviderRun).one()
         assert provider_run.status == "abstained"
-        assert provider_run.error_code == "RAG_EMPTY"
+        assert provider_run.error_code == "NO_LEGAL_CANDIDATE"
+        assert provider_run.attempts == 1
+    finally:
+        audit_db.close()
+
+
+def test_formal_router_retries_failed_idempotency_key_without_stuck_processing(
+    db_session_factory, monkeypatch
+):
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProviderFailure
+    from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse
+    from backend.app.models.v3.session import V3IdempotencyRecord
+
+    headers = _guest_headers()
+    db = db_session_factory()
+    session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    assessment_id = _seed_confirmed_assessment(
+        db,
+        user_pk=user_pk,
+        session_row=session_row,
+        organ_profile_json={
+            "status": "available",
+            "weights": {
+                "liver": 0.0,
+                "heart": 1.0,
+                "spleen": 0.0,
+                "lung": 0.0,
+                "kidney": 0.0,
+            },
+            "score_semantics": "relative_evidence_distribution",
+        },
+    )
+    db.close()
+
+    calls = 0
+    dependencies = _dependencies([])
+
+    async def fail_once(**kwargs):
+        nonlocal calls
+        del kwargs
+        calls += 1
+        if calls == 1:
+            raise DiagnosisProviderFailure(
+                "DIAGNOSIS_PROVIDER_TIMEOUT",
+                "辨证服务响应超时。",
+                retryable=True,
+            )
+        return DiagnosisProviderResponse.model_validate(
+            {
+                "status": "success",
+                "candidate_tendencies": [
+                    {
+                        "syndrome_code": "syndrome_1",
+                        "display_name": "safe tendency",
+                        "relative_support": 0.8,
+                        "supporting_fact_ids": [],
+                        "contradicting_fact_ids": [],
+                        "knowledge_chunk_ids": ["chunk_1"],
+                        "reasoning_summary": "grounded summary",
+                    }
+                ],
+                "abstained": False,
+                "abstain_reason": None,
+            }
+        )
+
+    dependencies.diagnosis_provider.acomplete_json = fail_once
+    monkeypatch.setattr(diagnosis_service, "_v31_real_mode", lambda: True)
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_ai_pipeline_dependencies",
+        lambda: dependencies,
+    )
+    monkeypatch.setattr(
+        diagnosis_service,
+        "_load_confirmed_user_state",
+        lambda *args, **kwargs: _confirmed_state_for(session_id),
+    )
+
+    body = _diagnosis_body(session_id, assessment_id, 1)
+    body["diagnosis_id"] = "diag_requested_id"
+    key = f"retry-failed-{uuid.uuid4().hex}"
+    first = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": key},
+        json=body,
+    )
+    retry = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": key},
+        json=body,
+    )
+
+    assert first.status_code == 502
+    assert first.json()["error"]["retryable"] is True
+    assert retry.status_code == 201, retry.text
+    assert retry.json()["data"]["diagnosis_id"] == "diag_requested_id"
+    assert calls == 2
+    audit_db = db_session_factory()
+    try:
+        assert audit_db.query(DiagnosisRun).count() == 1
+        assert audit_db.query(DiagnosisRun).one().diagnosis_id == "diag_requested_id"
+        record = audit_db.query(V3IdempotencyRecord).filter(
+            V3IdempotencyRecord.idempotency_key == key
+        ).one()
+        assert record.status == "succeeded"
     finally:
         audit_db.close()

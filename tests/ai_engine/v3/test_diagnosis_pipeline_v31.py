@@ -332,6 +332,191 @@ def test_diagnosis_provider_maps_typed_provider_error_code_without_raw_message()
     assert "private user text" not in str(caught.value)
 
 
+def test_diagnosis_provider_sends_only_current_approved_rag_content_to_qwen():
+    import json
+
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
+
+    class Backend:
+        def __init__(self):
+            self.payload = None
+
+        async def acomplete_json(self, system_prompt, user_prompt):
+            del system_prompt
+            self.payload = json.loads(user_prompt)
+            return _provider_response().model_dump(mode="json")
+
+    backend = Backend()
+    provider = DiagnosisProvider(
+        backend=backend,
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+
+    result = __import__("asyncio").run(
+        provider.acomplete_json(
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=["fact_1"],
+            rag_chunk_ids=["chunk_1"],
+            rag_context=[
+                {
+                    "chunk_id": "chunk_1",
+                    "source": "source_1",
+                    "content_checksum": "sha256:chunk-1",
+                    "content": "仅来自本次检索的正式医学内容",
+                }
+            ],
+        )
+    )
+
+    assert result.status == "success"
+    assert backend.payload["rag_hits"] == [
+        {
+            "chunk_id": "chunk_1",
+            "source": "source_1",
+            "content_checksum": "sha256:chunk-1",
+            "content": "仅来自本次检索的正式医学内容",
+        }
+    ]
+    assert "whole corpus" not in json.dumps(backend.payload, ensure_ascii=False)
+
+
+def test_diagnosis_execution_rejects_unapproved_rag_hit_without_calling_qwen():
+    from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
+
+    class Provider:
+        calls = 0
+
+        async def acomplete_json(self, **kwargs):
+            del kwargs
+            self.calls += 1
+            raise AssertionError("unapproved RAG content must not reach Qwen")
+
+    rag = _rag_result().model_copy(
+        update={"hits": [_rag_result().hits[0].model_copy(update={"review_status": "pending"})]}
+    )
+    provider = Provider()
+    result = __import__("asyncio").run(
+        execute_diagnosis_provider(
+            provider=provider,
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[],
+            rag_result=rag,
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.reason_code == "RAG_UNAPPROVED_CHUNK"
+    assert result.provider_run_id is None
+    assert result.attempts == 0
+    assert provider.calls == 0
+
+
+def test_diagnosis_execution_marks_rag_empty_as_medical_abstain_without_provider_call():
+    from backend.app.schemas.v3.common import Degradation
+    from backend.app.schemas.v3.diagnosis import RagResult
+    from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
+
+    class Provider:
+        async def acomplete_json(self, **kwargs):
+            del kwargs
+            raise AssertionError("Qwen must not run for empty RAG")
+
+    empty = RagResult(
+        retrieval_id="rag_empty",
+        status="empty",
+        knowledge_version="medical_v3.1",
+        embedding_version="text-embedding-v4@1024",
+        retrieval_score_semantics="normalized_similarity",
+        hits=[],
+        degradation=Degradation(active=False, reason_codes=[]),
+    )
+    result = __import__("asyncio").run(
+        execute_diagnosis_provider(
+            provider=Provider(),
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[],
+            rag_result=empty,
+        )
+    )
+
+    assert result.status == "abstained"
+    assert result.reason_code == "RAG_EMPTY"
+    assert result.provider_run_id is None
+    assert result.attempts == 0
+
+
+def test_diagnosis_execution_preserves_retryable_provider_failure():
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProviderFailure
+    from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
+
+    class Provider:
+        async def acomplete_json(self, **kwargs):
+            del kwargs
+            raise DiagnosisProviderFailure(
+                "DIAGNOSIS_PROVIDER_TIMEOUT",
+                "辨证服务响应超时。",
+                retryable=True,
+            )
+
+    result = __import__("asyncio").run(
+        execute_diagnosis_provider(
+            provider=Provider(),
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[],
+            rag_result=_rag_result(),
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.reason_code == "DIAGNOSIS_PROVIDER_TIMEOUT"
+    assert result.retryable is True
+    assert result.attempts == 1
+
+
+def test_diagnosis_execution_audit_attempts_count_schema_repair_calls():
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
+    from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
+
+    class Backend:
+        def __init__(self):
+            self.calls = 0
+
+        async def acomplete_json(self, system_prompt, user_prompt):
+            del system_prompt, user_prompt
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "status": "success",
+                    "candidate_tendencies": [],
+                    "abstained": False,
+                    "abstain_reason": None,
+                }
+            return _provider_response().model_dump(mode="json")
+
+    backend = Backend()
+    provider = DiagnosisProvider(
+        backend=backend,
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+    result = __import__("asyncio").run(
+        execute_diagnosis_provider(
+            provider=provider,
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=["fact_1"],
+            rag_result=_rag_result(),
+        )
+    )
+
+    assert result.status == "success"
+    assert result.provider_run_id is not None
+    assert result.attempts == 2
+    assert backend.calls == 2
+
+
 def test_diagnosis_provider_factory_requires_explicit_qwen_configuration():
     from backend.ai_engine.v3.diagnosis_provider import diagnosis_provider_from_environment
 
