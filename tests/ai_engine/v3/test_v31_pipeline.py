@@ -196,7 +196,7 @@ def test_v31_pipeline_reaches_query_rag_qwen_agent3_and_public_read_model_withou
     assert result.tone_profile.primary_tone.value == "zhi"
     assert result.generation_spec.secondary_tone is None
     assert result.generation_spec.bpm == 50
-    assert result.read_model.generation.status == "not_ready"
+    assert result.read_model.generation.status == "ready"
     assert "次要音调规则尚未获批准" in result.read_model.generation.message
     assert "user_goal" not in result.diagnosis_request
 

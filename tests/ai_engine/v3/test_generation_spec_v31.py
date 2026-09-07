@@ -67,7 +67,8 @@ def test_generation_spec_is_deterministic_and_bounded_by_approved_rules():
     assert spec.instruments == ["古琴", "箫"]
     assert spec.duration_seconds == 1200
     assert spec.secondary_tone_blocked is True
-    assert "SECONDARY_TONE_RULE_NOT_APPROVED" in spec.blocking_reasons
+    assert spec.readiness == "ready"
+    assert spec.blocking_reasons == []
     assert "user_goal" not in spec.model_dump(mode="json")
 
 
@@ -89,3 +90,24 @@ def test_generation_spec_does_not_allow_user_goal_to_change_medical_tone_profile
     assert sleep_spec.primary_tone == default_spec.primary_tone
     assert sleep_spec.tone_weights == default_spec.tone_weights
     assert sleep_spec.bpm != default_spec.bpm
+
+
+def test_generation_spec_custom_text_without_goal_code_falls_back_to_default_rules():
+    from backend.ai_engine.v3.agent3 import build_generation_spec_v31
+
+    spec = build_generation_spec_v31(
+        profile=_profile(),
+        parameter_rules=_rules(),
+        user_goal={
+            "primary_goal": None,
+            "secondary_goal": None,
+            "custom_goal_text": "希望音乐更安静一些",
+        },
+    )
+
+    assert spec.bpm == 60
+    assert spec.instruments == ["古琴"]
+    assert spec.ambience == ["细雨"]
+    assert spec.duration_seconds == 900
+    assert spec.readiness == "ready"
+    assert spec.blocking_reasons == []

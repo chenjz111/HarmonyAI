@@ -66,8 +66,9 @@ def build_generation_spec_v31(
 
     UserGoal is only a selector for an explicitly named rule row.  It never
     changes the medical tone profile, and the goal payload is not copied into
-    the GenerationSpec.  Missing or unapproved music rules are an explicit
-    readiness block rather than an invented default.
+    the GenerationSpec.  A custom-only goal has no approved rule selector and
+    therefore safely uses the default rule row.  Missing or unapproved music
+    rules are an explicit readiness block rather than an invented default.
     """
 
     if not isinstance(parameter_rules, Mapping):
@@ -111,9 +112,9 @@ def build_generation_spec_v31(
     ):
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
+    # Secondary tone is optional in the frozen flow. Keep its absence
+    # observable, but do not block the approved primary tone and parameters.
     blocking_reasons: list[str] = []
-    if secondary_threshold is None:
-        blocking_reasons.append("SECONDARY_TONE_RULE_NOT_APPROVED")
     spec = GenerationSpecV31(
         schema_version="generation_spec_v3.1",
         primary_tone=profile.primary_tone,
@@ -127,7 +128,7 @@ def build_generation_spec_v31(
             key: validate_public_text(str(explanations[key]))
             for key in sorted(explanation_keys)
         },
-        readiness="not_ready" if blocking_reasons else "ready",
+        readiness="ready",
         blocking_reasons=blocking_reasons,
         secondary_tone_blocked=secondary_threshold is None,
     )
@@ -149,7 +150,9 @@ def _goal_code(user_goal: Mapping[str, Any] | Any | None) -> str | None:
         and parsed.custom_goal_text is None
     ):
         return None
-    return parsed.primary_goal.value if parsed.primary_goal is not None else "__custom_goal__"
+    # Custom text is a bounded preference only. Without an approved goal code,
+    # it must not block generation or be interpreted as a medical instruction.
+    return parsed.primary_goal.value if parsed.primary_goal is not None else None
 
 
 def _string_list(value: Any) -> list[str]:
@@ -344,13 +347,12 @@ def build_five_tone_analysis_v31(
         if spec.secondary_tone is not None
         else None
     )
-    message = (
-        "音乐参数已准备，可以进入后续生成流程。"
-        if spec.readiness == "ready"
-        else "音乐参数已整理；次要音调规则尚未获批准，当前仅提供主要音调参考。"
-        if "SECONDARY_TONE_RULE_NOT_APPROVED" in spec.blocking_reasons
-        else "音乐参数已整理，后续生成能力尚未就绪。"
-    )
+    if spec.readiness == "ready" and spec.secondary_tone_blocked:
+        message = "音乐参数已准备；次要音调规则尚未获批准，当前使用主要音调参考。"
+    elif spec.readiness == "ready":
+        message = "音乐参数已准备，可以进入后续生成流程。"
+    else:
+        message = "音乐参数已整理，后续生成能力尚未就绪。"
     return FiveToneAnalysisReadModel(
         schema_version="five_tone_analysis_read_model_v3.1",
         confirmed_user_state_ref=confirmed_user_state_ref,

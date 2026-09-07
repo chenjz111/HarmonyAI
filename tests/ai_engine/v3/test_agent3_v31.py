@@ -180,7 +180,8 @@ def test_agent3_builds_public_read_model_without_internal_provider_fields():
     )
 
     assert read_model.primary_tone.tone.value == "zhi"
-    assert read_model.generation.status == "not_ready"
+    assert read_model.generation.status == "ready"
+    assert "次要音调规则尚未获批准" in read_model.generation.message
     dumped = str(read_model.model_dump(mode="json"))
     assert "provider" not in dumped.lower()
     assert "prompt" not in dumped.lower()
