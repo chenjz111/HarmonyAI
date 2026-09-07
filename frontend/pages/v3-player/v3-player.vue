@@ -29,6 +29,8 @@ export default {
       music: null,
       playing: false,
       audioCtx: null,
+      currentTime: 0, // 当前播放时间（秒）
+      duration: 0, // 总时长（秒）
       favorite: false,
       favBusy: false,
       simulated: false,
@@ -38,6 +40,20 @@ export default {
     audioSrc() {
       if (!this.music || !this.music.stream_url) return ""
       return apiV3.musicStreamUrl(this.music.stream_url)
+    },
+    // 总时长：优先真实音频元数据，降级后端声明时长（不伪造）
+    totalSeconds() {
+      if (this.duration > 0) return this.duration
+      return this.music && this.music.duration_seconds ? this.music.duration_seconds : 0
+    },
+    // 进度百分比（仅由真实 onTimeUpdate 驱动）
+    progressPercent() {
+      if (!this.totalSeconds) return 0
+      const p = (this.currentTime / this.totalSeconds) * 100
+      return Math.max(0, Math.min(100, p))
+    },
+    progressText() {
+      return this.formatDuration(this.currentTime) + " / " + this.formatDuration(this.totalSeconds)
     },
   },
   onLoad() {
@@ -77,11 +93,30 @@ export default {
         const src = await apiV3.fetchAuthorizedAudio(this.music.stream_url)
         if (!this.audioCtx) {
           this.audioCtx = uni.createInnerAudioContext()
+          
+          // 元数据加载成功：获取真实音频时长
+          this.audioCtx.onCanplay(() => {
+            if (this.audioCtx && this.audioCtx.duration > 0) {
+              this.duration = this.audioCtx.duration
+            }
+          })
+          
+          // 真实播放进度更新（唯一驱动 currentTime 的事件）
+          this.audioCtx.onTimeUpdate(() => {
+            if (this.audioCtx) {
+              this.currentTime = this.audioCtx.currentTime || 0
+            }
+          })
+          
           this.audioCtx.onError(() => {
             this.playing = false
             uni.showToast({ title: "播放失败，请稍后重试", icon: "none" })
           })
-          this.audioCtx.onEnded(() => { this.playing = false })
+          
+          this.audioCtx.onEnded(() => {
+            this.playing = false
+            this.currentTime = 0
+          })
         }
         this.audioCtx.src = src
         this.audioCtx.play()
@@ -191,16 +226,30 @@ export default {
         <text class="music-title">{{ music.title }}</text>
         <text class="music-instruments">{{ music.instrument_labels.join(" · ") }}</text>
 
-        <!-- 控制区 -->
+        <!-- 控制区：时间和进度均来自真实播放器事件 -->
+        <view class="progress-wrap">
+          <view class="progress-track">
+            <view class="progress-value" :style="{ width: progressPercent + '%' }"></view>
+          </view>
+          <view class="progress-times">
+            <text class="progress-time">{{ progressText }}</text>
+          </view>
+        </view>
         <view class="controls">
           <view class="ctrl-fav" @click="toggleFavorite">
-            <text class="ctrl-fav-icon" :class="{ 'fav-active': favorite }">{{ favorite ? "♥" : "♡" }}</text>
+            <view class="ctrl-fav-icon" :class="{ 'fav-active': favorite }" aria-label="收藏">
+              <view class="heart-shape"></view>
+            </view>
           </view>
-          <view class="ctrl-play" @click="togglePlay">
-            <text class="ctrl-play-icon">{{ playing ? "⏸" : "▶" }}</text>
+          <view class="ctrl-play" @click="togglePlay" :aria-label="playing ? '暂停' : '播放'">
+            <view v-if="playing" class="pause-shape" aria-hidden="true">
+              <view class="pause-bar"></view>
+              <view class="pause-bar"></view>
+            </view>
+            <view v-else class="play-shape" aria-hidden="true"></view>
           </view>
           <view class="ctrl-duration">
-            <text class="ctrl-duration-text">{{ formatDuration(music.duration_seconds) }}</text>
+            <text class="ctrl-duration-text">{{ formatDuration(totalSeconds) }}</text>
           </view>
         </view>
 
@@ -372,6 +421,39 @@ export default {
   letter-spacing: 0.05em;
 }
 
+/* ===== 进度条 ===== */
+.progress-wrap {
+  width: 100%;
+  margin-bottom: 32rpx;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8rpx;
+  background: rgba(107, 124, 94, 0.1);
+  border-radius: 4rpx;
+  overflow: hidden;
+  margin-bottom: 12rpx;
+}
+
+.progress-value {
+  height: 100%;
+  background: var(--ink-seal);
+  border-radius: 4rpx;
+  transition: width 0.1s linear;
+  transform-origin: left;
+}
+
+.progress-times {
+  text-align: center;
+}
+
+.progress-time {
+  font-size: 22rpx;
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+}
+
 /* ===== 控制区 ===== */
 .controls {
   display: flex;
@@ -389,13 +471,45 @@ export default {
 }
 
 .ctrl-fav-icon {
-  font-size: 48rpx;
-  color: var(--ink-accent-light);
+  width: 48rpx;
+  height: 48rpx;
+  position: relative;
   transition: all 0.2s ease-out;
 }
 
-.fav-active {
-  color: var(--ink-seal);
+/* 心形收藏图标（CSS SVG） */
+.heart-shape {
+  width: 100%;
+  height: 100%;
+  background: var(--ink-accent-light);
+  transform: rotate(-45deg);
+  position: relative;
+}
+
+.heart-shape::before,
+.heart-shape::after {
+  content: "";
+  width: 100%;
+  height: 100%;
+  background: inherit;
+  border-radius: 50%;
+  position: absolute;
+}
+
+.heart-shape::before {
+  top: -24rpx;
+  left: 0;
+}
+
+.heart-shape::after {
+  left: 24rpx;
+  top: 0;
+}
+
+.fav-active .heart-shape,
+.fav-active .heart-shape::before,
+.fav-active .heart-shape::after {
+  background: var(--ink-seal);
 }
 
 .ctrl-play {
@@ -425,12 +539,30 @@ export default {
   background: var(--ink-seal-dark);
 }
 
-.ctrl-play-icon {
-  font-size: 54rpx;
-  color: var(--text-inverse);
-  line-height: 1;
+/* 播放/暂停图标（CSS SVG） */
+.play-shape {
+  width: 0;
+  height: 0;
+  border-top: 32rpx solid transparent;
+  border-bottom: 32rpx solid transparent;
+  border-left: 52rpx solid var(--text-inverse);
+  margin-left: 8rpx;
   position: relative;
   z-index: 1;
+}
+
+.pause-shape {
+  display: flex;
+  gap: 16rpx;
+  position: relative;
+  z-index: 1;
+}
+
+.pause-bar {
+  width: 16rpx;
+  height: 40rpx;
+  background: var(--text-inverse);
+  border-radius: 2rpx;
 }
 
 .ctrl-duration {

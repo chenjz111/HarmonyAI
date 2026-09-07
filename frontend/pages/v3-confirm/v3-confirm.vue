@@ -32,7 +32,9 @@ export default {
       agentPending: false,
       simulated: false,
       correcting: false,
+      editingMode: null, // null | "severity" | "text"
       draftSeverity: {},
+      draftSummaryText: "",
     }
   },
   computed: {
@@ -83,22 +85,33 @@ export default {
       }
     },
     startCorrect() {
-      this.correcting = true
+      // 提供三个入口：调程度 / 编辑文本 / 直接确认
+      this.editingMode = "menu"
       const draft = {}
       ;(this.model.editable_items || []).forEach((item, idx) => {
         draft[idx] = item.value.value
       })
       this.draftSeverity = draft
+      this.draftSummaryText = this.model.summary || ""
     },
     pickSeverity(idx, value) {
       this.draftSeverity[idx] = value
     },
     cancelCorrect() {
-      this.correcting = false
+      this.editingMode = null
+      this.draftSummaryText = ""
+    },
+    selectSeverityMode() {
+      this.editingMode = "severity"
+    },
+    selectTextMode() {
+      this.editingMode = "text"
     },
     async saveCorrect() {
       if (this.confirming) return
-      const changes = (this.model.editable_items || [])
+      
+      const isTextEdit = this.editingMode === "text"
+      const changes = isTextEdit ? [] : (this.model.editable_items || [])
         .map((item, idx) => ({ item, idx }))
         .filter(({ item, idx }) => this.draftSeverity[idx] !== item.value.value)
         .map(({ item, idx }) => ({
@@ -107,12 +120,14 @@ export default {
           old_value: item.value.value,
           new_value: this.draftSeverity[idx],
         }))
+        
       this.confirming = true
       try {
         await apiV3.confirmAssessment({
           expected_revision: this.model.revision,
-          decision: changes.length ? "confirm_with_changes" : "confirm",
+          decision: (changes.length || isTextEdit) ? "confirm_with_changes" : "confirm",
           changes,
+          edited_summary_text: isTextEdit ? this.draftSummaryText : undefined,
         })
         uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
       } catch (e) {
@@ -200,7 +215,45 @@ export default {
         </view>
       </view>
 
-      <view v-else class="correct-card han-card ink-fade-up">
+      <!-- 修改入口选择 -->
+      <view v-else-if="editingMode === 'menu'" class="correct-card han-card ink-fade-up">
+        <text class="correct-title">选择修改方式</text>
+        <view class="actions">
+          <view class="han-btn han-btn-primary btn-primary" @click="selectTextMode">
+            <text class="btn-text">直接编辑文本</text>
+          </view>
+          <view class="han-btn han-btn-ghost btn-secondary" @click="selectSeverityMode">
+            <text class="btn-text-ghost">调整各项程度</text>
+          </view>
+          <view class="han-btn han-btn-ghost btn-secondary" @click="cancelCorrect">
+            <text class="btn-text-ghost">取消修改</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 直接编辑文本模式 -->
+      <view v-else-if="editingMode === 'text'" class="correct-card han-card ink-fade-up">
+        <text class="correct-title">编辑近期状态总结</text>
+        <text class="correct-hint">请根据最近 7 天的实际情况，修改摘要内容。</text>
+        <textarea
+          class="edit-textarea"
+          v-model="draftSummaryText"
+          :maxlength="2000"
+          placeholder="例如：近期睡眠不足，白天精神状态欠佳，但精神压力有所缓解。"
+        />
+        <view class="edit-count"><text class="edit-count-text">{{ (draftSummaryText || '').length }} / 2000</text></view>
+        <view class="actions">
+          <view class="han-btn han-btn-primary btn-primary" :class="{ 'btn-disabled': confirming }" @click="saveCorrect">
+            <text class="btn-text">保存并继续</text>
+          </view>
+          <view class="han-btn han-btn-ghost btn-secondary" @click="cancelCorrect">
+            <text class="btn-text-ghost">取消修改</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 调整程度模式 -->
+      <view v-else-if="editingMode === 'severity'" class="correct-card han-card ink-fade-up">
         <text class="correct-title">调整状态程度</text>
         <text class="correct-hint">请根据最近 7 天的实际情况，调整以下各项的准确程度。</text>
 
@@ -518,6 +571,31 @@ export default {
   color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 32rpx;
+}
+
+.edit-textarea {
+  width: 100%;
+  min-height: 280rpx;
+  padding: 24rpx;
+  box-sizing: border-box;
+  background: rgba(251, 249, 244, 0.6);
+  border: 1rpx solid var(--border-soft);
+  border-radius: var(--radius-md);
+  font-size: 28rpx;
+  color: var(--ink-700);
+  line-height: 1.8;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", sans-serif;
+  margin-bottom: 12rpx;
+}
+
+.edit-count {
+  text-align: right;
+  margin-bottom: 32rpx;
+}
+
+.edit-count-text {
+  font-size: 22rpx;
+  color: var(--text-muted);
 }
 
 .correct-item {
