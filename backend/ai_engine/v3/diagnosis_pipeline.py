@@ -7,10 +7,20 @@ from dataclasses import dataclass
 from hashlib import sha256
 import json
 from typing import Literal
+import uuid
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse, RagQuery, RagResult
+from backend.app.schemas.v3.common import OrganCode
+from backend.app.schemas.v3.diagnosis import (
+    AssessmentSnapshotRef,
+    DiagnosisProviderFact,
+    DiagnosisProviderRequest,
+    DiagnosisProviderResponse,
+    DiagnosisProviderRagRef,
+    RagQuery,
+    RagResult,
+)
 
 
 class DiagnosisPipelineFailure(RuntimeError):
@@ -67,6 +77,7 @@ def validate_diagnosis_provider_response(
     allowed_syndrome_codes: set[str],
     allowed_fact_ids: set[str],
     allowed_chunk_ids: set[str],
+    fact_directions: Mapping[str, str] | None = None,
 ) -> DiagnosisProviderResponse:
     """Reject provider candidates that are not grounded in approved inputs."""
 
@@ -108,6 +119,19 @@ def validate_diagnosis_provider_response(
                 "FACT_REFERENCE_INVALID",
                 "辨证结果引用了无效事实。",
             )
+        if fact_directions is not None:
+            for fact_id in candidate.supporting_fact_ids:
+                if fact_directions.get(fact_id) not in {None, "supporting"}:
+                    raise DiagnosisPipelineFailure(
+                        "EVIDENCE_DIRECTION_MISMATCH",
+                        "辨证结果的支持性事实方向不一致。",
+                    )
+            for fact_id in candidate.contradicting_fact_ids:
+                if fact_directions.get(fact_id) not in {None, "contradicting"}:
+                    raise DiagnosisPipelineFailure(
+                        "EVIDENCE_DIRECTION_MISMATCH",
+                        "辨证结果的矛盾性事实方向不一致。",
+                    )
         if not set(candidate.knowledge_chunk_ids) <= allowed_chunk_ids:
             raise DiagnosisPipelineFailure(
                 "CHUNK_REFERENCE_INVALID",
@@ -122,6 +146,7 @@ async def execute_diagnosis_provider(
     request: Mapping[str, object] | object,
     facts: list[object] | tuple[object, ...],
     rag_result: RagResult,
+    medical_rule_version: str | None = None,
 ) -> DiagnosisProviderExecution:
     """Run Agent2 only when the approved RAG gate provides grounded hits.
 
@@ -139,9 +164,16 @@ async def execute_diagnosis_provider(
     if rag_result.status != "success":
         reasons = rag_result.degradation.reason_codes
         return DiagnosisProviderExecution(
-            status="degraded",
+            status="failed",
             response=None,
             reason_code=str(reasons[0]) if reasons else "RAG_UNAVAILABLE",
+        )
+
+    if medical_rule_version is not None and getattr(provider, "medical_rule_version", None) != medical_rule_version:
+        return DiagnosisProviderExecution(
+            status="failed",
+            response=None,
+            reason_code="MEDICAL_RULE_VERSION_MISMATCH",
         )
 
     from backend.ai_engine.v3.diagnosis_provider import DiagnosisProviderFailure
@@ -154,7 +186,7 @@ async def execute_diagnosis_provider(
         )
     except DiagnosisProviderFailure as error:
         return DiagnosisProviderExecution(
-            status="degraded" if error.retryable else "abstained",
+            status="failed",
             response=None,
             reason_code=error.error_code,
         )
@@ -163,6 +195,93 @@ async def execute_diagnosis_provider(
         response=response,
         reason_code=None if response.status in {"success", "degraded"} else response.abstain_reason,
     )
+
+
+def _build_diagnosis_provider_request(
+    snapshot: Mapping[str, object],
+    rag_result: RagResult,
+    *,
+    allowed_syndrome_codes: set[str] | None = None,
+) -> DiagnosisProviderRequest:
+    """Build the frozen provider request from an authorized snapshot only."""
+
+    allowed_codes = set(
+        allowed_syndrome_codes
+        if allowed_syndrome_codes is not None
+        else _strings(snapshot.get("allowed_syndrome_codes"))
+    )
+    if not allowed_codes:
+        raise DiagnosisPipelineFailure(
+            "MEDICAL_RULE_ASSET_NOT_CONFIGURED",
+            "医学规则资产尚未配置。",
+        )
+
+    raw_facts = snapshot.get("facts") or []
+    try:
+        facts = [DiagnosisProviderFact.model_validate(item) for item in raw_facts]
+        organ_profile = _organ_profile(snapshot)
+        rag_ref = (
+            DiagnosisProviderRagRef(
+                retrieval_id=rag_result.retrieval_id,
+                knowledge_version=rag_result.knowledge_version,
+                chunk_ids=[hit.chunk_id for hit in rag_result.hits],
+            )
+            if rag_result.status == "success"
+            else None
+        )
+        return DiagnosisProviderRequest(
+            request_id=str(snapshot.get("request_id") or f"diag_req_{uuid.uuid4().hex}"),
+            schema_version="diagnosis_provider_v3.0",
+            response_schema_version="diagnosis_provider_response_v3.0",
+            prompt_version=str(snapshot.get("prompt_version") or "diagnosis_prompt_v3.1"),
+            assessment_ref=AssessmentSnapshotRef(
+                assessment_id=str(snapshot.get("assessment_id") or ""),
+                revision=int(snapshot.get("assessment_revision", 1)),
+            ),
+            organ_profile=organ_profile,
+            facts=facts,
+            conflicts=TypeAdapter(list).validate_python(snapshot.get("conflicts") or []),
+            missing_information=TypeAdapter(list).validate_python(
+                snapshot.get("missing_information") or []
+            ),
+            rag=rag_ref,
+            allowed_syndrome_codes=sorted(allowed_codes),
+            max_candidates=int(snapshot.get("max_candidates", 3)),
+        )
+    except DiagnosisPipelineFailure:
+        raise
+    except (TypeError, ValueError, ValidationError) as error:
+        raise DiagnosisPipelineFailure(
+            "DIAGNOSIS_REQUEST_INVALID",
+            "辨证请求格式无效。",
+        ) from error
+
+
+def _organ_profile(snapshot: Mapping[str, object]):
+    value = snapshot.get("organ_profile")
+    if isinstance(value, Mapping):
+        return value
+    weights = snapshot.get("organ_weights")
+    if not isinstance(weights, Mapping):
+        raise DiagnosisPipelineFailure(
+            "ASSESSMENT_SNAPSHOT_INVALID",
+            "评估快照格式无效。",
+        )
+    normalized = {
+        organ.value: float(weights.get(organ.value, weights.get(organ, 0.0)))
+        for organ in OrganCode
+    }
+    total = sum(normalized.values())
+    if total <= 0:
+        raise DiagnosisPipelineFailure(
+            "ASSESSMENT_SNAPSHOT_INVALID",
+            "评估快照格式无效。",
+        )
+    return {
+        "status": "available",
+        "weights": {key: value / total for key, value in normalized.items()},
+        "score_semantics": "relative_evidence_distribution",
+    }
 
 
 def _strings(value: object) -> list[str]:

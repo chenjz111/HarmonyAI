@@ -244,41 +244,111 @@ def test_v31_real_qwen_factory_matches_readiness_and_returns_configured_provider
     assert provider.backend.extra_headers["X-DashScope-WorkSpace"] == "workspace-test"
 
 
+def test_v31_pipeline_factory_requires_explicit_medical_rule_release():
+    from backend.app.core.agent_config import (
+        V31ReadinessFailure,
+        get_v31_ai_pipeline_dependencies,
+    )
+
+    with pytest.raises(V31ReadinessFailure, match="MEDICAL_RULE_ASSET_NOT_CONFIGURED"):
+        get_v31_ai_pipeline_dependencies(
+            {
+                "HARMONYAI_REAL_AGENTS": "true",
+                "DASHSCOPE_API_KEY": "configured-value",
+                "DASHSCOPE_WORKSPACE_ID": "workspace-test",
+                "QWEN_MODEL": "qwen-approved",
+                "CHROMA_PERSIST_DIRECTORY": "data/chroma",
+                "CHROMA_COLLECTION": "harmony_v31",
+            }
+        )
+
+
+def test_v31_pipeline_factory_rejects_corpus_medical_rule_version_mismatch(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from backend.app.core import agent_config
+    from backend.app.core.agent_config import (
+        V31ReadinessFailure,
+        get_v31_ai_pipeline_dependencies,
+    )
+
+    rules_path = tmp_path / "music-rules.json"
+    rules_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "backend.app.services.v3.knowledge_assets.load_five_tone_mapping",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_rag_store",
+        lambda _environment: SimpleNamespace(
+            medical_review_versions=frozenset({"medical-rules-v3.1-r0"}),
+            approved_chunk_ids=frozenset(),
+        ),
+    )
+
+    with pytest.raises(V31ReadinessFailure, match="MEDICAL_RULE_VERSION_MISMATCH"):
+        get_v31_ai_pipeline_dependencies(
+            {
+                "HARMONYAI_REAL_AGENTS": "true",
+                "DASHSCOPE_API_KEY": "configured-value",
+                "DASHSCOPE_WORKSPACE_ID": "workspace-test",
+                "QWEN_MODEL": "qwen-approved",
+                "CHROMA_PERSIST_DIRECTORY": "data/chroma",
+                "CHROMA_COLLECTION": "harmony_v31",
+                "V31_ALLOWED_SYNDROME_CODES": "syndrome_1",
+                "V31_MEDICAL_RULE_VERSION": "medical-rules-v3.1-r1",
+                "V31_MUSIC_GENERATION_RULES_PATH": str(rules_path),
+            }
+        )
+
+
 def test_v31_real_rag_factory_loads_approved_corpus_before_returning_store(
     tmp_path, monkeypatch
 ):
     import json
 
+    from backend.ai_engine.v3.rag_ingestion import _content_checksum
     from backend.ai_engine.v3.rag_store import VersionedRagStore
     from backend.app.core import agent_config
     from backend.app.schemas.v3.diagnosis import IngestionManifest, KnowledgeChunk
 
-    manifest = IngestionManifest(
-        knowledge_version="medical_v3.1",
-        embedding_provider="aliyun",
-        embedding_model="text-embedding-v4",
-        embedding_version="text-embedding-v4@1024",
-        distance_metric="cosine",
-        retrieval_score_semantics="normalized_similarity",
-        minimum_score=0.5,
-        chunk_count=1,
-        manifest_checksum="sha256:manifest-v31",
-        review_status="approved",
+    manifest_payload = {
+        "knowledge_version": "medical_v3.1",
+        "embedding_provider": "aliyun",
+        "embedding_model": "text-embedding-v4",
+        "embedding_version": "text-embedding-v4@1024",
+        "distance_metric": "cosine",
+        "retrieval_score_semantics": "normalized_similarity",
+        "minimum_score": 0.5,
+        "chunk_count": 1,
+        "manifest_checksum": "",
+        "review_status": "approved",
+    }
+    manifest_payload["manifest_checksum"] = _content_checksum(
+        manifest_payload, "manifest_checksum"
     )
-    chunk = KnowledgeChunk(
-        chunk_id="chunk_001",
-        source_id="src_001",
-        source_title="approved source",
-        section="section-1",
-        text="approved explanation text",
-        display_summary="approved explanation",
-        claim_codes=["unrefreshing_sleep"],
-        organ_codes=["heart"],
-        review_status="approved",
-        medical_review_version="medical_v3.1-r1",
-        knowledge_version="medical_v3.1",
-        content_checksum="sha256:chunk-001",
+    manifest = IngestionManifest(**manifest_payload)
+    chunk_payload = {
+        "chunk_id": "chunk_001",
+        "source_id": "src_001",
+        "source_title": "approved source",
+        "section": "section-1",
+        "text": "approved explanation text",
+        "display_summary": "approved explanation",
+        "claim_codes": ["unrefreshing_sleep"],
+        "organ_codes": ["heart"],
+        "review_status": "approved",
+        "medical_review_version": "medical_v3.1-r1",
+        "knowledge_version": "medical_v3.1",
+        "content_checksum": "",
+    }
+    chunk_payload["content_checksum"] = _content_checksum(
+        chunk_payload, "content_checksum"
     )
+    chunk = KnowledgeChunk(**chunk_payload)
     manifest_path = tmp_path / "manifest.json"
     chunks_path = tmp_path / "chunks.json"
     manifest_path.write_text(json.dumps(manifest.model_dump(mode="json")), encoding="utf-8")
@@ -316,5 +386,5 @@ def test_v31_real_rag_factory_loads_approved_corpus_before_returning_store(
     )
 
     assert isinstance(store, VersionedRagStore)
-    assert captured["manifest"].manifest_checksum == "sha256:manifest-v31"
+    assert captured["manifest"].manifest_checksum == manifest.manifest_checksum
     assert [item.chunk_id for item in captured["chunks"]] == ["chunk_001"]

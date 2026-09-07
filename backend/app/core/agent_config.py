@@ -7,6 +7,8 @@ switch to a mock provider.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+import json
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -19,6 +21,18 @@ class V31ReadinessFailure(RuntimeError):
         self.error_code = error_code
         self.safe_message = safe_message
         super().__init__(f"{error_code}: {safe_message}")
+
+
+@dataclass(frozen=True)
+class V31AiPipelineDependencies:
+    """All approved, real-mode dependencies required by the V3.1 chain."""
+
+    rag_store: object
+    diagnosis_provider: object
+    tone_mapping: Mapping[str, object]
+    generation_parameter_rules: Mapping[str, object]
+    allowed_syndrome_codes: frozenset[str]
+    medical_rule_version: str
 
 # ---------------------------------------------------------------------------
 # Feature flag
@@ -153,6 +167,7 @@ def get_v31_diagnosis_provider(
     allowed_syndrome_codes: set[str],
     allowed_fact_ids: set[str],
     allowed_chunk_ids: set[str],
+    medical_rule_version: str | None = None,
 ):
     """Build Qwen only after the shared V3.1 readiness gate passes."""
     values = environment if environment is not None else os.environ
@@ -164,7 +179,91 @@ def get_v31_diagnosis_provider(
         allowed_syndrome_codes=allowed_syndrome_codes,
         allowed_fact_ids=allowed_fact_ids,
         allowed_chunk_ids=allowed_chunk_ids,
+        medical_rule_version=medical_rule_version,
     )
     if provider is None:
         raise V31ReadinessFailure("QWEN_FACTORY_NOT_READY")
     return provider
+
+
+def get_v31_ai_pipeline_dependencies(
+    environment: Mapping[str, str] | None = None,
+) -> V31AiPipelineDependencies:
+    """Build the complete V3.1 real chain without demo or mock fallbacks."""
+
+    values = environment if environment is not None else os.environ
+    _require_v31_real_config(values)
+    allowed_syndrome_codes = _parse_required_codes(
+        values.get("V31_ALLOWED_SYNDROME_CODES"),
+        "MEDICAL_RULE_ASSET_NOT_CONFIGURED",
+    )
+    medical_rule_version = values.get("V31_MEDICAL_RULE_VERSION", "").strip()
+    if not medical_rule_version:
+        raise V31ReadinessFailure(
+            "MEDICAL_RULE_ASSET_NOT_CONFIGURED",
+            "医学规则版本尚未配置。",
+        )
+    rules_path = values.get("V31_MUSIC_GENERATION_RULES_PATH", "").strip()
+    if not rules_path or not Path(rules_path).is_file():
+        raise V31ReadinessFailure(
+            "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED",
+            "音乐参数规则资产尚未配置。",
+        )
+
+    try:
+        from backend.app.services.v3.knowledge_assets import load_five_tone_mapping
+
+        tone_mapping = load_five_tone_mapping()
+        generation_parameter_rules = json.loads(
+            Path(rules_path).read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError) as error:
+        raise V31ReadinessFailure(
+            "MUSIC_PARAMETER_ASSET_INVALID",
+            "音乐参数规则资产格式无效。",
+        ) from error
+    if not isinstance(tone_mapping, Mapping) or not isinstance(
+        generation_parameter_rules, Mapping
+    ):
+        raise V31ReadinessFailure(
+            "MUSIC_PARAMETER_ASSET_INVALID",
+            "音乐参数规则资产格式无效。",
+        )
+
+    rag_store = get_v31_rag_store(values)
+    medical_review_versions = set(
+        getattr(rag_store, "medical_review_versions", ())
+    )
+    if medical_review_versions != {medical_rule_version}:
+        raise V31ReadinessFailure(
+            "MEDICAL_RULE_VERSION_MISMATCH",
+            "医学语料与医学规则版本不一致。",
+        )
+    provider = get_v31_diagnosis_provider(
+        values,
+        allowed_syndrome_codes=allowed_syndrome_codes,
+        allowed_fact_ids=_parse_optional_codes(values.get("V31_ALLOWED_FACT_IDS")),
+        allowed_chunk_ids=set(getattr(rag_store, "approved_chunk_ids", ())),
+        medical_rule_version=medical_rule_version,
+    )
+    return V31AiPipelineDependencies(
+        rag_store=rag_store,
+        diagnosis_provider=provider,
+        tone_mapping=tone_mapping,
+        generation_parameter_rules=generation_parameter_rules,
+        allowed_syndrome_codes=frozenset(allowed_syndrome_codes),
+        medical_rule_version=medical_rule_version,
+    )
+
+
+def _parse_required_codes(value: str | None, error_code: str) -> set[str]:
+    codes = _parse_optional_codes(value)
+    if not codes:
+        raise V31ReadinessFailure(error_code, "医学规则资产尚未完整配置。")
+    return codes
+
+
+def _parse_optional_codes(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {item.strip() for item in value.split(",") if item.strip()}

@@ -1,8 +1,36 @@
 import pytest
 
 
+def _rag_result():
+    from backend.app.schemas.v3.common import Degradation
+    from backend.app.schemas.v3.diagnosis import RagHit, RagResult
+
+    return RagResult(
+        retrieval_id="rag_1",
+        status="success",
+        knowledge_version="medical_v3.1",
+        embedding_version="text-embedding-v4@1024",
+        retrieval_score_semantics="normalized_similarity",
+        hits=[
+            RagHit(
+                chunk_id="chunk_1",
+                source_id="source_1",
+                source_title="approved source",
+                section="section",
+                retrieval_score=0.9,
+                text="approved text",
+                display_summary="approved summary",
+                review_status="approved",
+            )
+        ],
+        degradation=Degradation(active=False, reason_codes=[]),
+    )
+
+
 def _snapshot():
     return {
+        "assessment_id": "asmt_1",
+        "assessment_revision": 1,
         "knowledge_version": "medical_v3.1",
         "manifest_checksum": "sha256:manifest-v31",
         "organ_codes": ["heart", "spleen", "not-approved"],
@@ -11,6 +39,7 @@ def _snapshot():
         "contradicting_fact_ids": ["fact_3"],
         "approved_organ_codes": ["heart", "spleen"],
         "approved_claim_codes": ["unrefreshing_sleep"],
+        "organ_weights": {"heart": 1.0},
     }
 
 
@@ -127,6 +156,84 @@ def test_diagnosis_response_rejects_duplicate_evidence_references():
             allowed_fact_ids={"fact_1"},
             allowed_chunk_ids={"chunk_1"},
         )
+
+
+def test_diagnosis_response_rejects_evidence_direction_mismatch():
+    from backend.ai_engine.v3.diagnosis_pipeline import (
+        DiagnosisPipelineFailure,
+        validate_diagnosis_provider_response,
+    )
+
+    with pytest.raises(DiagnosisPipelineFailure, match="EVIDENCE_DIRECTION_MISMATCH"):
+        validate_diagnosis_provider_response(
+            _provider_response(),
+            allowed_syndrome_codes={"syndrome_1"},
+            allowed_fact_ids={"fact_1"},
+            allowed_chunk_ids={"chunk_1"},
+            fact_directions={"fact_1": "contradicting"},
+        )
+
+
+def test_v31_pipeline_builds_the_frozen_provider_request():
+    from backend.app.schemas.v3.diagnosis import DiagnosisProviderRequest
+    from backend.ai_engine.v3.diagnosis_pipeline import _build_diagnosis_provider_request
+
+    request = _build_diagnosis_provider_request(
+        {
+            **_snapshot(),
+            "request_id": "req_1",
+            "prompt_version": "diagnosis_prompt_v3.1",
+            "medical_rule_version": "medical-rules-v3.1-r1",
+            "facts": [
+                {
+                    "fact_evidence_id": "fact_1",
+                    "claim_code": "unrefreshing_sleep",
+                    "value": {"type": "frequency_0_4", "value": 3},
+                    "direction": "supporting",
+                    "time_window": "past_7_days",
+                }
+            ],
+            "conflicts": [],
+            "missing_information": [],
+        },
+        _rag_result(),
+        allowed_syndrome_codes={"syndrome_1"},
+    )
+
+    assert isinstance(request, DiagnosisProviderRequest)
+    assert request.request_id == "req_1"
+    assert request.schema_version == "diagnosis_provider_v3.0"
+    assert request.response_schema_version == "diagnosis_provider_response_v3.0"
+    assert request.prompt_version == "diagnosis_prompt_v3.1"
+    assert request.allowed_syndrome_codes == ["syndrome_1"]
+    assert request.max_candidates == 3
+    assert request.rag is not None
+    assert request.rag.chunk_ids == ["chunk_1"]
+
+
+def test_diagnosis_execution_fails_when_medical_rule_version_does_not_match():
+    from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
+
+    class Provider:
+        medical_rule_version = "medical-rules-v3.1-r0"
+
+        async def acomplete_json(self, **kwargs):
+            raise AssertionError("provider must not run with a stale medical rule asset")
+
+    import asyncio
+
+    result = asyncio.run(
+        execute_diagnosis_provider(
+            provider=Provider(),
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[],
+            rag_result=_rag_result(),
+            medical_rule_version="medical-rules-v3.1-r1",
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.reason_code == "MEDICAL_RULE_VERSION_MISMATCH"
 
 
 def test_diagnosis_provider_repairs_schema_once_then_accepts_grounded_response():
@@ -322,7 +429,7 @@ def test_diagnosis_execution_does_not_call_qwen_when_rag_is_empty_or_degraded():
 
     assert empty_result.status == "abstained"
     assert empty_result.reason_code == "RAG_EMPTY"
-    assert degraded_result.status == "degraded"
+    assert degraded_result.status == "failed"
     assert degraded_result.reason_code == "RAG_UNAVAILABLE"
     assert provider.calls == 0
 

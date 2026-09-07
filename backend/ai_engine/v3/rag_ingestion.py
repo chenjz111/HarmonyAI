@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from hashlib import sha256
 import json
 from pathlib import Path
 
@@ -18,6 +19,25 @@ class ProductionCorpusNotReady(RuntimeError):
         self.error_code = error_code
         self.safe_message = safe_message
         super().__init__(f"{error_code}: {safe_message}")
+
+
+def _content_checksum(payload: Mapping[str, object], field: str) -> str:
+    """Return the stable checksum for one manifest or chunk payload.
+
+    The checksum is calculated from the complete JSON payload except for its
+    checksum field.  Sorting keys and using compact UTF-8 JSON makes the
+    validation independent of file formatting while still detecting content
+    changes.
+    """
+
+    canonical = {key: value for key, value in payload.items() if key != field}
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{sha256(encoded).hexdigest()}"
 
 
 def validate_production_corpus(
@@ -43,6 +63,14 @@ def validate_production_corpus(
             "CORPUS_MANIFEST_INVALID",
             "医学语料清单格式无效。",
         ) from error
+
+    if checked_manifest.manifest_checksum != _content_checksum(
+        checked_manifest.model_dump(mode="json"), "manifest_checksum"
+    ):
+        raise ProductionCorpusNotReady(
+            "CORPUS_MANIFEST_CHECKSUM_MISMATCH",
+            "医学语料清单校验和不匹配。",
+        )
 
     if (
         checked_manifest.embedding_model != "text-embedding-v4"
@@ -76,6 +104,13 @@ def validate_production_corpus(
                 "CORPUS_CHUNK_INVALID",
                 "医学语料块格式无效。",
             ) from error
+        if chunk.content_checksum != _content_checksum(
+            chunk.model_dump(mode="json"), "content_checksum"
+        ):
+            raise ProductionCorpusNotReady(
+                "CORPUS_CHUNK_CHECKSUM_MISMATCH",
+                "医学语料块校验和不匹配。",
+            )
         if chunk.knowledge_version != checked_manifest.knowledge_version:
             raise ProductionCorpusNotReady(
                 "CORPUS_VERSION_MISMATCH",

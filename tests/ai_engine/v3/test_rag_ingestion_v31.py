@@ -1,40 +1,53 @@
+from hashlib import sha256
+import json
+
 import pytest
+
+
+def _checksum(payload, field):
+    canonical = {key: value for key, value in payload.items() if key != field}
+    encoded = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return f"sha256:{sha256(encoded.encode('utf-8')).hexdigest()}"
 
 
 def _manifest(*, review_status="approved", embedding_version="text-embedding-v4@1024"):
     from backend.app.schemas.v3.diagnosis import IngestionManifest
 
-    return IngestionManifest(
-        knowledge_version="medical_v3.1",
-        embedding_provider="aliyun",
-        embedding_model="text-embedding-v4",
-        embedding_version=embedding_version,
-        distance_metric="cosine",
-        retrieval_score_semantics="normalized_similarity",
-        minimum_score=0.5,
-        chunk_count=1,
-        manifest_checksum="sha256:manifest-v31",
-        review_status=review_status,
-    )
+    payload = {
+        "knowledge_version": "medical_v3.1",
+        "embedding_provider": "aliyun",
+        "embedding_model": "text-embedding-v4",
+        "embedding_version": embedding_version,
+        "distance_metric": "cosine",
+        "retrieval_score_semantics": "normalized_similarity",
+        "minimum_score": 0.5,
+        "chunk_count": 1,
+        "manifest_checksum": "",
+        "review_status": review_status,
+    }
+    payload["manifest_checksum"] = _checksum(payload, "manifest_checksum")
+    return IngestionManifest(**payload)
 
 
 def _chunk(*, review_status="approved"):
     from backend.app.schemas.v3.diagnosis import KnowledgeChunk
 
-    return KnowledgeChunk(
-        chunk_id="chunk_001",
-        source_id="src_001",
-        source_title="approved source",
-        section="section-1",
-        text="approved explanation text",
-        display_summary="approved explanation",
-        claim_codes=["unrefreshing_sleep"],
-        organ_codes=["heart"],
-        review_status=review_status,
-        medical_review_version="medical_v3.1-r1",
-        knowledge_version="medical_v3.1",
-        content_checksum="sha256:chunk-001",
-    )
+    payload = {
+        "chunk_id": "chunk_001",
+        "source_id": "src_001",
+        "source_title": "approved source",
+        "section": "section-1",
+        "text": "approved explanation text",
+        "display_summary": "approved explanation",
+        "claim_codes": ["unrefreshing_sleep"],
+        "organ_codes": ["heart"],
+        "review_status": review_status,
+        "medical_review_version": "medical_v3.1-r1",
+        "knowledge_version": "medical_v3.1",
+        "content_checksum": "",
+    }
+    payload["content_checksum"] = _checksum(payload, "content_checksum")
+    return KnowledgeChunk(**payload)
 
 
 def test_production_ingestion_requires_owner_approved_manifest():
@@ -86,6 +99,32 @@ def test_production_ingestion_requires_approved_text_embedding_v4_1024_identity(
             _manifest(embedding_version="text-embedding-v4@1536"),
             [_chunk()],
         )
+
+
+def test_production_ingestion_recomputes_manifest_checksum():
+    from backend.ai_engine.v3.rag_ingestion import (
+        ProductionCorpusNotReady,
+        validate_production_corpus,
+    )
+
+    payload = _manifest().model_dump(mode="json")
+    payload["knowledge_version"] = "medical_v3.1-tampered"
+
+    with pytest.raises(ProductionCorpusNotReady, match="CORPUS_MANIFEST_CHECKSUM_MISMATCH"):
+        validate_production_corpus(payload, [_chunk()])
+
+
+def test_production_ingestion_recomputes_chunk_checksum():
+    from backend.ai_engine.v3.rag_ingestion import (
+        ProductionCorpusNotReady,
+        validate_production_corpus,
+    )
+
+    payload = _chunk().model_dump(mode="json")
+    payload["text"] = "tampered corpus text"
+
+    with pytest.raises(ProductionCorpusNotReady, match="CORPUS_CHUNK_CHECKSUM_MISMATCH"):
+        validate_production_corpus(_manifest(), [payload])
 
 
 def test_load_production_corpus_reads_manifest_and_chunk_files(tmp_path):

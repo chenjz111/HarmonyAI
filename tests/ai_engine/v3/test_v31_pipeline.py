@@ -198,7 +198,7 @@ def test_v31_pipeline_reaches_query_rag_qwen_agent3_and_public_read_model_withou
     assert result.generation_spec.bpm == 50
     assert result.read_model.generation.status == "ready"
     assert "次要音调规则尚未获批准" in result.read_model.generation.message
-    assert "user_goal" not in result.diagnosis_request
+    assert "user_goal" not in result.diagnosis_request.model_dump(mode="json")
 
 
 def test_v31_pipeline_rejects_non_current_or_unconfirmed_state_before_rag():

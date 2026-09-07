@@ -14,6 +14,7 @@ import uuid
 
 from backend.app.schemas.v3.common import Degradation
 from backend.app.schemas.v3.diagnosis import (
+    DiagnosisProviderRequest,
     DiagnosisProviderResponse,
     RagQuery,
     RagResult,
@@ -32,6 +33,7 @@ from .agent3 import (
 )
 from .diagnosis_pipeline import (
     DiagnosisProviderExecution,
+    _build_diagnosis_provider_request,
     build_diagnosis_query,
     execute_diagnosis_provider,
 )
@@ -51,7 +53,7 @@ class V31AiPipelineResult:
     confirmed_user_state: ConfirmedUserState
     query: RagQuery
     rag_result: RagResult
-    diagnosis_request: dict[str, object]
+    diagnosis_request: DiagnosisProviderRequest
     diagnosis_execution: DiagnosisProviderExecution
     diagnosis: DiagnosisProviderResponse | None
     tone_profile: ToneProfileV31
@@ -84,16 +86,31 @@ async def execute_v31_ai_pipeline(
 
     query = build_diagnosis_query(assessment_snapshot)
     rag_result = _query_rag(rag_store, query, assessment_snapshot)
-    diagnosis_request = _diagnosis_request(assessment_snapshot, rag_result)
-    facts = list(assessment_snapshot.get("facts") or [])
+    diagnosis_request = _build_diagnosis_provider_request(
+        assessment_snapshot,
+        rag_result,
+        allowed_syndrome_codes=set(
+            getattr(diagnosis_provider, "allowed_syndrome_codes", ())
+        ),
+    )
+    facts = list(diagnosis_request.facts)
     execution = await execute_diagnosis_provider(
         provider=diagnosis_provider,
         request=diagnosis_request,
         facts=facts,
         rag_result=rag_result,
+        medical_rule_version=(
+            str(assessment_snapshot["medical_rule_version"])
+            if assessment_snapshot.get("medical_rule_version") is not None
+            else None
+        ),
     )
     if execution.status == "abstained":
         raise V31PipelineBlocked("DIAGNOSIS_ABSTAINED")
+    if execution.status == "failed":
+        raise V31PipelineBlocked(execution.reason_code or "DIAGNOSIS_FAILED")
+    if execution.response is None:
+        raise V31PipelineBlocked("DIAGNOSIS_FAILED")
 
     diagnosis_id = str(assessment_snapshot.get("diagnosis_id") or f"diag_{uuid.uuid4().hex}")
     evidence_refs = [
@@ -188,32 +205,6 @@ def _query_rag(rag_store, query: RagQuery, snapshot: Mapping[str, object]) -> Ra
     if not isinstance(result, RagResult):
         raise V31PipelineBlocked("RAG_INVALID_RESULT")
     return result
-
-
-def _diagnosis_request(
-    snapshot: Mapping[str, object],
-    rag_result: RagResult,
-) -> dict[str, object]:
-    assessment_id = str(snapshot.get("assessment_id") or "")
-    revision = int(snapshot.get("assessment_revision", 1))
-    organ_weights = _mapping_value(snapshot, "organ_weights")
-    request: dict[str, object] = {
-        "assessment_ref": {"assessment_id": assessment_id, "revision": revision},
-        "organ_profile": {
-            "status": "available",
-            "weights": organ_weights,
-            "score_semantics": "relative_evidence_distribution",
-        },
-        "facts": list(snapshot.get("facts") or []),
-        "conflicts": list(snapshot.get("conflicts") or []),
-        "missing_information": list(snapshot.get("missing_information") or []),
-        "rag": {
-            "retrieval_id": rag_result.retrieval_id,
-            "knowledge_version": rag_result.knowledge_version,
-            "chunk_ids": [hit.chunk_id for hit in rag_result.hits],
-        },
-    }
-    return request
 
 
 def _mapping_value(snapshot: Mapping[str, object], key: str) -> Mapping[str, object]:

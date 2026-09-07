@@ -45,6 +45,26 @@ class VersionedRagStore:
         self._client = client or self._build_client(persist_directory)
         self._collection = None
         self._manifest: IngestionManifest | None = None
+        self._approved_chunk_ids: frozenset[str] = frozenset()
+        self._medical_review_versions: frozenset[str] = frozenset()
+
+    @property
+    def manifest(self) -> IngestionManifest | None:
+        """The validated manifest bound to the active Chroma collection."""
+
+        return self._manifest
+
+    @property
+    def approved_chunk_ids(self) -> frozenset[str]:
+        """Chunk identifiers admitted by the last validated corpus ingest."""
+
+        return self._approved_chunk_ids
+
+    @property
+    def medical_review_versions(self) -> frozenset[str]:
+        """Medical review releases represented by the active corpus."""
+
+        return self._medical_review_versions
 
     def ingest(
         self,
@@ -100,6 +120,10 @@ class VersionedRagStore:
                 "RAG 索引暂时不可用。",
             ) from error
         self._manifest = checked
+        self._approved_chunk_ids = frozenset(chunk.chunk_id for chunk in chunks)
+        self._medical_review_versions = frozenset(
+            chunk.medical_review_version for chunk in chunks
+        )
         self._collection = collection
         return collection_name
 

@@ -35,11 +35,13 @@ class DiagnosisProvider:
         allowed_syndrome_codes: set[str],
         allowed_fact_ids: set[str],
         allowed_chunk_ids: set[str],
+        medical_rule_version: str | None = None,
     ) -> None:
         self.backend = backend
         self.allowed_syndrome_codes = set(allowed_syndrome_codes)
         self.allowed_fact_ids = set(allowed_fact_ids)
         self.allowed_chunk_ids = set(allowed_chunk_ids)
+        self.medical_rule_version = medical_rule_version
 
     async def acomplete_json(
         self,
@@ -77,6 +79,7 @@ class DiagnosisProvider:
                     allowed_syndrome_codes=self.allowed_syndrome_codes,
                     allowed_fact_ids=self.allowed_fact_ids,
                     allowed_chunk_ids=self.allowed_chunk_ids,
+                    fact_directions=_fact_directions(facts),
                 )
             except DiagnosisProviderFailure:
                 raise
@@ -125,6 +128,7 @@ def diagnosis_provider_from_environment(
     allowed_syndrome_codes: set[str],
     allowed_fact_ids: set[str],
     allowed_chunk_ids: set[str],
+    medical_rule_version: str | None = None,
 ) -> DiagnosisProvider | None:
     """Build the Qwen-backed Agent2 adapter only from explicit env values."""
 
@@ -155,6 +159,7 @@ def diagnosis_provider_from_environment(
         allowed_syndrome_codes=allowed_syndrome_codes,
         allowed_fact_ids=allowed_fact_ids,
         allowed_chunk_ids=allowed_chunk_ids,
+        medical_rule_version=medical_rule_version,
     )
 
 
@@ -199,3 +204,15 @@ def _safe_model_dump(value: object) -> object:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
+
+
+def _fact_directions(facts: Sequence[object]) -> dict[str, str]:
+    directions: dict[str, str] = {}
+    for fact in facts:
+        dumped = _safe_model_dump(fact)
+        if isinstance(dumped, Mapping):
+            fact_id = dumped.get("fact_evidence_id")
+            direction = dumped.get("direction")
+            if isinstance(fact_id, str) and isinstance(direction, str):
+                directions[fact_id] = direction
+    return directions

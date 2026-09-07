@@ -16,6 +16,8 @@ from backend.app.services.v3.diagnosis_service import (
     IdempotencyInProgress,
     MedicalAssetUnavailable,
     OwnedResourceNotFound,
+    V31PipelineFailure,
+    V31ReadinessError,
     run_diagnosis,
 )
 
@@ -68,6 +70,20 @@ def create_run(
             503,
             "MEDICAL_ASSET_UNAVAILABLE",
             "辨证所需的医学知识资产尚未批准，暂不能输出证型倾向。",
+            retryable=False,
+        ) from None
+    except V31ReadinessError as error:
+        raise V3APIError(
+            503,
+            error.error_code,
+            error.safe_message,
+            retryable=False,
+        ) from None
+    except V31PipelineFailure as error:
+        raise V3APIError(
+            502,
+            error.error_code,
+            error.safe_message,
             retryable=False,
         ) from None
     if replayed:

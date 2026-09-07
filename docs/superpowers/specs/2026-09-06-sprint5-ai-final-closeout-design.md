@@ -57,16 +57,19 @@ supporting/contradicting Fact IDs, and the frozen query-builder version. It
 requests a query embedding with `input_type=query`, retrieves only from a
 collection whose corpus version, embedding model, dimension, metric, and
 manifest checksum match the approved ingestion manifest, then sends only
-validated facts and approved RAG references to Qwen.
+validated facts and approved RAG references to Qwen. The formal diagnosis
+service reaches this seam through an owner-scoped projection adapter until
+the reviewed #104/#105 state loader is available; it does not copy those
+persistence implementations.
 
 Qwen output is advisory. The validator rejects unknown syndrome codes,
 unknown Fact IDs or Chunk IDs, mismatched evidence directions, unsupported
 knowledge versions, duplicate or contradictory references, and any result
 outside the frozen response Schema. A valid result is then converted to the
 V3 diagnosis response and persisted with provider/RAG audit metadata. An
-empty retrieval, provider failure, unavailable index, or insufficient
-approved assets produces the corresponding explicit degraded/abstained/
-medical-asset result; it never fabricates a syndrome.
+empty retrieval is an evidence-gated abstention; provider failure,
+unavailable index, schema/rule failure, or missing approved assets is an
+explicit failed/readiness result; it never fabricates a syndrome.
 
 ### Agent3
 
@@ -92,7 +95,9 @@ Production mode requires explicit environment configuration:
 - Embedding identity: `text-embedding-v4` and `1024` dense dimensions;
 - Qwen model: `QWEN_MODEL` or `DASHSCOPE_QWEN_MODEL`;
 - Chroma: `CHROMA_PERSIST_DIRECTORY`, `CHROMA_COLLECTION`;
-- corpus: `RAG_CORPUS_MANIFEST_PATH` and `RAG_CORPUS_CHUNKS_PATH`.
+- corpus: `RAG_CORPUS_MANIFEST_PATH` and `RAG_CORPUS_CHUNKS_PATH`;
+- medical release: `V31_ALLOWED_SYNDROME_CODES`, `V31_MEDICAL_RULE_VERSION`,
+  and an approved `V31_MUSIC_GENERATION_RULES_PATH`.
 
 Legacy `EMBEDDING_*` and `QWEN_*` values may override endpoint/model details
 only when the DashScope credentials are also present and the resulting
@@ -113,12 +118,13 @@ must report production RAG as not ready.
 
 - Embedding timeout/auth/rate-limit/dimension errors map to stable provider
   failures without exposing raw input.
-- Chroma unavailable, empty, stale, corrupt, or manifest-mismatched indexes
-  are explicit `failed`, `empty`, or `degraded` states.
+- Chroma unavailable, stale, corrupt, or manifest-mismatched indexes are
+  explicit failures; an empty retrieval is an evidence-gated abstention.
 - Qwen timeout and transient provider errors follow the existing bounded
   retry policy. Invalid JSON/schema is repaired at most once, then rejected.
-- Diagnosis with insufficient evidence abstains. Available evidence without
-  an approved corpus/whitelist remains `MEDICAL_ASSET_UNAVAILABLE`.
+- Diagnosis with insufficient evidence abstains. RAG/provider/schema/rule
+  failures are failed/readiness outcomes; they are not rewritten as
+  abstentions.
 - Agent3 never converts a failed or abstained diagnosis into a syndrome-based
   tone profile. It uses only the frozen conservative fallback modes.
 

@@ -5,9 +5,10 @@ import json
 def _state_and_snapshot():
     from tests.ai_engine.v3.test_v31_pipeline import _confirmed_state, _snapshot
 
+    manifest, _chunk = _manifest_and_chunk()
     snapshot = {
         **_snapshot(),
-        "manifest_checksum": "sha256:manifest-v31",
+        "manifest_checksum": manifest.manifest_checksum,
     }
     return _confirmed_state(), snapshot
 
@@ -25,34 +26,43 @@ def _rules():
 
 
 def _manifest_and_chunk():
+    from backend.ai_engine.v3.rag_ingestion import _content_checksum
     from backend.app.schemas.v3.diagnosis import IngestionManifest, KnowledgeChunk
 
-    manifest = IngestionManifest(
-        knowledge_version="medical_v3.1",
-        embedding_provider="aliyun",
-        embedding_model="text-embedding-v4",
-        embedding_version="text-embedding-v4@1024",
-        distance_metric="cosine",
-        retrieval_score_semantics="normalized_similarity",
-        minimum_score=0.5,
-        chunk_count=1,
-        manifest_checksum="sha256:manifest-v31",
-        review_status="approved",
+    manifest_payload = {
+        "knowledge_version": "medical_v3.1",
+        "embedding_provider": "aliyun",
+        "embedding_model": "text-embedding-v4",
+        "embedding_version": "text-embedding-v4@1024",
+        "distance_metric": "cosine",
+        "retrieval_score_semantics": "normalized_similarity",
+        "minimum_score": 0.5,
+        "chunk_count": 1,
+        "manifest_checksum": "",
+        "review_status": "approved",
+    }
+    manifest_payload["manifest_checksum"] = _content_checksum(
+        manifest_payload, "manifest_checksum"
     )
-    chunk = KnowledgeChunk(
-        chunk_id="chunk_1",
-        source_id="source_1",
-        source_title="approved source",
-        section="section",
-        text="approved corpus text",
-        display_summary="approved summary",
-        claim_codes=["unrefreshing_sleep"],
-        organ_codes=["heart"],
-        review_status="approved",
-        medical_review_version="medical_v3.1-r1",
-        knowledge_version="medical_v3.1",
-        content_checksum="sha256:chunk-1",
+    manifest = IngestionManifest(**manifest_payload)
+    chunk_payload = {
+        "chunk_id": "chunk_1",
+        "source_id": "source_1",
+        "source_title": "approved source",
+        "section": "section",
+        "text": "approved corpus text",
+        "display_summary": "approved summary",
+        "claim_codes": ["unrefreshing_sleep"],
+        "organ_codes": ["heart"],
+        "review_status": "approved",
+        "medical_review_version": "medical_v3.1-r1",
+        "knowledge_version": "medical_v3.1",
+        "content_checksum": "",
+    }
+    chunk_payload["content_checksum"] = _content_checksum(
+        chunk_payload, "content_checksum"
     )
+    chunk = KnowledgeChunk(**chunk_payload)
     return manifest, chunk
 
 
@@ -139,7 +149,7 @@ class _QwenTransport:
         ).encode()
 
 
-def test_real_adapter_classes_execute_the_v31_chain_without_network_or_secrets():
+def test_mock_adapter_classes_execute_the_v31_chain_without_network_or_secrets():
     from backend.ai_engine.providers import QwenCompatibleProvider
     from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
     from backend.ai_engine.v3.embedding_provider import EmbeddingProvider
