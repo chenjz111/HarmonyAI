@@ -1250,9 +1250,12 @@ export const apiV3 = {
     if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估"))
     return mockApi.getAssessment()
   },
+  // 最终确认：真实模式通过已交付的 Understanding confirmations 路由提交；
+  // mock/hybrid 保持评估 fixture 状态机，以便验证后续五音解析流程。
   confirmAssessment(payload) {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估"))
-    return mockApi.confirmAssessment(payload)
+    return AGENT_MOCK
+      ? mockApi.confirmAssessment(payload)
+      : realInputApi.confirmUnderstanding(payload)
   },
 
   // 辨证与生成依据（依赖后端辨证能力，尚未交付）

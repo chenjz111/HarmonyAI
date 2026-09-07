@@ -90,6 +90,14 @@ export default {
     async play() {
       if (!this.audioSrc || this.playing) return
       try {
+        // 若已有音频上下文且 src 相同，直接恢复播放（无需重新下载）
+        if (this.audioCtx && this.audioCtx.src === this.audioSrc) {
+          this.audioCtx.play()
+          this.playing = true
+          return
+        }
+        
+        // 只在首次或切曲时才下载音频文件
         const src = await apiV3.fetchAuthorizedAudio(this.music.stream_url)
         if (!this.audioCtx) {
           this.audioCtx = uni.createInnerAudioContext()
@@ -118,7 +126,10 @@ export default {
             this.currentTime = 0
           })
         }
-        this.audioCtx.src = src
+        // 仅在 src 不同时才设置（换曲或首次）
+        if (this.audioCtx.src !== src) {
+          this.audioCtx.src = src
+        }
         this.audioCtx.play()
         this.playing = true
       } catch (e) {
