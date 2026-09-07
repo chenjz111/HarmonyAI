@@ -26,12 +26,14 @@ class V3APIError(Exception):
         *,
         retryable: bool = False,
         next_actions: list[str] | None = None,
+        request_id: str | None = None,
     ) -> None:
         self.status_code = status_code
         self.code = code
         self.message = message
         self.retryable = retryable
         self.next_actions = next_actions or []
+        self.request_id = request_id
 
 
 def _request_id() -> str:
@@ -53,7 +55,7 @@ async def v3_api_error_handler(
             retryable=error.retryable,
             next_actions=error.next_actions,
         ),
-        request_id=_request_id(),
+        request_id=error.request_id or _request_id(),
     )
     return JSONResponse(
         status_code=error.status_code,

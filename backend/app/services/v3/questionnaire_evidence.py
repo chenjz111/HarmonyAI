@@ -51,7 +51,33 @@ def build_questionnaire_facts(
     submission: QuestionnaireSubmissionV3,
 ) -> list[dict]:
     """Map selected, non-zero questionnaire answers to normalized facts."""
-    answers = _answers_by_question(submission)
+    return _build_questionnaire_facts(
+        submission.questionnaire_submission_id,
+        submission.answers_json or [],
+    )
+
+
+def build_questionnaire_facts_from_result(result) -> list[dict]:
+    """Map the frozen V3.1 QuestionnaireResult without ORM/persistence access."""
+    return _build_questionnaire_facts(
+        result.questionnaire_result_id,
+        result.answers,
+    )
+
+
+def _build_questionnaire_facts(
+    submission_id: str,
+    raw_answers,
+) -> list[dict]:
+    answers: dict[str, object] = {}
+    for raw_answer in raw_answers:
+        try:
+            answer = _QUESTIONNAIRE_ANSWER_ADAPTER.validate_python(raw_answer)
+        except ValidationError as error:
+            raise QuestionnaireEvidenceInvalid from error
+        if answer.question_id in answers:
+            raise QuestionnaireEvidenceInvalid
+        answers[answer.question_id] = answer
     _version, claims = load_claim_dictionary()
     facts: list[dict] = []
     for claim in claims.values():
@@ -80,7 +106,7 @@ def build_questionnaire_facts(
             facts.append(
                 {
                     "fact_id": _stable_fact_id(
-                        submission.questionnaire_submission_id,
+                        submission_id,
                         claim.claim_code,
                     ),
                     "fact_code": claim.claim_code,
@@ -92,7 +118,7 @@ def build_questionnaire_facts(
                     "subject": "self",
                     "source_refs": [
                         {
-                            "source_id": submission.questionnaire_submission_id,
+                            "source_id": submission_id,
                             "source_type": "questionnaire",
                             "span_ref": None,
                         }
