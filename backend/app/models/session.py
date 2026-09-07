@@ -91,6 +91,11 @@ class Session(Base):
         nullable=True,
         comment="V3.1 疗愈诉求（选填，仅供 Agent3 音乐设计/个性化）",
     )
+    user_goal_revision = Column(
+        Integer,
+        nullable=True,
+        comment="疗愈诉求 revision，每次提交/修改 +1，供处方绑定快照",
+    )
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

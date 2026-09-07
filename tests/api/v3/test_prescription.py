@@ -153,7 +153,7 @@ def test_create_and_read_prescription():
 
     created = client.post(
         "/api/v3/prescriptions",
-        headers=headers,
+        headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
         json={"schema_version": "prescription_v3.1", "diagnosis_id": diagnosis_id, "preference_snapshot": None},
     )
     assert created.status_code == 201, created.text
@@ -226,7 +226,7 @@ def test_user_goal_influences_prescription_bpm():
     created = _v3_data(
         client.post(
             "/api/v3/prescriptions",
-            headers=headers,
+            headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
             json={"schema_version": "prescription_v3.1", "diagnosis_id": diagnosis_id, "preference_snapshot": None},
         )
     )
@@ -242,7 +242,7 @@ def test_prescription_requires_owned_diagnosis():
     stranger = _guest_headers()
     response = client.post(
         "/api/v3/prescriptions",
-        headers=stranger,
+        headers={**stranger, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
         json={"schema_version": "prescription_v3.1", "diagnosis_id": diagnosis_id, "preference_snapshot": None},
     )
     assert response.status_code == 404
@@ -255,7 +255,7 @@ def test_prescription_cross_user_read_is_isolated():
     prescription_id = _v3_data(
         client.post(
             "/api/v3/prescriptions",
-            headers=headers,
+            headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
             json={"schema_version": "prescription_v3.1", "diagnosis_id": diagnosis_id, "preference_snapshot": None},
         )
     )["prescription_id"]

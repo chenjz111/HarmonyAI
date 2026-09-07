@@ -1,16 +1,20 @@
-"""Agent 3 (Prescription) service — non-provider persistence path (Issue #99
-step 5).
+"""Agent 3 (Prescription) service — receive + persist Agent3 output, or fallback.
 
-Creates and reads PrescriptionV3 rows from a confirmed diagnosis, the latest
-preference snapshot and the optional user goal. The five-tone / organ mapping
-(syndrome → element → tone) is a separate medical rule layer (PR #78/#89); this
-service persists a conservative gong-tone wellness GenerationSpec and records
-the preference reference so downstream Agent 4 can personalise. It never fakes
-a provider result.
+The backend receives the real Agent3 ToneProfile/GenerationSpec and persists it;
+it never re-derives a fixed gong-tone scheme. A conservative wellness fallback
+is used only when ``generation_spec`` is omitted (explicit fallback, e.g. an
+abstained diagnosis for an otherwise safe user).
+
+Idempotency is reserved via the shared helper (a duplicate key while another
+request is still processing returns an in-progress state instead of running
+side effects again). The preference snapshot is server-authoritative: a
+mismatching client snapshot is rejected rather than silently ignored.
 """
 
 from __future__ import annotations
 
+from hashlib import sha256
+import json
 import uuid
 
 from sqlalchemy.orm import Session
@@ -19,7 +23,11 @@ from backend.app.models.session import Session as SessionModel
 from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.schemas.v3.common import AuthPrincipal, ToneCode
-from backend.app.schemas.v3.flow_v31 import ToneProfileBasisV31, ToneProfileV31, UserGoalV31
+from backend.app.schemas.v3.flow_v31 import (
+    ToneProfileBasisV31,
+    ToneProfileV31,
+    UserGoalV31,
+)
 from backend.app.schemas.v3.prescription import (
     GenerationFallbackPolicy,
     GenerationSpec,
@@ -30,11 +38,15 @@ from backend.app.schemas.v3.prescription import (
     PrescriptionV31Request,
     PrescriptionV3 as PrescriptionV3Schema,
     PreferenceProfileRef,
+    PreferenceSnapshot,
 )
 from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
+from backend.app.services.v3.idempotency import (
+    reserve_v3_idempotency,
+)
 
 
-# 疗愈诉求 → 保守 BPM / 能量曲线（仅供音乐设计，不进医学证据）。
+# 疗愈诉求 → 保守 BPM / 能量曲线（仅 fallback 路径使用，不进医学证据）。
 _USER_GOAL_BPM = {
     "sleep": 60,
     "relaxation": 62,
@@ -54,6 +66,8 @@ _USER_GOAL_ENERGY = {
     "other": "平稳舒缓",
 }
 
+_OPERATION = "create_v3_prescription"
+
 
 class OwnedResourceNotFound(RuntimeError):
     pass
@@ -63,7 +77,21 @@ class DiagnosisNotReady(RuntimeError):
     pass
 
 
-def _conservative_generation_spec(
+class PreferenceSnapshotConflict(RuntimeError):
+    pass
+
+
+def _request_hash(payload: dict[str, object]) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+def _conservative_wellness_spec(
     diagnosis_id: str,
     diagnosis_revision: int,
     preference,
@@ -88,7 +116,6 @@ def _conservative_generation_spec(
             supporting_evidence_refs=[],
         ),
     )
-    # 疗愈诉求先定基调，历史偏好再微调。primary_goal 可空（custom-text-only）。
     bpm = 62
     energy_curve = "平稳舒缓"
     if user_goal is not None and user_goal.primary_goal is not None:
@@ -153,11 +180,53 @@ def _session_user_goal(db: Session, session_row_id: int) -> UserGoalV31 | None:
     return UserGoalV31.model_validate(session.user_goal_json)
 
 
+def _session_user_goal_revision(db: Session, session_row_id: int) -> int | None:
+    session = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == session_row_id)
+        .one_or_none()
+    )
+    if session is None:
+        return None
+    return session.user_goal_revision
+
+
+def _resolve_preference(
+    db: Session,
+    principal: AuthPrincipal,
+    request_snapshot: PreferenceSnapshot | None,
+):
+    server = get_latest_preference_snapshot(db, principal)
+    if request_snapshot is None:
+        return server
+    if server is None:
+        raise PreferenceSnapshotConflict
+    if (
+        request_snapshot.profile_id != server.profile_id
+        or request_snapshot.version != server.version
+    ):
+        raise PreferenceSnapshotConflict
+    return server
+
+
 def create_prescription(
     db: Session,
     principal: AuthPrincipal,
     request: PrescriptionV31Request,
-) -> PrescriptionV3Schema:
+    *,
+    idempotency_key: str,
+) -> tuple[PrescriptionV3Schema, bool]:
+    request_hash = _request_hash(request.model_dump(mode="json"))
+    record, replayed = reserve_v3_idempotency(
+        db,
+        internal_user_pk=principal.internal_user_pk,
+        operation=_OPERATION,
+        idempotency_key=idempotency_key,
+        request_hash=request_hash,
+    )
+    if replayed:
+        return PrescriptionV3Schema.model_validate_json(record.response_json), True
+
     diagnosis = (
         db.query(DiagnosisRun)
         .filter(
@@ -168,17 +237,27 @@ def create_prescription(
     )
     if diagnosis is None:
         raise OwnedResourceNotFound
-    if diagnosis.status not in {"success", "degraded"}:
+    if diagnosis.status in {"withheld", "failed"}:
         raise DiagnosisNotReady
 
     user_goal = _session_user_goal(db, diagnosis.session_row_id)
-    preference = get_latest_preference_snapshot(db, principal)
-    spec = _conservative_generation_spec(
-        request.diagnosis_id,
-        diagnosis.assessment_revision,
-        preference,
-        user_goal,
-    )
+    user_goal_revision = _session_user_goal_revision(db, diagnosis.session_row_id)
+    preference = _resolve_preference(db, principal, request.preference_snapshot)
+
+    # Receive the real Agent3 GenerationSpec, or fall back explicitly.
+    if request.generation_spec is not None:
+        spec = request.generation_spec
+        status = "success"
+        mode = "syndrome_based"
+    else:
+        spec = _conservative_wellness_spec(
+            request.diagnosis_id,
+            diagnosis.assessment_revision,
+            preference,
+            user_goal,
+        )
+        status = "degraded"
+        mode = "wellness"
 
     if preference is not None:
         personalization = PrescriptionPersonalization(
@@ -212,10 +291,8 @@ def create_prescription(
         internal_user_pk=principal.internal_user_pk,
         session_row_id=diagnosis.session_row_id,
         diagnosis_id=request.diagnosis_id,
-        # Until the real five-tone medical mapping is wired, this is an honest
-        # wellness fallback, not a syndrome-based prescription.
-        status="degraded",
-        prescription_mode="wellness",
+        status=status,
+        prescription_mode=mode,
         tone_profile_json=spec.tone_profile.model_dump(mode="json"),
         generation_spec_json=spec.model_dump(mode="json"),
         preference_profile_id=profile_id,
@@ -224,12 +301,21 @@ def create_prescription(
             if preference is not None
             else None
         ),
+        user_goal_revision=user_goal_revision,
         personalization_json=personalization.model_dump(mode="json"),
         presentation_json=presentation.model_dump(mode="json"),
     )
     db.add(row)
+    db.flush()
+
+    result = _to_schema(row)
+    record.resource_type = "prescription"
+    record.resource_id = row.prescription_id
+    record.status = "succeeded"
+    record.response_code = 201
+    record.response_json = result.model_dump_json()
     db.commit()
-    return _to_schema(row)
+    return result, False
 
 
 def get_prescription(

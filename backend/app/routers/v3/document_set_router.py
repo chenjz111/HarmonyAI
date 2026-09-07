@@ -44,6 +44,10 @@ def replace_document_set_endpoint(
             "IDEMPOTENCY_KEY_REQUIRED",
             "需要提供幂等键后才能替换资料。",
         )
+    if body.session_id != session_id:
+        raise V3APIError(
+            422, "SESSION_ID_MISMATCH", "路径与请求体的会话不一致。"
+        )
     try:
         result, replayed = replace_document_set(
             db,

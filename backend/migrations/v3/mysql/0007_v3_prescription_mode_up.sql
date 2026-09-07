@@ -3,6 +3,7 @@
 
 ALTER TABLE prescription_v3
     DROP CHECK ck_prescription_v3_mode,
+    ADD COLUMN user_goal_revision INTEGER NULL,
     ADD CONSTRAINT ck_prescription_v3_mode CHECK (
         prescription_mode IS NULL OR prescription_mode IN
         ('syndrome_based', 'candidate_blend', 'emotion_based', 'wellness')

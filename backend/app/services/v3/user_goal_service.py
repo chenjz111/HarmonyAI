@@ -74,6 +74,8 @@ def submit_user_goal(
     session_row.user_goal_json = (
         user_goal.model_dump(mode="json") if user_goal is not None else None
     )
+    # Bump the revision so the prescription can bind a stable snapshot.
+    session_row.user_goal_revision = (session_row.user_goal_revision or 0) + 1
     db.commit()
     return UserGoalReadModel(user_goal=user_goal)
 

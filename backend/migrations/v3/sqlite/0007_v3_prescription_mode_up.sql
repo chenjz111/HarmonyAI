@@ -17,6 +17,7 @@ CREATE TABLE prescription_v3 (
     generation_spec_json TEXT,
     preference_profile_id TEXT,
     preference_version_id TEXT,
+    user_goal_revision INTEGER,
     personalization_json TEXT NOT NULL,
     presentation_json TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -36,14 +37,14 @@ CREATE TABLE prescription_v3 (
 INSERT INTO prescription_v3 (
     prescription_id, internal_user_pk, session_row_id, diagnosis_id, status,
     prescription_mode, tone_profile_json, generation_spec_json,
-    preference_profile_id, preference_version_id, personalization_json,
-    presentation_json, created_at
+    preference_profile_id, preference_version_id, user_goal_revision,
+    personalization_json, presentation_json, created_at
 )
 SELECT
     prescription_id, internal_user_pk, session_row_id, diagnosis_id, status,
     prescription_mode, tone_profile_json, generation_spec_json,
-    preference_profile_id, preference_version_id, personalization_json,
-    presentation_json, created_at
+    preference_profile_id, preference_version_id, NULL,
+    personalization_json, presentation_json, created_at
 FROM prescription_v3_old;
 DROP TABLE prescription_v3_old;
 CREATE INDEX IF NOT EXISTS ix_prescription_v3_user_created

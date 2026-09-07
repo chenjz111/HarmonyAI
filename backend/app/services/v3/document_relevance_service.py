@@ -87,7 +87,13 @@ def record_relevance(
         .one_or_none()
     )
     if existing is not None:
-        db.delete(existing)
+        # Relevance revisions are immutable snapshots: never delete-recreate.
+        # The (document_set_id, revision) unique constraint also guards against
+        # a concurrent duplicate insert.
+        raise InvalidRelevance(
+            "RELEVANCE_REVISION_EXISTS",
+            "该 revision 已存在，请使用新的 revision。",
+        )
 
     row = DocumentRelevance(
         document_relevance_id=f"rel_{uuid.uuid4().hex}",
