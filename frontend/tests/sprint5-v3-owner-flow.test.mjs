@@ -800,6 +800,92 @@ test("manifest matches the frozen questionnaire v3.0.1 structure (checksum 69a01
   assert.equal(schema.user_goal.custom_goal_text.max_length, 200)
 })
 
+// ===== 单一权威来源一致性（Issue #111 复审指令 2026-09-07） =====
+// 前端可执行问卷必须逐字段等于 knowledge/v3/questionnaire-v3.0.1.json，
+// 由 scripts/gen-manifest.mjs 自动生成，禁止手工维护第二套题目。
+test("V3.1 review: frontend manifest is byte-for-byte derived from the canonical questionnaire JSON", async () => {
+  const { createRequire } = await import("node:module")
+  const canonicalPath = resolve(frontendRoot, "..", "knowledge", "v3", "questionnaire-v3.0.1.json")
+  assert.ok(existsSync(canonicalPath), "canonical questionnaire JSON must exist")
+  const canonical = JSON.parse(readFileSync(canonicalPath, "utf8"))
+  const manifestSrc = readFileSync(resolve(frontendRoot, "common", "questionnaire-v3-manifest.js"), "utf8")
+
+  // 1. 生成文件必须标注为自动生成、禁止手工修改
+  assert.ok(
+    /自动生成|禁止修改|generated/i.test(manifestSrc),
+    "manifest must be marked as generated / do-not-edit",
+  )
+  assert.ok(
+    manifestSrc.includes("knowledge/v3/questionnaire-v3.0.1.json"),
+    "manifest must declare its single source of truth",
+  )
+
+  // 2. 逐题深度对比：数量、顺序、题干、选项文案、code、score、类型
+  const { QUESTIONNAIRE_MANIFEST } = await import("../common/questionnaire-v3-manifest.js")
+  assert.equal(
+    QUESTIONNAIRE_MANIFEST.questions.length,
+    canonical.questions.length,
+    "question count must match canonical",
+  )
+  assert.equal(QUESTIONNAIRE_MANIFEST.question_count, 10, "question_count field must be 10")
+  canonical.questions.forEach((cq, idx) => {
+    const mq = QUESTIONNAIRE_MANIFEST.questions[idx]
+    assert.equal(mq.question_id, cq.question_id, `position ${idx + 1}: question_id order must match`)
+    assert.equal(mq.position, cq.position, `${cq.question_id}: position must match`)
+    assert.equal(mq.prompt, cq.prompt, `${cq.question_id}: prompt text must match verbatim`)
+    assert.equal(mq.answer_type, cq.answer_type, `${cq.question_id}: answer_type must match`)
+    assert.equal(mq.required, cq.required, `${cq.question_id}: required flag must match`)
+    assert.equal(mq.min_selections, cq.min_selections, `${cq.question_id}: min_selections must match`)
+    assert.equal(mq.max_selections, cq.max_selections, `${cq.question_id}: max_selections must match`)
+    assert.equal(mq.options.length, cq.options.length, `${cq.question_id}: option count must match`)
+    cq.options.forEach((co, oi) => {
+      const mo = mq.options[oi]
+      assert.equal(mo.option_code, co.option_code, `${cq.question_id} opt${oi}: option_code must match`)
+      assert.equal(mo.label, co.label, `${cq.question_id} opt${oi}: label text must match verbatim`)
+      assert.deepEqual(mo.score, co.score, `${cq.question_id} opt${oi}: score must match`)
+      assert.equal(mo.claim_code, co.claim_code, `${cq.question_id} opt${oi}: claim_code must match`)
+      assert.equal(mo.is_none, co.is_none, `${cq.question_id} opt${oi}: is_none must match`)
+      assert.deepEqual(
+        mo.exclusive_with,
+        co.exclusive_with,
+        `${cq.question_id} opt${oi}: exclusive_with must match`,
+      )
+    })
+  })
+
+  // 3. checksum / 版本字段必须与正式 JSON 一致
+  assert.equal(
+    QUESTIONNAIRE_MANIFEST.content_checksum,
+    canonical.content_checksum,
+    "content_checksum must match canonical",
+  )
+  assert.equal(QUESTIONNAIRE_MANIFEST.schema_version, canonical.schema_version)
+  assert.equal(QUESTIONNAIRE_MANIFEST.manifest_version, canonical.manifest_version)
+
+  // 4. user_goal 疗愈诉求配置必须与正式 JSON 一致
+  assert.deepEqual(
+    QUESTIONNAIRE_MANIFEST.user_goal,
+    canonical.user_goal,
+    "user_goal config must match canonical",
+  )
+})
+
+test("V3.1 review: questionnaire page renders 5 pages x 2 questions from the single-source manifest", () => {
+  const page = readPage("v3-questionnaire/v3-questionnaire.vue")
+  // 五页分页（10 题 / 每页 2 题）
+  assert.ok(page.includes("PAGE_SIZE = 2"), "page must define PAGE_SIZE = 2")
+  assert.ok(page.includes("totalSteps"), "page must compute total steps (5)")
+  // 页面不得重新硬编码题目文案（必须来自 manifest）
+  assert.ok(
+    !page.includes("最近一周，你会不会比较容易着急"),
+    "page must not hard-code question prompts (single source of truth)",
+  )
+  assert.ok(
+    !page.includes("平静如水"),
+    "page must not hard-code option labels (single source of truth)",
+  )
+})
+
 // ===== api-v3 mock 状态机行为（显式 mock 模式） =====
 
 test("api-v3 mock: without-document flow requires full questionnaire", async () => {
