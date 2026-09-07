@@ -42,10 +42,30 @@ from .diagnosis_pipeline import (
 class V31PipelineBlocked(ValueError):
     """Raised before or during the V3.1 provider chain at a safe boundary."""
 
-    def __init__(self, error_code: str, safe_message: str = "V3.1 AI 链路尚未就绪。") -> None:
+    def __init__(
+        self,
+        error_code: str,
+        safe_message: str = "V3.1 AI 链路尚未就绪。",
+        *,
+        audit_context: "V31PipelineAuditContext | None" = None,
+    ) -> None:
         self.error_code = error_code
         self.safe_message = safe_message
+        self.audit_context = audit_context
         super().__init__(f"{error_code}: {safe_message}")
+
+
+@dataclass(frozen=True)
+class V31PipelineAuditContext:
+    """Provider/RAG metadata available even when Agent2 cannot finish."""
+
+    query: RagQuery
+    rag_result: RagResult
+    diagnosis_request: DiagnosisProviderRequest
+    diagnosis_execution: DiagnosisProviderExecution
+    rag_manifest: object | None
+    rag_chunk_checksums: Mapping[str, str]
+    mapping_version: str
 
 
 @dataclass(frozen=True)
@@ -59,6 +79,9 @@ class V31AiPipelineResult:
     tone_profile: ToneProfileV31
     generation_spec: GenerationSpecV31
     read_model: FiveToneAnalysisReadModel
+    rag_manifest: object | None
+    rag_chunk_checksums: Mapping[str, str]
+    audit_context: V31PipelineAuditContext | None = None
 
 
 async def execute_v31_ai_pipeline(
@@ -105,12 +128,27 @@ async def execute_v31_ai_pipeline(
             else None
         ),
     )
+    audit_context = V31PipelineAuditContext(
+        query=query,
+        rag_result=rag_result,
+        diagnosis_request=diagnosis_request,
+        diagnosis_execution=execution,
+        rag_manifest=getattr(rag_store, "manifest", None),
+        rag_chunk_checksums=dict(getattr(rag_store, "chunk_checksums", {})),
+        mapping_version=_mapping_version(tone_mapping),
+    )
     if execution.status == "abstained":
-        raise V31PipelineBlocked("DIAGNOSIS_ABSTAINED")
+        raise V31PipelineBlocked(
+            "DIAGNOSIS_ABSTAINED",
+            audit_context=audit_context,
+        )
     if execution.status == "failed":
-        raise V31PipelineBlocked(execution.reason_code or "DIAGNOSIS_FAILED")
+        raise V31PipelineBlocked(
+            execution.reason_code or "DIAGNOSIS_FAILED",
+            audit_context=audit_context,
+        )
     if execution.response is None:
-        raise V31PipelineBlocked("DIAGNOSIS_FAILED")
+        raise V31PipelineBlocked("DIAGNOSIS_FAILED", audit_context=audit_context)
 
     diagnosis_id = str(assessment_snapshot.get("diagnosis_id") or f"diag_{uuid.uuid4().hex}")
     evidence_refs = [
@@ -159,6 +197,9 @@ async def execute_v31_ai_pipeline(
         tone_profile=profile,
         generation_spec=generation_spec,
         read_model=read_model,
+        rag_manifest=getattr(rag_store, "manifest", None),
+        rag_chunk_checksums=dict(getattr(rag_store, "chunk_checksums", {})),
+        audit_context=audit_context,
     )
 
 
@@ -212,3 +253,9 @@ def _mapping_value(snapshot: Mapping[str, object], key: str) -> Mapping[str, obj
     if not isinstance(value, Mapping):
         raise V31PipelineBlocked("ASSESSMENT_SNAPSHOT_INVALID")
     return value
+
+
+def _mapping_version(mapping: Mapping[str, object]) -> str:
+    schema_id = str(mapping.get("schema_id", "")).strip()
+    schema_version = str(mapping.get("schema_version", "")).strip()
+    return f"{schema_id}@{schema_version}" if schema_id and schema_version else "unknown"

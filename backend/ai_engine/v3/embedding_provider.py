@@ -97,6 +97,7 @@ class EmbeddingProvider:
                 "model": self.model,
                 "input": text,
                 "input_type": input_type,
+                "dimensions": 1024,
             },
             ensure_ascii=False,
             separators=(",", ":"),

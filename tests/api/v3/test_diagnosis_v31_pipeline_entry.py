@@ -10,6 +10,12 @@ import uuid
 
 from backend.app.core import agent_config
 from backend.app.schemas.v3.common import Degradation
+from backend.app.models.v3.diagnosis import (
+    AiProviderRun,
+    DiagnosisRun,
+    RagRetrievalHit,
+    RagRetrievalRun,
+)
 from backend.app.schemas.v3.diagnosis import IngestionManifest, RagHit, RagResult
 from backend.app.schemas.v3.flow_v31 import ConfirmedUserState
 from backend.app.services.v3 import diagnosis_service
@@ -68,7 +74,7 @@ def _confirmed_state_for(session_id: str) -> ConfirmedUserState:
     return _confirmed_state().model_copy(update={"session_id": session_id})
 
 
-def _dependencies(calls: list[str]):
+def _dependencies(calls: list[str], *, rag_result: RagResult | None = None):
     from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse
     from tests.ai_engine.v3.test_v31_pipeline import _mapping, _rules
 
@@ -84,7 +90,7 @@ def _dependencies(calls: list[str]):
 
         def query(self, query):
             calls.append(f"rag:{query.query_id}")
-            return _rag_result()
+            return rag_result or _rag_result()
 
     class FakeProvider:
         allowed_syndrome_codes = {"syndrome_1"}
@@ -177,6 +183,26 @@ def test_formal_router_reaches_v31_pipeline_factory_and_mock_chain(
     assert any(item.startswith("rag:") for item in calls)
     assert calls[-1] == "qwen"
 
+    audit_db = db_session_factory()
+    try:
+        diagnosis = audit_db.query(DiagnosisRun).one()
+        assert diagnosis.rag_run_id == "rag_formal_entry"
+        assert diagnosis.provider_run_id
+        rag_run = audit_db.query(RagRetrievalRun).one()
+        assert rag_run.rag_run_id == diagnosis.rag_run_id
+        assert rag_run.status == "success"
+        hit = audit_db.query(RagRetrievalHit).one()
+        assert hit.rag_run_id == rag_run.rag_run_id
+        assert "approved text" not in hit.text_ciphertext
+        provider_run = audit_db.query(AiProviderRun).one()
+        assert provider_run.provider_run_id == diagnosis.provider_run_id
+        assert provider_run.status == "success"
+        assert provider_run.error_code is None
+        assert provider_run.request_hash.startswith("sha256:")
+        assert provider_run.response_hash.startswith("sha256:")
+    finally:
+        audit_db.close()
+
 
 def test_formal_router_reports_v31_readiness_failure_without_mock_fallback(
     db_session_factory, monkeypatch
@@ -219,3 +245,149 @@ def test_formal_router_reports_v31_readiness_failure_without_mock_fallback(
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "DASHSCOPE_PROVIDER_NOT_CONFIGURED"
+
+
+def test_formal_router_persists_failed_provider_audit(
+    db_session_factory, monkeypatch
+):
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProviderFailure
+
+    headers = _guest_headers()
+    db = db_session_factory()
+    session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    assessment_id = _seed_confirmed_assessment(
+        db,
+        user_pk=user_pk,
+        session_row=session_row,
+        organ_profile_json={
+            "status": "available",
+            "weights": {
+                "liver": 0.0,
+                "heart": 1.0,
+                "spleen": 0.0,
+                "lung": 0.0,
+                "kidney": 0.0,
+            },
+            "score_semantics": "relative_evidence_distribution",
+        },
+    )
+    db.close()
+
+    calls: list[str] = []
+    dependencies = _dependencies(calls)
+
+    async def fail_provider(**_kwargs):
+        raise DiagnosisProviderFailure(
+            "DIAGNOSIS_SCHEMA_INVALID",
+            "辨证服务返回格式无效。",
+            retryable=False,
+        )
+
+    dependencies.diagnosis_provider.acomplete_json = fail_provider
+    monkeypatch.setattr(diagnosis_service, "_v31_real_mode", lambda: True)
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_ai_pipeline_dependencies",
+        lambda: dependencies,
+    )
+    monkeypatch.setattr(
+        diagnosis_service,
+        "_load_confirmed_user_state",
+        lambda *args, **kwargs: _confirmed_state_for(session_id),
+    )
+
+    response = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": f"failed-audit-{uuid.uuid4().hex}"},
+        json=_diagnosis_body(session_id, assessment_id, 1),
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "DIAGNOSIS_SCHEMA_INVALID"
+    audit_db = db_session_factory()
+    try:
+        diagnosis = audit_db.query(DiagnosisRun).one()
+        assert diagnosis.status == "failed"
+        assert diagnosis.abstained == 0
+        assert diagnosis.rag_run_id == "rag_formal_entry"
+        assert diagnosis.provider_run_id
+        rag_run = audit_db.query(RagRetrievalRun).one()
+        assert rag_run.status == "success"
+        provider_run = audit_db.query(AiProviderRun).one()
+        assert provider_run.status == "failed"
+        assert provider_run.error_code == "DIAGNOSIS_SCHEMA_INVALID"
+    finally:
+        audit_db.close()
+
+
+def test_formal_router_persists_abstained_retrieval_audit(
+    db_session_factory, monkeypatch
+):
+    headers = _guest_headers()
+    db = db_session_factory()
+    session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    assessment_id = _seed_confirmed_assessment(
+        db,
+        user_pk=user_pk,
+        session_row=session_row,
+        organ_profile_json={
+            "status": "available",
+            "weights": {
+                "liver": 0.0,
+                "heart": 1.0,
+                "spleen": 0.0,
+                "lung": 0.0,
+                "kidney": 0.0,
+            },
+            "score_semantics": "relative_evidence_distribution",
+        },
+    )
+    db.close()
+
+    empty_rag = _rag_result().model_copy(
+        update={
+            "retrieval_id": "rag_formal_abstained",
+            "status": "empty",
+            "hits": [],
+        }
+    )
+    calls: list[str] = []
+    dependencies = _dependencies(calls, rag_result=empty_rag)
+    monkeypatch.setattr(diagnosis_service, "_v31_real_mode", lambda: True)
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_ai_pipeline_dependencies",
+        lambda: dependencies,
+    )
+    monkeypatch.setattr(
+        diagnosis_service,
+        "_load_confirmed_user_state",
+        lambda *args, **kwargs: _confirmed_state_for(session_id),
+    )
+
+    response = client.post(
+        "/api/v3/diagnoses",
+        headers={
+            "Authorization": headers["Authorization"],
+            "Idempotency-Key": f"abstained-audit-{uuid.uuid4().hex}",
+        },
+        json=_diagnosis_body(session_id, assessment_id, 1),
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "DIAGNOSIS_ABSTAINED"
+    audit_db = db_session_factory()
+    try:
+        diagnosis = audit_db.query(DiagnosisRun).one()
+        assert diagnosis.status == "abstained"
+        assert diagnosis.abstained == 1
+        assert diagnosis.abstain_reason == "RAG_EMPTY"
+        assert diagnosis.rag_run_id == "rag_formal_abstained"
+        assert diagnosis.provider_run_id
+        rag_run = audit_db.query(RagRetrievalRun).one()
+        assert rag_run.status == "empty"
+        provider_run = audit_db.query(AiProviderRun).one()
+        assert provider_run.status == "abstained"
+        assert provider_run.error_code == "RAG_EMPTY"
+    finally:
+        audit_db.close()

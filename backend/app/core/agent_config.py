@@ -193,16 +193,41 @@ def get_v31_ai_pipeline_dependencies(
 
     values = environment if environment is not None else os.environ
     _require_v31_real_config(values)
-    allowed_syndrome_codes = _parse_required_codes(
-        values.get("V31_ALLOWED_SYNDROME_CODES"),
-        "MEDICAL_RULE_ASSET_NOT_CONFIGURED",
-    )
+    if values.get("V31_ALLOWED_SYNDROME_CODES", "").strip():
+        raise V31ReadinessFailure(
+            "MEDICAL_RULE_CODES_NOT_APPROVED",
+            "证型代码必须来自已批准医学规则资产。",
+        )
     medical_rule_version = values.get("V31_MEDICAL_RULE_VERSION", "").strip()
     if not medical_rule_version:
         raise V31ReadinessFailure(
             "MEDICAL_RULE_ASSET_NOT_CONFIGURED",
             "医学规则版本尚未配置。",
         )
+    medical_rule_path = values.get("V31_MEDICAL_RULE_ASSET_PATH", "").strip()
+    medical_rule_checksum = values.get("V31_MEDICAL_RULE_ASSET_CHECKSUM", "").strip()
+    if not medical_rule_path or not Path(medical_rule_path).is_file():
+        raise V31ReadinessFailure(
+            "MEDICAL_RULE_ASSET_NOT_CONFIGURED",
+            "医学规则资产尚未配置。",
+        )
+    if not medical_rule_checksum:
+        raise V31ReadinessFailure(
+            "MEDICAL_RULE_ASSET_NOT_CONFIGURED",
+            "医学规则资产校验和尚未配置。",
+        )
+    try:
+        from backend.app.services.v3.knowledge_assets import load_medical_rule_asset
+
+        medical_rule_asset = load_medical_rule_asset(
+            medical_rule_path,
+            expected_version=medical_rule_version,
+            expected_checksum=medical_rule_checksum,
+        )
+    except ValueError as error:
+        error_code = getattr(error, "error_code", "MEDICAL_RULE_ASSET_INVALID")
+        safe_message = getattr(error, "safe_message", "医学规则资产无效。")
+        raise V31ReadinessFailure(error_code, safe_message) from None
     rules_path = values.get("V31_MUSIC_GENERATION_RULES_PATH", "").strip()
     if not rules_path or not Path(rules_path).is_file():
         raise V31ReadinessFailure(
@@ -241,7 +266,7 @@ def get_v31_ai_pipeline_dependencies(
         )
     provider = get_v31_diagnosis_provider(
         values,
-        allowed_syndrome_codes=allowed_syndrome_codes,
+        allowed_syndrome_codes=set(medical_rule_asset.allowed_syndrome_codes),
         allowed_fact_ids=_parse_optional_codes(values.get("V31_ALLOWED_FACT_IDS")),
         allowed_chunk_ids=set(getattr(rag_store, "approved_chunk_ids", ())),
         medical_rule_version=medical_rule_version,
@@ -251,7 +276,7 @@ def get_v31_ai_pipeline_dependencies(
         diagnosis_provider=provider,
         tone_mapping=tone_mapping,
         generation_parameter_rules=generation_parameter_rules,
-        allowed_syndrome_codes=frozenset(allowed_syndrome_codes),
+        allowed_syndrome_codes=medical_rule_asset.allowed_syndrome_codes,
         medical_rule_version=medical_rule_version,
     )
 

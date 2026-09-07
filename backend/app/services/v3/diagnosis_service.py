@@ -25,9 +25,13 @@ from backend.app.models.v3.assessment import (
     OrganEvidence as OrganEvidenceRow,
 )
 from backend.app.models.v3.diagnosis import (
+    AiProviderRun,
     DiagnosisCandidateEvidence,
     DiagnosisCandidate as DiagnosisCandidateRow,
     DiagnosisRun,
+    KnowledgeManifest,
+    RagRetrievalHit,
+    RagRetrievalRun,
 )
 from backend.app.models.v3.understanding import (
     FactSourceRef,
@@ -56,6 +60,7 @@ from backend.app.schemas.v3.flow_v31 import ConfirmedUserState
 from backend.ai_engine.v3.diagnosis_pipeline import DiagnosisPipelineFailure
 from backend.ai_engine.v3.v31_pipeline import (
     V31AiPipelineResult,
+    V31PipelineAuditContext,
     V31PipelineBlocked,
     execute_v31_ai_pipeline,
 )
@@ -87,9 +92,16 @@ class V31ReadinessError(RuntimeError):
 class V31PipelineFailure(RuntimeError):
     """A formal V3.1 provider/schema/rule failure, never an abstention."""
 
-    def __init__(self, error_code: str, safe_message: str = "V3.1 AI 链路执行失败。"):
+    def __init__(
+        self,
+        error_code: str,
+        safe_message: str = "V3.1 AI 链路执行失败。",
+        *,
+        audit_context: V31PipelineAuditContext | None = None,
+    ):
         self.error_code = error_code
         self.safe_message = safe_message
+        self.audit_context = audit_context
         super().__init__(f"{error_code}: {safe_message}")
 
 
@@ -447,7 +459,11 @@ def _run_v31_pipeline(
     except V31ReadinessError:
         raise
     except V31PipelineBlocked as error:
-        raise V31PipelineFailure(error.error_code, error.safe_message) from None
+        raise V31PipelineFailure(
+            error.error_code,
+            error.safe_message,
+            audit_context=error.audit_context,
+        ) from None
     except (DiagnosisPipelineFailure, Agent3Blocked) as error:
         error_code = getattr(error, "error_code", "V31_PIPELINE_FAILED")
         safe_message = getattr(error, "safe_message", "V3.1 AI 链路执行失败。")
@@ -525,28 +541,36 @@ def _persist_diagnosis(
     result: DiagnosisV3,
     record,
     evidence_rows: list[FactEvidenceRow] | None = None,
-    rag_result_ref: str | None = None,
+    pipeline: V31AiPipelineResult | None = None,
 ) -> None:
     root = result.root
-    db.add(
-        DiagnosisRun(
+    run = db.get(DiagnosisRun, root.diagnosis_id)
+    if run is None:
+        run = DiagnosisRun(
             diagnosis_id=root.diagnosis_id,
             internal_user_pk=principal.internal_user_pk,
             session_row_id=session_row.id,
             assessment_id=assessment_ref.assessment_id,
             assessment_revision=assessment_ref.revision,
-            status=root.status,
-            abstained=1 if root.abstained else 0,
-            abstain_reason=root.abstain_reason,
-            primary_tendency_id=root.primary_tendency_id,
-            element_profile_json=root.element_profile.model_dump(mode="json"),
-            degradation_json=root.degradation.model_dump(mode="json"),
-            presentation_json=root.presentation.model_dump(mode="json"),
             provider_run_id=None,
             rag_run_id=None,
         )
-    )
+        db.add(run)
+    run.status = root.status
+    run.abstained = 1 if root.abstained else 0
+    run.abstain_reason = root.abstain_reason
+    run.primary_tendency_id = root.primary_tendency_id
+    run.element_profile_json = root.element_profile.model_dump(mode="json")
+    run.degradation_json = root.degradation.model_dump(mode="json")
+    run.presentation_json = root.presentation.model_dump(mode="json")
     db.flush()
+    if pipeline is not None:
+        run.rag_run_id, run.provider_run_id = _persist_pipeline_audit(
+            db,
+            diagnosis_id=root.diagnosis_id,
+            pipeline=pipeline,
+        )
+        db.flush()
     fact_by_id = {row.fact_evidence_id: row for row in (evidence_rows or [])}
     for rank, candidate in enumerate(root.candidate_tendencies, start=1):
         db.add(
@@ -579,6 +603,182 @@ def _persist_diagnosis(
     record.status = "succeeded"
     record.response_code = 201
     record.response_json = result.model_dump_json()
+    db.commit()
+
+
+def _persist_pipeline_audit(
+    db: Session,
+    *,
+    diagnosis_id: str,
+    pipeline: V31AiPipelineResult | V31PipelineAuditContext,
+) -> tuple[str, str]:
+    """Persist safe RAG/provider audit rows and return their linked IDs.
+
+    The audit chain keeps versions, hashes, public summaries and stable chunk
+    references. It never stores credentials, full prompts, user source text,
+    or complete embedding vectors.
+    """
+
+    if isinstance(pipeline, V31PipelineAuditContext):
+        audit = pipeline
+    elif pipeline.audit_context is not None:
+        audit = pipeline.audit_context
+    else:
+        audit = V31PipelineAuditContext(
+            query=pipeline.query,
+            rag_result=pipeline.rag_result,
+            diagnosis_request=pipeline.diagnosis_request,
+            diagnosis_execution=pipeline.diagnosis_execution,
+            rag_manifest=pipeline.rag_manifest,
+            rag_chunk_checksums=pipeline.rag_chunk_checksums,
+            mapping_version=pipeline.tone_profile.mapping_version,
+        )
+
+    manifest = audit.rag_manifest
+    if manifest is None:
+        raise V31ReadinessError("RAG_MANIFEST_NOT_READY")
+    manifest_checksum = str(getattr(manifest, "manifest_checksum", ""))
+    manifest_id = f"km_{sha256(manifest_checksum.encode('utf-8')).hexdigest()[:48]}"
+    manifest_row = (
+        db.query(KnowledgeManifest)
+        .filter(KnowledgeManifest.manifest_checksum == manifest_checksum)
+        .one_or_none()
+    )
+    if manifest_row is None:
+        manifest_row = KnowledgeManifest(
+            knowledge_manifest_id=manifest_id,
+            knowledge_version=str(manifest.knowledge_version),
+            embedding_provider=str(manifest.embedding_provider),
+            embedding_model=str(manifest.embedding_model),
+            embedding_version=str(manifest.embedding_version),
+            distance_metric=str(manifest.distance_metric),
+            score_semantics=str(manifest.retrieval_score_semantics),
+            minimum_score=float(manifest.minimum_score),
+            chunk_count=int(manifest.chunk_count),
+            manifest_checksum=manifest_checksum,
+            review_status="approved",
+            medical_review_version=(
+                audit.diagnosis_execution.medical_rule_version or "unknown"
+            ),
+        )
+        db.add(manifest_row)
+        db.flush()
+    elif manifest_row.knowledge_manifest_id != manifest_id:
+        raise V31ReadinessError("RAG_MANIFEST_ID_MISMATCH")
+
+    rag_run_id = audit.rag_result.retrieval_id
+    db.add(
+        RagRetrievalRun(
+            rag_run_id=rag_run_id,
+            diagnosis_id=diagnosis_id,
+            query_hash=_request_hash(audit.query.model_dump(mode="json")),
+            query_builder_version="diagnosis_query_v3.1",
+            knowledge_manifest_id=manifest_row.knowledge_manifest_id,
+            knowledge_version=audit.rag_result.knowledge_version,
+            manifest_checksum=manifest_checksum,
+            embedding_version=audit.rag_result.embedding_version,
+            distance_metric=str(manifest.distance_metric),
+            score_semantics=audit.rag_result.retrieval_score_semantics,
+            status=audit.rag_result.status,
+            top_k=audit.query.top_k,
+            minimum_score=float(manifest.minimum_score),
+            degradation_json=audit.rag_result.degradation.model_dump(mode="json"),
+        )
+    )
+    chunk_checksums = audit.rag_chunk_checksums
+    for hit in audit.rag_result.hits:
+        chunk_checksum = chunk_checksums.get(hit.chunk_id) or _request_hash(
+            {"chunk_id": hit.chunk_id, "text": hit.text}
+        )
+        db.add(
+            RagRetrievalHit(
+                rag_run_id=rag_run_id,
+                chunk_id=hit.chunk_id,
+                source_id=hit.source_id,
+                source_title=hit.source_title,
+                section=hit.section,
+                retrieval_score=float(hit.retrieval_score),
+                display_summary=hit.display_summary,
+                text_ciphertext=_request_hash({"text": hit.text}),
+                review_status=hit.review_status,
+                knowledge_version=audit.rag_result.knowledge_version,
+                chunk_content_checksum=chunk_checksum,
+            )
+        )
+
+    execution = audit.diagnosis_execution
+    db.add(
+        AiProviderRun(
+            provider_run_id=execution.provider_run_id,
+            purpose="diagnosis",
+            resource_id=diagnosis_id,
+            provider=execution.provider_name,
+            model=execution.provider_model,
+            prompt_version=audit.diagnosis_request.prompt_version,
+            response_schema_version=audit.diagnosis_request.response_schema_version,
+            status=execution.status,
+            error_code=execution.reason_code,
+            attempts=max(1, execution.attempts),
+            latency_ms=max(0, execution.latency_ms),
+            input_tokens=None,
+            output_tokens=None,
+            request_hash=execution.request_hash,
+            response_hash=execution.response_hash,
+            knowledge_version=audit.rag_result.knowledge_version,
+            mapping_version=audit.mapping_version,
+        )
+    )
+    return rag_run_id, execution.provider_run_id
+
+
+def _persist_failed_pipeline_audit(
+    db: Session,
+    *,
+    principal: AuthPrincipal,
+    session_row: SessionModel,
+    assessment_ref: AssessmentRefV31,
+    diagnosis_id: str,
+    element_profile: ElementProfile,
+    audit: V31PipelineAuditContext,
+) -> None:
+    """Commit a failed/abstained Agent2 attempt without a public result."""
+
+    execution = audit.diagnosis_execution
+    abstained = execution.status == "abstained"
+    status = "abstained" if abstained else "failed"
+    reason_code = execution.reason_code if abstained else None
+    run = DiagnosisRun(
+        diagnosis_id=diagnosis_id,
+        internal_user_pk=principal.internal_user_pk,
+        session_row_id=session_row.id,
+        assessment_id=assessment_ref.assessment_id,
+        assessment_revision=assessment_ref.revision,
+        status=status,
+        abstained=1 if abstained else 0,
+        abstain_reason=reason_code,
+        primary_tendency_id=None,
+        element_profile_json=element_profile.model_dump(mode="json"),
+        degradation_json=Degradation(
+            active=True,
+            reason_codes=[execution.reason_code] if execution.reason_code else [],
+        ).model_dump(mode="json"),
+        presentation_json={
+            "title": "辨证分析",
+            "primary_tendency": None,
+            "basis_summaries": ["当前请求未生成可展示的辨证结果。"],
+            "knowledge_references": [],
+            "disclaimer": "本结果不构成医学诊断或治疗建议。",
+        },
+        provider_run_id=None,
+        rag_run_id=None,
+    )
+    db.add(run)
+    db.flush()
+    run.rag_run_id, run.provider_run_id = _persist_pipeline_audit(
+        db,
+        diagnosis_id=diagnosis_id,
+        pipeline=audit,
+    )
     db.commit()
 
 
@@ -680,13 +880,26 @@ def run_diagnosis(
         )
         status = "abstained"
     elif _v31_real_mode():
-        pipeline = _run_v31_pipeline(
-            db,
-            request=request,
-            assessment=_assessment,
-            assessment_revision=assessment_revision,
-            session_row=session_row,
-        )
+        try:
+            pipeline = _run_v31_pipeline(
+                db,
+                request=request,
+                assessment=_assessment,
+                assessment_revision=assessment_revision,
+                session_row=session_row,
+            )
+        except V31PipelineFailure as error:
+            if error.audit_context is not None:
+                _persist_failed_pipeline_audit(
+                    db,
+                    principal=principal,
+                    session_row=session_row,
+                    assessment_ref=ref,
+                    diagnosis_id=diagnosis_id,
+                    element_profile=element_profile,
+                    audit=error.audit_context,
+                )
+            raise
         result = _diagnosis_from_v31_pipeline(
             pipeline,
             diagnosis_id=diagnosis_id,
@@ -710,7 +923,7 @@ def run_diagnosis(
             result=result,
             record=record,
             evidence_rows=evidence_rows,
-            rag_result_ref=pipeline.rag_result.retrieval_id,
+            pipeline=pipeline,
         )
         return result, False
     else:

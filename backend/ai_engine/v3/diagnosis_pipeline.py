@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import time
 from typing import Literal
 import uuid
 
@@ -39,6 +40,14 @@ class DiagnosisProviderExecution:
     status: Literal["success", "degraded", "abstained", "failed"]
     response: DiagnosisProviderResponse | None
     reason_code: str | None
+    provider_run_id: str
+    provider_name: str
+    provider_model: str | None
+    medical_rule_version: str | None
+    attempts: int
+    latency_ms: int
+    request_hash: str
+    response_hash: str | None
 
 
 def build_diagnosis_query(snapshot: Mapping[str, object]) -> RagQuery:
@@ -155,23 +164,54 @@ async def execute_diagnosis_provider(
     fabricated successful candidate list.
     """
 
-    if rag_result.status == "empty":
-        return DiagnosisProviderExecution(
-            status="abstained",
-            response=None,
-            reason_code="RAG_EMPTY",
+    started = time.perf_counter()
+    provider_run_id = f"provider_{uuid.uuid4().hex}"
+    provider_name = str(getattr(provider, "provider_name", "qwen"))
+    provider_backend = getattr(provider, "backend", None)
+    provider_model = getattr(provider_backend, "model", None)
+    medical_release = getattr(provider, "medical_rule_version", None)
+    request_hash = _request_hash(request)
+
+    def execution(
+        status: Literal["success", "degraded", "abstained", "failed"],
+        *,
+        response: DiagnosisProviderResponse | None,
+        reason_code: str | None,
+    ) -> DiagnosisProviderExecution:
+        response_hash = (
+            _request_hash(response.model_dump(mode="json"))
+            if response is not None
+            else None
         )
+        return DiagnosisProviderExecution(
+            status=status,
+            response=response,
+            reason_code=reason_code,
+            provider_run_id=provider_run_id,
+            provider_name=provider_name,
+            provider_model=str(provider_model) if provider_model is not None else None,
+            medical_rule_version=(
+                str(medical_release) if medical_release is not None else None
+            ),
+            attempts=1,
+            latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
+            request_hash=request_hash,
+            response_hash=response_hash,
+        )
+
+    if rag_result.status == "empty":
+        return execution("abstained", response=None, reason_code="RAG_EMPTY")
     if rag_result.status != "success":
         reasons = rag_result.degradation.reason_codes
-        return DiagnosisProviderExecution(
-            status="failed",
+        return execution(
+            "failed",
             response=None,
             reason_code=str(reasons[0]) if reasons else "RAG_UNAVAILABLE",
         )
 
     if medical_rule_version is not None and getattr(provider, "medical_rule_version", None) != medical_rule_version:
-        return DiagnosisProviderExecution(
-            status="failed",
+        return execution(
+            "failed",
             response=None,
             reason_code="MEDICAL_RULE_VERSION_MISMATCH",
         )
@@ -185,15 +225,19 @@ async def execute_diagnosis_provider(
             rag_chunk_ids=[hit.chunk_id for hit in rag_result.hits],
         )
     except DiagnosisProviderFailure as error:
-        return DiagnosisProviderExecution(
-            status="failed",
+        return execution(
+            "failed",
             response=None,
             reason_code=error.error_code,
         )
-    return DiagnosisProviderExecution(
-        status=response.status,
+    return execution(
+        response.status,
         response=response,
-        reason_code=None if response.status in {"success", "degraded"} else response.abstain_reason,
+        reason_code=(
+            None
+            if response.status in {"success", "degraded"}
+            else response.abstain_reason
+        ),
     )
 
 
@@ -288,6 +332,15 @@ def _strings(value: object) -> list[str]:
     if not isinstance(value, (list, tuple, set)):
         return []
     return [item.value if hasattr(item, "value") else str(item) for item in value]
+
+
+def _request_hash(value: object) -> str:
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json")
+    if not isinstance(value, Mapping):
+        value = {"value": value}
+    encoded = _canonical_json(value)
+    return f"sha256:{sha256(encoded).hexdigest()}"
 
 
 def _canonical_json(value: Mapping[str, object]) -> bytes:

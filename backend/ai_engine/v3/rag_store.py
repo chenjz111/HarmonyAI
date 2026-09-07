@@ -47,6 +47,7 @@ class VersionedRagStore:
         self._manifest: IngestionManifest | None = None
         self._approved_chunk_ids: frozenset[str] = frozenset()
         self._medical_review_versions: frozenset[str] = frozenset()
+        self._chunk_checksums: dict[str, str] = {}
 
     @property
     def manifest(self) -> IngestionManifest | None:
@@ -65,6 +66,12 @@ class VersionedRagStore:
         """Medical review releases represented by the active corpus."""
 
         return self._medical_review_versions
+
+    @property
+    def chunk_checksums(self) -> Mapping[str, str]:
+        """Checksums for chunks admitted to the active collection."""
+
+        return dict(self._chunk_checksums)
 
     def ingest(
         self,
@@ -124,6 +131,9 @@ class VersionedRagStore:
         self._medical_review_versions = frozenset(
             chunk.medical_review_version for chunk in chunks
         )
+        self._chunk_checksums = {
+            chunk.chunk_id: chunk.content_checksum for chunk in chunks
+        }
         self._collection = collection
         return collection_name
 

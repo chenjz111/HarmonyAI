@@ -1,4 +1,25 @@
+import hashlib
+import json
+
 import pytest
+
+
+def _write_medical_rule_asset(tmp_path, *, version="medical-rules-v3.1-r1"):
+    payload = {
+        "schema_id": "medical_rules_v3.1",
+        "schema_version": "3.1.0",
+        "medical_rule_version": version,
+        "review_status": "approved",
+        "allowed_syndrome_codes": ["syndrome_1"],
+        "content_checksum": "",
+    }
+    canonical = {key: value for key, value in payload.items() if key != "content_checksum"}
+    payload["content_checksum"] = "sha256:" + hashlib.sha256(
+        json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    path = tmp_path / "medical-rules.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path, payload
 
 
 def test_v31_provider_config_requires_explicit_real_mode_configuration():
@@ -276,6 +297,7 @@ def test_v31_pipeline_factory_rejects_corpus_medical_rule_version_mismatch(
 
     rules_path = tmp_path / "music-rules.json"
     rules_path.write_text("{}", encoding="utf-8")
+    medical_rules_path, medical_rules = _write_medical_rule_asset(tmp_path)
     monkeypatch.setattr(
         "backend.app.services.v3.knowledge_assets.load_five_tone_mapping",
         lambda: {},
@@ -298,7 +320,8 @@ def test_v31_pipeline_factory_rejects_corpus_medical_rule_version_mismatch(
                 "QWEN_MODEL": "qwen-approved",
                 "CHROMA_PERSIST_DIRECTORY": "data/chroma",
                 "CHROMA_COLLECTION": "harmony_v31",
-                "V31_ALLOWED_SYNDROME_CODES": "syndrome_1",
+                "V31_MEDICAL_RULE_ASSET_PATH": str(medical_rules_path),
+                "V31_MEDICAL_RULE_ASSET_CHECKSUM": medical_rules["content_checksum"],
                 "V31_MEDICAL_RULE_VERSION": "medical-rules-v3.1-r1",
                 "V31_MUSIC_GENERATION_RULES_PATH": str(rules_path),
             }

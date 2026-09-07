@@ -34,6 +34,7 @@ def test_embedding_provider_sends_query_input_and_enforces_1024_dimensions():
     assert calls[0][2]["input"] == "approved query"
     assert calls[0][2]["input_type"] == "query"
     assert calls[0][2]["model"] == "text-embedding-v4"
+    assert calls[0][2]["dimensions"] == 1024
 
 
 def test_embedding_provider_distinguishes_document_input_type():
@@ -56,6 +57,8 @@ def test_embedding_provider_distinguishes_document_input_type():
     provider.embed("approved document", input_type="document")
 
     assert bodies[0]["input_type"] == "document"
+    assert bodies[0]["model"] == "text-embedding-v4"
+    assert bodies[0]["dimensions"] == 1024
 
 
 def test_embedding_provider_rejects_wrong_dimension_without_returning_vector():
