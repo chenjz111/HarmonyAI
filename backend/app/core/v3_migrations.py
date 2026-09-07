@@ -18,6 +18,7 @@ V3_MIGRATION_VERSIONS = [
     "0005_v3_relevance",
     "0006_v3_doc_fk",
     "0007_v3_prescription_mode",
+    "0008_v3_prescription_user_goal_snapshot",
 ]
 
 _REQUIRED_TABLES = {

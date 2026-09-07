@@ -60,6 +60,7 @@ class PrescriptionV3(Base):
     preference_profile_id = Column(String(64), nullable=True)
     preference_version_id = Column(String(64), nullable=True)
     user_goal_revision = Column(Integer, nullable=True)
+    user_goal_json = Column(JSON, nullable=True)
     personalization_json = Column(JSON, nullable=False)
     presentation_json = Column(JSON, nullable=False)
     created_at = Column(

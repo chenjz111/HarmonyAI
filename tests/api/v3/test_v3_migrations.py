@@ -72,6 +72,7 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
         "0005_v3_relevance",
         "0006_v3_doc_fk",
         "0007_v3_prescription_mode",
+        "0008_v3_prescription_user_goal_snapshot",
     ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)
@@ -248,3 +249,68 @@ def test_sqlite_v3_identity_constraints_and_cascade_are_enforced(tmp_path):
             )
         ).scalar_one()
     assert remaining == 0
+
+
+def test_v3_migration_upgrades_an_existing_0007_database_incrementally(
+    tmp_path, monkeypatch
+):
+    """A database already migrated through 0007 must upgrade to 0008 in place,
+    without re-running earlier migrations or hitting a checksum mismatch."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'incremental.db'}")
+    _create_legacy_foundation(engine)
+
+    up_to_0007 = V3_MIGRATION_VERSIONS[:-1]  # 0001..0007, no 0008 yet
+    monkeypatch.setattr(
+        "backend.app.core.v3_migrations.V3_MIGRATION_VERSIONS", up_to_0007
+    )
+    first = apply_v3_migrations(engine)
+    assert first["applied_versions"][-1] == "0007_v3_prescription_mode"
+
+    monkeypatch.setattr(
+        "backend.app.core.v3_migrations.V3_MIGRATION_VERSIONS", V3_MIGRATION_VERSIONS
+    )
+    second = apply_v3_migrations(engine)
+    assert second["applied_versions"] == ["0008_v3_prescription_user_goal_snapshot"]
+
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("prescription_v3")
+    }
+    assert "user_goal_json" in columns
+
+
+def test_v3_migration_0008_down_restores_schema(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'down.db'}")
+    _create_legacy_foundation(engine)
+    apply_v3_migrations(engine)
+
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("prescription_v3")
+    }
+    assert "user_goal_json" in columns
+
+    down_sql = (
+        Path(__file__).parents[3]
+        / "backend"
+        / "migrations"
+        / "v3"
+        / "sqlite"
+        / "0008_v3_prescription_user_goal_snapshot_down.sql"
+    ).read_text(encoding="utf-8")
+
+    raw = engine.raw_connection()
+    try:
+        raw.cursor().executescript(down_sql)
+        raw.commit()
+    finally:
+        raw.close()
+
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("prescription_v3")
+    }
+    assert "user_goal_json" not in columns
+    with engine.connect() as connection:
+        versions = {
+            row[0]
+            for row in connection.execute(text("SELECT version FROM schema_migrations"))
+        }
+    assert "0008_v3_prescription_user_goal_snapshot" not in versions

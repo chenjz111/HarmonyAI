@@ -17,6 +17,7 @@ from backend.app.services.v3.idempotency import (
 )
 from backend.app.services.v3.prescription_service import (
     DiagnosisNotReady,
+    InvalidSpec,
     OwnedResourceNotFound,
     PreferenceSnapshotConflict,
     create_prescription,
@@ -64,6 +65,8 @@ def create_prescription_endpoint(
             "PREFERENCE_SNAPSHOT_CONFLICT",
             "偏好快照与服务端不一致，请刷新后重试。",
         ) from None
+    except InvalidSpec as error:
+        raise V3APIError(422, error.code, error.message) from None
     except IdempotencyConflict:
         raise V3APIError(
             422, "IDEMPOTENCY_KEY_REUSED", "相同的幂等键已被不同的请求使用。"

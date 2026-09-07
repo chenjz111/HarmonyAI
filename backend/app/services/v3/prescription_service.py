@@ -1,9 +1,11 @@
 """Agent 3 (Prescription) service — receive + persist Agent3 output, or fallback.
 
 The backend receives the real Agent3 ToneProfile/GenerationSpec and persists it;
-it never re-derives a fixed gong-tone scheme. A conservative wellness fallback
-is used only when ``generation_spec`` is omitted (explicit fallback, e.g. an
-abstained diagnosis for an otherwise safe user).
+it never re-derives a fixed gong-tone scheme. A received spec is trusted only
+when its ``tone_profile.basis`` is bound to the confirmed diagnosis id and
+assessment revision. A conservative wellness fallback is used when the diagnosis
+abstains (safe user, no syndrome to base a spec on) or when the caller explicitly
+omits ``generation_spec``.
 
 Idempotency is reserved via the shared helper (a duplicate key while another
 request is still processing returns an in-progress state instead of running
@@ -81,6 +83,22 @@ class PreferenceSnapshotConflict(RuntimeError):
     pass
 
 
+class InvalidSpec(RuntimeError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+_TONE_DISPLAY = {
+    ToneCode.jiao: "角调",
+    ToneCode.zhi: "徵调",
+    ToneCode.gong: "宫调",
+    ToneCode.shang: "商调",
+    ToneCode.yu: "羽调",
+}
+
+
 def _request_hash(payload: dict[str, object]) -> str:
     encoded = json.dumps(
         payload,
@@ -148,6 +166,30 @@ def _conservative_wellness_spec(
         forbidden_constraints=[],
         fallback_policy=GenerationFallbackPolicy(allow_local_matching=True),
     )
+
+
+def _require_spec_binding(
+    spec: GenerationSpec,
+    diagnosis_id: str,
+    assessment_revision: int,
+) -> None:
+    """Reject an Agent3 spec that is not bound to the confirmed diagnosis.
+
+    A trusted Agent3 output must trace back to the exact diagnosis id and
+    assessment revision the prescription is being created for; otherwise a
+    stale or fabricated spec could masquerade as this diagnosis's result.
+    """
+    basis = spec.tone_profile.basis
+    if basis.diagnosis_id != diagnosis_id:
+        raise InvalidSpec(
+            "SPEC_DIAGNOSIS_MISMATCH",
+            "generation_spec 的 tone_profile.basis 未绑定到当前诊断。",
+        )
+    if basis.diagnosis_revision != assessment_revision:
+        raise InvalidSpec(
+            "SPEC_REVISION_MISMATCH",
+            "generation_spec 的 tone_profile.basis 绑定了过期或不一致的诊断 revision。",
+        )
 
 
 def _to_schema(row: PrescriptionV3) -> PrescriptionV3Schema:
@@ -245,7 +287,30 @@ def create_prescription(
     preference = _resolve_preference(db, principal, request.preference_snapshot)
 
     # Receive the real Agent3 GenerationSpec, or fall back explicitly.
-    if request.generation_spec is not None:
+    abstained = diagnosis.status == "abstained" or bool(diagnosis.abstained)
+    if abstained:
+        # Abstained diagnosis (safe user, no syndrome identified): the backend
+        # must not fake a syndrome-based spec. Fall back to conservative
+        # wellness, and reject any Agent3 spec as untrusted input.
+        if request.generation_spec is not None:
+            raise InvalidSpec(
+                "SPEC_UNEXPECTED_FOR_ABSTAINED",
+                "诊断已 abstain，不接受 generation_spec，应回退到保守 wellness 方案。",
+            )
+        spec = _conservative_wellness_spec(
+            request.diagnosis_id,
+            diagnosis.assessment_revision,
+            preference,
+            user_goal,
+        )
+        status = "degraded"
+        mode = "wellness"
+    elif request.generation_spec is not None:
+        _require_spec_binding(
+            request.generation_spec,
+            request.diagnosis_id,
+            diagnosis.assessment_revision,
+        )
         spec = request.generation_spec
         status = "success"
         mode = "syndrome_based"
@@ -277,10 +342,19 @@ def create_prescription(
         )
         profile_id = None
 
+    primary_tone_display = _TONE_DISPLAY[spec.tone_profile.primary_tone]
+    tone_summary = f"{primary_tone_display}为主"
+    if spec.tone_profile.secondary_tone is not None:
+        tone_summary += f"，{_TONE_DISPLAY[spec.tone_profile.secondary_tone]}为辅"
+    tone_summary += f"，{spec.energy_curve}。"
+    instruments = "、".join(spec.instruments)
+
     presentation = PrescriptionPresentation(
         title="五音安神音乐处方",
-        tone_summary="宫调为主，平稳舒缓。",
-        parameter_summaries=[f"{spec.bpm} BPM · 古琴 · {spec.duration_seconds}秒"],
+        tone_summary=tone_summary,
+        parameter_summaries=[
+            f"{spec.bpm} BPM · {instruments} · {spec.duration_seconds}秒"
+        ],
         personalization_summary=(
             "已根据个人偏好微调" if personalization.applied else "未应用个人偏好"
         ),
@@ -302,6 +376,9 @@ def create_prescription(
             else None
         ),
         user_goal_revision=user_goal_revision,
+        user_goal_json=(
+            user_goal.model_dump(mode="json") if user_goal is not None else None
+        ),
         personalization_json=personalization.model_dump(mode="json"),
         presentation_json=presentation.model_dump(mode="json"),
     )

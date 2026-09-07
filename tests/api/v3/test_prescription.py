@@ -13,6 +13,7 @@ from backend.app.models import Session as SessionModel
 from backend.app.models.v3.assessment import AssessmentRevisionV3, AssessmentV3
 from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.models.v3.identity import UserIdentity
+from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.models.v3.understanding import (
     UnderstandingRevision,
     UnderstandingRun,
@@ -61,7 +62,9 @@ def _new_flow_session(headers) -> str:
     return _v3_data(response)["session_id"]
 
 
-def _seed_diagnosis(headers, session_id):
+def _seed_diagnosis(
+    headers, session_id, *, status="success", abstained=0, abstain_reason=None
+):
     with _seed_db() as session:
         user = (
             session.query(UserIdentity)
@@ -136,8 +139,9 @@ def _seed_diagnosis(headers, session_id):
                 session_row_id=sess.id,
                 assessment_id=assessment_id,
                 assessment_revision=1,
-                status="success",
-                abstained=0,
+                status=status,
+                abstained=abstained,
+                abstain_reason=abstain_reason,
                 degradation_json={},
                 presentation_json={},
             )
@@ -263,3 +267,207 @@ def test_prescription_cross_user_read_is_isolated():
     stranger = _guest_headers()
     denied = client.get(f"/api/v3/prescriptions/{prescription_id}", headers=stranger)
     assert denied.status_code == 404
+
+
+def _generation_spec(diagnosis_id, *, revision=1, primary_tone="zhi", instruments=("pipa", "xiao")):
+    weights = {"jiao": 0.1, "zhi": 0.1, "gong": 0.1, "shang": 0.1, "yu": 0.1}
+    weights[primary_tone] = 0.6
+    return {
+        "schema_version": "generation_spec_v3.0",
+        "tone_profile": {
+            "schema_version": "tone_profile_v3.1",
+            "weights": weights,
+            "primary_tone": primary_tone,
+            "secondary_tone": None,
+            "score_semantics": "relative_tone_distribution",
+            "mapping_version": "tone_mapping_v3.0",
+            "basis": {
+                "diagnosis_id": diagnosis_id,
+                "diagnosis_revision": revision,
+                "supporting_evidence_refs": [],
+            },
+        },
+        "bpm": 66,
+        "duration_seconds": 180,
+        "instruments": list(instruments),
+        "ambient_sounds": [],
+        "structure": {"intro_seconds": 30, "main_seconds": 120, "outro_seconds": 30},
+        "energy_curve": "平稳舒缓",
+        "forbidden_constraints": [],
+        "fallback_policy": {"allow_local_matching": True},
+    }
+
+
+def test_real_generation_spec_is_accepted_and_bound():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+
+    created = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "prescription_v3.1",
+            "diagnosis_id": diagnosis_id,
+            "generation_spec": _generation_spec(diagnosis_id),
+            "preference_snapshot": None,
+        },
+    )
+    assert created.status_code == 201, created.text
+    data = _v3_data(created)
+    assert data["status"] == "success"
+    assert data["prescription_mode"] == "syndrome_based"
+    assert data["generation_spec"]["tone_profile"]["primary_tone"] == "zhi"
+    # Presentation derives from the real spec, not a hardcoded 宫调/古琴.
+    assert data["presentation"]["tone_summary"] == "徵调为主，平稳舒缓。"
+    assert "pipa、xiao" in data["presentation"]["parameter_summaries"][0]
+
+
+def test_generation_spec_with_mismatched_diagnosis_id_is_rejected():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+
+    spec = _generation_spec(diagnosis_id)
+    spec["tone_profile"]["basis"]["diagnosis_id"] = "diag_someone_else"
+    response = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "prescription_v3.1",
+            "diagnosis_id": diagnosis_id,
+            "generation_spec": spec,
+            "preference_snapshot": None,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "SPEC_DIAGNOSIS_MISMATCH"
+
+
+def test_generation_spec_with_mismatched_revision_is_rejected():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+
+    response = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "prescription_v3.1",
+            "diagnosis_id": diagnosis_id,
+            "generation_spec": _generation_spec(diagnosis_id, revision=99),
+            "preference_snapshot": None,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "SPEC_REVISION_MISMATCH"
+
+
+def test_abstained_diagnosis_falls_back_to_wellness():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(
+        headers, session_id, status="abstained", abstained=1, abstain_reason="safe_user"
+    )
+
+    created = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+        json={"schema_version": "prescription_v3.1", "diagnosis_id": diagnosis_id, "preference_snapshot": None},
+    )
+    assert created.status_code == 201, created.text
+    data = _v3_data(created)
+    assert data["status"] == "degraded"
+    assert data["prescription_mode"] == "wellness"
+    assert data["generation_spec"]["tone_profile"]["primary_tone"] == "gong"
+
+
+def test_abstained_diagnosis_rejects_generation_spec():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(
+        headers, session_id, status="abstained", abstained=1, abstain_reason="safe_user"
+    )
+
+    response = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "prescription_v3.1",
+            "diagnosis_id": diagnosis_id,
+            "generation_spec": _generation_spec(diagnosis_id),
+            "preference_snapshot": None,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "SPEC_UNEXPECTED_FOR_ABSTAINED"
+
+
+def test_withheld_diagnosis_is_not_ready():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id, status="withheld")
+
+    response = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+        json={"schema_version": "prescription_v3.1", "diagnosis_id": diagnosis_id, "preference_snapshot": None},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "DIAGNOSIS_NOT_READY"
+
+
+def test_prescription_idempotent_replay():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+
+    key = f"rx-idem-{uuid.uuid4().hex}"
+    payload = {"schema_version": "prescription_v3.1", "diagnosis_id": diagnosis_id, "preference_snapshot": None}
+    first = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": key},
+        json=payload,
+    )
+    assert first.status_code == 201, first.text
+    first_id = _v3_data(first)["prescription_id"]
+
+    second = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": key},
+        json=payload,
+    )
+    assert second.status_code == 200, second.text
+    assert _v3_data(second)["prescription_id"] == first_id
+
+
+def test_user_goal_snapshot_is_persisted():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+    _submit_questionnaire(headers, session_id)
+
+    goal = {"primary_goal": "focus", "secondary_goal": None, "custom_goal_text": None}
+    submitted = client.put(
+        f"/api/v3/sessions/{session_id}/user-goal",
+        headers=headers,
+        json={"user_goal": goal},
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    prescription_id = _v3_data(
+        client.post(
+            "/api/v3/prescriptions",
+            headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+            json={"schema_version": "prescription_v3.1", "diagnosis_id": diagnosis_id, "preference_snapshot": None},
+        )
+    )["prescription_id"]
+
+    with _seed_db() as session:
+        row = (
+            session.query(PrescriptionV3)
+            .filter(PrescriptionV3.prescription_id == prescription_id)
+            .one()
+        )
+        assert row.user_goal_json == goal
+        assert row.user_goal_revision == 1
