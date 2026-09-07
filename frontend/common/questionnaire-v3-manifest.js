@@ -1,14 +1,7 @@
 /**
- * 五脏状态问卷 V3.0.1 权威清单（冻结版本）
- * 来源：knowledge/v3/questionnaire-v3.0.1.json（单一事实来源，前端逐字同步）
- * - Issue #111 / V3.1_FREEZE_BASELINE 83fe2f4：Questionnaire 3.0.1 是唯一可执行问卷
- * - content_checksum = sha256:69a01d07…（与 backend flow_v31.py / knowledge manifest 一致）
- * - q01-q05 为频率题（frequency_0_4，每题含 5 个个性化选项文案）
- * - q06-q10 为多选题（multi_choice_evidence，含互斥的"都很少出现"选项）
- * - user_goal 为疗愈诉求选填配置（7 code，max_selections=2，custom_goal_text ≤200 字）
- * 注意：题目与选项文案属于医学审核冻结内容，任何人不得在前端擅自增删改
+ * 五脏状态问卷权威清单（自动生成，禁止修改）
+ * 生成自: knowledge/v3/questionnaire-v3.0.1.json
  */
-
 export const QUESTIONNAIRE_MANIFEST = {
   "schema_id": "questionnaire_v3",
   "schema_version": "3.0.1",
@@ -632,6 +625,5 @@ export const QUESTIONNAIRE_MANIFEST = {
     "evidence_role": "music_design_preference_only"
   },
   "content_checksum": "sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031"
-}
-
-export default QUESTIONNAIRE_MANIFEST
+};
+export default QUESTIONNAIRE_MANIFEST;

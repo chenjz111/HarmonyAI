@@ -155,8 +155,7 @@ export default {
     pickPrimaryGoal(code) {
       if (this.primary_goal === code) {
         this.primary_goal = null
-        // 清空主诉求时，连带清掉"其他想法"——避免出现"只填文字、不选主要诉求"的状态
-        this.custom_goal_text = ""
+        // 清空主诉求时不清空文字：custom_goal_text 独立合法（冻结规则）
         return
       }
       this.primary_goal = code
@@ -169,7 +168,7 @@ export default {
       }
       if (!this.primary_goal) {
         // 没有主诉求时不允许先选次要诉求
-        uni.showToast({ title: "请先选择主要诉求", icon: "none" })
+        uni.showToast({ title: "需要先选择主要诉求", icon: "none" })
         return
       }
       if (this.secondary_goal === code) {

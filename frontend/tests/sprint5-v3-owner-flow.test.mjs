@@ -485,7 +485,7 @@ test("api-v3 mock: healing intent is stored without fabricating defaults", async
   assert.equal(skipped.saved_locally, false)
 })
 
-// ===== 疗愈诉求合同校验（Issue #100 复审指令 1~8） =====
+// ===== 疗愈诉求合同校验（Issue #111 复审指令 V3.1 冻结规则） =====
 
 test("V3.1 review: 疗愈诉求合同校验 - 全空允许整页跳过", () => {
   const { decideHealingIntent } = healingIntent
@@ -496,60 +496,84 @@ test("V3.1 review: 疗愈诉求合同校验 - 全空允许整页跳过", () => {
   assert.equal(d.reason, null, "全空无 reason")
 })
 
-test("V3.1 review: 疗愈诉求合同校验 - 只填文字、不选主要诉求 → 阻止", () => {
+test("V3.1 review: 疗愈诉求合同校验 - custom-text-only → 通过（独立合法）", () => {
   const { decideHealingIntent } = healingIntent
-  const d = decideHealingIntent({ primary_goal: null, secondary_goal: null, custom_goal_text: "希望更舒缓一些" })
-  assert.equal(d.ok, false, "仅文字必须阻止")
-  assert.equal(d.reason, "primary_required", "reason 必须是 primary_required")
+  const d = decideHealingIntent({
+    primary_goal: null,
+    secondary_goal: null,
+    custom_goal_text: "希望音乐更舒缓一些",
+  })
+  assert.equal(d.ok, true, "custom-text-only 必须通过")
+  assert.equal(d.skip, false)
+  assert.equal(d.reason, null)
+  assert.equal(d.payload.primary_goal, null)
+  assert.equal(d.payload.secondary_goal, null)
+  assert.equal(d.payload.custom_goal_text, "希望音乐更舒缓一些")
 })
 
-test("V3.1 review: 疗愈诉求合同校验 - 选择 other 但文字为空 → 阻止", () => {
-  const { decideHealingIntent } = healingIntent
-  const d = decideHealingIntent({ primary_goal: "other", secondary_goal: null, custom_goal_text: "" })
-  assert.equal(d.ok, false, "other + 空文字必须阻止")
-  assert.equal(d.reason, "other_needs_text", "reason 必须是 other_needs_text")
-})
-
-test("V3.1 review: 疗愈诉求合同校验 - other + 合法文字 → 通过", () => {
+test("V3.1 review: 疗愈诉求合同校验 - other without text → 通过（other不强制文字）", () => {
   const { decideHealingIntent } = healingIntent
   const d = decideHealingIntent({
     primary_goal: "other",
     secondary_goal: null,
-    custom_goal_text: "希望节奏更慢一些，像清晨山雾那种感觉",
+    custom_goal_text: "",
   })
-  assert.equal(d.ok, true, "other + 合法文字必须通过")
+  assert.equal(d.ok, true, "other without text must pass")
   assert.equal(d.skip, false)
   assert.equal(d.reason, null)
   assert.equal(d.payload.primary_goal, "other")
-  assert.equal(typeof d.payload.custom_goal_text, "string")
-  assert.ok(d.payload.custom_goal_text.length > 0)
 })
 
-test("V3.1 review: 疗愈诉求合同校验 - 只有次要诉求、没有主要诉求 → 阻止", () => {
-  const { decideHealingIntent } = healingIntent
-  const d = decideHealingIntent({ primary_goal: null, secondary_goal: "relaxation", custom_goal_text: "" })
-  assert.equal(d.ok, false, "无主诉求必须阻止")
-  assert.equal(d.reason, "primary_required", "reason 必须是 primary_required")
-})
-
-test("V3.1 review: 疗愈诉求合同校验 - 普通主要/次要诉求 → 正常通过", () => {
+test("V3.1 review: 疗愈诉求合同校验 - primary only → 通过", () => {
   const { decideHealingIntent } = healingIntent
   const d = decideHealingIntent({
     primary_goal: "sleep",
-    secondary_goal: "stress_relief",
+    secondary_goal: null,
     custom_goal_text: null,
   })
   assert.equal(d.ok, true)
   assert.equal(d.skip, false)
   assert.equal(d.payload.primary_goal, "sleep")
-  assert.equal(d.payload.secondary_goal, "stress_relief")
-  assert.equal(d.payload.custom_goal_text, null)
+  assert.equal(d.payload.secondary_goal, null)
 })
 
-test("V3.1 review: 疗愈诉求合同校验 - 自由文字超过 200 字 → 阻止", () => {
+test("V3.1 review: 疗愈诉求合同校验 - primary + secondary → 通过", () => {
+  const { decideHealingIntent } = healingIntent
+  const d = decideHealingIntent({
+    primary_goal: "sleep",
+    secondary_goal: "relaxation",
+    custom_goal_text: null,
+  })
+  assert.equal(d.ok, true)
+  assert.equal(d.payload.primary_goal, "sleep")
+  assert.equal(d.payload.secondary_goal, "relaxation")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - secondary without primary → 阻止", () => {
+  const { decideHealingIntent } = healingIntent
+  const d = decideHealingIntent({
+    primary_goal: null,
+    secondary_goal: "relaxation",
+    custom_goal_text: "",
+  })
+  assert.equal(d.ok, false, "secondary without primary must block")
+  assert.equal(d.reason, "secondary_requires_primary", "reason must be secondary_requires_primary")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - primary == secondary → 阻止", () => {
+  const { decideHealingIntent } = healingIntent
+  const d = decideHealingIntent({
+    primary_goal: "sleep",
+    secondary_goal: "sleep",
+    custom_goal_text: null,
+  })
+  assert.equal(d.ok, false, "primary == secondary must block")
+  assert.equal(d.reason, "primary_equals_secondary", "reason must be primary_equals_secondary")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - custom text超过200字 → 阻止", () => {
   const { decideHealingIntent, MAX_CUSTOM_LEN } = healingIntent
-  // 构造恰好 201 字（maxlength=200 是物理限制，JS 校验兜底拦 201）
-  const longText = "舒".repeat(MAX_CUSTOM_LEN + 1)
+  const longText = "a".repeat(MAX_CUSTOM_LEN + 1)
   assert.equal(longText.length, MAX_CUSTOM_LEN + 1, "测试数据必须 > 200 字")
   const d = decideHealingIntent({
     primary_goal: "relaxation",
@@ -572,16 +596,26 @@ test("V3.1 review: 疗愈诉求合同校验 - 边界：恰好 200 字 → 通过
   assert.equal(d.ok, true, "200 字边界值必须通过")
 })
 
-test("V3.1 review: 疗愈诉求合同校验 - 防御 secondary === primary → 阻止", () => {
+test("V3.1 review: 疗愈诉求合同校验 - custom-text-only 超长同样阻止", () => {
+  const { decideHealingIntent, MAX_CUSTOM_LEN } = healingIntent
+  const d = decideHealingIntent({
+    primary_goal: null,
+    secondary_goal: null,
+    custom_goal_text: "b".repeat(MAX_CUSTOM_LEN + 1),
+  })
+  assert.equal(d.ok, false, "仅文字但超长必须阻止")
+  assert.equal(d.reason, "custom_too_long")
+})
+
+test("V3.1 review: 疗愈诉求合同校验 - secondary 值非法 → 阻止", () => {
   const { decideHealingIntent } = healingIntent
-  // pickSecondary 已拦截，但校验模块做兜底防御
   const d = decideHealingIntent({
     primary_goal: "sleep",
-    secondary_goal: "sleep",
+    secondary_goal: "not_a_canonical_code",
     custom_goal_text: null,
   })
-  assert.equal(d.ok, false, "secondary 与 primary 同值必须阻止")
-  assert.equal(d.reason, "primary_required")
+  assert.equal(d.ok, false, "非法 secondary code 必须阻止")
+  assert.equal(d.reason, "invalid_goal_code")
 })
 
 test("V3.1 review: 疗愈诉求合同校验 - serialize 字段名对齐合同", () => {
@@ -617,8 +651,9 @@ test("V3.1 review: v3-goal.vue 不再使用已弃用字段名 primary/secondary/
   assert.ok(!goal.includes("secondary: this.secondary"), "不应再使用 secondary: this.secondary")
   assert.ok(!goal.includes("custom_text: this."), "不应再使用 custom_text: this.xxx")
   // 校验逻辑（reason 字符串集中在 common/v3-healing-intent.js，.vue 通过 HEALING_INTENT_REASON_MESSAGE 映射）
-  assert.ok(HEALING_INTENT_REASON_MESSAGE.primary_required, "reason 文案映射必须含 primary_required")
-  assert.ok(HEALING_INTENT_REASON_MESSAGE.other_needs_text, "reason 文案映射必须含 other_needs_text")
+  assert.ok(HEALING_INTENT_REASON_MESSAGE.secondary_requires_primary, "reason 文案映射必须含 secondary_requires_primary")
+  assert.ok(HEALING_INTENT_REASON_MESSAGE.primary_equals_secondary, "reason 文案映射必须含 primary_equals_secondary")
+  assert.ok(HEALING_INTENT_REASON_MESSAGE.invalid_goal_code, "reason 文案映射必须含 invalid_goal_code")
   assert.ok(HEALING_INTENT_REASON_MESSAGE.custom_too_long, "reason 文案映射必须含 custom_too_long")
 })
 

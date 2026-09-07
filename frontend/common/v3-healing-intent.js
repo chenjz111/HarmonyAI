@@ -1,21 +1,24 @@
 /**
  * V3.1 疗愈诉求（可选）合同校验模块
  *
- * 依据：frontend-read-model-contract-v3.md §10 + Issue #100 复审指令
+ * 依据：Issue #111 冻结 V3.1 规则 + 复审指令 2026-09-07
  *
  * 字段与 Read Model 合同权威字段一一对应：
- *   - primary_goal      （主要诉求，contract 7 code 之一：sleep / relaxation / ... / other）
- *   - secondary_goal    （次要诉求，contract code，可空；不可脱离 primary_goal 单独存在）
- *   - custom_goal_text  （其他想法补充，1~200 字；primary_goal === "other" 时强制要求）
+ *   - primary_goal      （主要诉求，contract 7 code 之一：sleep / relaxation / ... / other；可空）
+ *   - secondary_goal    （次要诉求，contract code；不可脱离 primary_goal 单独存在；可空；不能等于 primary_goal）
+ *   - custom_goal_text  （其他想法补充，最多 200 字；可空；可独立存在）
  *
  * 不再使用：primary / secondary / custom_text 作为最终提交字段
  *
- * 校验规则（复审指令）：
- *   1. 全空 → 视为整页跳过，直接返回 skip = true
- *   2. 只填文字、不选主要诉求 → 阻止（reason = primary_required）
- *   3. 只有次要诉求、没有主要诉求 → 阻止（reason = primary_required）
- *   4. primary_goal === "other" 但 custom_goal_text 为空 → 阻止（reason = other_needs_text）
- *   5. 自由文字 > 200 字 → 阻止（reason = custom_too_long）
+ * 冻结规则（V3.1 正式 §10）：
+ *   1. 整页选填 → 全空时 skip = true，user_goal = null
+ *   2. custom_goal_text 可独立存在 → 只填文字、不选诉求也合法（通过）
+ *   3. primary_goal 必填当 secondary_goal 存在 → 反向：secondary 需要 primary，但 primary 不需要 secondary
+ *   4. 选择 other 无需填文字 → other 与 custom_goal_text 独立
+ *   5. custom_goal_text > 200 字 → 阻止（reason = custom_too_long）
+ *   6. 主次诉求不能相同 → primary === secondary 时阻止（reason = primary_equals_secondary）
+ *   7. 最多选择 2 项 → primary + secondary，不超出
+ *   8. code 必须在合同内 → 防御性校验
  *
  * 后端尚未交付保存能力 → 调用方根据 ok 判断，本模块只负责判定 + 序列化。
  */
@@ -70,31 +73,27 @@ export function decideHealingIntent(rawState) {
     return { ok: true, skip: true, payload: null, reason: null }
   }
 
-  // 规则 2/3：没有主要诉求（不论是否有文字 / 次要诉求） → 阻止
-  if (!hasPrimary) {
-    return { ok: false, skip: false, payload: null, reason: "primary_required" }
-  }
-
-  // 规则 4：other 必填文字
-  if (norm.primary_goal === "other" && customLen === 0) {
-    return { ok: false, skip: false, payload: null, reason: "other_needs_text" }
-  }
-
-  // 规则 5：自由文字超长
+  // 自由文字长度优先校验；文字可独立存在，但不得超过冻结上限。
   if (customLen > MAX_CUSTOM_LEN) {
     return { ok: false, skip: false, payload: null, reason: "custom_too_long" }
   }
 
-  // 兜底：防御性检查意图代码在合同内（避免 UI 注入或脏数据）
-  if (!INTENT_SET.has(norm.primary_goal)) {
-    return { ok: false, skip: false, payload: null, reason: "primary_required" }
+  // 次要诉求不能脱离主要诉求。仅填写 custom_goal_text 无需主要诉求。
+  if (hasSecondary && !hasPrimary) {
+    return { ok: false, skip: false, payload: null, reason: "secondary_requires_primary" }
   }
-  if (norm.secondary_goal && !INTENT_SET.has(norm.secondary_goal)) {
-    return { ok: false, skip: false, payload: null, reason: "primary_required" }
+
+  // 防御性检查：存在的 code 均须是正式枚举；other 不要求自由文字。
+  if (hasPrimary && !INTENT_SET.has(norm.primary_goal)) {
+    return { ok: false, skip: false, payload: null, reason: "invalid_goal_code" }
   }
-  // 兜底：secondary 不得等于 primary（pickSecondary 已拦截，这里仅防御）
-  if (norm.secondary_goal === norm.primary_goal) {
-    return { ok: false, skip: false, payload: null, reason: "primary_required" }
+  if (hasSecondary && !INTENT_SET.has(norm.secondary_goal)) {
+    return { ok: false, skip: false, payload: null, reason: "invalid_goal_code" }
+  }
+
+  // 主次诉求不能相同。
+  if (hasPrimary && norm.secondary_goal === norm.primary_goal) {
+    return { ok: false, skip: false, payload: null, reason: "primary_equals_secondary" }
   }
 
   return {
@@ -110,11 +109,12 @@ export function decideHealingIntent(rawState) {
 }
 
 /**
- * 复审指令 8：把 reason code 映射为人类可读的 toast 文案
+ * 把 reason code 映射为人类可读的 toast 文案
  */
 export const HEALING_INTENT_REASON_MESSAGE = Object.freeze({
-  primary_required: "请先选择主要诉求",
-  other_needs_text: "其他诉求需补充说明（1~200 字）",
+  secondary_requires_primary: "需要先选择主要诉求",
+  primary_equals_secondary: "主次诉求不能相同",
+  invalid_goal_code: "选择的诉求不在正式列表中",
   custom_too_long: "补充内容不超过 200 字",
 })
 
