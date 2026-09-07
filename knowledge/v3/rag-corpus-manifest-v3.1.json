@@ -239,7 +239,7 @@
     "语料是否扩展 V2 literature 转换条目（待医学复核）",
     "approval_status 转 PRODUCTION_APPROVED（待 Owner 放行）"
   ],
-  "content_checksum": "sha256:daed8bdb5a8080dcf4e99c111f71d667c688a7b9d210df3b9f57129b97a866b8",
+  "content_checksum": "sha256:5096bf8509fea4641fef8ca4965245b04a253b1e0bd3910dd0a6b64bef9afb85",
   "status_note": "rag-corpus-manifest-v3.1 = 医学来源登记与审核（source registry，非生产语料/非 ingestion manifest）：医学来源审核已完成；实际语料/chunk 未完成（待 AI 侧 #109）；Embedding/Ingestion 待 #109；Production RAG = NOT_APPROVED_PENDING。注册与放行均待 Owner。",
   "completion_status": {
     "medical_source_review": "COMPLETED",
@@ -247,5 +247,37 @@
     "embedding_ingestion": "PENDING_109",
     "production_rag": "NOT_APPROVED_PENDING",
     "note": "本 manifest 仅为医学来源登记（无语料正文/chunk 伪造）；实际可分块语料与 embedding 由 AI 侧 #109 接入"
+  },
+  "nature": "MEDICAL_SOURCE_REGISTRY_ONLY：仅医学来源登记与审核；不含可检索语料正文/chunk，不是 Production RAG / 不是 ingestion manifest。",
+  "medically_reviewed_sources": {
+    "count": 13,
+    "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+    "reviewed_at": "2026-09-06",
+    "by_category": {
+      "经典": [
+        "src_01",
+        "src_02",
+        "src_03",
+        "src_04",
+        "src_05",
+        "src_06",
+        "src_07",
+        "src_08",
+        "src_09",
+        "src_10"
+      ],
+      "教材": [
+        "src_11",
+        "src_12",
+        "src_13"
+      ]
+    },
+    "note": "13 条来源全部 MEDICALLY_REVIEWED（医学侧审核完成，可作后续语料构建的依据）"
+  },
+  "pending_for_agent2_corpus_build": {
+    "items": "上述来源的实际正文提取、清洗、分块（chunking）与 embedding",
+    "status": "NOT_DONE_PENDING_AI_SIDE",
+    "owner": "AI 侧 #109（Agent2 RAG 接入）",
+    "deliverable_to_agent2": "医学侧交付=来源登记+医学审核结论（本文件）；AI 侧将来源正文整理为可检索 chunks 后接入 Agent2，届时才形成可检索 corpus"
   }
 }
