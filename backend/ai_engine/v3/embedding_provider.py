@@ -47,12 +47,14 @@ class EmbeddingProvider:
         api_key: str,
         model: str,
         dimension: int,
+        workspace_id: str | None = None,
         timeout: float = 20.0,
         max_retries: int = 2,
         transport: Transport | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
+        self.workspace_id = workspace_id.strip() if isinstance(workspace_id, str) else None
         self.model = model
         self.dimension = dimension
         self.timeout = timeout
@@ -103,6 +105,8 @@ class EmbeddingProvider:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        if self.workspace_id:
+            headers["X-DashScope-WorkSpace"] = self.workspace_id
         url = f"{self.base_url}/embeddings"
         started = time.perf_counter()
         del started  # reserved for the caller's provider audit metadata
@@ -219,19 +223,36 @@ def embedding_provider_from_environment(
 ) -> EmbeddingProvider | None:
     """Build the approved provider only when all required values are present."""
 
-    base_url = environment.get("EMBEDDING_BASE_URL", "").strip()
-    api_key = environment.get("EMBEDDING_API_KEY", "").strip()
-    model = environment.get("EMBEDDING_MODEL", "").strip()
+    dashscope_key = environment.get("DASHSCOPE_API_KEY", "").strip()
+    workspace_id = environment.get("DASHSCOPE_WORKSPACE_ID", "").strip()
+    base_url = (
+        environment.get("EMBEDDING_BASE_URL", "").strip()
+        or environment.get("DASHSCOPE_BASE_URL", "").strip()
+        or ("https://dashscope.aliyuncs.com/compatible-mode/v1" if dashscope_key else "")
+    )
+    api_key = environment.get("EMBEDDING_API_KEY", "").strip() or dashscope_key
+    model = environment.get("EMBEDDING_MODEL", "").strip() or (
+        "text-embedding-v4" if dashscope_key else ""
+    )
     dimension = _parse_dimension(environment.get("EMBEDDING_DIMENSION", "1024"))
     if (
-        not all((environment.get("EMBEDDING_PROVIDER", "").strip(), base_url, api_key, model))
+        not all(
+            (
+                environment.get("EMBEDDING_PROVIDER", "").strip() or ("dashscope" if dashscope_key else ""),
+                base_url,
+                api_key,
+                model,
+            )
+        )
         or dimension != 1024
         or model != "text-embedding-v4"
+        or (dashscope_key and not workspace_id)
     ):
         return None
     return EmbeddingProvider(
         base_url=base_url,
         api_key=api_key,
+        workspace_id=workspace_id or None,
         model=model,
         dimension=dimension,
     )

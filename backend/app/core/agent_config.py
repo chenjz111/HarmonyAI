@@ -113,20 +113,38 @@ def get_v31_rag_store(environment: Mapping[str, str] | None = None, *, client=No
     values = environment if environment is not None else os.environ
     config = _require_v31_real_config(values)
     manifest_path = values.get("RAG_CORPUS_MANIFEST_PATH", "").strip()
-    if not manifest_path or not Path(manifest_path).is_file():
+    chunks_path = values.get("RAG_CORPUS_CHUNKS_PATH", "").strip()
+    if (
+        not manifest_path
+        or not Path(manifest_path).is_file()
+        or not chunks_path
+        or not Path(chunks_path).is_file()
+    ):
         raise V31ReadinessFailure("RAG_CORPUS_NOT_CONFIGURED")
-    from backend.ai_engine.v3.rag_store import VersionedRagStore
+    from backend.ai_engine.v3.rag_ingestion import (
+        ProductionCorpusNotReady,
+        load_production_corpus,
+    )
+    from backend.ai_engine.v3.rag_store import RagStoreFailure, VersionedRagStore
 
     embedding_provider = get_v31_embedding_provider(values)
     if embedding_provider is None:
         raise V31ReadinessFailure("EMBEDDING_FACTORY_NOT_READY")
-    return VersionedRagStore(
-        persist_directory=config.chroma_persist_directory,
-        collection_name=config.chroma_collection,
-        embedding_provider=embedding_provider,
-        client=client,
-        production=True,
-    )
+    try:
+        manifest, chunks = load_production_corpus(manifest_path, chunks_path)
+        store = VersionedRagStore(
+            persist_directory=config.chroma_persist_directory,
+            collection_name=config.chroma_collection,
+            embedding_provider=embedding_provider,
+            client=client,
+            production=True,
+        )
+        store.ingest(manifest, chunks)
+        return store
+    except ProductionCorpusNotReady as error:
+        raise V31ReadinessFailure(error.error_code, error.safe_message) from None
+    except RagStoreFailure as error:
+        raise V31ReadinessFailure(error.error_code, error.safe_message) from None
 
 
 def get_v31_diagnosis_provider(

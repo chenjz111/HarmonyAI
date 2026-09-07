@@ -86,3 +86,38 @@ def test_production_ingestion_requires_approved_text_embedding_v4_1024_identity(
             _manifest(embedding_version="text-embedding-v4@1536"),
             [_chunk()],
         )
+
+
+def test_load_production_corpus_reads_manifest_and_chunk_files(tmp_path):
+    from backend.ai_engine.v3.rag_ingestion import load_production_corpus
+
+    manifest_path = tmp_path / "manifest.json"
+    chunks_path = tmp_path / "chunks.json"
+    manifest_path.write_text(
+        __import__("json").dumps(_manifest().model_dump(mode="json")),
+        encoding="utf-8",
+    )
+    chunks_path.write_text(
+        __import__("json").dumps({"chunks": [_chunk().model_dump(mode="json")]}),
+        encoding="utf-8",
+    )
+
+    manifest, chunks = load_production_corpus(manifest_path, chunks_path)
+
+    assert manifest.knowledge_version == "medical_v3.1"
+    assert [chunk.chunk_id for chunk in chunks] == ["chunk_001"]
+
+
+def test_load_production_corpus_rejects_missing_or_malformed_files(tmp_path):
+    from backend.ai_engine.v3.rag_ingestion import (
+        ProductionCorpusNotReady,
+        load_production_corpus,
+    )
+
+    manifest_path = tmp_path / "manifest.json"
+    chunks_path = tmp_path / "chunks.json"
+    manifest_path.write_text("{", encoding="utf-8")
+    chunks_path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ProductionCorpusNotReady, match="CORPUS_FILES_INVALID"):
+        load_production_corpus(manifest_path, chunks_path)

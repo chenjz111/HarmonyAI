@@ -7,15 +7,17 @@ def test_v31_provider_config_requires_explicit_real_mode_configuration():
     config = V31ProviderConfig.from_environment(
         {
             "HARMONYAI_REAL_AGENTS": "true",
+            "DASHSCOPE_API_KEY": "configured-value",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
             "EMBEDDING_PROVIDER": "aliyun",
             "EMBEDDING_BASE_URL": "https://embedding.example",
-            "EMBEDDING_API_KEY": "embedding-secret",
+            "EMBEDDING_API_KEY": "configured-value",
             "EMBEDDING_MODEL": "text-embedding-v4",
             "EMBEDDING_DIMENSION": "1024",
             "CHROMA_PERSIST_DIRECTORY": "data/chroma",
             "CHROMA_COLLECTION": "harmony_v31",
             "QWEN_BASE_URL": "https://qwen.example/v1",
-            "QWEN_API_KEY": "qwen-secret",
+            "QWEN_API_KEY": "configured-value",
             "QWEN_MODEL": "qwen-approved",
         }
     )
@@ -25,8 +27,7 @@ def test_v31_provider_config_requires_explicit_real_mode_configuration():
     assert config.embedding_model == "text-embedding-v4"
     assert config.chroma_collection == "harmony_v31"
     assert config.safe_dict()["embedding_configured"] is True
-    assert "embedding-secret" not in str(config.safe_dict())
-    assert "qwen-secret" not in str(config.safe_dict())
+    assert "configured-value" not in str(config.safe_dict())
 
 
 def test_v31_provider_config_reports_missing_real_embedding_as_not_ready():
@@ -37,7 +38,7 @@ def test_v31_provider_config_reports_missing_real_embedding_as_not_ready():
     )
 
     assert config.real_agents is True
-    assert config.readiness_error == "EMBEDDING_PROVIDER_NOT_CONFIGURED"
+    assert config.readiness_error == "DASHSCOPE_PROVIDER_NOT_CONFIGURED"
 
 
 def test_v31_provider_config_rejects_hash_embedding_in_real_mode():
@@ -46,6 +47,8 @@ def test_v31_provider_config_rejects_hash_embedding_in_real_mode():
     config = V31ProviderConfig.from_environment(
         {
             "HARMONYAI_REAL_AGENTS": "true",
+            "DASHSCOPE_API_KEY": "configured-value",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
             "EMBEDDING_PROVIDER": "local",
             "EMBEDDING_BASE_URL": "http://embedding.example",
             "EMBEDDING_API_KEY": "secret",
@@ -63,6 +66,8 @@ def test_v31_provider_config_reports_missing_qwen_after_embedding_and_chroma_are
     config = V31ProviderConfig.from_environment(
         {
             "HARMONYAI_REAL_AGENTS": "true",
+            "DASHSCOPE_API_KEY": "configured-value",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
             "EMBEDDING_PROVIDER": "aliyun",
             "EMBEDDING_BASE_URL": "https://embedding.example",
             "EMBEDDING_API_KEY": "embedding-secret",
@@ -132,6 +137,8 @@ def test_v31_provider_config_requires_the_exact_production_embedding_model():
     config = V31ProviderConfig.from_environment(
         {
             "HARMONYAI_REAL_AGENTS": "true",
+            "DASHSCOPE_API_KEY": "configured-value",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
             "EMBEDDING_PROVIDER": "aliyun",
             "EMBEDDING_BASE_URL": "https://embedding.example",
             "EMBEDDING_API_KEY": "secret",
@@ -154,16 +161,160 @@ def test_v31_real_rag_factory_fails_closed_without_a_production_corpus():
     with pytest.raises(V31ReadinessFailure, match="RAG_CORPUS_NOT_CONFIGURED"):
         get_v31_rag_store(
             {
-                "HARMONYAI_REAL_AGENTS": "true",
-                "EMBEDDING_PROVIDER": "aliyun",
+            "HARMONYAI_REAL_AGENTS": "true",
+            "DASHSCOPE_API_KEY": "configured-value",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
+            "EMBEDDING_PROVIDER": "aliyun",
                 "EMBEDDING_BASE_URL": "https://embedding.example",
-                "EMBEDDING_API_KEY": "embedding-secret",
+                "EMBEDDING_API_KEY": "configured-value",
                 "EMBEDDING_MODEL": "text-embedding-v4",
                 "EMBEDDING_DIMENSION": "1024",
                 "CHROMA_PERSIST_DIRECTORY": "data/chroma",
                 "CHROMA_COLLECTION": "harmony_v31",
                 "QWEN_BASE_URL": "https://qwen.example/v1",
-                "QWEN_API_KEY": "qwen-secret",
+                "QWEN_API_KEY": "configured-value",
                 "QWEN_MODEL": "qwen-approved",
             }
         )
+
+
+def test_v31_provider_config_reads_dashscope_credentials_without_exposing_them():
+    from backend.ai_engine.v3.provider_config import V31ProviderConfig
+
+    config = V31ProviderConfig.from_environment(
+        {
+            "HARMONYAI_REAL_AGENTS": "true",
+            "DASHSCOPE_API_KEY": "configured",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
+            "DASHSCOPE_BASE_URL": "https://dashscope.example/v1",
+            "QWEN_MODEL": "qwen-approved",
+            "CHROMA_PERSIST_DIRECTORY": "data/chroma",
+            "CHROMA_COLLECTION": "harmony_v31",
+        }
+    )
+
+    assert config.readiness_error is None
+    assert config.embedding_model == "text-embedding-v4"
+    assert config.embedding_dimension == 1024
+    assert config.safe_dict()["embedding_configured"] is True
+    assert "configured-value" not in str(config.safe_dict())
+    assert "workspace-test" not in str(config.safe_dict())
+
+
+def test_v31_provider_config_requires_dashscope_credentials_in_real_mode():
+    from backend.ai_engine.v3.provider_config import V31ProviderConfig
+
+    config = V31ProviderConfig.from_environment(
+        {
+            "HARMONYAI_REAL_AGENTS": "true",
+            "QWEN_MODEL": "qwen-approved",
+            "CHROMA_PERSIST_DIRECTORY": "data/chroma",
+            "CHROMA_COLLECTION": "harmony_v31",
+        }
+    )
+
+    assert config.readiness_error == "DASHSCOPE_PROVIDER_NOT_CONFIGURED"
+
+
+def test_v31_real_factory_fails_with_readiness_error_when_dashscope_is_missing():
+    from backend.app.core.agent_config import V31ReadinessFailure, get_v31_rag_store
+
+    with pytest.raises(V31ReadinessFailure, match="DASHSCOPE_PROVIDER_NOT_CONFIGURED"):
+        get_v31_rag_store({"HARMONYAI_REAL_AGENTS": "true"})
+
+
+def test_v31_real_qwen_factory_matches_readiness_and_returns_configured_provider():
+    from backend.app.core.agent_config import get_v31_diagnosis_provider
+
+    provider = get_v31_diagnosis_provider(
+        {
+            "HARMONYAI_REAL_AGENTS": "true",
+            "DASHSCOPE_API_KEY": "configured-value",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
+            "QWEN_MODEL": "qwen-approved",
+            "CHROMA_PERSIST_DIRECTORY": "data/chroma",
+            "CHROMA_COLLECTION": "harmony_v31",
+        },
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+
+    assert provider.backend.model == "qwen-approved"
+    assert provider.backend.extra_headers["X-DashScope-WorkSpace"] == "workspace-test"
+
+
+def test_v31_real_rag_factory_loads_approved_corpus_before_returning_store(
+    tmp_path, monkeypatch
+):
+    import json
+
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+    from backend.app.core import agent_config
+    from backend.app.schemas.v3.diagnosis import IngestionManifest, KnowledgeChunk
+
+    manifest = IngestionManifest(
+        knowledge_version="medical_v3.1",
+        embedding_provider="aliyun",
+        embedding_model="text-embedding-v4",
+        embedding_version="text-embedding-v4@1024",
+        distance_metric="cosine",
+        retrieval_score_semantics="normalized_similarity",
+        minimum_score=0.5,
+        chunk_count=1,
+        manifest_checksum="sha256:manifest-v31",
+        review_status="approved",
+    )
+    chunk = KnowledgeChunk(
+        chunk_id="chunk_001",
+        source_id="src_001",
+        source_title="approved source",
+        section="section-1",
+        text="approved explanation text",
+        display_summary="approved explanation",
+        claim_codes=["unrefreshing_sleep"],
+        organ_codes=["heart"],
+        review_status="approved",
+        medical_review_version="medical_v3.1-r1",
+        knowledge_version="medical_v3.1",
+        content_checksum="sha256:chunk-001",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    chunks_path = tmp_path / "chunks.json"
+    manifest_path.write_text(json.dumps(manifest.model_dump(mode="json")), encoding="utf-8")
+    chunks_path.write_text(
+        json.dumps([chunk.model_dump(mode="json")]),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_embedding_provider",
+        lambda environment: object(),
+    )
+
+    def capture_ingest(self, checked_manifest, checked_chunks):
+        captured["manifest"] = checked_manifest
+        captured["chunks"] = checked_chunks
+        return "harmony_v31_medical_v3_1"
+
+    monkeypatch.setattr(VersionedRagStore, "ingest", capture_ingest)
+
+    store = agent_config.get_v31_rag_store(
+        {
+            "HARMONYAI_REAL_AGENTS": "true",
+            "DASHSCOPE_API_KEY": "configured-value",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
+            "QWEN_MODEL": "qwen-approved",
+            "CHROMA_PERSIST_DIRECTORY": str(tmp_path / "chroma"),
+            "CHROMA_COLLECTION": "harmony_v31",
+            "RAG_CORPUS_MANIFEST_PATH": str(manifest_path),
+            "RAG_CORPUS_CHUNKS_PATH": str(chunks_path),
+        },
+        client=object(),
+    )
+
+    assert isinstance(store, VersionedRagStore)
+    assert captured["manifest"].manifest_checksum == "sha256:manifest-v31"
+    assert [item.chunk_id for item in captured["chunks"]] == ["chunk_001"]

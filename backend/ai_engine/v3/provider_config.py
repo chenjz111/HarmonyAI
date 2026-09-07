@@ -19,6 +19,7 @@ class V31ProviderConfig:
     qwen_base_url: str | None
     qwen_api_key: str | None
     qwen_model: str | None
+    dashscope_workspace_id: str | None = None
     readiness_error: str | None = None
 
     @classmethod
@@ -29,19 +30,34 @@ class V31ProviderConfig:
             "yes",
         }
         dimension = _parse_int(environment.get("EMBEDDING_DIMENSION", "1024"))
-        embedding_model = _value(environment, "EMBEDDING_MODEL")
+        dashscope_key = _value(environment, "DASHSCOPE_API_KEY")
+        workspace_id = _value(environment, "DASHSCOPE_WORKSPACE_ID")
+        dashscope_base_url = _value(environment, "DASHSCOPE_BASE_URL") or (
+            "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            if dashscope_key
+            else None
+        )
+        embedding_model = _value(environment, "EMBEDDING_MODEL") or (
+            "text-embedding-v4" if dashscope_key else None
+        )
+        embedding_provider = _value(environment, "EMBEDDING_PROVIDER") or (
+            "dashscope" if dashscope_key else None
+        )
+        embedding_base_url = _value(environment, "EMBEDDING_BASE_URL") or dashscope_base_url
+        embedding_api_key = _value(environment, "EMBEDDING_API_KEY") or dashscope_key
+        qwen_base_url = _value(environment, "QWEN_BASE_URL") or dashscope_base_url
+        qwen_api_key = _value(environment, "QWEN_API_KEY") or dashscope_key
+        qwen_model = _value(environment, "QWEN_MODEL") or _value(
+            environment, "DASHSCOPE_QWEN_MODEL"
+        )
         readiness_error = None
         if real_agents:
-            if dimension is None:
+            if not dashscope_key or not workspace_id:
+                readiness_error = "DASHSCOPE_PROVIDER_NOT_CONFIGURED"
+            elif dimension is None:
                 readiness_error = "EMBEDDING_DIMENSION_INVALID"
             elif not all(
-                _value(environment, key)
-                for key in (
-                    "EMBEDDING_PROVIDER",
-                    "EMBEDDING_BASE_URL",
-                    "EMBEDDING_API_KEY",
-                    "EMBEDDING_MODEL",
-                )
+                (embedding_provider, embedding_base_url, embedding_api_key, embedding_model)
             ):
                 readiness_error = "EMBEDDING_PROVIDER_NOT_CONFIGURED"
             elif embedding_model != "text-embedding-v4" or dimension != 1024:
@@ -51,23 +67,23 @@ class V31ProviderConfig:
             ):
                 readiness_error = "CHROMA_NOT_CONFIGURED"
             elif not all(
-                _value(environment, key)
-                for key in ("QWEN_BASE_URL", "QWEN_API_KEY", "QWEN_MODEL")
+                (qwen_base_url, qwen_api_key, qwen_model)
             ):
                 readiness_error = "QWEN_PROVIDER_NOT_CONFIGURED"
 
         return cls(
             real_agents=real_agents,
-            embedding_provider=_value(environment, "EMBEDDING_PROVIDER"),
-            embedding_base_url=_value(environment, "EMBEDDING_BASE_URL"),
-            embedding_api_key=_value(environment, "EMBEDDING_API_KEY"),
+            embedding_provider=embedding_provider,
+            embedding_base_url=embedding_base_url,
+            embedding_api_key=embedding_api_key,
             embedding_model=embedding_model,
             embedding_dimension=dimension or 0,
             chroma_persist_directory=_value(environment, "CHROMA_PERSIST_DIRECTORY"),
             chroma_collection=_value(environment, "CHROMA_COLLECTION"),
-            qwen_base_url=_value(environment, "QWEN_BASE_URL"),
-            qwen_api_key=_value(environment, "QWEN_API_KEY"),
-            qwen_model=_value(environment, "QWEN_MODEL"),
+            qwen_base_url=qwen_base_url,
+            qwen_api_key=qwen_api_key,
+            qwen_model=qwen_model,
+            dashscope_workspace_id=workspace_id,
             readiness_error=readiness_error,
         )
 
@@ -93,6 +109,7 @@ class V31ProviderConfig:
             "qwen_configured": all(
                 (self.qwen_base_url, self.qwen_api_key, self.qwen_model)
             ),
+            "dashscope_configured": bool(self.dashscope_workspace_id),
             "readiness_error": self.readiness_error,
         }
 

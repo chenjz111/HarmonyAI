@@ -251,6 +251,26 @@ def test_diagnosis_provider_factory_requires_explicit_qwen_configuration():
     assert provider.backend.model == "qwen-approved"
 
 
+def test_diagnosis_provider_factory_uses_dashscope_credentials_and_workspace():
+    from backend.ai_engine.v3.diagnosis_provider import diagnosis_provider_from_environment
+
+    provider = diagnosis_provider_from_environment(
+        {
+            "DASHSCOPE_API_KEY": "configured",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
+            "DASHSCOPE_BASE_URL": "https://dashscope.example/compatible-mode/v1",
+            "QWEN_MODEL": "qwen-approved",
+        },
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+
+    assert provider is not None
+    assert provider.backend.model == "qwen-approved"
+    assert provider.backend.extra_headers["X-DashScope-WorkSpace"] == "workspace-test"
+
+
 def test_diagnosis_execution_does_not_call_qwen_when_rag_is_empty_or_degraded():
     from backend.app.schemas.v3.common import Degradation
     from backend.app.schemas.v3.diagnosis import RagResult

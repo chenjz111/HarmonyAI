@@ -125,3 +125,45 @@ def test_async_embedding_provider_uses_same_contract():
 
     assert len(vector) == 1024
     assert calls[0]["input_type"] == "query"
+
+
+def test_embedding_provider_propagates_dashscope_workspace_header():
+    from backend.ai_engine.v3.embedding_provider import EmbeddingProvider
+
+    headers_seen = []
+
+    def transport(url, headers, body, timeout):
+        del url, timeout
+        headers_seen.append(headers)
+        json.loads(body)
+        return json.dumps({"data": [{"embedding": [0.2] * 1024}]}).encode()
+
+    provider = EmbeddingProvider(
+        base_url="https://dashscope.example/compatible-mode/v1",
+        api_key="configured",
+        workspace_id="workspace-test",
+        model="text-embedding-v4",
+        dimension=1024,
+        transport=transport,
+    )
+
+    provider.embed("approved query", input_type="query")
+
+    assert headers_seen[0]["X-DashScope-WorkSpace"] == "workspace-test"
+
+
+def test_embedding_provider_factory_uses_dashscope_environment():
+    from backend.ai_engine.v3.embedding_provider import embedding_provider_from_environment
+
+    provider = embedding_provider_from_environment(
+        {
+            "DASHSCOPE_API_KEY": "configured",
+            "DASHSCOPE_WORKSPACE_ID": "workspace-test",
+            "DASHSCOPE_BASE_URL": "https://dashscope.example/compatible-mode/v1",
+        }
+    )
+
+    assert provider is not None
+    assert provider.model == "text-embedding-v4"
+    assert provider.dimension == 1024
+    assert provider.workspace_id == "workspace-test"

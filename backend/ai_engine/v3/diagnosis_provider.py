@@ -128,9 +128,19 @@ def diagnosis_provider_from_environment(
 ) -> DiagnosisProvider | None:
     """Build the Qwen-backed Agent2 adapter only from explicit env values."""
 
-    base_url = environment.get("QWEN_BASE_URL", "").strip()
-    api_key = environment.get("QWEN_API_KEY", "").strip()
-    model = environment.get("QWEN_MODEL", "").strip()
+    dashscope_key = environment.get("DASHSCOPE_API_KEY", "").strip()
+    workspace_id = environment.get("DASHSCOPE_WORKSPACE_ID", "").strip()
+    base_url = (
+        environment.get("QWEN_BASE_URL", "").strip()
+        or environment.get("DASHSCOPE_BASE_URL", "").strip()
+        or ("https://dashscope.aliyuncs.com/compatible-mode/v1" if dashscope_key else "")
+    )
+    api_key = environment.get("QWEN_API_KEY", "").strip() or dashscope_key
+    model = environment.get("QWEN_MODEL", "").strip() or environment.get(
+        "DASHSCOPE_QWEN_MODEL", ""
+    ).strip()
+    if dashscope_key and not workspace_id:
+        return None
     if not all((base_url, api_key, model)):
         return None
     from backend.ai_engine.providers import QwenCompatibleProvider
@@ -140,6 +150,7 @@ def diagnosis_provider_from_environment(
             base_url=base_url,
             api_key=api_key,
             model=model,
+            extra_headers={"X-DashScope-WorkSpace": workspace_id} if workspace_id else None,
         ),
         allowed_syndrome_codes=allowed_syndrome_codes,
         allowed_fact_ids=allowed_fact_ids,

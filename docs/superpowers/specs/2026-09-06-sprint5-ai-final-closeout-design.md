@@ -84,17 +84,25 @@ model.
 
 Production mode requires explicit environment configuration:
 
-- Qwen: `QWEN_BASE_URL`, `QWEN_API_KEY`, `QWEN_MODEL`;
-- Embedding: `EMBEDDING_PROVIDER`, `EMBEDDING_BASE_URL`,
-  `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`;
+- runtime credentials: `HARMONYAI_REAL_AGENTS=true`, `DASHSCOPE_API_KEY`,
+  and `DASHSCOPE_WORKSPACE_ID`;
+- DashScope endpoint: `DASHSCOPE_BASE_URL` may override the default
+  compatible endpoint; the same workspace header is sent to Embedding and
+  Qwen requests;
+- Embedding identity: `text-embedding-v4` and `1024` dense dimensions;
+- Qwen model: `QWEN_MODEL` or `DASHSCOPE_QWEN_MODEL`;
 - Chroma: `CHROMA_PERSIST_DIRECTORY`, `CHROMA_COLLECTION`;
-- runtime: `HARMONYAI_REAL_AGENTS=true`.
+- corpus: `RAG_CORPUS_MANIFEST_PATH` and `RAG_CORPUS_CHUNKS_PATH`.
+
+Legacy `EMBEDDING_*` and `QWEN_*` values may override endpoint/model details
+only when the DashScope credentials are also present and the resulting
+identity remains approved.
 
 Credentials never enter source, fixtures, screenshots, CI output, or normal
 logs. Production must reject missing or inconsistent configuration rather
 than silently selecting mock mode or `hash-v1`.
 
-The #108 corpus branch currently provides medically reviewed source
+The #108 corpus issue currently provides medically reviewed source
 registration, but its source approval is still pending production release and
 its ingestion fields are incomplete. Until Owner-approved chunk payloads and
 the completed ingestion manifest exist, the implementation may validate the

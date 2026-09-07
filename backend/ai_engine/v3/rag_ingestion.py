@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import json
+from pathlib import Path
 
 from pydantic import ValidationError
 
@@ -81,3 +83,40 @@ def validate_production_corpus(
             )
 
     return checked_manifest
+
+
+def load_production_corpus(
+    manifest_path: str | Path,
+    chunks_path: str | Path,
+) -> tuple[IngestionManifest, list[KnowledgeChunk]]:
+    """Load and validate owner-supplied manifest/chunks without fallback data."""
+
+    try:
+        manifest_payload = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        chunks_payload = json.loads(Path(chunks_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ProductionCorpusNotReady(
+            "CORPUS_FILES_INVALID",
+            "医学语料文件无法读取或格式无效。",
+        ) from error
+
+    if isinstance(manifest_payload, Mapping) and isinstance(
+        manifest_payload.get("manifest"), Mapping
+    ):
+        manifest_payload = manifest_payload["manifest"]
+    if isinstance(chunks_payload, Mapping):
+        chunks_payload = chunks_payload.get("chunks")
+    if not isinstance(manifest_payload, Mapping) or not isinstance(chunks_payload, list):
+        raise ProductionCorpusNotReady(
+            "CORPUS_FILES_INVALID",
+            "医学语料文件格式无效。",
+        )
+    try:
+        manifest = IngestionManifest.model_validate(manifest_payload)
+        chunks = [KnowledgeChunk.model_validate(item) for item in chunks_payload]
+    except (TypeError, ValueError, ValidationError) as error:
+        raise ProductionCorpusNotReady(
+            "CORPUS_FILES_INVALID",
+            "医学语料文件内容无效。",
+        ) from error
+    return validate_production_corpus(manifest, chunks), chunks
