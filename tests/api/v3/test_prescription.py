@@ -5,6 +5,7 @@ from contextlib import contextmanager
 import json
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.core.database import get_db
@@ -21,6 +22,60 @@ from backend.app.models.v3.understanding import (
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _approved_agent3_assets(monkeypatch):
+    from backend.app.services.v3 import internal_agent3_service
+
+    mapping = {
+        "schema_id": "five-tone_mapping_v3",
+        "schema_version": "3.0.0",
+        "organ_tone_weights": {
+            "primary": {
+                "liver": {"jiao": 0.7, "shang": 0.15, "zhi": 0.15},
+                "heart": {"zhi": 0.7, "gong": 0.15, "yu": 0.15},
+                "spleen": {"gong": 0.7, "zhi": 0.15, "shang": 0.15},
+                "lung": {"shang": 0.7, "gong": 0.15, "jiao": 0.15},
+                "kidney": {"yu": 0.7, "gong": 0.15, "shang": 0.15},
+            }
+        },
+    }
+    rules = {
+        "schema_id": "music_generation_rules_v3.1",
+        "review_status": "approved",
+        "default": {
+            "bpm": 60,
+            "instruments": ["guqin"],
+            "ambience": ["rain"],
+            "duration_seconds": 180,
+            "explanations": {
+                "bpm": "approved bpm",
+                "instruments": "approved instruments",
+                "ambience": "approved ambience",
+                "duration": "approved duration",
+            },
+        },
+        "goals": {
+            "energy": {
+                "bpm": 82,
+                "instruments": ["pipa", "xiao"],
+                "ambience": ["stream"],
+                "duration_seconds": 180,
+            },
+            "focus": {
+                "bpm": 76,
+                "instruments": ["guqin"],
+                "ambience": ["rain"],
+                "duration_seconds": 180,
+            },
+        },
+    }
+    monkeypatch.setattr(
+        internal_agent3_service,
+        "load_agent3_assets",
+        lambda: (mapping, rules),
+    )
 
 
 @contextmanager
@@ -122,7 +177,16 @@ def _seed_diagnosis(
                 status="confirmed",
                 confirmation_status="confirmed",
                 state_summary="state",
-                organ_profile_json={},
+                organ_profile_json={
+                    "status": "available",
+                    "weights": {
+                        "liver": 0.7,
+                        "heart": 0.1,
+                        "spleen": 0.1,
+                        "lung": 0.05,
+                        "kidney": 0.05,
+                    },
+                },
                 evidence_coverage=0.8,
                 source_diversity=1,
                 conflicts_json=[],
@@ -162,9 +226,9 @@ def test_create_and_read_prescription():
     )
     assert created.status_code == 201, created.text
     data = _v3_data(created)
-    assert data["status"] == "degraded"
-    assert data["prescription_mode"] == "wellness"
-    assert data["generation_spec"]["tone_profile"]["primary_tone"] == "gong"
+    assert data["status"] == "success"
+    assert data["prescription_mode"] == "syndrome_based"
+    assert data["generation_spec"]["tone_profile"]["primary_tone"] == "jiao"
     assert data["generation_spec"]["tone_profile"]["secondary_tone"] is None
 
     read = _v3_data(
@@ -298,7 +362,7 @@ def _generation_spec(diagnosis_id, *, revision=1, primary_tone="zhi", instrument
     }
 
 
-def test_real_generation_spec_is_accepted_and_bound():
+def test_generation_spec_is_built_internally_from_diagnosis():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
     diagnosis_id = _seed_diagnosis(headers, session_id)
@@ -309,7 +373,6 @@ def test_real_generation_spec_is_accepted_and_bound():
         json={
             "schema_version": "prescription_v3.1",
             "diagnosis_id": diagnosis_id,
-            "generation_spec": _generation_spec(diagnosis_id),
             "preference_snapshot": None,
         },
     )
@@ -317,34 +380,12 @@ def test_real_generation_spec_is_accepted_and_bound():
     data = _v3_data(created)
     assert data["status"] == "success"
     assert data["prescription_mode"] == "syndrome_based"
-    assert data["generation_spec"]["tone_profile"]["primary_tone"] == "zhi"
-    # Presentation derives from the real spec, not a hardcoded 宫调/古琴.
-    assert data["presentation"]["tone_summary"] == "徵调为主，平稳舒缓。"
-    assert "pipa、xiao" in data["presentation"]["parameter_summaries"][0]
+    assert data["generation_spec"]["tone_profile"]["primary_tone"] == "jiao"
+    assert data["generation_spec"]["tone_profile"]["basis"]["diagnosis_id"] == diagnosis_id
+    assert data["presentation"]["tone_summary"].startswith("角调为主")
 
 
-def test_generation_spec_with_mismatched_diagnosis_id_is_rejected():
-    headers = _guest_headers()
-    session_id = _new_flow_session(headers)
-    diagnosis_id = _seed_diagnosis(headers, session_id)
-
-    spec = _generation_spec(diagnosis_id)
-    spec["tone_profile"]["basis"]["diagnosis_id"] = "diag_someone_else"
-    response = client.post(
-        "/api/v3/prescriptions",
-        headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
-        json={
-            "schema_version": "prescription_v3.1",
-            "diagnosis_id": diagnosis_id,
-            "generation_spec": spec,
-            "preference_snapshot": None,
-        },
-    )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "SPEC_DIAGNOSIS_MISMATCH"
-
-
-def test_generation_spec_with_mismatched_revision_is_rejected():
+def test_client_cannot_submit_generation_spec():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
     diagnosis_id = _seed_diagnosis(headers, session_id)
@@ -355,12 +396,13 @@ def test_generation_spec_with_mismatched_revision_is_rejected():
         json={
             "schema_version": "prescription_v3.1",
             "diagnosis_id": diagnosis_id,
-            "generation_spec": _generation_spec(diagnosis_id, revision=99),
+            "generation_spec": _generation_spec(diagnosis_id),
             "preference_snapshot": None,
         },
     )
     assert response.status_code == 422
-    assert response.json()["error"]["code"] == "SPEC_REVISION_MISMATCH"
+    detail = response.json()["detail"]
+    assert any(item["loc"][-1] == "generation_spec" and item["type"] == "extra_forbidden" for item in detail)
 
 
 def test_abstained_diagnosis_falls_back_to_wellness():
@@ -382,7 +424,7 @@ def test_abstained_diagnosis_falls_back_to_wellness():
     assert data["generation_spec"]["tone_profile"]["primary_tone"] == "gong"
 
 
-def test_abstained_diagnosis_rejects_generation_spec():
+def test_abstained_diagnosis_also_rejects_client_generation_spec():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
     diagnosis_id = _seed_diagnosis(
@@ -400,7 +442,8 @@ def test_abstained_diagnosis_rejects_generation_spec():
         },
     )
     assert response.status_code == 422
-    assert response.json()["error"]["code"] == "SPEC_UNEXPECTED_FOR_ABSTAINED"
+    detail = response.json()["detail"]
+    assert any(item["loc"][-1] == "generation_spec" and item["type"] == "extra_forbidden" for item in detail)
 
 
 def test_withheld_diagnosis_is_not_ready():
@@ -415,6 +458,37 @@ def test_withheld_diagnosis_is_not_ready():
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "DIAGNOSIS_NOT_READY"
+
+
+def test_non_abstained_diagnosis_fails_when_agent3_assets_are_not_ready(monkeypatch):
+    from backend.app.services.v3 import internal_agent3_service
+
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+    monkeypatch.setattr(
+        internal_agent3_service,
+        "load_agent3_assets",
+        lambda: (_ for _ in ()).throw(
+            internal_agent3_service.Agent3NotReady(
+                "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED",
+                "music rules unavailable",
+            )
+        ),
+    )
+
+    response = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "prescription_v3.1",
+            "diagnosis_id": diagnosis_id,
+            "preference_snapshot": None,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED"
 
 
 def test_prescription_idempotent_replay():

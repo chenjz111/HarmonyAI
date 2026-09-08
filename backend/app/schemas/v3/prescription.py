@@ -106,21 +106,10 @@ class PrescriptionV3Request(V3BaseModel):
 
 
 class PrescriptionV31Request(V3BaseModel):
-    """Owner Flow prescription input.
-
-    The backend receives the real Agent3 ToneProfile/GenerationSpec
-    (``generation_spec``); it never re-derives a fixed gong-tone scheme. When
-    ``generation_spec`` is omitted the caller is explicitly requesting the
-    conservative wellness fallback (abstained diagnosis path).
-
-    The optional UserGoal is captured on the Assessment as an independent
-    personalization input. Prescription consumes that confirmed assessment
-    value and never accepts a second request-level goal override.
-    """
+    """Owner Flow input; Agent3 output is always produced server-side."""
 
     schema_version: Literal["prescription_v3.1"]
     diagnosis_id: NonEmptyString
-    generation_spec: GenerationSpec | None = None
     preference_snapshot: PreferenceSnapshot | None = None
 
 
