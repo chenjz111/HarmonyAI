@@ -6,8 +6,8 @@
   "scripts": {
     "dev:h5": "node scripts/run-uni.mjs",
     "dev:mp-weixin": "node scripts/run-uni.mjs -p mp-weixin",
-    "build:h5": "node scripts/run-uni.mjs build",
-    "build:mp-weixin": "node scripts/run-uni.mjs build -p mp-weixin"
+    "build:h5": "node scripts/gen-manifest.mjs && node scripts/run-uni.mjs build",
+    "build:mp-weixin": "node scripts/gen-manifest.mjs && node scripts/run-uni.mjs build -p mp-weixin"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-alpha-5020320260803001",
