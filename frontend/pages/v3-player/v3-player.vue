@@ -29,6 +29,8 @@ export default {
       music: null,
       playing: false,
       audioCtx: null,
+      resolvedAudioSrc: "",
+      resolvedAudioStreamUrl: "",
       currentTime: 0, // 当前播放时间（秒）
       duration: 0, // 总时长（秒）
       favorite: false,
@@ -90,15 +92,19 @@ export default {
     async play() {
       if (!this.audioSrc || this.playing) return
       try {
-        // 若已有音频上下文且 src 相同，直接恢复播放（无需重新下载）
-        if (this.audioCtx && this.audioCtx.src === this.audioSrc) {
-          this.audioCtx.play()
-          this.playing = true
-          return
+        // 已解析过后端鉴权地址时直接恢复本地音频，不重复下载或重置进度。
+        if (this.audioCtx && this.resolvedAudioSrc) {
+          if (this.resolvedAudioStreamUrl === this.music.stream_url) {
+            this.audioCtx.play()
+            this.playing = true
+            return
+          }
         }
-        
+
         // 只在首次或切曲时才下载音频文件
         const src = await apiV3.fetchAuthorizedAudio(this.music.stream_url)
+        this.resolvedAudioSrc = src
+        this.resolvedAudioStreamUrl = this.music.stream_url
         if (!this.audioCtx) {
           this.audioCtx = uni.createInnerAudioContext()
           
@@ -146,6 +152,8 @@ export default {
         this.audioCtx.destroy()
         this.audioCtx = null
       }
+      this.resolvedAudioSrc = ""
+      this.resolvedAudioStreamUrl = ""
       this.playing = false
     },
     async toggleFavorite() {

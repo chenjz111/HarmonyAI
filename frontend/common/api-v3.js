@@ -1094,6 +1094,9 @@ const mockApi = {
       })
       a.summary = a.sections.flatMap((sec) => sec.items).slice(0, 3).join("、")
     }
+    if (typeof payload.edited_summary_text === "string" && payload.edited_summary_text.trim()) {
+      a.summary = payload.edited_summary_text.trim()
+    }
     a.revision += 1
     a.status = "confirmed"
     return clone(a)
@@ -1250,12 +1253,12 @@ export const apiV3 = {
     if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估"))
     return mockApi.getAssessment()
   },
-  // 最终确认：真实模式通过已交付的 Understanding confirmations 路由提交；
-  // mock/hybrid 保持评估 fixture 状态机，以便验证后续五音解析流程。
+  // 最终确认操作的是 Assessment。真实 Assessment confirmation 路由尚未交付时
+  // 明确等待，绝不借用 Understanding confirmation 伪装成功。
   confirmAssessment(payload) {
     return AGENT_MOCK
       ? mockApi.confirmAssessment(payload)
-      : realInputApi.confirmUnderstanding(payload)
+      : Promise.reject(agentPendingError("近期状态确认"))
   },
 
   // 辨证与生成依据（依赖后端辨证能力，尚未交付）

@@ -295,6 +295,26 @@ test("P0-3: backend audio streams are fetched with auth headers before playback"
   )
 })
 
+test("P0-3: player caches the resolved local audio path for pause/resume", () => {
+  const player = readPage("v3-player/v3-player.vue")
+  assert.ok(player.includes("resolvedAudioSrc"), "player must retain the resolved local audio path")
+  assert.ok(player.includes("resolvedAudioStreamUrl"), "player must bind the local path to its remote stream")
+  assert.match(
+    player,
+    /if\s*\(this\.audioCtx\s*&&\s*this\.resolvedAudioSrc\)/,
+    "resume must reuse the resolved local path instead of comparing it to the remote URL",
+  )
+  assert.match(
+    player,
+    /this\.resolvedAudioSrc\s*=\s*src/,
+    "first authorized download must populate the cached local path",
+  )
+  assert.ok(
+    player.includes("this.resolvedAudioStreamUrl === this.music.stream_url"),
+    "a different music stream must not reuse a stale local path",
+  )
+})
+
 test("P0-2: upload failures still offer the questionnaire-only path (freeze §4.2)", () => {
   // V3.1 冻结：网络/OCR 失败收敛到独立异常页，"我没有合适的资料"转入无资料问卷流程
   const errPage = readPage("v3-material-error/v3-material-error.vue")
@@ -378,6 +398,12 @@ test("single final confirmation: assessment confirm page has exactly one primary
   assert.ok(confirm.includes("expected_revision"), "must validate expected_revision")
   // 唯一确认：确认动作只出现一次（不允许二次确认页文案）
   assert.ok(!confirm.includes("再次确认"), "no double confirmation")
+})
+
+test("V3.1 final state confirmation operates on Assessment, never Understanding", () => {
+  const confirm = readPage("v3-confirm/v3-confirm.vue")
+  assert.ok(confirm.includes("apiV3.confirmAssessment("), "final state page must confirm Assessment")
+  assert.ok(!confirm.includes("apiV3.confirmUnderstanding("), "final state page must not mutate source Understanding")
 })
 
 test("V3.1: final confirm is titled 完成近期状态总结 and sits after optional goal page", () => {
@@ -1081,7 +1107,7 @@ test("api-v3 real mode (default): agent functions return AGENT_PENDING without f
     assert.equal(apiV3.INPUT_SIMULATED, false, "real mode must not simulate input (voice transcript)")
 
     // 智能化能力（后端尚未交付）：明确等待状态
-    for (const fn of ["submitQuestionnaire", "getAssessment", "getMusicBasis"]) {
+    for (const fn of ["submitQuestionnaire", "getAssessment", "confirmAssessment", "getMusicBasis"]) {
       await assert.rejects(
         () => apiV3[fn](),
         (e) => e.code === "AGENT_PENDING" && e.agentPending === true && !e.message.includes("PR"),

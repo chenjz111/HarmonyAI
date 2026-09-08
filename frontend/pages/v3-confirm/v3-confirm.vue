@@ -71,13 +71,10 @@ export default {
       if (this.confirming) return
       this.confirming = true
       try {
-        await apiV3.confirmUnderstanding({
-          schema_version: "understanding_v3.1",
+        await apiV3.confirmAssessment({
           expected_revision: this.model.revision,
-          expected_input_revision: this.model.input_revision || 1,
           decision: "confirm",
           changes: [],
-          reprocess_requested: false,
         })
         uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
       } catch (e) {
@@ -117,6 +114,7 @@ export default {
         .map((item, idx) => ({ item, idx }))
         .filter(({ item, idx }) => this.draftSeverity[idx] !== item.value.value)
         .map(({ item, idx }) => ({
+          target_type: "fact_evidence",
           target_id: item.target_id,
           field: "severity",
           old_value: item.value.value,
@@ -125,16 +123,12 @@ export default {
         
       this.confirming = true
       try {
-        // V3.1: 确认是通过 Understanding 端点（支持 edited_summary_text）
-        // 而非 Assessment 端点（后者仅支持 changes）
-        await apiV3.confirmUnderstanding({
-          schema_version: "understanding_v3.1",
+        // 最终状态总结属于 Assessment；不得回写资料 Understanding。
+        await apiV3.confirmAssessment({
           expected_revision: this.model.revision,
-          expected_input_revision: this.model.input_revision || 1,
           decision: (changes.length || isTextEdit) ? "confirm_with_changes" : "confirm",
           changes,
           edited_summary_text: isTextEdit ? this.draftSummaryText : undefined,
-          reprocess_requested: isTextEdit, // 编辑文本时必须 reprocess
         })
         uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
       } catch (e) {
