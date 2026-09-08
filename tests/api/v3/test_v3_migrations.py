@@ -118,6 +118,7 @@ def test_0009_adds_canonical_five_tone_snapshot(tmp_path):
         "five_tone_read_model_schema_version",
         "five_tone_read_model_json",
         "five_tone_read_model_checksum",
+        "generation_spec_json",
         "five_tone_generated_at",
         "preference_profile_id",
         "preference_version",

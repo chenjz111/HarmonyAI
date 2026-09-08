@@ -66,6 +66,7 @@ from backend.ai_engine.v3.v31_pipeline import (
 )
 from backend.ai_engine.v3.agent3 import Agent3Blocked
 from backend.app.schemas.v3.flow_v31 import FiveToneAnalysisReadModel
+from backend.app.services.v3.internal_agent3_service import to_transport_spec
 from backend.app.services.v3.idempotency import (
     IdempotencyConflict,
     IdempotencyFailureReplay,
@@ -629,6 +630,10 @@ def _persist_diagnosis(
         run.five_tone_read_model_checksum = (
             f"sha256:{sha256(canonical_read_model.encode('utf-8')).hexdigest()}"
         )
+        run.generation_spec_json = to_transport_spec(
+            pipeline.generation_spec,
+            tone_profile=pipeline.tone_profile,
+        ).model_dump(mode="json")
         run.five_tone_generated_at = datetime.now(timezone.utc)
         run.preference_profile_id = None
         run.preference_version = None

@@ -210,6 +210,7 @@ def test_formal_router_reaches_v31_pipeline_factory_and_mock_chain(
             f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
         )
         assert diagnosis.five_tone_generated_at is not None
+        assert diagnosis.generation_spec_json is not None
         rag_run = audit_db.query(RagRetrievalRun).one()
         assert rag_run.rag_run_id == diagnosis.rag_run_id
         assert rag_run.status == "success"

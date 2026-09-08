@@ -2,6 +2,7 @@
 
 import base64
 from contextlib import contextmanager
+from hashlib import sha256
 import json
 import uuid
 
@@ -19,6 +20,7 @@ from backend.app.models.v3.understanding import (
     UnderstandingRevision,
     UnderstandingRun,
 )
+from backend.app.schemas.v3.flow_v31 import UserGoalV31
 
 
 client = TestClient(app)
@@ -167,6 +169,8 @@ def _seed_diagnosis(
                 status="confirmed",
                 safety_status=None,
                 user_goal_json=None,
+                flow_contract_version="v3-owner-flow-1",
+                input_revision=sess.input_revision,
             )
         )
         session.add(
@@ -174,6 +178,7 @@ def _seed_diagnosis(
                 assessment_id=assessment_id,
                 revision=1,
                 understanding_revision=1,
+                input_revision=sess.input_revision,
                 status="confirmed",
                 confirmation_status="confirmed",
                 state_summary="state",
@@ -196,20 +201,82 @@ def _seed_diagnosis(
             )
         )
         diagnosis_id = f"diag_{uuid.uuid4().hex}"
-        session.add(
-            DiagnosisRun(
-                diagnosis_id=diagnosis_id,
-                internal_user_pk=user.internal_user_pk,
-                session_row_id=sess.id,
-                assessment_id=assessment_id,
-                assessment_revision=1,
-                status=status,
-                abstained=abstained,
-                abstain_reason=abstain_reason,
-                degradation_json={},
-                presentation_json={},
-            )
+        diagnosis = DiagnosisRun(
+            diagnosis_id=diagnosis_id,
+            internal_user_pk=user.internal_user_pk,
+            session_row_id=sess.id,
+            assessment_id=assessment_id,
+            assessment_revision=1,
+            status=status,
+            abstained=abstained,
+            abstain_reason=abstain_reason,
+            degradation_json={},
+            presentation_json={},
         )
+        session.add(diagnosis)
+        sess.active_understanding_id = understanding_id
+        sess.active_understanding_revision = 1
+        session.flush()
+        if not abstained and status not in {"withheld", "failed"}:
+            from backend.app.services.v3.internal_agent3_service import (
+                build_prescription_spec,
+            )
+
+            user_goal = (
+                UserGoalV31.model_validate(sess.user_goal_json)
+                if sess.user_goal_json is not None
+                else None
+            )
+            spec = build_prescription_spec(session, diagnosis, user_goal)
+            read_model = {
+                "schema_version": "five_tone_analysis_read_model_v3.1",
+                "confirmed_user_state_ref": {
+                    "confirmed_user_state_id": f"cus_{assessment_id}_1",
+                    "revision": 1,
+                    "content_checksum": f"sha256:{'a' * 64}",
+                },
+                "confirmed_state": "state",
+                "state_tendency": "state tendency",
+                "analysis_rationales": [{
+                    "summary": "based on confirmed assessment",
+                    "evidence_refs": [f"assessment:{assessment_id}:r1"],
+                }],
+                "primary_tone": {
+                    "tone": spec.tone_profile.primary_tone.value,
+                    "display_name": "角调",
+                    "explanation": "primary tone",
+                },
+                "secondary_tone": None,
+                "bpm": {"value": spec.bpm, "explanation": "approved bpm"},
+                "instruments": {
+                    "values": spec.instruments,
+                    "explanation": "approved instruments",
+                },
+                "ambience": {
+                    "values": spec.ambient_sounds or ["none"],
+                    "explanation": "approved ambience",
+                },
+                "duration": {
+                    "seconds": spec.duration_seconds,
+                    "explanation": "approved duration",
+                },
+                "generation": {"status": "ready", "message": "ready"},
+                "disclaimer": "本结果不构成医学诊断或治疗建议。",
+            }
+            canonical = json.dumps(
+                read_model,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            diagnosis.five_tone_read_model_schema_version = (
+                "five_tone_analysis_read_model_v3.1"
+            )
+            diagnosis.five_tone_read_model_json = read_model
+            diagnosis.five_tone_read_model_checksum = (
+                f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
+            )
+            diagnosis.generation_spec_json = spec.model_dump(mode="json")
         session.commit()
         return diagnosis_id
 
@@ -281,7 +348,6 @@ def _submit_questionnaire(headers, session_id):
 def test_user_goal_influences_prescription_bpm():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
-    diagnosis_id = _seed_diagnosis(headers, session_id)
     _submit_questionnaire(headers, session_id)
 
     submitted = client.put(
@@ -290,6 +356,7 @@ def test_user_goal_influences_prescription_bpm():
         json={"user_goal": {"primary_goal": "energy", "secondary_goal": None, "custom_goal_text": None}},
     )
     assert submitted.status_code == 200, submitted.text
+    diagnosis_id = _seed_diagnosis(headers, session_id)
 
     created = _v3_data(
         client.post(
@@ -385,6 +452,86 @@ def test_generation_spec_is_built_internally_from_diagnosis():
     assert data["presentation"]["tone_summary"].startswith("角调为主")
 
 
+def test_prescription_rejects_diagnosis_after_assessment_is_superseded():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+
+    with _seed_db() as session:
+        diagnosis = session.query(DiagnosisRun).filter(
+            DiagnosisRun.diagnosis_id == diagnosis_id
+        ).one()
+        assessment = session.query(AssessmentV3).filter(
+            AssessmentV3.assessment_id == diagnosis.assessment_id
+        ).one()
+        assessment.current_revision = 2
+        session.add(
+            AssessmentRevisionV3(
+                assessment_id=assessment.assessment_id,
+                revision=2,
+                previous_revision=1,
+                understanding_revision=1,
+                status="confirmed",
+                confirmation_status="confirmed",
+                state_summary="new state",
+                organ_profile_json={
+                    "status": "available",
+                    "weights": {
+                        "liver": 0.1,
+                        "heart": 0.7,
+                        "spleen": 0.1,
+                        "lung": 0.05,
+                        "kidney": 0.05,
+                    },
+                },
+                evidence_coverage=0.8,
+                source_diversity=1,
+                conflicts_json=[],
+                missing_information_json=[],
+                degradation_json={},
+                presentation_json={},
+            )
+        )
+        session.commit()
+
+    response = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-stale-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "prescription_v3.1",
+            "diagnosis_id": diagnosis_id,
+            "preference_snapshot": None,
+        },
+    )
+
+    assert response.status_code == 409, response.text
+
+
+def test_prescription_does_not_rerun_agent3(monkeypatch):
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+
+    def fail_if_rerun(*args, **kwargs):
+        raise AssertionError("Agent3 must not rerun during Prescription")
+
+    monkeypatch.setattr(
+        "backend.app.services.v3.internal_agent3_service.build_prescription_spec",
+        fail_if_rerun,
+    )
+    response = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-snapshot-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "prescription_v3.1",
+            "diagnosis_id": diagnosis_id,
+            "preference_snapshot": None,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+
+
 def test_client_cannot_submit_generation_spec():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
@@ -460,7 +607,7 @@ def test_withheld_diagnosis_is_not_ready():
     assert response.json()["error"]["code"] == "DIAGNOSIS_NOT_READY"
 
 
-def test_non_abstained_diagnosis_fails_when_agent3_assets_are_not_ready(monkeypatch):
+def test_prescription_does_not_reload_agent3_assets(monkeypatch):
     from backend.app.services.v3 import internal_agent3_service
 
     headers = _guest_headers()
@@ -487,8 +634,7 @@ def test_non_abstained_diagnosis_fails_when_agent3_assets_are_not_ready(monkeypa
         },
     )
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED"
+    assert response.status_code == 201, response.text
 
 
 def test_prescription_idempotent_replay():
@@ -518,7 +664,6 @@ def test_prescription_idempotent_replay():
 def test_user_goal_snapshot_is_persisted():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
-    diagnosis_id = _seed_diagnosis(headers, session_id)
     _submit_questionnaire(headers, session_id)
 
     goal = {"primary_goal": "focus", "secondary_goal": None, "custom_goal_text": None}
@@ -528,6 +673,7 @@ def test_user_goal_snapshot_is_persisted():
         json={"user_goal": goal},
     )
     assert submitted.status_code == 200, submitted.text
+    diagnosis_id = _seed_diagnosis(headers, session_id)
 
     prescription_id = _v3_data(
         client.post(

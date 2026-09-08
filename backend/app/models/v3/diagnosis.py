@@ -70,6 +70,7 @@ class DiagnosisRun(Base):
     five_tone_read_model_schema_version = Column(String(64), nullable=True)
     five_tone_read_model_json = Column(JSON, nullable=True)
     five_tone_read_model_checksum = Column(String(96), nullable=True)
+    generation_spec_json = Column(JSON, nullable=True)
     five_tone_generated_at = Column(DateTime(timezone=True), nullable=True)
     preference_profile_id = Column(String(64), nullable=True)
     preference_version = Column(Integer, nullable=True)

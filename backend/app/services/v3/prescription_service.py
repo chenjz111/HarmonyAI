@@ -42,7 +42,9 @@ from backend.app.services.v3.feedback_service import get_latest_preference_snaps
 from backend.app.services.v3.idempotency import (
     reserve_v3_idempotency,
 )
-from backend.app.services.v3.internal_agent3_service import build_prescription_spec
+from backend.app.services.v3.internal_agent3_service import (
+    load_current_generation_spec,
+)
 
 
 # 疗愈诉求 → 保守 BPM / 能量曲线（仅 fallback 路径使用，不进医学证据）。
@@ -247,6 +249,13 @@ def create_prescription(
         raise OwnedResourceNotFound
     if diagnosis.status in {"withheld", "failed"}:
         raise DiagnosisNotReady
+    session_row = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == diagnosis.session_row_id)
+        .one_or_none()
+    )
+    if session_row is None:
+        raise OwnedResourceNotFound
 
     user_goal = _session_user_goal(db, diagnosis.session_row_id)
     user_goal_revision = _session_user_goal_revision(db, diagnosis.session_row_id)
@@ -267,7 +276,7 @@ def create_prescription(
         status = "degraded"
         mode = "wellness"
     else:
-        spec = build_prescription_spec(db, diagnosis, user_goal)
+        spec = load_current_generation_spec(db, diagnosis, session_row)
         status = "success"
         mode = "syndrome_based"
 

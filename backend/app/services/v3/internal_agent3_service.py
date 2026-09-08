@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -15,15 +16,24 @@ from backend.ai_engine.v3.agent3 import (
     build_generation_spec_v31,
     build_tone_profile_v31,
 )
-from backend.app.models.v3.assessment import AssessmentRevisionV3, FactEvidence
+from backend.app.models.session import Session as SessionModel
+from backend.app.models.v3.assessment import (
+    AssessmentRevisionV3,
+    AssessmentV3,
+    FactEvidence,
+)
 from backend.app.models.v3.diagnosis import DiagnosisRun
-from backend.app.schemas.v3.flow_v31 import UserGoalV31
+from backend.app.schemas.v3.flow_v31 import FiveToneAnalysisReadModel, UserGoalV31
 from backend.app.schemas.v3.prescription import (
     GenerationFallbackPolicy,
     GenerationSpec,
     GenerationStructure,
 )
 from backend.app.services.v3.knowledge_assets import load_five_tone_mapping
+from backend.app.services.v3.document_relevance_gate import (
+    DocumentRelevanceGateError,
+    require_active_document_set_relevance,
+)
 
 
 class Agent3NotReady(RuntimeError):
@@ -60,7 +70,7 @@ def load_agent3_assets() -> tuple[Mapping[str, object], Mapping[str, object]]:
     return mapping, rules
 
 
-def _transport_spec(
+def to_transport_spec(
     internal: GenerationSpecV31,
     *,
     tone_profile,
@@ -95,6 +105,133 @@ def _transport_spec(
         forbidden_constraints=[],
         fallback_policy=GenerationFallbackPolicy(allow_local_matching=True),
     )
+
+
+def load_current_five_tone_read_model(
+    db: Session,
+    diagnosis: DiagnosisRun,
+    session_row: SessionModel,
+) -> FiveToneAnalysisReadModel:
+    assessment = (
+        db.query(AssessmentV3)
+        .filter(
+            AssessmentV3.assessment_id == diagnosis.assessment_id,
+            AssessmentV3.internal_user_pk == diagnosis.internal_user_pk,
+            AssessmentV3.session_row_id == session_row.id,
+        )
+        .one_or_none()
+    )
+    revision = (
+        db.query(AssessmentRevisionV3)
+        .filter(
+            AssessmentRevisionV3.assessment_id == diagnosis.assessment_id,
+            AssessmentRevisionV3.revision == diagnosis.assessment_revision,
+        )
+        .one_or_none()
+    )
+    if (
+        diagnosis.session_row_id != session_row.id
+        or assessment is None
+        or revision is None
+        or assessment.current_revision != diagnosis.assessment_revision
+        or assessment.status != "confirmed"
+        or revision.status != "confirmed"
+        or revision.confirmation_status != "confirmed"
+    ):
+        raise Agent3NotReady(
+            "ASSESSMENT_SNAPSHOT_CONFLICT",
+            "评估结果已更新，请重新完成状态分析。",
+        )
+    if (
+        assessment.input_revision is not None
+        and (
+            assessment.input_revision != session_row.input_revision
+            or revision.input_revision != session_row.input_revision
+        )
+    ):
+        raise Agent3NotReady(
+            "ASSESSMENT_SNAPSHOT_CONFLICT",
+            "评估输入已更新，请重新完成状态分析。",
+        )
+    if (
+        assessment.understanding_id is not None
+        and (
+            assessment.understanding_id != session_row.active_understanding_id
+            or assessment.understanding_revision
+            != session_row.active_understanding_revision
+        )
+    ):
+        raise Agent3NotReady(
+            "ASSESSMENT_SNAPSHOT_CONFLICT",
+            "资料摘要已更新，请重新完成状态分析。",
+        )
+    if (
+        assessment.questionnaire_submission_id is not None
+        and assessment.questionnaire_submission_id
+        != session_row.active_questionnaire_submission_id
+    ):
+        raise Agent3NotReady(
+            "ASSESSMENT_SNAPSHOT_CONFLICT",
+            "问卷答案已更新，请重新完成状态分析。",
+        )
+    if session_row.input_mode == "with_document":
+        try:
+            require_active_document_set_relevance(db, session_row)
+        except DocumentRelevanceGateError as error:
+            raise Agent3NotReady(
+                "ASSESSMENT_SNAPSHOT_CONFLICT",
+                "资料可用性状态已更新，请重新完成状态分析。",
+            ) from error
+    if (
+        diagnosis.five_tone_read_model_json is None
+        or diagnosis.five_tone_read_model_checksum is None
+    ):
+        raise Agent3NotReady(
+            "FIVE_TONE_SNAPSHOT_NOT_READY",
+            "五音调适解析尚未准备完成。",
+        )
+    try:
+        read_model = FiveToneAnalysisReadModel.model_validate(
+            diagnosis.five_tone_read_model_json
+        )
+        canonical = json.dumps(
+            read_model.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError) as error:
+        raise Agent3NotReady(
+            "FIVE_TONE_SNAPSHOT_INVALID",
+            "五音调适解析数据无效。",
+        ) from error
+    checksum = f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
+    if checksum != diagnosis.five_tone_read_model_checksum:
+        raise Agent3NotReady(
+            "FIVE_TONE_SNAPSHOT_INVALID",
+            "五音调适解析数据校验失败。",
+        )
+    return read_model
+
+
+def load_current_generation_spec(
+    db: Session,
+    diagnosis: DiagnosisRun,
+    session_row: SessionModel,
+) -> GenerationSpec:
+    load_current_five_tone_read_model(db, diagnosis, session_row)
+    if diagnosis.generation_spec_json is None:
+        raise Agent3NotReady(
+            "GENERATION_SPEC_NOT_READY",
+            "音乐生成参数尚未准备完成。",
+        )
+    try:
+        return GenerationSpec.model_validate(diagnosis.generation_spec_json)
+    except (TypeError, ValueError) as error:
+        raise Agent3NotReady(
+            "GENERATION_SPEC_INVALID",
+            "音乐生成参数无效。",
+        ) from error
 
 
 def build_prescription_spec(
@@ -152,4 +289,4 @@ def build_prescription_spec(
     except Agent3Blocked as error:
         code = str(error) or "AGENT3_NOT_READY"
         raise Agent3NotReady(code, "五音处方规则尚未准备完成。") from error
-    return _transport_spec(internal, tone_profile=profile)
+    return to_transport_spec(internal, tone_profile=profile)

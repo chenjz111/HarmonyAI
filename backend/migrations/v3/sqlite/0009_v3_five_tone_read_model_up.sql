@@ -6,6 +6,7 @@ BEGIN IMMEDIATE;
 ALTER TABLE diagnosis_runs ADD COLUMN five_tone_read_model_schema_version TEXT;
 ALTER TABLE diagnosis_runs ADD COLUMN five_tone_read_model_json TEXT;
 ALTER TABLE diagnosis_runs ADD COLUMN five_tone_read_model_checksum TEXT;
+ALTER TABLE diagnosis_runs ADD COLUMN generation_spec_json TEXT;
 ALTER TABLE diagnosis_runs ADD COLUMN five_tone_generated_at DATETIME;
 ALTER TABLE diagnosis_runs ADD COLUMN preference_profile_id TEXT;
 ALTER TABLE diagnosis_runs ADD COLUMN preference_version INTEGER;
