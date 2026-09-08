@@ -19,6 +19,7 @@ from backend.app.models.v3.diagnosis import (
     RagRetrievalRun,
 )
 from backend.app.schemas.v3.diagnosis import IngestionManifest, RagHit, RagResult
+from backend.app.schemas.v3.prescription import PreferenceSnapshot
 from backend.app.schemas.v3.flow_v31 import (
     ConfirmedUserState,
     FiveToneAnalysisReadModel,
@@ -175,6 +176,21 @@ def test_formal_router_reaches_v31_pipeline_factory_and_mock_chain(
         "_load_confirmed_user_state",
         lambda *args, **kwargs: _confirmed_state_for(session_id),
     )
+    monkeypatch.setattr(
+        diagnosis_service,
+        "get_latest_preference_snapshot",
+        lambda *args, **kwargs: PreferenceSnapshot.model_validate(
+            {
+                "profile_id": "pref_formal",
+                "version": 3,
+                "preferred_instruments": [],
+                "disliked_instruments": [],
+                "preferred_bpm_range": {"min": 66, "max": 66, "weight": 1.0},
+                "preferred_duration_seconds": None,
+                "preferred_ambient": [],
+            }
+        ),
+    )
 
     response = client.post(
         "/api/v3/diagnoses",
@@ -210,7 +226,19 @@ def test_formal_router_reaches_v31_pipeline_factory_and_mock_chain(
             f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
         )
         assert diagnosis.five_tone_generated_at is not None
-        assert diagnosis.generation_spec_json is not None
+        assert diagnosis.generation_spec_json["bpm"] == 66
+        assert restored.bpm.value == 66
+        assert diagnosis.preference_profile_id == "pref_formal"
+        assert diagnosis.preference_version == 3
+        assert diagnosis.preference_application_json == [
+            {
+                "field": "bpm",
+                "before": 60,
+                "after": 66,
+                "applied": True,
+                "reason_code": "preference_applied",
+            }
+        ]
         rag_run = audit_db.query(RagRetrievalRun).one()
         assert rag_run.rag_run_id == diagnosis.rag_run_id
         assert rag_run.status == "success"

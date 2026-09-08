@@ -45,6 +45,7 @@ from backend.app.services.v3.idempotency import (
 from backend.app.services.v3.internal_agent3_service import (
     load_current_generation_spec,
 )
+from backend.app.services.v3.agent3_preference_policy import PreferenceApplication
 
 
 # 疗愈诉求 → 保守 BPM / 能量曲线（仅 fallback 路径使用，不进医学证据）。
@@ -260,6 +261,15 @@ def create_prescription(
     user_goal = _session_user_goal(db, diagnosis.session_row_id)
     user_goal_revision = _session_user_goal_revision(db, diagnosis.session_row_id)
     preference = _resolve_preference(db, principal, request.preference_snapshot)
+    if diagnosis.preference_profile_id is None:
+        if preference is not None:
+            raise PreferenceSnapshotConflict
+    elif (
+        preference is None
+        or preference.profile_id != diagnosis.preference_profile_id
+        or preference.version != diagnosis.preference_version
+    ):
+        raise PreferenceSnapshotConflict
 
     # Agent3 output is server-owned. The client cannot submit music parameters.
     abstained = diagnosis.status == "abstained" or bool(diagnosis.abstained)
@@ -270,7 +280,7 @@ def create_prescription(
         spec = _conservative_wellness_spec(
             request.diagnosis_id,
             diagnosis.assessment_revision,
-            preference,
+            None,
             user_goal,
         )
         status = "degraded"
@@ -280,23 +290,34 @@ def create_prescription(
         status = "success"
         mode = "syndrome_based"
 
-    if preference is not None:
+    applications = [
+        PreferenceApplication.model_validate(item)
+        for item in (diagnosis.preference_application_json or [])
+    ]
+    applied = [item for item in applications if item.applied]
+    if preference is not None and applied:
         personalization = PrescriptionPersonalization(
             applied=True,
             profile_ref=PreferenceProfileRef(
                 profile_id=preference.profile_id,
                 version=preference.version,
             ),
-            adjustments=[PersonalizationAdjustment(
-                field="bpm", from_="62", to=str(spec.bpm), reason_code="preference"
-            )],
+            adjustments=[
+                PersonalizationAdjustment(
+                    field=item.field,
+                    from_=json.dumps(item.before, ensure_ascii=False),
+                    to=json.dumps(item.after, ensure_ascii=False),
+                    reason_code=item.reason_code,
+                )
+                for item in applied
+            ],
         )
         profile_id = preference.profile_id
     else:
         personalization = PrescriptionPersonalization(
             applied=False, profile_ref=None, adjustments=[]
         )
-        profile_id = None
+        profile_id = preference.profile_id if preference is not None else None
 
     primary_tone_display = _TONE_DISPLAY[spec.tone_profile.primary_tone]
     tone_summary = f"{primary_tone_display}为主"

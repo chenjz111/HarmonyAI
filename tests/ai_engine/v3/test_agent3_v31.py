@@ -187,3 +187,88 @@ def test_agent3_builds_public_read_model_without_internal_provider_fields():
     assert "provider" not in dumped.lower()
     assert "prompt" not in dumped.lower()
     assert "raw" not in dumped.lower()
+
+
+def _preference_read_model():
+    from backend.ai_engine.v3.agent3 import (
+        build_five_tone_analysis_v31,
+        build_generation_spec_v31,
+        build_tone_profile_v31,
+    )
+
+    profile = build_tone_profile_v31(
+        diagnosis_id="diag_preference",
+        organ_weights={"heart": 1.0},
+        supporting_evidence_refs=["fact_1"],
+        mapping=_mapping(),
+    )
+    spec = build_generation_spec_v31(
+        profile=profile,
+        parameter_rules=_generation_rules(),
+    )
+    return build_five_tone_analysis_v31(
+        confirmed_user_state_ref={
+            "confirmed_user_state_id": "cus_preference",
+            "revision": 1,
+            "content_checksum": "sha256:confirmed-state",
+        },
+        confirmed_state="最近一周需要放松。",
+        state_tendency="整体偏向需要舒缓与稳定。",
+        profile=profile,
+        evidence_refs=["fact_1"],
+        mapping=_mapping(),
+        generation_spec=spec,
+    )
+
+
+def _preference(**overrides):
+    from backend.app.schemas.v3.prescription import PreferenceSnapshot
+
+    payload = {
+        "profile_id": "pref_1",
+        "version": 2,
+        "preferred_instruments": [],
+        "disliked_instruments": [],
+        "preferred_bpm_range": None,
+        "preferred_duration_seconds": None,
+        "preferred_ambient": [],
+    }
+    payload.update(overrides)
+    return PreferenceSnapshot.model_validate(payload)
+
+
+def test_equal_preference_is_not_reported_as_applied():
+    from backend.app.services.v3.agent3_preference_policy import apply_preference_policy
+
+    original = _preference_read_model()
+    preference = _preference(
+        preferred_bpm_range={"min": 60, "max": 60, "weight": 1.0},
+        preferred_instruments=[{"code": "古琴", "weight": 1.0, "sample_count": 3}],
+    )
+
+    updated, events = apply_preference_policy(original, preference)
+
+    assert updated == original
+    assert events
+    assert all(event.applied is False for event in events)
+
+
+def test_allowed_preference_records_real_before_and_after():
+    from backend.app.services.v3.agent3_preference_policy import apply_preference_policy
+
+    original = _preference_read_model()
+    preference = _preference(
+        preferred_bpm_range={"min": 64, "max": 68, "weight": 1.0},
+        preferred_duration_seconds={"value": 600, "weight": 1.0},
+        preferred_ambient=[{"code": "溪流", "weight": 0.9, "sample_count": 2}],
+    )
+
+    updated, events = apply_preference_policy(original, preference)
+
+    bpm_event = next(event for event in events if event.field == "bpm")
+    assert bpm_event.applied is True
+    assert bpm_event.before == original.bpm.value
+    assert bpm_event.after == updated.bpm.value == 66
+    assert updated.duration.seconds == 600
+    assert updated.ambience.values == ["溪流"]
+    assert updated.primary_tone == original.primary_tone

@@ -67,6 +67,11 @@ from backend.ai_engine.v3.v31_pipeline import (
 from backend.ai_engine.v3.agent3 import Agent3Blocked
 from backend.app.schemas.v3.flow_v31 import FiveToneAnalysisReadModel
 from backend.app.services.v3.internal_agent3_service import to_transport_spec
+from backend.app.services.v3.agent3_preference_policy import (
+    apply_preference_policy,
+    synchronize_generation_spec,
+)
+from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
 from backend.app.services.v3.idempotency import (
     IdempotencyConflict,
     IdempotencyFailureReplay,
@@ -618,6 +623,10 @@ def _persist_diagnosis(
     run.presentation_json = root.presentation.model_dump(mode="json")
     if pipeline is not None:
         read_model = FiveToneAnalysisReadModel.model_validate(pipeline.read_model)
+        preference = get_latest_preference_snapshot(db, principal)
+        applications = []
+        if preference is not None:
+            read_model, applications = apply_preference_policy(read_model, preference)
         read_model_payload = read_model.model_dump(mode="json")
         canonical_read_model = json.dumps(
             read_model_payload,
@@ -630,13 +639,18 @@ def _persist_diagnosis(
         run.five_tone_read_model_checksum = (
             f"sha256:{sha256(canonical_read_model.encode('utf-8')).hexdigest()}"
         )
-        run.generation_spec_json = to_transport_spec(
+        generation_spec = to_transport_spec(
             pipeline.generation_spec,
             tone_profile=pipeline.tone_profile,
-        ).model_dump(mode="json")
+        )
+        generation_spec = synchronize_generation_spec(generation_spec, read_model)
+        run.generation_spec_json = generation_spec.model_dump(mode="json")
+        run.preference_application_json = [
+            item.model_dump(mode="json") for item in applications
+        ]
         run.five_tone_generated_at = datetime.now(timezone.utc)
-        run.preference_profile_id = None
-        run.preference_version = None
+        run.preference_profile_id = preference.profile_id if preference is not None else None
+        run.preference_version = preference.version if preference is not None else None
     db.flush()
     if pipeline is not None:
         run.rag_run_id, run.provider_run_id = _persist_pipeline_audit(

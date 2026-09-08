@@ -304,6 +304,74 @@ def test_create_and_read_prescription():
     assert read["prescription_id"] == data["prescription_id"]
 
 
+def test_prescription_reports_only_persisted_real_preference_changes(monkeypatch):
+    from backend.app.schemas.v3.prescription import PreferenceSnapshot
+    from backend.app.services.v3 import prescription_service
+
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    diagnosis_id = _seed_diagnosis(headers, session_id)
+    preference = PreferenceSnapshot.model_validate(
+        {
+            "profile_id": "pref_truthful",
+            "version": 4,
+            "preferred_instruments": [],
+            "disliked_instruments": [],
+            "preferred_bpm_range": {"min": 68, "max": 68, "weight": 1.0},
+            "preferred_duration_seconds": None,
+            "preferred_ambient": [],
+        }
+    )
+    monkeypatch.setattr(
+        prescription_service,
+        "_resolve_preference",
+        lambda *args, **kwargs: preference,
+    )
+    with _seed_db() as session:
+        diagnosis = session.query(DiagnosisRun).filter(
+            DiagnosisRun.diagnosis_id == diagnosis_id
+        ).one()
+        generation_spec = dict(diagnosis.generation_spec_json)
+        generation_spec["bpm"] = 68
+        diagnosis.generation_spec_json = generation_spec
+        diagnosis.preference_profile_id = preference.profile_id
+        diagnosis.preference_version = preference.version
+        diagnosis.preference_application_json = [
+            {
+                "field": "bpm",
+                "before": 66,
+                "after": 68,
+                "applied": True,
+                "reason_code": "preference_applied",
+            }
+        ]
+        session.commit()
+
+    response = client.post(
+        "/api/v3/prescriptions",
+        headers={**headers, "Idempotency-Key": f"rx-pref-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "prescription_v3.1",
+            "diagnosis_id": diagnosis_id,
+            "preference_snapshot": preference.model_dump(mode="json"),
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    data = _v3_data(response)
+    assert data["generation_spec"]["bpm"] == 68
+    assert data["personalization"]["applied"] is True
+    assert data["personalization"]["adjustments"] == [
+        {
+            "field": "bpm",
+            "from": "66",
+            "to": "68",
+            "reason_code": "preference_applied",
+        }
+    ]
+    assert data["presentation"]["personalization_summary"] == "已根据个人偏好微调"
+
+
 def _submit_questionnaire(headers, session_id):
     from pathlib import Path
 
