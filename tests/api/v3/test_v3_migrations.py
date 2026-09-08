@@ -73,6 +73,7 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
         "0006_v3_doc_fk",
         "0007_v3_prescription_mode",
         "0008_v3_prescription_user_goal_snapshot",
+        "0009_v3_five_tone_read_model",
     ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)
@@ -102,6 +103,25 @@ def test_owner_goal_migration_is_not_registered_or_present():
     for dialect in ("sqlite", "mysql"):
         assert not (migration_root / dialect / "0004_v3_owner_goal_up.sql").exists()
         assert not (migration_root / dialect / "0004_v3_owner_goal_down.sql").exists()
+
+
+def test_0009_adds_canonical_five_tone_snapshot(tmp_path):
+    assert "0009_v3_five_tone_read_model" in V3_MIGRATION_VERSIONS
+    engine = create_engine(f"sqlite:///{tmp_path / 'five-tone.db'}")
+    _create_legacy_foundation(engine)
+    apply_v3_migrations(engine)
+
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("diagnosis_runs")
+    }
+    assert {
+        "five_tone_read_model_schema_version",
+        "five_tone_read_model_json",
+        "five_tone_read_model_checksum",
+        "five_tone_generated_at",
+        "preference_profile_id",
+        "preference_version",
+    } <= columns
 
 
 def test_applied_v3_migration_checksum_cannot_change(tmp_path):
@@ -251,31 +271,31 @@ def test_sqlite_v3_identity_constraints_and_cascade_are_enforced(tmp_path):
     assert remaining == 0
 
 
-def test_v3_migration_upgrades_an_existing_0007_database_incrementally(
+def test_v3_migration_upgrades_an_existing_0008_database_incrementally(
     tmp_path, monkeypatch
 ):
-    """A database already migrated through 0007 must upgrade to 0008 in place,
+    """A database already migrated through 0008 must upgrade to 0009 in place,
     without re-running earlier migrations or hitting a checksum mismatch."""
     engine = create_engine(f"sqlite:///{tmp_path / 'incremental.db'}")
     _create_legacy_foundation(engine)
 
-    up_to_0007 = V3_MIGRATION_VERSIONS[:-1]  # 0001..0007, no 0008 yet
+    up_to_0008 = V3_MIGRATION_VERSIONS[:-1]  # 0001..0008, no 0009 yet
     monkeypatch.setattr(
-        "backend.app.core.v3_migrations.V3_MIGRATION_VERSIONS", up_to_0007
+        "backend.app.core.v3_migrations.V3_MIGRATION_VERSIONS", up_to_0008
     )
     first = apply_v3_migrations(engine)
-    assert first["applied_versions"][-1] == "0007_v3_prescription_mode"
+    assert first["applied_versions"][-1] == "0008_v3_prescription_user_goal_snapshot"
 
     monkeypatch.setattr(
         "backend.app.core.v3_migrations.V3_MIGRATION_VERSIONS", V3_MIGRATION_VERSIONS
     )
     second = apply_v3_migrations(engine)
-    assert second["applied_versions"] == ["0008_v3_prescription_user_goal_snapshot"]
+    assert second["applied_versions"] == ["0009_v3_five_tone_read_model"]
 
     columns = {
-        column["name"] for column in inspect(engine).get_columns("prescription_v3")
+        column["name"] for column in inspect(engine).get_columns("diagnosis_runs")
     }
-    assert "user_goal_json" in columns
+    assert "five_tone_read_model_json" in columns
 
 
 def test_v3_migration_0008_down_restores_schema(tmp_path):
@@ -314,3 +334,36 @@ def test_v3_migration_0008_down_restores_schema(tmp_path):
             for row in connection.execute(text("SELECT version FROM schema_migrations"))
         }
     assert "0008_v3_prescription_user_goal_snapshot" not in versions
+
+
+def test_v3_migration_0009_down_restores_schema(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'five-tone-down.db'}")
+    _create_legacy_foundation(engine)
+    apply_v3_migrations(engine)
+
+    down_sql = (
+        Path(__file__).parents[3]
+        / "backend"
+        / "migrations"
+        / "v3"
+        / "sqlite"
+        / "0009_v3_five_tone_read_model_down.sql"
+    ).read_text(encoding="utf-8")
+
+    raw = engine.raw_connection()
+    try:
+        raw.cursor().executescript(down_sql)
+        raw.commit()
+    finally:
+        raw.close()
+
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("diagnosis_runs")
+    }
+    assert "five_tone_read_model_json" not in columns
+    with engine.connect() as connection:
+        versions = {
+            row[0]
+            for row in connection.execute(text("SELECT version FROM schema_migrations"))
+        }
+    assert "0009_v3_five_tone_read_model" not in versions

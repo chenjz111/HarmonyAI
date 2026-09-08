@@ -65,6 +65,7 @@ from backend.ai_engine.v3.v31_pipeline import (
     execute_v31_ai_pipeline,
 )
 from backend.ai_engine.v3.agent3 import Agent3Blocked
+from backend.app.schemas.v3.flow_v31 import FiveToneAnalysisReadModel
 from backend.app.services.v3.idempotency import (
     IdempotencyConflict,
     IdempotencyFailureReplay,
@@ -614,6 +615,23 @@ def _persist_diagnosis(
     run.element_profile_json = root.element_profile.model_dump(mode="json")
     run.degradation_json = root.degradation.model_dump(mode="json")
     run.presentation_json = root.presentation.model_dump(mode="json")
+    if pipeline is not None:
+        read_model = FiveToneAnalysisReadModel.model_validate(pipeline.read_model)
+        read_model_payload = read_model.model_dump(mode="json")
+        canonical_read_model = json.dumps(
+            read_model_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        run.five_tone_read_model_schema_version = read_model.schema_version
+        run.five_tone_read_model_json = read_model_payload
+        run.five_tone_read_model_checksum = (
+            f"sha256:{sha256(canonical_read_model.encode('utf-8')).hexdigest()}"
+        )
+        run.five_tone_generated_at = datetime.now(timezone.utc)
+        run.preference_profile_id = None
+        run.preference_version = None
     db.flush()
     if pipeline is not None:
         run.rag_run_id, run.provider_run_id = _persist_pipeline_audit(

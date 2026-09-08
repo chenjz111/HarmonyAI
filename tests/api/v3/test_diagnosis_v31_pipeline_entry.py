@@ -6,6 +6,8 @@ Smoke run.
 """
 
 from types import SimpleNamespace
+from hashlib import sha256
+import json
 import uuid
 
 from backend.app.core import agent_config
@@ -17,7 +19,10 @@ from backend.app.models.v3.diagnosis import (
     RagRetrievalRun,
 )
 from backend.app.schemas.v3.diagnosis import IngestionManifest, RagHit, RagResult
-from backend.app.schemas.v3.flow_v31 import ConfirmedUserState
+from backend.app.schemas.v3.flow_v31 import (
+    ConfirmedUserState,
+    FiveToneAnalysisReadModel,
+)
 from backend.app.services.v3 import diagnosis_service
 
 from tests.api.v3.test_diagnosis_v3 import (
@@ -188,6 +193,23 @@ def test_formal_router_reaches_v31_pipeline_factory_and_mock_chain(
         diagnosis = audit_db.query(DiagnosisRun).one()
         assert diagnosis.rag_run_id == "rag_formal_entry"
         assert diagnosis.provider_run_id
+        restored = FiveToneAnalysisReadModel.model_validate(
+            diagnosis.five_tone_read_model_json
+        )
+        canonical = json.dumps(
+            restored.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        assert (
+            diagnosis.five_tone_read_model_schema_version
+            == "five_tone_analysis_read_model_v3.1"
+        )
+        assert diagnosis.five_tone_read_model_checksum == (
+            f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
+        )
+        assert diagnosis.five_tone_generated_at is not None
         rag_run = audit_db.query(RagRetrievalRun).one()
         assert rag_run.rag_run_id == diagnosis.rag_run_id
         assert rag_run.status == "success"
