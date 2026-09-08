@@ -276,6 +276,23 @@ def test_v31_understanding_create_uses_expected_input_revision():
         f"replace-v31-{uuid.uuid4().hex}",
     )
     assert replaced.status_code == 201, replaced.text
+    # Replacing a document invalidates the previous active set. Re-select the
+    # newly uploaded document's immutable set to model the relevance stage.
+    with _seed_db() as session:
+        selected_set = (
+            session.query(DocumentSet)
+            .join(
+                DocumentSetItem,
+                DocumentSetItem.document_set_id == DocumentSet.document_set_id,
+            )
+            .filter(DocumentSetItem.document_id == document_id)
+            .one()
+        )
+        selected_set.status = "current"
+        session.query(SessionModel).filter(
+            SessionModel.id == selected_set.session_row_id
+        ).one().active_document_set_id = selected_set.document_set_id
+        session.commit()
 
     response = _post_understanding(
         headers,
@@ -464,7 +481,7 @@ def test_v31_rejects_replaced_document_and_keeps_authoritative_pointer():
     )
 
     assert response.status_code == 422, response.text
-    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
+    assert response.json()["error"]["code"] == "DOCUMENT_SET_NOT_ACTIVE"
     with _seed_db() as session:
         row = session.query(SessionModel).filter(
             SessionModel.session_id == session_id
@@ -577,8 +594,8 @@ def test_confirm_rejects_understanding_after_active_document_replacement():
         },
     )
 
-    assert response.status_code == 422, response.text
-    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
     with _seed_db() as session:
         run = session.query(UnderstandingRun).filter(
             UnderstandingRun.understanding_id == understanding_id

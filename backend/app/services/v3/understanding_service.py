@@ -403,14 +403,18 @@ def _validate_v31_request_sources(
             "INPUT_SOURCE_MISMATCH",
             "V3.1 无资料模式跳过 Understanding，请完成必填 Q1-Q10。",
         )
+    if any(source.source_type.value != "document" for source in request.inputs):
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "资料与会话当前活动资料集不一致，请基于最新资料重试。",
+        )
     try:
         gate = require_active_document_set_relevance(db, session_row)
     except DocumentRelevanceGateError as error:
         raise InvalidChange(error.code, error.message) from None
     requested_ids = tuple(source.text_ref for source in request.inputs)
     if (
-        any(source.source_type.value != "document" for source in request.inputs)
-        or requested_ids != gate.document_ids
+        requested_ids != gate.document_ids
     ):
         raise InvalidChange(
             "INPUT_SOURCE_MISMATCH",
@@ -602,6 +606,14 @@ def confirm_understanding(
     )
     if session_row is None:
         raise OwnedResourceNotFound
+    if (
+        run.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
+        and run.input_revision != session_row.input_revision
+    ):
+        # The Understanding belongs to an older authoritative input snapshot.
+        # A caller cannot make it current by supplying the session's newer
+        # revision after documents have been replaced or discarded.
+        raise InputRevisionConflict
     if (
         request.schema_version == "understanding_v3.1"
         and request.decision in {"reject_source", "cannot_confirm"}

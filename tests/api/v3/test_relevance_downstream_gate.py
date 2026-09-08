@@ -12,6 +12,7 @@ from backend.app.core.database import get_db
 from backend.app.main import app
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
+from backend.app.models.v3.document import DocumentSet
 from backend.app.models.v3.identity import UserIdentity
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.document import DocumentRelevanceRecordRequest
@@ -216,3 +217,52 @@ def test_understanding_waits_for_document_set_relevance():
 
     assert response.status_code == 422, response.text
     assert response.json()["error"]["code"] == "DOCUMENT_RELEVANCE_NOT_READY"
+
+
+def test_replace_document_invalidates_old_set_and_old_understanding():
+    headers = _guest_headers()
+    session_id = _owner_session(headers)
+    old_document_ids = _documents(headers, session_id, 1)
+    old_set = _document_set(headers, session_id, old_document_ids)
+    _record(headers, old_set, "VALID")
+    created = _understand(headers, session_id, old_document_ids)
+    assert created.status_code == 201, created.text
+    understanding_id = _data(created)["understanding_id"]
+
+    replacement_document_id = _documents(headers, session_id, 1)[0]
+    replaced = client.post(
+        f"/api/v3/sessions/{session_id}/input-transitions",
+        headers={**headers, "Idempotency-Key": f"replace-{uuid.uuid4().hex}"},
+        json={
+            "expected_input_revision": 3,
+            "action": "replace_document",
+            "document_id": replacement_document_id,
+        },
+    )
+    assert replaced.status_code == 201, replaced.text
+    replaced_state = _data(replaced)
+    principal = _principal(headers)
+    with _seed_db() as db:
+        session_row = db.query(SessionModel).filter(
+            SessionModel.session_id == session_id,
+            SessionModel.user_id == principal.internal_user_pk,
+        ).one()
+        assert session_row.active_document_set_id is None
+        persisted_old_set = db.query(DocumentSet).filter(
+            DocumentSet.document_set_id == old_set["document_set_id"]
+        ).one()
+        assert persisted_old_set.status == "superseded"
+
+    confirmed = client.post(
+        f"/api/v3/understandings/{understanding_id}/confirmations",
+        headers={**headers, "Idempotency-Key": f"confirm-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "understanding_v3.1",
+            "expected_revision": 1,
+            "expected_input_revision": replaced_state["input_revision"],
+            "decision": "confirm",
+            "changes": [],
+            "reprocess_requested": False,
+        },
+    )
+    assert confirmed.status_code == 409, confirmed.text

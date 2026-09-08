@@ -299,9 +299,10 @@ def apply_input_transition(
         )
         db.add(record)
 
-    # Discarding the document path must invalidate the active document set so
-    # it can no longer be returned as active or block document deletion.
-    if request.action == "discard_document" and session_row.active_document_set_id:
+    # Replacing or discarding the document path invalidates the active set.
+    # Keeping it attached would let an Understanding created from the previous
+    # source set be confirmed after the session has moved to a new document.
+    if request.action in {"replace_document", "discard_document"} and session_row.active_document_set_id:
         set_row = (
             db.query(DocumentSet)
             .filter(
@@ -311,7 +312,9 @@ def apply_input_transition(
             .one_or_none()
         )
         if set_row is not None:
-            set_row.status = "discarded"
+            set_row.status = (
+                "superseded" if request.action == "replace_document" else "discarded"
+            )
 
     # Atomic compare-and-swap: bump input_revision and swap the active refs in
     # one UPDATE guarded by the expected revision (no read-then-write race).
@@ -322,7 +325,9 @@ def apply_input_transition(
         input_mode=input_mode,
         active_document_id=active_document_id,
         active_document_set_id=(
-            None if request.action == "discard_document" else session_row.active_document_set_id
+            None
+            if request.action in {"replace_document", "discard_document"}
+            else session_row.active_document_set_id
         ),
         active_understanding_id=active_understanding_id,
         active_understanding_revision=active_understanding_revision,
