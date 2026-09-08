@@ -68,6 +68,14 @@ def record_relevance(
     request: DocumentRelevanceRecordRequest,
 ) -> DocumentRelevanceReadModel:
     set_row = _owned_document_set(db, principal, request.document_set_id)
+    return _record_relevance_for_set(db, set_row, request)
+
+
+def _record_relevance_for_set(
+    db: Session,
+    set_row: DocumentSet,
+    request: DocumentRelevanceRecordRequest,
+) -> DocumentRelevanceReadModel:
 
     if set_row.status != "current":
         raise InvalidRelevance(

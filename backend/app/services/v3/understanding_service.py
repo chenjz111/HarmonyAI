@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
+from backend.app.models.v3.document import DocumentSet
 from backend.app.models.v3.session import (
     SessionInputRevision,
     V3IdempotencyRecord,
@@ -66,6 +67,10 @@ from backend.app.services.v3.understanding_extraction import (
 from backend.app.services.v3.document_relevance_gate import (
     DocumentRelevanceGateError,
     require_active_document_set_relevance,
+)
+from backend.app.services.v3.document_relevance_evaluator import (
+    DocumentRelevanceEvaluationError,
+    ensure_document_set_relevance,
 )
 from backend.ai_engine.v3.understanding_provider import ProviderFailureV3
 
@@ -408,6 +413,20 @@ def _validate_v31_request_sources(
             "INPUT_SOURCE_MISMATCH",
             "资料与会话当前活动资料集不一致，请基于最新资料重试。",
         )
+    set_row = (
+        db.query(DocumentSet)
+        .filter(
+            DocumentSet.document_set_id == session_row.active_document_set_id,
+            DocumentSet.session_row_id == session_row.id,
+        )
+        .one_or_none()
+    )
+    if set_row is None:
+        raise InvalidChange("DOCUMENT_SET_NOT_ACTIVE", "当前没有可用的活动资料集。")
+    try:
+        ensure_document_set_relevance(db, session_row, set_row)
+    except DocumentRelevanceEvaluationError as error:
+        raise InvalidChange(error.code, error.message) from None
     try:
         gate = require_active_document_set_relevance(db, session_row)
     except DocumentRelevanceGateError as error:

@@ -6,16 +6,26 @@ per-set DocumentRelevanceResult only.
 
 import base64
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import json
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.core.database import get_db
 from backend.app.main import app
+from backend.app.models import Session as SessionModel
+from backend.app.models.document import Document
+from backend.app.models.v3.document import DocumentRelevance, DocumentSet
 from backend.app.models.v3.identity import UserIdentity
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.document import DocumentRelevanceRecordRequest
+from backend.app.schemas.v3.flow_v31 import DocumentRelevanceResult, DocumentSetRef
+from backend.app.services.v3.document_relevance_evaluator import (
+    DocumentRelevanceEvaluationError,
+    ensure_document_set_relevance,
+)
 from backend.app.services.v3.document_relevance_service import (
     InvalidRelevance,
     record_relevance,
@@ -223,3 +233,120 @@ def test_relevance_is_cross_user_isolated():
         f"/api/v3/document-sets/{set_id}/relevance", headers=stranger
     )
     assert denied.status_code == 404
+
+
+class _FakeRelevanceEvaluator:
+    def __init__(self, *, fail: bool = False):
+        self.fail = fail
+        self.calls = 0
+
+    def evaluate(
+        self,
+        *,
+        document_set_id,
+        set_revision,
+        input_revision,
+        ordered_ocr_texts,
+    ):
+        self.calls += 1
+        if self.fail:
+            raise DocumentRelevanceEvaluationError(
+                "RELEVANCE_PROVIDER_UNAVAILABLE",
+                "资料可用性判断服务暂不可用。",
+            )
+        assert input_revision >= 1
+        assert ordered_ocr_texts == ["近期门诊记录：睡眠欠佳。"]
+        return DocumentRelevanceResult(
+            schema_version="document_relevance_result_v3.1",
+            relevance_result_id=f"provider_{uuid.uuid4().hex}",
+            run_id=f"run_{uuid.uuid4().hex}",
+            revision=1,
+            document_set_ref=DocumentSetRef(
+                document_set_id=document_set_id,
+                revision=set_revision,
+            ),
+            outcome="VALID",
+            reason_code="VALID_RECENT_CLINICAL_DOCUMENT",
+            reason="资料可用于本次状态理解。",
+            may_enter_summary=True,
+            may_form_evidence=True,
+            may_enter_agent2=True,
+            completed_at=datetime.now(timezone.utc),
+        )
+
+
+@contextmanager
+def _current_set_rows(headers, session_id, set_id, document_id):
+    principal = _principal(headers)
+    with _seed_db() as db:
+        db.query(Document).filter(Document.document_id == document_id).one().ocr_text = (
+            "近期门诊记录：睡眠欠佳。"
+        )
+        db.commit()
+        session_row = db.query(SessionModel).filter(
+            SessionModel.session_id == session_id,
+            SessionModel.user_id == principal.internal_user_pk,
+        ).one()
+        set_row = db.query(DocumentSet).filter(
+            DocumentSet.document_set_id == set_id
+        ).one()
+        yield db, session_row, set_row
+
+
+def test_missing_relevance_invokes_evaluator_once():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers,
+        session_id,
+        "select-evaluator",
+        {
+            "expected_input_revision": 1,
+            "action": "select_mode",
+            "input_mode": "with_document",
+        },
+    )
+    document_id = _create_document(headers, session_id)
+    set_data = _make_set(headers, session_id, [document_id], 2)
+    evaluator = _FakeRelevanceEvaluator()
+
+    with _current_set_rows(
+        headers, session_id, set_data["document_set_id"], document_id
+    ) as (db, session_row, set_row):
+        first = ensure_document_set_relevance(db, session_row, set_row, evaluator)
+        second = ensure_document_set_relevance(db, session_row, set_row, evaluator)
+
+    assert first.relevance_result_id == second.relevance_result_id
+    assert evaluator.calls == 1
+
+
+def test_real_provider_failure_never_records_valid():
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _transition(
+        headers,
+        session_id,
+        "select-failing-evaluator",
+        {
+            "expected_input_revision": 1,
+            "action": "select_mode",
+            "input_mode": "with_document",
+        },
+    )
+    document_id = _create_document(headers, session_id)
+    set_data = _make_set(headers, session_id, [document_id], 2)
+    evaluator = _FakeRelevanceEvaluator(fail=True)
+
+    with _current_set_rows(
+        headers, session_id, set_data["document_set_id"], document_id
+    ) as (db, session_row, set_row):
+        with pytest.raises(DocumentRelevanceEvaluationError):
+            ensure_document_set_relevance(db, session_row, set_row, evaluator)
+        assert (
+            db.query(DocumentRelevance)
+            .filter(
+                DocumentRelevance.document_set_id == set_data["document_set_id"]
+            )
+            .count()
+            == 0
+        )

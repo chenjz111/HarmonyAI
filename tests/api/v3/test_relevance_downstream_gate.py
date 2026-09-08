@@ -2,6 +2,7 @@
 
 import base64
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import json
 import uuid
 
@@ -16,6 +17,8 @@ from backend.app.models.v3.document import DocumentSet
 from backend.app.models.v3.identity import UserIdentity
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.document import DocumentRelevanceRecordRequest
+from backend.app.schemas.v3.flow_v31 import DocumentRelevanceResult, DocumentSetRef
+from backend.app.services.v3 import document_relevance_evaluator
 from backend.app.services.v3.document_relevance_service import record_relevance
 
 
@@ -217,6 +220,72 @@ def test_understanding_waits_for_document_set_relevance():
 
     assert response.status_code == 422, response.text
     assert response.json()["error"]["code"] == "DOCUMENT_RELEVANCE_NOT_READY"
+
+
+def test_understanding_executes_missing_relevance_through_configured_evaluator(
+    monkeypatch,
+):
+    headers = _guest_headers()
+    session_id = _owner_session(headers)
+    document_ids = _documents(headers, session_id, 2)
+    document_set = _document_set(headers, session_id, document_ids)
+
+    class RuntimeEvaluator:
+        model = "qwen-test"
+
+        def __init__(self):
+            self.calls = 0
+
+        def evaluate(
+            self,
+            *,
+            document_set_id,
+            set_revision,
+            input_revision,
+            ordered_ocr_texts,
+        ):
+            self.calls += 1
+            assert input_revision == 3
+            assert ordered_ocr_texts == [
+                "第1份资料：近期睡眠不稳。",
+                "第2份资料：近期睡眠不稳。",
+            ]
+            return DocumentRelevanceResult(
+                schema_version="document_relevance_result_v3.1",
+                relevance_result_id="provider_result",
+                run_id="runtime_relevance_run",
+                revision=1,
+                document_set_ref=DocumentSetRef(
+                    document_set_id=document_set_id,
+                    revision=set_revision,
+                ),
+                outcome="VALID",
+                reason_code="VALID_RECENT_CLINICAL_DOCUMENT",
+                reason="资料可用于本次状态理解。",
+                may_enter_summary=True,
+                may_form_evidence=True,
+                may_enter_agent2=True,
+                completed_at=datetime.now(timezone.utc),
+            )
+
+    evaluator = RuntimeEvaluator()
+    monkeypatch.setattr(
+        document_relevance_evaluator,
+        "relevance_evaluator_from_environment",
+        lambda: evaluator,
+    )
+
+    response = _understand(headers, session_id, document_ids)
+
+    assert response.status_code == 201, response.text
+    assert evaluator.calls == 1
+    relevance = _data(
+        client.get(
+            f"/api/v3/document-sets/{document_set['document_set_id']}/relevance",
+            headers=headers,
+        )
+    )
+    assert relevance["outcome"] == "VALID"
 
 
 def test_replace_document_invalidates_old_set_and_old_understanding():
