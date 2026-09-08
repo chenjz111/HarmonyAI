@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.models.document import Document
 from backend.app.models.session import Session as SessionModel
-from backend.app.models.v3.document import DocumentSet
+from backend.app.models.v3.document import DocumentSet, DocumentSetItem
 from backend.app.models.v3.session import (
     SessionInputRevision,
     V3IdempotencyRecord,
@@ -299,10 +299,22 @@ def apply_input_transition(
         )
         db.add(record)
 
-    # Replacing or discarding the document path invalidates the active set.
-    # Keeping it attached would let an Understanding created from the previous
-    # source set be confirmed after the session has moved to a new document.
-    if request.action in {"replace_document", "discard_document"} and session_row.active_document_set_id:
+    # Replacing with a document outside the active set, or discarding the
+    # document path, invalidates the active set. Selecting a document that is
+    # already in the authoritative set does not change the set and must not
+    # make its relevance result unusable.
+    invalidate_active_set = request.action == "discard_document"
+    if request.action == "replace_document" and session_row.active_document_set_id:
+        invalidate_active_set = (
+            db.query(DocumentSetItem)
+            .filter(
+                DocumentSetItem.document_set_id == session_row.active_document_set_id,
+                DocumentSetItem.document_id == request.document_id,
+            )
+            .one_or_none()
+            is None
+        )
+    if invalidate_active_set and session_row.active_document_set_id:
         set_row = (
             db.query(DocumentSet)
             .filter(
@@ -326,7 +338,7 @@ def apply_input_transition(
         active_document_id=active_document_id,
         active_document_set_id=(
             None
-            if request.action in {"replace_document", "discard_document"}
+            if invalidate_active_set
             else session_row.active_document_set_id
         ),
         active_understanding_id=active_understanding_id,

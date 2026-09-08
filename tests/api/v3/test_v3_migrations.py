@@ -125,6 +125,26 @@ def test_0009_adds_canonical_five_tone_snapshot(tmp_path):
     } <= columns
 
 
+def test_0009_is_idempotent_after_local_model_schema_creation(tmp_path):
+    """The local app creates current models before applying versioned SQL."""
+    from backend.app.core.database import Base
+    from backend.app import models as _models  # noqa: F401
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'model-created.db'}")
+    Base.metadata.create_all(bind=engine)
+
+    result = apply_v3_migrations(engine)
+
+    assert result["applied_versions"][-1] == "0009_v3_five_tone_read_model"
+    with engine.connect() as connection:
+        assert connection.execute(
+            text(
+                "SELECT COUNT(*) FROM schema_migrations "
+                "WHERE version = '0009_v3_five_tone_read_model'"
+            )
+        ).scalar_one() == 1
+
+
 def test_applied_v3_migration_checksum_cannot_change(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'checksum.db'}")
     _create_legacy_foundation(engine)
