@@ -426,6 +426,15 @@ def validate_assessment_input_readiness(
             "INPUT_MODE_NOT_SELECTED", "尚未选择输入方式。"
         )
     if session_row.input_mode == "with_document":
+        from backend.app.services.v3.document_relevance_gate import (
+            DocumentRelevanceGateError,
+            require_active_document_set_relevance,
+        )
+
+        try:
+            require_active_document_set_relevance(db, session_row)
+        except DocumentRelevanceGateError as error:
+            raise AssessmentInputNotReady(error.code, error.message) from None
         if (
             session_row.active_understanding_id is None
             or session_row.active_understanding_revision is None

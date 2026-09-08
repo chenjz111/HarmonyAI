@@ -21,6 +21,7 @@ from backend.app.main import app
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
 from backend.app.models.v3.identity import UserIdentity
+from backend.app.models.v3.document import DocumentRelevance, DocumentSet, DocumentSetItem
 from backend.app.models.v3.session import SessionInputRevision
 from backend.app.models.v3.understanding import (
     NormalizedFact,
@@ -102,6 +103,16 @@ def _seed_document(session, *, user_pk, session_id, ocr_text=None, ocr_error_cod
             ocr_error_code=ocr_error_code,
         )
     )
+    sess = session.query(SessionModel).filter(SessionModel.session_id == session_id).one()
+    for old in session.query(DocumentSet).filter(
+        DocumentSet.session_row_id == sess.id, DocumentSet.status == "current"
+    ):
+        old.status = "superseded"
+    set_id = f"dset_{uuid.uuid4().hex}"
+    session.add(DocumentSet(document_set_id=set_id, internal_user_pk=user_pk, session_row_id=sess.id, revision=1, status="current"))
+    session.add(DocumentSetItem(document_set_item_id=f"dsi_{uuid.uuid4().hex}", document_set_id=set_id, document_id=document_id, position=1))
+    session.add(DocumentRelevance(document_relevance_id=f"drel_{uuid.uuid4().hex}", document_set_id=set_id, document_set_revision=1, run_id=f"run_{uuid.uuid4().hex}", revision=1, outcome="VALID", reason_code="TEST_VALID", reason="test fixture", evaluator="test", evaluator_version="1", evaluated_at=datetime.now(timezone.utc)))
+    sess.active_document_set_id = set_id
     session.commit()
     return document_id
 
@@ -890,7 +901,7 @@ def test_with_document_requires_confirmed_understanding_for_assessment():
         row = session.query(SessionModel).filter(SessionModel.session_id == session_id).one()
         with pytest.raises(AssessmentInputNotReady) as exc:
             validate_assessment_input_readiness(session, row)
-        assert exc.value.code == "UNDERSTANDING_NOT_CONFIRMED"
+        assert exc.value.code == "DOCUMENT_SET_NOT_ACTIVE"
 
 
 def test_ocr_failure_never_confirms_in_new_flow():

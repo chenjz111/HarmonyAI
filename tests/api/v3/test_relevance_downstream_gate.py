@@ -1,0 +1,218 @@
+"""DocumentSet relevance must gate the V3.1 Understanding boundary."""
+
+import base64
+from contextlib import contextmanager
+import json
+import uuid
+
+import pytest
+from fastapi.testclient import TestClient
+
+from backend.app.core.database import get_db
+from backend.app.main import app
+from backend.app.models import Session as SessionModel
+from backend.app.models.document import Document
+from backend.app.models.v3.identity import UserIdentity
+from backend.app.schemas.v3.common import AuthPrincipal
+from backend.app.schemas.v3.document import DocumentRelevanceRecordRequest
+from backend.app.services.v3.document_relevance_service import record_relevance
+
+
+client = TestClient(app)
+
+
+@contextmanager
+def _seed_db():
+    generator = app.dependency_overrides[get_db]()
+    try:
+        yield next(generator)
+    finally:
+        generator.close()
+
+
+def _data(response):
+    return response.json()["data"]
+
+
+def _guest_headers():
+    token = _data(client.post("/api/v3/auth/guest"))["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _principal(headers):
+    token = headers["Authorization"].split()[1]
+    encoded = token.split(".")[1]
+    encoded += "=" * (-len(encoded) % 4)
+    public_user_id = json.loads(base64.urlsafe_b64decode(encoded))["sub"]
+    with _seed_db() as db:
+        user = db.query(UserIdentity).filter(
+            UserIdentity.public_user_id == public_user_id
+        ).one()
+        return AuthPrincipal(
+            internal_user_pk=user.internal_user_pk,
+            public_user_id=public_user_id,
+            auth_type="guest",
+            guest_expires_at="2030-01-01T00:00:00Z",
+        )
+
+
+def _owner_session(headers):
+    response = client.post(
+        "/api/v3/sessions",
+        headers={**headers, "Idempotency-Key": f"session-{uuid.uuid4().hex}"},
+        json={"flow_contract_version": "v3-owner-flow-1"},
+    )
+    session_id = _data(response)["session_id"]
+    selected = client.post(
+        f"/api/v3/sessions/{session_id}/input-transitions",
+        headers={**headers, "Idempotency-Key": f"mode-{uuid.uuid4().hex}"},
+        json={
+            "expected_input_revision": 1,
+            "action": "select_mode",
+            "input_mode": "with_document",
+        },
+    )
+    assert selected.status_code == 201, selected.text
+    return session_id
+
+
+def _documents(headers, session_id, count):
+    principal = _principal(headers)
+    ids = []
+    with _seed_db() as db:
+        session_row = db.query(SessionModel).filter(
+            SessionModel.session_id == session_id,
+            SessionModel.user_id == principal.internal_user_pk,
+        ).one()
+        for index in range(count):
+            document_id = f"doc_{uuid.uuid4().hex}"
+            db.add(
+                Document(
+                    user_id=principal.internal_user_pk,
+                    session_id=session_row.session_id,
+                    document_id=document_id,
+                    original_filename=f"case-{index + 1}.png",
+                    file_type="png",
+                    file_size_bytes=1024,
+                    storage_path=f"documents/{document_id}",
+                    status="uploaded",
+                    ocr_text=f"第{index + 1}份资料：近期睡眠不稳。",
+                    ocr_confidence="high",
+                )
+            )
+            ids.append(document_id)
+        db.commit()
+    return ids
+
+
+def _document_set(headers, session_id, document_ids):
+    response = client.post(
+        f"/api/v3/sessions/{session_id}/document-sets",
+        headers={**headers, "Idempotency-Key": f"set-{uuid.uuid4().hex}"},
+        json={
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "document_ids": document_ids,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return _data(response)
+
+
+def _record(headers, document_set, outcome):
+    with _seed_db() as db:
+        record_relevance(
+            db,
+            _principal(headers),
+            DocumentRelevanceRecordRequest(
+                document_set_id=document_set["document_set_id"],
+                document_set_revision=document_set["revision"],
+                run_id=f"relrun_{uuid.uuid4().hex}",
+                revision=1,
+                outcome=outcome,
+                reason_code=f"TEST_{outcome}",
+                reason="测试资料可用性门禁。",
+                evaluator="test",
+                evaluator_version="v1",
+            ),
+        )
+
+
+def _understand(headers, session_id, document_ids):
+    return client.post(
+        "/api/v3/understandings",
+        headers={**headers, "Idempotency-Key": f"und-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "understanding_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 3,
+            "inputs": [
+                {
+                    "source_id": f"source-{index + 1}",
+                    "source_type": "document",
+                    "processing_status": "ready",
+                    "text_ref": document_id,
+                    "captured_at": "2026-09-08T00:00:00Z",
+                }
+                for index, document_id in enumerate(document_ids)
+            ],
+        },
+    )
+
+
+def test_valid_document_set_enters_understanding_in_saved_order():
+    headers = _guest_headers()
+    session_id = _owner_session(headers)
+    document_ids = _documents(headers, session_id, 3)
+    document_set = _document_set(headers, session_id, document_ids)
+    _record(headers, document_set, "VALID")
+
+    response = _understand(headers, session_id, document_ids)
+
+    assert response.status_code == 201, response.text
+    result = _data(response)
+    assert [item["source_id"] for item in result["source_statuses"]] == [
+        "source-1",
+        "source-2",
+        "source-3",
+    ]
+    assert all(item["status"] == "ready" for item in result["source_statuses"])
+
+
+@pytest.mark.parametrize("outcome", ["INVALID", "IRRELEVANT"])
+def test_non_valid_document_set_cannot_enter_understanding(outcome):
+    headers = _guest_headers()
+    session_id = _owner_session(headers)
+    document_ids = _documents(headers, session_id, 1)
+    document_set = _document_set(headers, session_id, document_ids)
+    _record(headers, document_set, outcome)
+
+    response = _understand(headers, session_id, document_ids)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "DOCUMENT_RELEVANCE_BLOCKED"
+
+
+def test_insufficient_document_set_remains_pending():
+    headers = _guest_headers()
+    session_id = _owner_session(headers)
+    document_ids = _documents(headers, session_id, 1)
+    document_set = _document_set(headers, session_id, document_ids)
+    _record(headers, document_set, "INSUFFICIENT")
+
+    response = _understand(headers, session_id, document_ids)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "DOCUMENT_RELEVANCE_INSUFFICIENT"
+
+
+def test_understanding_waits_for_document_set_relevance():
+    headers = _guest_headers()
+    session_id = _owner_session(headers)
+    document_ids = _documents(headers, session_id, 1)
+    _document_set(headers, session_id, document_ids)
+
+    response = _understand(headers, session_id, document_ids)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "DOCUMENT_RELEVANCE_NOT_READY"
