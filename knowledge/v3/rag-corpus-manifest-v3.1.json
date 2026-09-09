@@ -1,0 +1,283 @@
+{
+  "schema_id": "rag_corpus_manifest_v3_1",
+  "schema_version": "3.1.0-corpus-v1",
+  "corpus_status": "MEDICAL_REVIEWED",
+  "registry_status": "NOT_REGISTERED_OWNER_PENDING",
+  "authored_by": "nob（肖宇翔，Medical Knowledge Engineer）",
+  "authored_at": "2026-09-06",
+  "issue_refs": [
+    "Issue #108 §3 RAG Medical Corpus / §4 Corpus Boundary"
+  ],
+  "freeze_baseline": "83fe2f42069e126dbbfdccc252266964a58ce895",
+  "purpose": "Sprint5 正式 Medical Corpus（来源注册 v1）：RAG 只承载解释类知识；确定性规则不入向量。Production RAG 仍待 Owner/#109 完成 embedding 与 ingestion 参数后放行。",
+  "rag_boundary": {
+    "in_corpus": "五脏状态解释知识、状态倾向解释知识、Evidence 相关医学背景、必要中医理论解释",
+    "not_vectorized_rule_assets": [
+      "knowledge/v3/questionnaire-v3.0.1.json（问卷评分）",
+      "knowledge/v3/claim-dictionary-v3.0.json（五脏 Evidence mapping）",
+      "knowledge/v3/organ-mapping-v3.0.json（五脏映射）",
+      "knowledge/v3/five-tone-mapping-v3.0.json（五行/五音映射）",
+      "BPM 等 GenerationSpec 确定性规则（版本化 Rule Assets）"
+    ]
+  },
+  "sources": [
+    {
+      "source_id": "src_01",
+      "title": "《素问·阴阳应象大论》",
+      "use": "五志五脏对应（怒肝/喜心/思脾/悲肺/恐肾）与五脏开窍（肝目/心舌/脾口/肺鼻/肾耳）",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:f1f29c74e482d97675ef46f9dba40d66c886947fd0c544baea8ec7c63d26478b",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《黄帝内经·素问·阴阳应象大论》（篇），通行校注本（人民卫生出版社，中医古籍整理系列）"
+    },
+    {
+      "source_id": "src_02",
+      "title": "《素问·金匮真言论》",
+      "use": "肝开窍于目",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:ac75da4cdbce001d4528017c1ce68f56b22c57eaa4958fdd5c08515d34aafe79",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《黄帝内经·素问·金匮真言论》（篇），通行校注本（人民卫生出版社，中医古籍整理系列）"
+    },
+    {
+      "source_id": "src_03",
+      "title": "《素问·痿论》",
+      "use": "肝主身之筋膜；脾主身之肌肉；肾主身之骨髓",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:c17b8ae79631d37977f8452d14908b829862b07bff0198d0bc8534095ec9f6d1",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《黄帝内经·素问·痿论》（篇），通行校注本（人民卫生出版社，中医古籍整理系列）"
+    },
+    {
+      "source_id": "src_04",
+      "title": "《素问·灵兰秘典论》",
+      "use": "心者君主之官主血脉；脾胃者仓廪之官；心主神明",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:dcb2adef87ad70f87b4df950a48a8fe805f6249e45561247a23a64e04e9b97e5",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《黄帝内经·素问·灵兰秘典论》（篇），通行校注本（人民卫生出版社，中医古籍整理系列）"
+    },
+    {
+      "source_id": "src_05",
+      "title": "《素问·脉要精微论》",
+      "use": "腰者肾之府；膝者筋之府（膝软辨肝的依据）",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:76ceaffd92091cda7a4397bdb8e0d7f1dbce30192ed596221fea950134452710",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《黄帝内经·素问·脉要精微论》（篇），通行校注本（人民卫生出版社，中医古籍整理系列）"
+    },
+    {
+      "source_id": "src_06",
+      "title": "《灵枢·脉度》",
+      "use": "肺气通于鼻；肾气通于耳",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:90789bfa97ff38303da623004ffa8f8373369b860cb115db9ae61d786a03e500",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《黄帝内经·灵枢·脉度》（篇），通行校注本（人民卫生出版社，中医古籍整理系列）"
+    },
+    {
+      "source_id": "src_07",
+      "title": "《灵枢·五音五味》",
+      "use": "五音-五脏对应（角肝/徵心/宫脾/商肺/羽肾）",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:91e52c21d1a575a01370bd83447e1edf5700ac07e6c31bc4dd2a86064e7c5e4b",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《黄帝内经·灵枢·五音五味》（篇），通行校注本（人民卫生出版社，中医古籍整理系列）"
+    },
+    {
+      "source_id": "src_08",
+      "title": "《类证治裁·喘证》",
+      "use": "肺为气之主，肾为气之根（喘为肺肾双关联依据）",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:e41076b71c77673f8a406b2dd7ebadb423deedf571b7cd2e0caf507a45ddf9a8",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "清·林珮琴《类证治裁·喘证》，通行点校本"
+    },
+    {
+      "source_id": "src_09",
+      "title": "《医宗必读》",
+      "use": "脾为生痰之源，肺为贮痰之器（痰为脾肺双关联依据）",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:0c02b4c44192f3acad9c29139a00ec979e09f8d4b5814823bc3a524869a2c44c",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "明·李中梓《医宗必读》，通行点校本"
+    },
+    {
+      "source_id": "src_10",
+      "title": "《乐记》",
+      "use": "五音配五行",
+      "grade": "A（经典）",
+      "version": "典籍通行本",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:6e9e672d7a5913766731e15f0c4042913f910a9899c11f8a30d9b0f5a9db2d1e",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《礼记·乐记》篇（十三经注疏本），通行本"
+    },
+    {
+      "source_id": "src_11",
+      "title": "《中医诊断学》（统编教材）",
+      "use": "腰膝酸软属肾虚、食后腹胀/便溏属脾虚、不寐责心脾肾、健忘属思虑过度、声嘶属肺",
+      "grade": "B（教材）",
+      "version": "规划教材（现行版）",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:b50cf1ca33a1126e6a021c6a6d0f620a465adb3208e4e97a9c5640b9e2668e7a",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《中医诊断学》，全国中医药行业高等教育规划教材（统编，现行版），人民卫生出版社/中国中医药出版社"
+    },
+    {
+      "source_id": "src_12",
+      "title": "《中医内科学》（统编教材）",
+      "use": "喘证病机；痰饮；情志调畅赖肝",
+      "grade": "B（教材）",
+      "version": "规划教材（现行版）",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:6f0bbccd91cce65b6a9039102fab62a2a9635e33210f6f939163458236770f18",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《中医内科学》，全国中医药行业高等教育规划教材（统编，现行版），人民卫生出版社/中国中医药出版社"
+    },
+    {
+      "source_id": "src_13",
+      "title": "《中医耳鼻喉科学》",
+      "use": "慢性耳鸣多责肾虚（如蝉），暴鸣多责肝火",
+      "grade": "B（教材）",
+      "version": "规划教材（现行版）",
+      "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+      "reviewed_at": "2026-09-06",
+      "content_hash": "sha256:c11cd1c5ec6489248c206642d9b4d221c6f1218849ff5b70f2bbbd358baf3f60",
+      "review_status": "medically_reviewed",
+      "corpus_category": "explanation_knowledge",
+      "rag_role": "解释类（五脏状态解释/状态倾向解释/医学背景/中医理论）",
+      "approval_status": "MEDICAL_REVIEWED_PENDING_PRODUCTION",
+      "source_reference": "《中医耳鼻喉科学》，全国中医药行业高等教育规划教材（统编，现行版），人民卫生出版社/中国中医药出版社"
+    }
+  ],
+  "excluded_pending_conversion": {
+    "note": "knowledge/v2/literature.json（22 条）仍为 pending_conversion（manifest rag_review_notes），未列入本批；逐条补 V3 approved 元数据后可进入下一版 corpus",
+    "status": "pending_conversion"
+  },
+  "production_rag_status": {
+    "status": "NOT_APPROVED_PENDING",
+    "note": "与 knowledge-manifest-v3.0.1 rag_ingestion_status 一致：embedding/索引未定，ingestion manifest 由 Owner/#109 第二批补齐",
+    "required_pending": [
+      "embedding_provider",
+      "embedding_model",
+      "embedding_version",
+      "distance_metric",
+      "minimum_score",
+      "chunk_count",
+      "ingestion_manifest_checksum"
+    ]
+  },
+  "open_items": [
+    "分块与 embedding（待 #109/Owner）",
+    "语料是否扩展 V2 literature 转换条目（待医学复核）",
+    "approval_status 转 PRODUCTION_APPROVED（待 Owner 放行）"
+  ],
+  "content_checksum": "sha256:5096bf8509fea4641fef8ca4965245b04a253b1e0bd3910dd0a6b64bef9afb85",
+  "status_note": "rag-corpus-manifest-v3.1 = 医学来源登记与审核（source registry，非生产语料/非 ingestion manifest）：医学来源审核已完成；实际语料/chunk 未完成（待 AI 侧 #109）；Embedding/Ingestion 待 #109；Production RAG = NOT_APPROVED_PENDING。注册与放行均待 Owner。",
+  "completion_status": {
+    "medical_source_review": "COMPLETED",
+    "actual_corpus_chunks": "NOT_DONE_PENDING_AI_SIDE",
+    "embedding_ingestion": "PENDING_109",
+    "production_rag": "NOT_APPROVED_PENDING",
+    "note": "本 manifest 仅为医学来源登记（无语料正文/chunk 伪造）；实际可分块语料与 embedding 由 AI 侧 #109 接入"
+  },
+  "nature": "MEDICAL_SOURCE_REGISTRY_ONLY：仅医学来源登记与审核；不含可检索语料正文/chunk，不是 Production RAG / 不是 ingestion manifest。",
+  "medically_reviewed_sources": {
+    "count": 13,
+    "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+    "reviewed_at": "2026-09-06",
+    "by_category": {
+      "经典": [
+        "src_01",
+        "src_02",
+        "src_03",
+        "src_04",
+        "src_05",
+        "src_06",
+        "src_07",
+        "src_08",
+        "src_09",
+        "src_10"
+      ],
+      "教材": [
+        "src_11",
+        "src_12",
+        "src_13"
+      ]
+    },
+    "note": "13 条来源全部 MEDICALLY_REVIEWED（医学侧审核完成，可作后续语料构建的依据）"
+  },
+  "pending_for_agent2_corpus_build": {
+    "items": "上述来源的实际正文提取、清洗、分块（chunking）与 embedding",
+    "status": "NOT_DONE_PENDING_AI_SIDE",
+    "owner": "AI 侧 #109（Agent2 RAG 接入）",
+    "deliverable_to_agent2": "医学侧交付=来源登记+医学审核结论（本文件）；AI 侧将来源正文整理为可检索 chunks 后接入 Agent2，届时才形成可检索 corpus"
+  }
+}
