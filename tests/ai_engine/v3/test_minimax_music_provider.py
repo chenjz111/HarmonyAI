@@ -132,17 +132,24 @@ def _provider(tmp_path: Path, transport) -> MiniMaxMusicProvider:
 # ---------------------------------------------------------------- bundle wiring
 
 
-def test_minimax_env_builds_real_adapter(tmp_path):
+def test_minimax_env_is_blocked_for_sprint5(tmp_path):
+    # Owner smoke: MiniMax HTTP 410 / provider code 2153
+    # (BLOCKED_BY_PROVIDER_ENTITLEMENT). MUSIC_PROVIDER=minimax must never
+    # build a real adapter in Sprint 5; the implementation stays as history.
     env = _minimax_env(HARMONY_MEDIA_ROOT=str(tmp_path))
     bundle = build_music_provider_bundle(env)
-    assert isinstance(bundle.provider, MiniMaxMusicProvider)
+    assert isinstance(bundle.provider, NotConfiguredMusicProvider)
     assert bundle.provider.provider_name == "minimax"
-    assert bundle.provider.model == "music-3.0"
-    assert bundle.health.status == "configured"
-    assert bundle.health.provider == "minimax"
+    assert bundle.health.status == "not_configured"
+    assert bundle.health.safe_message is not None
+    assert "BLOCKED_BY_PROVIDER_ENTITLEMENT" in bundle.health.safe_message
     serialized = bundle.health.model_dump_json()
     assert "sk-test-minimax-secret" not in serialized
     assert "minimax.example.invalid" not in serialized
+    # the MiniMax adapter itself remains importable as an un-enabled reference
+    from backend.ai_engine.v3.minimax_music_provider import MiniMaxMusicProvider
+
+    assert MiniMaxMusicProvider is not None
 
 
 def test_minimax_env_missing_key_keeps_readiness_not_configured(tmp_path):

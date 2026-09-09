@@ -23,6 +23,7 @@ from backend.ai_engine.v3.music_provider import (
     build_matched_fallback_task,
     map_provider_task_to_music_task,
 )
+from backend.app.core.audio_duration import mp3_duration_seconds
 from backend.app.models.v3.music import GenerationTask, MusicAsset
 from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.models.v3.session import V3IdempotencyRecord
@@ -234,6 +235,12 @@ def _persist_generated_asset(
     spec: GenerationSpec,
 ) -> MusicAsset:
     locator = provider_task.asset_locator or ""
+    # Owner rule: the stored duration must come from the actual saved audio, not
+    # from the requested spec. Real providers always materialize parseable mp3,
+    # so the probe returns real seconds here; unparseable synthetic test
+    # fixtures keep the documented spec fallback.
+    actual_seconds = _measure_audio_duration_seconds(locator)
+    duration_seconds = actual_seconds if actual_seconds else spec.duration_seconds
     row = MusicAsset(
         music_asset_id=f"asset_{uuid.uuid4().hex}",
         owner_internal_user_pk=principal_pk,
@@ -242,7 +249,7 @@ def _persist_generated_asset(
         title=f"生成音频 {spec.bpm} BPM",
         storage_key=locator,
         format="mp3",
-        duration_seconds=spec.duration_seconds,
+        duration_seconds=duration_seconds,
         checksum=_locator_checksum(locator),
         tone_profile_json=spec.tone_profile.model_dump(mode="json"),
         bpm=spec.bpm,
@@ -252,6 +259,20 @@ def _persist_generated_asset(
     db.add(row)
     db.flush()
     return row
+
+
+def _measure_audio_duration_seconds(locator: str) -> int | None:
+    """Best-effort measured duration of the materialized generated audio."""
+    path = Path(locator)
+    if not path.is_file():
+        return None
+    try:
+        measured = mp3_duration_seconds(path.read_bytes())
+    except (OSError, ValueError):
+        return None
+    if measured is None or measured <= 0:
+        return None
+    return max(1, int(round(measured)))
 
 
 def _provider_identity(provider: object) -> tuple[str, str | None]:

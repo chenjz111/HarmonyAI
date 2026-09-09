@@ -1,5 +1,10 @@
 #!/usr/bin/env python
-"""MiniMax Music real Smoke — run on the Owner machine with a real API Key.
+"""MiniMax Music smoke — HISTORY / UN-ENABLED reference (do not run as Sprint 5).
+
+Owner real smoke returned HTTP 410 / provider code 2153 for the MiniMax account
+(BLOCKED_BY_PROVIDER_ENTITLEMENT). Sprint 5 real Provider is Stability AI
+Stable Audio 2.5 — use tools/stability_music_smoke.py instead. This file stays
+only as a historical record for the retained MiniMax adapter implementation.
 
 Readiness rules (docs/sprint5/provider-decision-record-music.md):
   * configuration comes only from environment variables;
@@ -7,20 +12,6 @@ Readiness rules (docs/sprint5/provider-decision-record-music.md):
   * provider failure -> explicit stable failure (exit 3); never fake success;
   * success materializes the audio into HARMONY_MEDIA_ROOT and prints the
     owned asset path + sha256 (never the vendor URL or key).
-
-Usage (PowerShell):
-  $env:MUSIC_PROVIDER="minimax"
-  $env:MUSIC_PROVIDER_API_KEY="<real key>"
-  $env:MUSIC_PROVIDER_MODEL="music-3.0"
-  $env:MUSIC_PROVIDER_BASE_URL="https://api.minimax.io"   # optional
-  $env:HARMONY_MEDIA_ROOT="media"
-  python tools/minimax_music_smoke.py
-
-Exit codes:
-  0  real generation succeeded and asset is playable locally
-  2  configuration missing/invalid (readiness fail)
-  3  MiniMax provider rejected/failed the request
-  4  smoke script error
 """
 
 from __future__ import annotations

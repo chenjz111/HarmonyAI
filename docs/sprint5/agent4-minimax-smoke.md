@@ -1,8 +1,11 @@
 # Agent4 MiniMax 真实音乐生成 — Smoke 说明（Sprint 5）
 
-> 状态：实现完成，**真实 Smoke 未执行**（需要 Owner 提供 MiniMax 配置）。
-> 分支：`feat/s5-v3.1-agent4-minimax`（Draft PR）
-> 依据：`docs/sprint5/provider-decision-record-music.md`、`docs/sprint5/s5-v3.1-provider-decision-final.md`
+> **状态：历史参考 / 未启用。** Owner Smoke 显示 MiniMax 账号
+> `HTTP 410 / provider code 2153` → `BLOCKED_BY_PROVIDER_ENTITLEMENT`
+> （新用户无 Music API 权限）。Sprint 5 真实 Provider 已切换为
+> **Stability AI Stable Audio 2.5**，见 `agent4-stability-smoke.md`。
+> 本文档与 `tools/minimax_music_smoke.py` 仅作为 MiniMax 适配器（保留代码）的历史说明，不要作为 Sprint 5 接入目标运行。
+> 分支：`feat/s5-v3.1-agent4-minimax`（PR #120，Draft）
 
 ## 目标链路
 
