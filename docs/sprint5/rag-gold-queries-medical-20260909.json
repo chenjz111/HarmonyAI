@@ -1,0 +1,316 @@
+{
+  "gold_set_id": "rag_gold_v3_1_medical_20260909",
+  "purpose": "医学侧 gold 标注：query vs 13 approved chunks（解释类知识）。仅用于 AI 侧计算相似度分布并提出 minimum_score 候选；不修改问卷/医学规则，不给阈值数值。",
+  "corpus_scope": "knowledge/v3/rag-corpus-chunks-v3.1-candidate.json（src_01..src_13，chunk_id=v31_src_XX_scope_001）",
+  "annotation_rule": "未列入 relevant/boundary 的 chunk 一律视为 irrelevant（逐条仅显式列出最易混淆反例以省篇幅）；boundary=相关但非首要证据或语义模糊。",
+  "queries": [
+    {
+      "query_id": "gq_01",
+      "query_text": "为什么容易烦躁易怒被认为与肝有关？",
+      "relevant_chunk_ids": [
+        "v31_src_01_scope_001",
+        "v31_src_12_scope_001"
+      ],
+      "boundary_chunk_ids": [
+        "v31_src_04_scope_001"
+      ],
+      "irrelevant_chunk_ids": [
+        "v31_src_05_scope_001",
+        "v31_src_07_scope_001",
+        "v31_src_13_scope_001"
+      ],
+      "medical_note": "怒为肝志（src_01）；情志调畅赖肝（src_12）。心主神明为背景关联（boundary）。"
+    },
+    {
+      "query_id": "gq_02",
+      "query_text": "失眠（不寐）从中医看与哪些脏腑有关？",
+      "relevant_chunk_ids": [
+        "v31_src_11_scope_001"
+      ],
+      "boundary_chunk_ids": [
+        "v31_src_04_scope_001"
+      ],
+      "irrelevant_chunk_ids": [
+        "v31_src_03_scope_001",
+        "v31_src_06_scope_001",
+        "v31_src_10_scope_001"
+      ],
+      "medical_note": "教材明言不寐责心脾肾（src_11）；心主神明为背景（boundary）。"
+    },
+    {
+      "query_id": "gq_03",
+      "query_text": "为什么说目为肝之窍（肝开窍于目）？",
+      "relevant_chunk_ids": [
+        "v31_src_02_scope_001"
+      ],
+      "boundary_chunk_ids": [
+        "v31_src_01_scope_001"
+      ],
+      "irrelevant_chunk_ids": [
+        "v31_src_06_scope_001",
+        "v31_src_07_scope_001",
+        "v31_src_13_scope_001"
+      ],
+      "medical_note": "src_02 直接支持；src_01 同载'肝目'但侧重五志对应（boundary）。"
+    },
+    {
+      "query_id": "gq_04",
+      "query_text": "腰膝酸软可能提示什么中医倾向？",
+      "relevant_chunk_ids": [
+        "v31_src_05_scope_001",
+        "v31_src_11_scope_001"
+      ],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_09_scope_001",
+        "v31_src_13_scope_001",
+        "v31_src_07_scope_001"
+      ],
+      "medical_note": "腰为肾之府（src_05）+教材'腰膝酸软属肾虚'（src_11）。"
+    },
+    {
+      "query_id": "gq_05",
+      "query_text": "耳鸣的中医辨证倾向：慢性耳鸣与突发耳鸣如何区分？",
+      "relevant_chunk_ids": [
+        "v31_src_13_scope_001"
+      ],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_03_scope_001",
+        "v31_src_09_scope_001",
+        "v31_src_05_scope_001"
+      ],
+      "medical_note": "慢性耳鸣多责肾虚、暴鸣多责肝火（src_13）。"
+    },
+    {
+      "query_id": "gq_06",
+      "query_text": "五音调适：角调对应哪个脏与情绪？",
+      "relevant_chunk_ids": [
+        "v31_src_07_scope_001",
+        "v31_src_10_scope_001"
+      ],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_08_scope_001",
+        "v31_src_11_scope_001",
+        "v31_src_13_scope_001"
+      ],
+      "medical_note": "角-肝-木（src_07）；五音配五行（src_10）。"
+    },
+    {
+      "query_id": "gq_07",
+      "query_text": "为什么说脾为生痰之源、与肺有什么关系？",
+      "relevant_chunk_ids": [
+        "v31_src_09_scope_001"
+      ],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_03_scope_001",
+        "v31_src_13_scope_001",
+        "v31_src_02_scope_001"
+      ],
+      "medical_note": "src_09 直接表述'脾为生痰之源，肺为贮痰之器'。"
+    },
+    {
+      "query_id": "gq_08",
+      "query_text": "喘证与哪些脏腑相关？肺与肾的气机关系是什么？",
+      "relevant_chunk_ids": [
+        "v31_src_08_scope_001",
+        "v31_src_12_scope_001"
+      ],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_09_scope_001",
+        "v31_src_11_scope_001",
+        "v31_src_07_scope_001"
+      ],
+      "medical_note": "肺为气之主、肾为气之根（src_08）；喘证病机（src_12）。"
+    },
+    {
+      "query_id": "gq_09",
+      "query_text": "中医里心的功能定位（主血脉、主神明）是怎样的？",
+      "relevant_chunk_ids": [
+        "v31_src_04_scope_001"
+      ],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_05_scope_001",
+        "v31_src_13_scope_001",
+        "v31_src_02_scope_001"
+      ],
+      "medical_note": "心者君主之官、主血脉、主神明（src_04）。"
+    },
+    {
+      "query_id": "gq_10",
+      "query_text": "健忘、思虑过度从中医看多与什么相关？",
+      "relevant_chunk_ids": [
+        "v31_src_11_scope_001"
+      ],
+      "boundary_chunk_ids": [
+        "v31_src_01_scope_001",
+        "v31_src_04_scope_001"
+      ],
+      "irrelevant_chunk_ids": [
+        "v31_src_07_scope_001",
+        "v31_src_10_scope_001",
+        "v31_src_13_scope_001"
+      ],
+      "medical_note": "教材言健忘属思虑过度（src_11）；思为脾志（src_01）、心主神明（src_04）为理论背景（boundary）。"
+    },
+    {
+      "query_id": "gq_11",
+      "query_text": "为什么说情志舒畅主要靠肝？",
+      "relevant_chunk_ids": [
+        "v31_src_12_scope_001"
+      ],
+      "boundary_chunk_ids": [
+        "v31_src_01_scope_001"
+      ],
+      "irrelevant_chunk_ids": [
+        "v31_src_04_scope_001",
+        "v31_src_09_scope_001",
+        "v31_src_13_scope_001"
+      ],
+      "medical_note": "情志调畅赖肝（src_12）；怒为肝志（src_01，boundary）。"
+    },
+    {
+      "query_id": "gq_12",
+      "query_text": "痰饮形成的中医病机解释",
+      "relevant_chunk_ids": [
+        "v31_src_12_scope_001"
+      ],
+      "boundary_chunk_ids": [
+        "v31_src_09_scope_001"
+      ],
+      "irrelevant_chunk_ids": [
+        "v31_src_02_scope_001",
+        "v31_src_06_scope_001",
+        "v31_src_10_scope_001"
+      ],
+      "medical_note": "痰饮病机（src_12）；脾为生痰之源为机理细节（boundary src_09）。"
+    },
+    {
+      "query_id": "gq_13",
+      "query_text": "五音（宫商角徵羽）与五行对应关系是什么？",
+      "relevant_chunk_ids": [
+        "v31_src_10_scope_001"
+      ],
+      "boundary_chunk_ids": [
+        "v31_src_07_scope_001"
+      ],
+      "irrelevant_chunk_ids": [
+        "v31_src_01_scope_001",
+        "v31_src_11_scope_001",
+        "v31_src_08_scope_001"
+      ],
+      "medical_note": "五音配五行（src_10）；src_07 为音-脏-五行间接映射（boundary）。"
+    },
+    {
+      "query_id": "gq_14",
+      "query_text": "五音处方的BPM、时长、乐器如何确定（生成规则）？",
+      "relevant_chunk_ids": [],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_07_scope_001",
+        "v31_src_10_scope_001",
+        "v31_src_06_scope_001",
+        "v31_src_13_scope_001"
+      ],
+      "medical_note": "确定性生成规则（BPM/时长/乐器）明确不入语料；此查询预期零命中，用于校验域外过滤。应返回低相似、无相关 chunk。"
+    },
+    {
+      "query_id": "gq_15",
+      "query_text": "问卷题目分数如何计算、五脏证据如何加权？",
+      "relevant_chunk_ids": [],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_01_scope_001",
+        "v31_src_04_scope_001",
+        "v31_src_07_scope_001",
+        "v31_src_11_scope_001"
+      ],
+      "medical_note": "问卷评分与五脏 Evidence 计算为确定性规则、不入语料；预期零命中，校验域外过滤。"
+    },
+    {
+      "query_id": "gq_16",
+      "query_text": "声音嘶哑从中医看提示什么倾向？",
+      "relevant_chunk_ids": [
+        "v31_src_11_scope_001"
+      ],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_02_scope_001",
+        "v31_src_09_scope_001",
+        "v31_src_07_scope_001"
+      ],
+      "medical_note": "声嘶属肺（教材归类，src_11）。"
+    },
+    {
+      "query_id": "gq_17",
+      "query_text": "心脾两虚倾向的典型表现与解释",
+      "relevant_chunk_ids": [],
+      "boundary_chunk_ids": [],
+      "irrelevant_chunk_ids": [
+        "v31_src_04_scope_001",
+        "v31_src_11_scope_001",
+        "v31_src_01_scope_001"
+      ],
+      "medical_note": "当前语料为'解释类'13 条，不覆盖心脾两虚证型详解（无对应正文 chunk）；预期低命中——用于暴露语料覆盖边界，避免把低相似误判为'不相关噪音'而误设过严阈值。"
+    }
+  ],
+  "usage_note": "AI 侧用本集计算 relevant/boundary vs irrelevant 的相似度分布，提出 minimum_score 候选（召回相关样本优先）；数值阈值须经 Owner 批准后配置；阈值未定/Provider 失败时 readiness fail，不得自动降级 Mock。",
+  "chunk_id_set": [
+    "v31_src_01_scope_001",
+    "v31_src_02_scope_001",
+    "v31_src_03_scope_001",
+    "v31_src_04_scope_001",
+    "v31_src_05_scope_001",
+    "v31_src_06_scope_001",
+    "v31_src_07_scope_001",
+    "v31_src_08_scope_001",
+    "v31_src_09_scope_001",
+    "v31_src_10_scope_001",
+    "v31_src_11_scope_001",
+    "v31_src_12_scope_001",
+    "v31_src_13_scope_001"
+  ],
+  "chunk_id_map_source": {
+    "src_01": "v31_src_01_scope_001",
+    "src_02": "v31_src_02_scope_001",
+    "src_03": "v31_src_03_scope_001",
+    "src_04": "v31_src_04_scope_001",
+    "src_05": "v31_src_05_scope_001",
+    "src_06": "v31_src_06_scope_001",
+    "src_07": "v31_src_07_scope_001",
+    "src_08": "v31_src_08_scope_001",
+    "src_09": "v31_src_09_scope_001",
+    "src_10": "v31_src_10_scope_001",
+    "src_11": "v31_src_11_scope_001",
+    "src_12": "v31_src_12_scope_001",
+    "src_13": "v31_src_13_scope_001"
+  },
+  "syndrome_code_authority": {
+    "note": "Agent2 正式 syndrome_code 主键 = syd_001..syd_008；英文名称仅为语义 alias（不作主键）。",
+    "primary_codes": [
+      "syd_001",
+      "syd_002",
+      "syd_003",
+      "syd_004",
+      "syd_005",
+      "syd_006",
+      "syd_007",
+      "syd_008"
+    ],
+    "english_alias": {
+      "syd_001": "liver_stagnation_heat",
+      "syd_002": "liver_qi_stagnation",
+      "syd_003": "heart_fire_flaming",
+      "syd_004": "heart_spleen_deficiency",
+      "syd_005": "spleen_deficiency_dampness",
+      "syd_006": "lung_qi_deficiency",
+      "syd_007": "kidney_yin_deficiency",
+      "syd_008": "heart_kidney_disconnection"
+    }
+  },
+  "empty_claim_organ_semantics": "claim_codes=[] / organ_codes=[] 为医学侧有意留空（13 chunk 为中医理论背景解释，不充当问卷 claim/器官证据计算源），非遗漏。"
+}
