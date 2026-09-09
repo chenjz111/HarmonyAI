@@ -235,12 +235,16 @@ def _persist_generated_asset(
     spec: GenerationSpec,
 ) -> MusicAsset:
     locator = provider_task.asset_locator or ""
-    # Owner rule: the stored duration must come from the actual saved audio, not
-    # from the requested spec. Real providers always materialize parseable mp3,
-    # so the probe returns real seconds here; unparseable synthetic test
-    # fixtures keep the documented spec fallback.
-    actual_seconds = _measure_audio_duration_seconds(locator)
-    duration_seconds = actual_seconds if actual_seconds else spec.duration_seconds
+    # Owner rule: the stored duration MUST be measured from the actual saved
+    # audio. If it cannot be measured the generation is an explicit failure —
+    # the requested duration is never silently stored as the real duration.
+    measured_seconds = _measure_audio_duration_seconds(locator)
+    if measured_seconds is None:
+        raise MusicProviderFailureV3(
+            "GENERATION_PROVIDER_REJECTED",
+            retryable=False,
+            safe_message="生成音频时长无法读取，已停止使用该结果。",
+        )
     row = MusicAsset(
         music_asset_id=f"asset_{uuid.uuid4().hex}",
         owner_internal_user_pk=principal_pk,
@@ -249,7 +253,7 @@ def _persist_generated_asset(
         title=f"生成音频 {spec.bpm} BPM",
         storage_key=locator,
         format="mp3",
-        duration_seconds=duration_seconds,
+        duration_seconds=measured_seconds,
         checksum=_locator_checksum(locator),
         tone_profile_json=spec.tone_profile.model_dump(mode="json"),
         bpm=spec.bpm,
@@ -262,7 +266,7 @@ def _persist_generated_asset(
 
 
 def _measure_audio_duration_seconds(locator: str) -> int | None:
-    """Best-effort measured duration of the materialized generated audio."""
+    """Measured duration of the materialized generated audio, or None."""
     path = Path(locator)
     if not path.is_file():
         return None

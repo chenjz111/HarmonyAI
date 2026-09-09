@@ -48,7 +48,23 @@ from backend.app.routers.v3.generation_router import get_music_provider
 
 client = TestClient(app)
 
-_MP3_BYTES = b"\xff\xfb\x90\x64\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+
+def _mp3_bytes(*, seconds: float = 3.0) -> bytes:
+    """Deterministic MPEG1 Layer III 128 kbps 44.1 kHz fixture stream.
+
+    Generated-asset duration is measured from the actual saved file, so the
+    fixture must be parseable MP3 instead of arbitrary filler bytes.
+    """
+    bitrate_kbps = 128
+    samplerate = 44100
+    samples_per_frame = 1152
+    frame_length = int(samples_per_frame * bitrate_kbps * 1000 / (8 * samplerate))
+    frame = b"\xff\xfb\x90\x00" + bytes(max(0, frame_length - 4))
+    frames = max(1, int(seconds * samplerate / samples_per_frame) + 1)
+    return frame * frames
+
+
+_MP3_BYTES = _mp3_bytes(seconds=3.0)
 
 
 class _FakeMiniMaxTransport:

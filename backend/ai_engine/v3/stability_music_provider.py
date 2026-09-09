@@ -293,11 +293,18 @@ class StabilityMusicProvider:
         validate_provider_request_capabilities(request, self.capabilities())
         started = time.perf_counter()
         prompt = _build_prompt(request)
-        seconds_total = int(request.generation_spec.duration_seconds)
+        duration_seconds = int(request.generation_spec.duration_seconds)
+        # Multipart field names follow the Owner-verified successful request and
+        # the official Stable Audio 2.5 text-to-audio schema:
+        #   model / prompt / duration / steps / cfg_scale / seed
+        # (seed is omitted so every generation is non-deterministic; billing is
+        # idempotency-protected by the service layer).
         data: dict[str, object] = {
-            "text_prompt": prompt,
-            "seconds_total": seconds_total,
-            "output_format": request.output_format,
+            "model": self.model,
+            "prompt": prompt,
+            "duration": duration_seconds,
+            "steps": 8,
+            "cfg_scale": 1.0,
         }
         headers = {
             "Authorization": f"Bearer {self._api_key}",

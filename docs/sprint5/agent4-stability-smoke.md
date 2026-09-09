@@ -9,7 +9,7 @@
 ## 目标链路
 
 ```
-GenerationSpec → Stability multipart POST（text_prompt/seconds_total/output_format=mp3）
+GenerationSpec → Stability multipart POST（model/prompt/duration/steps/cfg_scale，官方字段）
 → audio/mpeg 二进制（自动重试 0 次）
 → 校验 Content-Type 与 mp3 magic 后写入自有 HARMONY_MEDIA_ROOT/generated/stability/*.mp3
 → 实际时长从保存文件读取（非请求时长）
@@ -50,20 +50,20 @@ python tools/stability_music_smoke.py
 
 ## Smoke 验收清单
 
-- [ ] 真实生成一次：`text_prompt`/`seconds_total` 字段名与 Owner 已验证请求一致，
-      返回 `audio/mpeg`、可播放。
+- [ ] 真实生成一次：multipart 字段 `model/prompt/duration/steps/cfg_scale`（与 Owner
+      已验证成功请求一致），返回 `audio/mpeg`、可播放。
 - [ ] 音频落入自有存储（`generated/stability/*.mp3`），Player 不读临时 URL。
-- [ ] `measured_duration_seconds` 与文件实测一致（≈61.582s 场景应显示 62）。
+- [ ] `measured_duration_seconds` 与文件实测一致（≈61.582s 场景应显示 62）；
+      实测失败时任务显式失败，绝不把请求时长当实际时长。
 - [ ] `401/403、429、5xx、余额/权限、超时、空音频`均明确失败；POST 次数 = 1。
 - [ ] `generated`（真实生成）与 `matched_fallback`（审核曲库）在 API/DB 不混淆。
 - [ ] 记录真实延迟/费用；不记录 Secret。
 
 ## 已知待 Owner 确认
 
-1. 真实请求的 multipart 字段名：当前实现采用官方文档字段
-   `text_prompt` / `seconds_total` / `output_format`；若平台对 Owner 账号返回
-   需要其他别名（如 `duration`/`prompt`），只需在 smoke 中快速比对并修正 adapter
-   常量（单点修改）。
+1. 真实 Smoke 复跑确认字段名与官方 Schema 一致
+   （`model/prompt/duration/steps/cfg_scale`；seed 当前省略取随机，如要复现再补
+   `seed`，改动在 adapter 常量单点位置）。
 2. 时长上限：Stable Audio 2.5 官方范围 1–190s（当前
    `STABILITY_MAX_DURATION_SECONDS=190`）；若 Agent3 默认时长超过 190s，需要在
    Owner 确认后调整 GenerationSpec 时长或决定上限（Adapter 对 >190s 请求显式失败，

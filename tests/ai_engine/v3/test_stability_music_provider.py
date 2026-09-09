@@ -252,10 +252,13 @@ def test_create_task_posts_exactly_once_and_materializes_mp3(tmp_path):
     # multipart is produced by the client; the boundary is never hand-written
     assert "content-type" not in headers
     data = call["data"]
-    assert data["output_format"] == "mp3"
-    assert data["seconds_total"] == 60
-    assert "guqin" in data["text_prompt"]
-    assert "pr_stability_test" not in data["text_prompt"]
+    # field names follow the Owner-verified successful request / official schema
+    assert data["model"] == DEFAULT_STABILITY_MODEL
+    assert data["duration"] == 60
+    assert data["steps"] == 8
+    assert data["cfg_scale"] == 1.0
+    assert "guqin" in data["prompt"]
+    assert "pr_stability_test" not in data["prompt"]
     assert "sk-test-stability-secret" not in str(call["data"])
     assert call["files"]  # a non-empty files part forces multipart/form-data
     assert provider.health().status == "healthy"

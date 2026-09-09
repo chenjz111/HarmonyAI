@@ -51,6 +51,21 @@ from backend.app.routers.v3.generation_router import get_music_provider
 client = TestClient(app)
 
 
+def _mp3_bytes(*, seconds: float = 3.0) -> bytes:
+    """Deterministic MPEG1 Layer III 128 kbps 44.1 kHz fixture stream.
+
+    Generated-asset duration is measured from the actual saved file, so mock
+    providers must hand back parseable MP3 bytes instead of arbitrary filler.
+    """
+    bitrate_kbps = 128
+    samplerate = 44100
+    samples_per_frame = 1152
+    frame_length = int(samples_per_frame * bitrate_kbps * 1000 / (8 * samplerate))
+    frame = b"\xff\xfb\x90\x00" + bytes(max(0, frame_length - 4))
+    frames = max(1, int(seconds * samplerate / samples_per_frame) + 1)
+    return frame * frames
+
+
 @contextmanager
 def _seed_db():
     """Session bound to the same engine the app's dependency override uses."""
@@ -395,7 +410,7 @@ def test_generation_rejected_when_prescription_not_actionable():
 
 
 def test_successful_generation_poll_stream_and_terminal_cancel(tmp_path):
-    audio = b"generated-mp3-bytes"
+    audio = _mp3_bytes(seconds=3.0)
     audio_path = tmp_path / "generated.mp3"
     audio_path.write_bytes(audio)
     headers, session_id = _setup_guest(idempotency_key="success-session")
@@ -527,7 +542,7 @@ def test_cancel_unsupported_returns_409(tmp_path):
 
 def test_idempotent_replay_returns_same_task(tmp_path):
     audio_path = tmp_path / "generated.mp3"
-    audio_path.write_bytes(b"x")
+    audio_path.write_bytes(_mp3_bytes())
     headers, session_id = _setup_guest(idempotency_key="replay-session")
     provider = MockMusicGenerationProvider(
         tasks=[
@@ -567,7 +582,7 @@ def test_idempotent_replay_returns_same_task(tmp_path):
 
 def test_idempotency_key_reused_with_different_body_conflicts(tmp_path):
     audio_path = tmp_path / "generated.mp3"
-    audio_path.write_bytes(b"x")
+    audio_path.write_bytes(_mp3_bytes())
     headers, session_id = _setup_guest(idempotency_key="conflict-session")
     provider = MockMusicGenerationProvider(
         tasks=[
@@ -615,7 +630,7 @@ def test_idempotency_key_reused_with_different_body_conflicts(tmp_path):
 
 
 def test_cross_user_resources_are_not_found(tmp_path):
-    audio = b"generated-mp3-bytes"
+    audio = _mp3_bytes(seconds=3.0)
     audio_path = tmp_path / "generated.mp3"
     audio_path.write_bytes(audio)
     owner_headers, owner_session = _setup_guest(idempotency_key="owner-session")
