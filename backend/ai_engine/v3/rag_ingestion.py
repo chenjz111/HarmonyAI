@@ -21,6 +21,9 @@ class ProductionCorpusNotReady(RuntimeError):
         super().__init__(f"{error_code}: {safe_message}")
 
 
+EMPTY_LABEL_SEMANTICS = "claim_codes_and_organ_codes_intentionally_empty_by_medical_review"
+
+
 def _content_checksum(payload: Mapping[str, object], field: str) -> str:
     """Return the stable checksum for one manifest or chunk payload.
 
@@ -86,6 +89,7 @@ def validate_production_corpus(
             "医学语料块数量与清单不一致。",
         )
 
+    validated_chunks: list[KnowledgeChunk] = []
     for raw_chunk in chunks:
         raw = (
             raw_chunk.model_dump(mode="json")
@@ -116,6 +120,21 @@ def validate_production_corpus(
                 "CORPUS_VERSION_MISMATCH",
                 "医学语料块版本与清单不一致。",
             )
+        validated_chunks.append(chunk)
+
+    all_labels_empty = bool(validated_chunks) and all(
+        not chunk.claim_codes and not chunk.organ_codes for chunk in validated_chunks
+    )
+    if all_labels_empty and checked_manifest.label_semantics != EMPTY_LABEL_SEMANTICS:
+        raise ProductionCorpusNotReady(
+            "CORPUS_EMPTY_LABEL_SEMANTICS_MISSING",
+            "医学语料标签有意留空时，清单必须记录医学审核语义。",
+        )
+    if checked_manifest.label_semantics is not None and not all_labels_empty:
+        raise ProductionCorpusNotReady(
+            "CORPUS_LABEL_SEMANTICS_INVALID",
+            "清单的空标签语义与语料块标签状态不一致。",
+        )
 
     return checked_manifest
 

@@ -67,6 +67,9 @@ def test_candidate_package_and_manifest_checksums_are_canonical():
     assert manifest["embedding_model"] == "text-embedding-v4"
     assert manifest["embedding_dimension"] == 1024
     assert manifest["embedding_version"] == "text-embedding-v4@1024"
+    assert manifest["label_semantics"] == (
+        "claim_codes_and_organ_codes_intentionally_empty_by_medical_review"
+    )
     assert manifest["index_status"] == "NOT_BUILT_OWNER_PENDING"
     assert manifest["chunk_count"] == len(candidate["chunks"]) == 13
     assert manifest["chunk_checksums"] == [

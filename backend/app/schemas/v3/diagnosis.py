@@ -95,6 +95,9 @@ class IngestionManifest(V3BaseModel):
     chunk_count: Annotated[int, Field(ge=0)]
     manifest_checksum: Annotated[str, Field(pattern=r"^sha256:.+")]
     review_status: Literal["approved"]
+    label_semantics: Literal[
+        "claim_codes_and_organ_codes_intentionally_empty_by_medical_review"
+    ] | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class RagQuery(V3BaseModel):

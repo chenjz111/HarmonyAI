@@ -201,6 +201,10 @@ def validate_candidate_manifest(
         ("embedding_dimension", 1024),
         ("embedding_version", "text-embedding-v4@1024"),
         ("distance_metric", "cosine"),
+        (
+            "label_semantics",
+            "claim_codes_and_organ_codes_intentionally_empty_by_medical_review",
+        ),
         ("index_status", "NOT_BUILT_OWNER_PENDING"),
         ("chunk_count", len(package.chunks)),
     ):

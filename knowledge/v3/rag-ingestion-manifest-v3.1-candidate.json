@@ -12,6 +12,7 @@
   "embedding_dimension": 1024,
   "embedding_version": "text-embedding-v4@1024",
   "distance_metric": "cosine",
+  "label_semantics": "claim_codes_and_organ_codes_intentionally_empty_by_medical_review",
   "index_status": "NOT_BUILT_OWNER_PENDING",
   "chunk_count": 13,
   "chunk_checksums": [
@@ -29,5 +30,5 @@
     {"chunk_id":"v31_src_12_scope_001","content_checksum":"sha256:773333e60a6b421b0276e0e0b249f4c62473963a7df1d7a19f884135e5e90080"},
     {"chunk_id":"v31_src_13_scope_001","content_checksum":"sha256:f191c8ca5de62a48a042432fc0957b07a961459dea86be924a0df4d5de1af856"}
   ],
-  "content_checksum": "sha256:8c88f7f92377c99f92075ad3a5cd2e1553f2eb9a8882a0c294f4df56389a72ac"
+  "content_checksum": "sha256:d4a5d6cc40b7d01cdc21ef0532efe4327344f4e0da89203e9b3a42458a21ec1b"
 }

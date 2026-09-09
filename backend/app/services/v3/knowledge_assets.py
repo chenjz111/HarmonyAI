@@ -26,6 +26,27 @@ class MedicalRuleAsset:
     medical_rule_version: str
     content_checksum: str
     allowed_syndrome_codes: frozenset[str]
+    syndrome_aliases: Mapping[str, str]
+
+
+FORMAL_MEDICAL_RULE_VERSION = "medical-rules-v3.1-r1"
+FORMAL_V31_ALLOWED_SYNDROME_CODES = frozenset(
+    f"syd_{index:03d}" for index in range(1, 9)
+)
+FORMAL_V31_SYNDROME_ALIASES: Mapping[str, str] = {
+    "syd_001": "liver_stagnation_heat",
+    "syd_002": "liver_qi_stagnation",
+    "syd_003": "heart_fire_flare",
+    "syd_004": "heart_spleen_deficiency",
+    "syd_005": "spleen_deficiency_dampness",
+    "syd_006": "lung_qi_deficiency",
+    "syd_007": "kidney_yin_deficiency",
+    "syd_008": "heart_kidney_discordance",
+}
+# Filled with the canonical checksum of knowledge/v3/medical-rules-v3.1.json.
+APPROVED_MEDICAL_RULE_CHECKSUMS: Mapping[str, str] = {
+    FORMAL_MEDICAL_RULE_VERSION: "sha256:0dd929cb7d2b7b8a11c9c1ad0fb5e4adb8f4807123263af7e2a7c1767b401a3f",
+}
 
 
 class MedicalRuleAssetNotReady(ValueError):
@@ -150,6 +171,11 @@ def load_medical_rule_asset(
             "MEDICAL_RULE_VERSION_MISMATCH",
             "医学规则资产版本与配置不一致。",
         )
+    if expected_version not in APPROVED_MEDICAL_RULE_CHECKSUMS:
+        raise MedicalRuleAssetNotReady(
+            "MEDICAL_RULE_VERSION_NOT_APPROVED",
+            "医学规则资产版本尚未获得生产批准。",
+        )
     schema_version = payload.get("schema_version")
     codes = payload.get("allowed_syndrome_codes")
     if (
@@ -168,11 +194,40 @@ def load_medical_rule_asset(
             "MEDICAL_RULE_CODES_INVALID",
             "医学规则资产中的证型代码无效。",
         )
+    if (
+        set(codes) != FORMAL_V31_ALLOWED_SYNDROME_CODES
+        or codes != sorted(FORMAL_V31_ALLOWED_SYNDROME_CODES)
+    ):
+        raise MedicalRuleAssetNotReady(
+            "MEDICAL_RULE_CODES_NOT_APPROVED",
+            "医学规则资产中的证型代码不是已批准白名单。",
+        )
+    aliases = payload.get("syndrome_aliases")
+    if (
+        not isinstance(aliases, Mapping)
+        or dict(aliases) != dict(FORMAL_V31_SYNDROME_ALIASES)
+        or any(
+            not isinstance(alias, str)
+            or re.fullmatch(r"[a-z][a-z0-9_]{0,63}", alias) is None
+            for alias in aliases.values()
+        )
+    ):
+        raise MedicalRuleAssetNotReady(
+            "MEDICAL_RULE_CODES_NOT_APPROVED",
+            "医学规则资产中的证型别名不是已批准语义别名。",
+        )
+    approved_checksum = APPROVED_MEDICAL_RULE_CHECKSUMS[expected_version]
+    if approved_checksum and actual_checksum != approved_checksum:
+        raise MedicalRuleAssetNotReady(
+            "MEDICAL_RULE_CHECKSUM_NOT_APPROVED",
+            "医学规则资产校验和不是已批准发布版本。",
+        )
     return MedicalRuleAsset(
         schema_version=schema_version,
         medical_rule_version=asset_version,
         content_checksum=actual_checksum,
         allowed_syndrome_codes=frozenset(codes),
+        syndrome_aliases=dict(aliases),
     )
 
 

@@ -10,7 +10,17 @@ def _write_medical_rule_asset(tmp_path, *, version="medical-rules-v3.1-r1"):
         "schema_version": "3.1.0",
         "medical_rule_version": version,
         "review_status": "approved",
-        "allowed_syndrome_codes": ["syndrome_1"],
+        "allowed_syndrome_codes": [f"syd_{index:03d}" for index in range(1, 9)],
+        "syndrome_aliases": {
+            "syd_001": "liver_stagnation_heat",
+            "syd_002": "liver_qi_stagnation",
+            "syd_003": "heart_fire_flare",
+            "syd_004": "heart_spleen_deficiency",
+            "syd_005": "spleen_deficiency_dampness",
+            "syd_006": "lung_qi_deficiency",
+            "syd_007": "kidney_yin_deficiency",
+            "syd_008": "heart_kidney_discordance",
+        },
         "content_checksum": "",
     }
     canonical = {key: value for key, value in payload.items() if key != "content_checksum"}

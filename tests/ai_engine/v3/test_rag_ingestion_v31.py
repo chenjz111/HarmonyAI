@@ -10,7 +10,15 @@ def _checksum(payload, field):
     return f"sha256:{sha256(encoded.encode('utf-8')).hexdigest()}"
 
 
-def _manifest(*, review_status="approved", embedding_version="text-embedding-v4@1024"):
+EMPTY_LABEL_SEMANTICS = "claim_codes_and_organ_codes_intentionally_empty_by_medical_review"
+
+
+def _manifest(
+    *,
+    review_status="approved",
+    embedding_version="text-embedding-v4@1024",
+    label_semantics=None,
+):
     from backend.app.schemas.v3.diagnosis import IngestionManifest
 
     payload = {
@@ -25,11 +33,13 @@ def _manifest(*, review_status="approved", embedding_version="text-embedding-v4@
         "manifest_checksum": "",
         "review_status": review_status,
     }
+    if label_semantics is not None:
+        payload["label_semantics"] = label_semantics
     payload["manifest_checksum"] = _checksum(payload, "manifest_checksum")
     return IngestionManifest(**payload)
 
 
-def _chunk(*, review_status="approved"):
+def _chunk(*, review_status="approved", empty_labels=False):
     from backend.app.schemas.v3.diagnosis import KnowledgeChunk
 
     payload = {
@@ -39,8 +49,8 @@ def _chunk(*, review_status="approved"):
         "section": "section-1",
         "text": "approved explanation text",
         "display_summary": "approved explanation",
-        "claim_codes": ["unrefreshing_sleep"],
-        "organ_codes": ["heart"],
+        "claim_codes": [] if empty_labels else ["unrefreshing_sleep"],
+        "organ_codes": [] if empty_labels else ["heart"],
         "review_status": review_status,
         "medical_review_version": "medical_v3.1-r1",
         "knowledge_version": "medical_v3.1",
@@ -160,3 +170,22 @@ def test_load_production_corpus_rejects_missing_or_malformed_files(tmp_path):
 
     with pytest.raises(ProductionCorpusNotReady, match="CORPUS_FILES_INVALID"):
         load_production_corpus(manifest_path, chunks_path)
+
+
+def test_approved_empty_labels_require_explicit_medical_semantics():
+    from backend.ai_engine.v3.rag_ingestion import (
+        ProductionCorpusNotReady,
+        validate_production_corpus,
+    )
+
+    with pytest.raises(ProductionCorpusNotReady, match="CORPUS_EMPTY_LABEL_SEMANTICS_MISSING"):
+        validate_production_corpus(_manifest(), [_chunk(empty_labels=True)])
+
+
+def test_approved_empty_labels_are_recorded_as_intentional_medical_semantics():
+    from backend.ai_engine.v3.rag_ingestion import validate_production_corpus
+
+    manifest = _manifest(label_semantics=EMPTY_LABEL_SEMANTICS)
+    checked = validate_production_corpus(manifest, [_chunk(empty_labels=True)])
+
+    assert checked.label_semantics == EMPTY_LABEL_SEMANTICS
