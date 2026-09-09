@@ -119,4 +119,3 @@ def test_smoke_missing_real_configuration_fails_without_mock(monkeypatch):
             receipt_path="receipt.json",
             fixture_path="fixture.json",
         )
-

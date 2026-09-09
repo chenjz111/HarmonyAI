@@ -88,4 +88,3 @@ def test_candidate_contains_no_inferred_medical_labels_or_production_approval():
         assert chunk["organ_codes"] == []
         assert "medical_review_version" not in chunk
         assert "approved" not in chunk["review_status"]
-

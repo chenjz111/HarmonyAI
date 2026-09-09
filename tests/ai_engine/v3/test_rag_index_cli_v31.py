@@ -204,4 +204,3 @@ def test_index_builder_fails_when_collection_count_is_not_manifest_count(monkeyp
             embedding_provider=FakeEmbedding(),
             client=DroppingClient(),
         )
-

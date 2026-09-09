@@ -90,4 +90,3 @@ def build_index_receipt(
     }
     payload["index_checksum"] = canonical_index_checksum(payload)
     return IndexReceipt.model_validate(payload)
-
