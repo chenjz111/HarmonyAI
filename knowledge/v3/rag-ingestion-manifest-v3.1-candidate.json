@@ -1,0 +1,33 @@
+{
+  "schema_id": "rag_ingestion_manifest_candidate_v3_1",
+  "schema_version": "3.1.0-ingestion-candidate-v1",
+  "candidate_status": "PENDING_MEDICAL_CONTENT_REVIEW",
+  "source_registry_path": "knowledge/v3/rag-corpus-manifest-v3.1.json",
+  "source_registry_checksum": "sha256:5096bf8509fea4641fef8ca4965245b04a253b1e0bd3910dd0a6b64bef9afb85",
+  "candidate_corpus_path": "knowledge/v3/rag-corpus-chunks-v3.1-candidate.json",
+  "candidate_corpus_checksum": "sha256:07d7e064dae853343787c9706c2396240ceb4430caf57039020f2471fa7bc9a0",
+  "knowledge_version": "medical_v3.1-candidate.1",
+  "embedding_provider": "dashscope",
+  "embedding_model": "text-embedding-v4",
+  "embedding_dimension": 1024,
+  "embedding_version": "text-embedding-v4@1024",
+  "distance_metric": "cosine",
+  "index_status": "NOT_BUILT_OWNER_PENDING",
+  "chunk_count": 13,
+  "chunk_checksums": [
+    {"chunk_id":"v31_src_01_scope_001","content_checksum":"sha256:896bae45800dcf37141e40fb046fe7ec6820157c1fb4f4457e8e5a03701f16da"},
+    {"chunk_id":"v31_src_02_scope_001","content_checksum":"sha256:ad09c2a8f50a6a2ef36dc15d8e003bcb49ebf2c341277c3d876a9a8a78a5388c"},
+    {"chunk_id":"v31_src_03_scope_001","content_checksum":"sha256:03225388dac4cd4d45bb9c2a4feb4a1c2d97eabf5784b63859d8070bac33b4c4"},
+    {"chunk_id":"v31_src_04_scope_001","content_checksum":"sha256:992085527c2003b11bd4e7ebc86cbd19852e27c6755248f3c00f3c698fe9cdee"},
+    {"chunk_id":"v31_src_05_scope_001","content_checksum":"sha256:58f11527ed84412b6f0e236aa2619e718c0f78e59f0e4fd757d9790cbb2d68ef"},
+    {"chunk_id":"v31_src_06_scope_001","content_checksum":"sha256:4d4756c6fc4b44efec7a725fc97e604dcd713ca43b71891c5b12014ba9cb9a1a"},
+    {"chunk_id":"v31_src_07_scope_001","content_checksum":"sha256:91603846923ce7c8f2495f069a09b248a34d04ba216d33809dd24bc8a2160b04"},
+    {"chunk_id":"v31_src_08_scope_001","content_checksum":"sha256:5ea523670556c3437601206245aed1cad149d8a49687b9c7a9bc753caa0b16aa"},
+    {"chunk_id":"v31_src_09_scope_001","content_checksum":"sha256:8457d3d5e92ec682e04f390fa6f1a9e53eda9d69885a43d7aa47873d97efeda3"},
+    {"chunk_id":"v31_src_10_scope_001","content_checksum":"sha256:95d88745c933c00d33ab456c99489279b5406bf7d74207040d2846b5b617be86"},
+    {"chunk_id":"v31_src_11_scope_001","content_checksum":"sha256:524afda88d013e5ee0077a1a0335f990d950e55cdc5fb8579625a98eef67d7fb"},
+    {"chunk_id":"v31_src_12_scope_001","content_checksum":"sha256:773333e60a6b421b0276e0e0b249f4c62473963a7df1d7a19f884135e5e90080"},
+    {"chunk_id":"v31_src_13_scope_001","content_checksum":"sha256:f191c8ca5de62a48a042432fc0957b07a961459dea86be924a0df4d5de1af856"}
+  ],
+  "content_checksum": "sha256:8c88f7f92377c99f92075ad3a5cd2e1553f2eb9a8882a0c294f4df56389a72ac"
+}
