@@ -12,12 +12,12 @@
 
 | 文件 | 对应 #108 | canonical sha256 |
 | --- | --- | --- |
-| `knowledge/v3/document-relevance-rules-v3.1.json` | §1 Document Relevance 终审 | `19e4728e…d4`（R2 更新） |
+| `knowledge/v3/document-relevance-rules-v3.1.json` | §1 Document Relevance 终审 | `3445dedc…22`（R3 冻结分流对齐） |
 | `knowledge/v3/usergoal-vocabulary-v3.1.json` | §2 问卷 3.0.1 保护（UserGoal） | `02813bdf…9f`（R2 更新） |
 | `knowledge/v3/five-tone-safe-expression-rules-v3.1.json` | §5 Five-Tone Explainability | `c752d619…23f` |
 | `knowledge/v3/rag-corpus-manifest-v3.1.json` | §3 RAG Medical Corpus + §4 Boundary | `5096bf85…fb85`（R2 更新） |
 | `docs/sprint5/medical-issue108-closeout-20260906.md` | 本说明 | — |
-| `tests/knowledge/test_s5final_medical_assets.py` | #108 §6 Medical Tests（9 项） | — |
+| `tests/knowledge/test_s5final_medical_assets.py` | #108 §6 Medical Tests（10 项） | — |
 
 ## 2. 状态声明（按 PR #114 评审意见修正）
 
@@ -43,12 +43,12 @@
 
 ## 3. 自动化测试（#108 §6 / 评审意见第 1 项）
 
-文件：`tests/knowledge/test_s5final_medical_assets.py`（9 项）
+文件：`tests/knowledge/test_s5final_medical_assets.py`（10 项）
 
-覆盖：① 4 资产 JSON 可解析 ② canonical checksum 自洽 ③ Relevance verdicts/reason_codes 合法（reason 非空）④ 仅 VALID 进下游（downstream_gate 断言）⑤ UserGoal code 与 questionnaire-v3.0.1 完全一致 ⑥ UserGoal 非 Medical/Fact/Organ Evidence ⑦ RAG 仅解释类知识 + 确定性规则不入向量 + 无伪造 chunk ⑧ 五音表达无诊断/治疗承诺/夸大措辞 ⑨ questionnaire-v3.0.1 零修改（checksum = 冻结 `69a01d07…`）
+覆盖：① 4 资产 JSON 可解析 ② canonical checksum 自洽 ③ Relevance verdicts/reason_codes 合法（reason 非空）④ 仅 VALID 进下游（downstream_gate 断言），且 INSUFFICIENT 按冻结合同进入统一异常流程 ⑤ UserGoal code 与 questionnaire-v3.0.1 完全一致 ⑥ UserGoal 非 Medical/Fact/Organ Evidence ⑦ RAG 仅解释类知识 + 确定性规则不入向量 + 无伪造 chunk ⑧ 五音表达无诊断/治疗承诺/夸大措辞 ⑨ questionnaire-v3.0.1 零修改（checksum = 冻结 `69a01d07…`）
 
 命令：`python -m pytest tests/knowledge/test_s5final_medical_assets.py -q`
-结果（本地等价执行）：**9 passed**（CI 将以 PR #114 workflow `test` 复核）
+结果：由本次提交重新执行并以 PR #114 workflow `test` 复核。
 
 ## 4. #108 验收对照
 
@@ -73,3 +73,4 @@
 ## 6. 修订记录
 - R1 自查修订（VALID reason/措辞/label_ref/status_note/source_reference）；
 - R2（按 PR #114 评审意见）：新增结构化字段（downstream_gate / evidence_role / completion_status）+ 修正 RAG 完成状态表述 + 交付报告更新。
+- R3：按 V3.1 冻结合同修正 INSUFFICIENT 分流与权威文档引用，并新增对应回归断言。

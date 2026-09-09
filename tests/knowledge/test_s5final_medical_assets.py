@@ -84,6 +84,21 @@ def test_04_only_valid_enters_downstream():
         assert allowed == ["VALID"], flag
 
 
+def test_04b_insufficient_uses_frozen_exception_flow():
+    dr = _load("document-relevance-rules-v3.1.json")
+    insufficient = next(v for v in dr["verdicts"] if v["verdict"] == "INSUFFICIENT")
+
+    assert insufficient["action"] == "block_to_exception_page"
+    assert "共用异常页" in insufficient["evidence_usage"]
+    assert "重新选择资料" in insufficient["evidence_usage"]
+    assert "no-document" in insufficient["evidence_usage"]
+
+    decision = next(row for row in dr["decision_table"] if row["then"] == "INSUFFICIENT")
+    assert "共用异常页" in decision["note"]
+    assert "PENDING_CONTRACT" not in _canon(dr)
+    assert "分流由合同决策" not in _canon(dr)
+
+
 def test_05_usergoal_codes_match_questionnaire():
     ug = _load("usergoal-vocabulary-v3.1.json")
     q = _load("questionnaire-v3.0.1.json")

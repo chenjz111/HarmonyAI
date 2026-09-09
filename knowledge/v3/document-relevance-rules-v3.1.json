@@ -7,11 +7,11 @@
   "authored_at": "2026-09-06",
   "contract_refs": [
     "Issue #97 [S5-V3.1][Medical] Relevance Rules & UserGoal Assets",
-    "docs/contracts/harmonyai-v3.1-interface-semantics-draft.md §2 DocumentRelevanceResult",
-    "docs/contracts/harmonyai-v3.1-flow-amendment-draft.md §C Document Relevance Gate",
-    "docs/product/app-v3.1-provisional-owner-flow.md §3.2"
+    "docs/product/app-v3.1-teacher-user-flow.md §3.1 资料不可用时",
+    "docs/contracts/harmonyai-v3.1-freeze-candidate.md §3 Document Relevance Gate",
+    "docs/contracts/harmonyai-v3.1-flow-amendment-draft.md §2.C Document Relevance Gate"
   ],
-  "purpose": "V3.1 recent-document 路径：DocumentSet（1~3 张就诊资料图片）完成 OCR 后，判定识别材料是否可进入摘要确认与下游证据。本文件是医学侧候选规则稿（V3.1 冻结并注册 knowledge-manifest 后作为权威规则来源）；实际判定执行在 Information Understanding Layer，判定结果以 DocumentRelevanceResult 呈现并绑定 DocumentSet revision。",
+  "purpose": "V3.1 recent-document 路径：DocumentSet（1~3 张就诊资料图片）完成 OCR 后，判定识别材料是否可进入摘要确认与下游证据。本文件是医学侧最终规则资产；注册 knowledge-manifest 后作为生产权威规则来源。实际判定执行在 Information Understanding Layer，判定结果以 DocumentRelevanceResult 呈现并绑定 DocumentSet revision。",
   "status_note": "medical final v3.1：已按 Issue #108 提交评审（2026-09-06），与 V3.1 FROZEN 契约对齐（harmonyai-v3.1-freeze-candidate §3 / flow_v31.py）；注册入 knowledge-manifest 并成为生产权威来源，须待 Owner 接受（registry_status=NOT_REGISTERED_OWNER_PENDING）。",
   "verdicts": [
     {
@@ -68,9 +68,9 @@
     },
     {
       "verdict": "INSUFFICIENT",
-      "summary": "材料不足以作出确定判定，处置待合同确认",
-      "action": "PENDING_CONTRACT_DECISION —— 不得静默映射为成功或丢弃",
-      "evidence_usage": "在最终分流确定前：不得进入摘要确认，也不得直接按 INVALID/IRRELEVANT 丢弃；须等待 #96/#101 合同决策或用户补充",
+      "summary": "材料不足以作出确定判定，进入资料不可用异常流程",
+      "action": "block_to_exception_page",
+      "evidence_usage": "不得进入摘要确认、ConfirmedUserState、Agent1/Agent2 证据与 RAG 检索；与 INVALID/IRRELEVANT 共用异常页，仅允许重新选择资料或转入 no-document 问卷路径",
       "medical_criteria": [
         "关键字段缺失或歧义：资料类型、时间、检查结论或结论性内容缺失或 OCR 多义，无法判断 VALID/INVALID/IRRELEVANT 之一",
         "判定置信度低于阈值（阈值本身待定，见 open_decisions）",
@@ -113,7 +113,7 @@
       "row_id": "DT-04",
       "if": "关键字段缺失/歧义 或 归属无法仅凭资料确认 或 判定置信不足",
       "then": "INSUFFICIENT",
-      "note": "PENDING_CONTRACT；不静默成功也不静默丢弃"
+      "note": "阻断，与 INVALID/IRRELEVANT 共用异常页；仅重新选择资料或转入 no-document 问卷路径"
     }
   ],
   "reason_code_whitelist": [
@@ -205,7 +205,7 @@
   "hard_invariants": [
     "IV-1：只有 VALID 可进入摘要确认，进而形成 FinalConfirmedSummary 与 ConfirmedUserState",
     "IV-2：INVALID 与 IRRELEVANT 一律不得进入 Agent1/Agent2 证据、不得进入 RAG 检索、不得参与 organ_net/辨证聚合",
-    "IV-3：INSUFFICIENT 不得静默映射为成功或丢弃；分流由合同决策（对齐 interface-semantics §2 开放问题）",
+    "IV-3：INSUFFICIENT 不得静默映射为成功或丢弃；与 INVALID/IRRELEVANT 共用异常页，仅允许重新选择资料或转入 no-document 问卷路径",
     "IV-4：判定结果必须绑定 DocumentSet revision、携带 verdict + reason_code，供审计追溯",
     "IV-5：用户重新选择资料将替换活动候选集；不选用任何资料则进入 no-document 问卷路径",
     "IV-6：Relevance Gate 只能使用判定时点可获得的信息（OCR 文本 + 资料元数据 + 固定 V3.1 评估范围/Claim Dictionary）；不得依赖后置的摘要确认环节；V3.1 已删除 Narrative，判定时不参照不存在的‘当前主诉’文本",
@@ -269,7 +269,7 @@
     "route": "INVALID / IRRELEVANT / INSUFFICIENT 共用同一前端异常页，仅可重新选资料或进入 no-document 问卷路径（冻结已定，OD-DR-02 关闭）",
     "reason_field": "reason_code 语义化非空字符串；reason 为可展示公开文案（对齐冻结 schema，本资产 reason_code_whitelist 供码表与 reason 文案）"
   },
-  "content_checksum": "sha256:19e4728eadd45e880e8e648133c0835196ff7a2755a8299bfce4a28c5d1bf91c",
+  "content_checksum": "sha256:3445dedcf726b21c2c08091ec69535d7c125f633fef41c02257b28f46ff43122",
   "downstream_gate": {
     "may_enter_summary": [
       "VALID"
