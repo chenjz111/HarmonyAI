@@ -139,6 +139,11 @@ def load_production_corpus(
         manifest_payload.get("manifest"), Mapping
     ):
         manifest_payload = manifest_payload["manifest"]
+    if isinstance(manifest_payload, Mapping) and manifest_payload.get("candidate_status") == "PENDING_MEDICAL_CONTENT_REVIEW":
+        raise ProductionCorpusNotReady(
+            "CORPUS_NOT_PRODUCTION_APPROVED",
+            "候选医学语料尚未获得生产放行。",
+        )
     if isinstance(chunks_payload, Mapping):
         chunks_payload = chunks_payload.get("chunks")
     if not isinstance(manifest_payload, Mapping) or not isinstance(chunks_payload, list):
