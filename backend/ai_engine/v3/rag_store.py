@@ -48,6 +48,7 @@ class VersionedRagStore:
         self._approved_chunk_ids: frozenset[str] = frozenset()
         self._medical_review_versions: frozenset[str] = frozenset()
         self._chunk_checksums: dict[str, str] = {}
+        self._active_collection_name: str | None = None
 
     @property
     def manifest(self) -> IngestionManifest | None:
@@ -72,6 +73,26 @@ class VersionedRagStore:
         """Checksums for chunks admitted to the active collection."""
 
         return dict(self._chunk_checksums)
+
+    @property
+    def active_collection_name(self) -> str | None:
+        """The concrete versioned Chroma collection name after ingest."""
+
+        return self._active_collection_name
+
+    @property
+    def collection_count(self) -> int:
+        """Current Chroma row count, or zero before an ingest."""
+
+        if self._collection is None:
+            return 0
+        try:
+            return int(self._collection.count())
+        except Exception as error:
+            raise RagStoreFailure(
+                "RAG_INDEX_UNAVAILABLE",
+                "RAG 索引暂时不可用。",
+            ) from error
 
     def ingest(
         self,
@@ -109,6 +130,9 @@ class VersionedRagStore:
                 },
                 embedding_function=None,
             )
+            if self._collection_matches(collection, checked_chunks, checked):
+                self._bind_collection(collection, checked, checked_chunks, collection_name)
+                return collection_name
             embeddings = [
                 self.embedding_provider.embed(chunk.text, input_type="document")
                 for chunk in checked_chunks
@@ -130,6 +154,11 @@ class VersionedRagStore:
                 ],
                 embeddings=embeddings,
             )
+            if int(collection.count()) != checked.chunk_count:
+                raise RagStoreFailure(
+                    "RAG_INDEX_COUNT_MISMATCH",
+                    "Chroma 索引数量与医学语料清单不一致。",
+                )
         except RagStoreFailure:
             raise
         except Exception as error:
@@ -137,14 +166,56 @@ class VersionedRagStore:
                 "RAG_INDEX_UNAVAILABLE",
                 "RAG 索引暂时不可用。",
             ) from error
-        self._manifest = checked
-        self._approved_chunk_ids = frozenset(chunk.chunk_id for chunk in checked_chunks)
-        self._medical_review_versions = frozenset(
-            chunk.medical_review_version for chunk in checked_chunks
-        )
-        self._chunk_checksums = incoming_checksums
-        self._collection = collection
+        self._bind_collection(collection, checked, checked_chunks, collection_name)
         return collection_name
+
+    def _bind_collection(
+        self,
+        collection,
+        manifest: IngestionManifest,
+        chunks: Sequence[KnowledgeChunk],
+        collection_name: str,
+    ) -> None:
+        self._manifest = manifest
+        self._approved_chunk_ids = frozenset(chunk.chunk_id for chunk in chunks)
+        self._medical_review_versions = frozenset(
+            chunk.medical_review_version for chunk in chunks
+        )
+        self._chunk_checksums = {
+            chunk.chunk_id: chunk.content_checksum for chunk in chunks
+        }
+        self._collection = collection
+        self._active_collection_name = collection_name
+
+    @staticmethod
+    def _collection_matches(collection, chunks: Sequence[KnowledgeChunk], manifest: IngestionManifest) -> bool:
+        """Reuse a persisted collection only when IDs and checksums still match."""
+
+        try:
+            if int(collection.count()) != manifest.chunk_count:
+                return False
+            rows = collection.get(
+                ids=[chunk.chunk_id for chunk in chunks],
+                include=["metadatas"],
+            )
+            ids = list(rows.get("ids") or [])
+            metadatas = list(rows.get("metadatas") or [])
+            if set(ids) != {chunk.chunk_id for chunk in chunks}:
+                return False
+            metadata_by_id = {
+                str(chunk_id): metadata or {}
+                for chunk_id, metadata in zip(ids, metadatas)
+            }
+            return all(
+                metadata_by_id[chunk.chunk_id].get("content_checksum")
+                == chunk.content_checksum
+                and metadata_by_id[chunk.chunk_id].get("knowledge_version")
+                == manifest.knowledge_version
+                and metadata_by_id[chunk.chunk_id].get("review_status") == "approved"
+                for chunk in chunks
+            )
+        except Exception:
+            return False
 
     def query(self, query: RagQuery) -> RagResult:
         manifest = self._manifest

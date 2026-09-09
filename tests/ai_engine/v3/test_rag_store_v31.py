@@ -24,6 +24,14 @@ class FakeCollection:
     def count(self):
         return len(self.rows)
 
+    def get(self, *, ids, include):
+        del include
+        rows = [self.rows[item] for item in ids if item in self.rows]
+        return {
+            "ids": [row[0] for row in rows],
+            "metadatas": [row[2] for row in rows],
+        }
+
     def query(self, *, query_embeddings, n_results, include):
         del query_embeddings, n_results, include
         row = next(iter(self.rows.values()))
@@ -205,3 +213,33 @@ def test_versioned_rag_store_preserves_chunk_ids_after_filtering_low_score_hits(
     result = store.query(_query())
 
     assert [hit.chunk_id for hit in result.hits] == ["chunk_002"]
+
+
+def test_versioned_rag_store_reuses_matching_persisted_collection_without_reembedding():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    client = FakeClient()
+    first_embedding = FakeEmbedding()
+    first_store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=first_embedding,
+        client=client,
+        production=False,
+    )
+    first_store.ingest(_manifest(), [_chunk()])
+
+    second_embedding = FakeEmbedding()
+    second_store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=second_embedding,
+        client=client,
+        production=False,
+    )
+    second_store.ingest(_manifest(), [_chunk()])
+
+    assert first_embedding.input_types == ["document"]
+    assert second_embedding.input_types == []
+    assert second_store.collection_count == 1
+    assert second_store.active_collection_name == next(iter(client.collections))

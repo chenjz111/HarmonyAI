@@ -36,3 +36,6 @@ deploy/data/
 
 # 探索期 OCR 样例（含疑似真实病历，不入库）
 tests/ocr_samples/
+.chroma-v31/
+*.v31-index-receipt.local.json
+.pytest-tmp-*/
