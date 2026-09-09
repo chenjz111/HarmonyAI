@@ -254,11 +254,21 @@ def _persist_generated_asset(
     return row
 
 
+def _provider_identity(provider: object) -> tuple[str, str | None]:
+    """Safe ops-internal provider name/model without returning credentials."""
+    name = getattr(provider, "provider_name", None)
+    if not isinstance(name, str) or not name:
+        name = "music"
+    model = getattr(provider, "model", None)
+    return name, model if isinstance(model, str) and model else None
+
+
 def _persist_task_outcome(
     db: Session,
     task: GenerationTask,
     music_task: MusicTask,
     provider_task_id: str | None,
+    provider_name: str | None = None,
 ) -> None:
     task.status = music_task.status
     task.progress_value = (
@@ -275,6 +285,8 @@ def _persist_task_outcome(
     task.fallback_reason_code = music_task.fallback.reason_code
     task.error_code = music_task.error_code
     task.provider_task_id = provider_task_id
+    if provider_name is not None:
+        task.provider = provider_name
     if music_task.audio_asset is not None:
         task.music_asset_id = music_task.audio_asset.music_ref.music_id
     if music_task.status in _TERMINAL_STATUSES:
@@ -287,6 +299,7 @@ def _apply_provider_task(
     principal_pk: int,
     task: GenerationTask,
     provider_task,
+    provider_name: str | None = None,
 ) -> MusicTask:
     if provider_task.status == "succeeded":
         asset_row = None
@@ -319,6 +332,7 @@ def _apply_provider_task(
         task,
         music_task,
         provider_task.provider_task_id,
+        provider_name=provider_name,
     )
     return music_task
 
@@ -515,15 +529,15 @@ def create_generation_task(
         output_format="mp3",
         callback_ref=None,
     )
-    provider_task_id: str | None = None
+    provider_name, _ = _provider_identity(provider)
     try:
         provider_task = provider.create_task(provider_request)
-        provider_task_id = provider_task.provider_task_id
         music_task = _apply_provider_task(
             db,
             principal.internal_user_pk,
             task,
             provider_task,
+            provider_name=provider_name,
         )
     except MusicProviderFailureV3 as error:
         fallback_task = _try_fallback(
@@ -537,7 +551,13 @@ def create_generation_task(
             music_task = fallback_task
         else:
             music_task = _failed_music_task(task_id, error.error_code)
-        _persist_task_outcome(db, task, music_task, None)
+        _persist_task_outcome(
+            db,
+            task,
+            music_task,
+            None,
+            provider_name=provider_name,
+        )
 
     record.resource_type = "generation_task"
     record.resource_id = task_id
@@ -560,11 +580,13 @@ def get_generation_task(
         return _music_task_from_db(db, task)
     try:
         provider_task = provider.get_task(task.provider_task_id)
+        provider_name, _ = _provider_identity(provider)
         music_task = _apply_provider_task(
             db,
             principal.internal_user_pk,
             task,
             provider_task,
+            provider_name=provider_name,
         )
         db.commit()
         return music_task
@@ -594,11 +616,13 @@ def cancel_generation_task(
         if error.error_code == "GENERATION_CANCEL_UNSUPPORTED":
             raise GenerationCancelUnsupported from None
         raise
+    provider_name, _ = _provider_identity(provider)
     music_task = _apply_provider_task(
         db,
         principal.internal_user_pk,
         task,
         provider_task,
+        provider_name=provider_name,
     )
     db.commit()
     return music_task
