@@ -65,10 +65,10 @@ override 允许为空；任意自造字符串都必须被 Schema 拒绝。
 
 | 字段 | 最终值来源 | 说明示例 |
 | --- | --- | --- |
-| BPM | primary `sleep` | `主要目标对应的速度候选。` |
+| BPM | primary `sleep` | `睡眠诉求对应的速度候选。` |
 | instruments | default | `按批准规则提供配器参考。` |
-| ambience | secondary `relaxation` | `次要目标对应的环境音候选。` |
-| 目标/预计时长 | primary `sleep` | `主要目标对应的预计时长候选。` |
+| ambience | secondary `relaxation` | `放松诉求对应的环境音候选。` |
+| 目标/预计时长 | primary `sleep` | `睡眠诉求对应的预计时长候选。` |
 
 说明只描述音乐设计参数及其来源，不描述医学作用、疗效或证候结论。
 `duration_seconds` 是目标/预计时长；播放器最终采用生成文件的实际测量时长。
@@ -82,7 +82,7 @@ path=knowledge/v3/music-generation-rules-v3.1.json
 schema_id=music_generation_rules_v3.1
 review_status=approved
 asset_version=music-generation-rules-v3.1-r1
-content_checksum=sha256:b8b65b2658ea849945a43884bb786d59689606e4cdb97d63620df8b5179539be
+content_checksum=sha256:c97acc241abe611b91d71c205cb021afaa47cfffd1c7bfe8d447e402d74f0ae0
 ```
 
 运行时配置只能引用以上已批准的 `PATH / VERSION / CHECKSUM` 三元组。本次

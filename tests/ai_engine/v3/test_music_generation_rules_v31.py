@@ -8,7 +8,7 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 APPROVED_ASSET_PATH = REPOSITORY_ROOT / "knowledge" / "v3" / "music-generation-rules-v3.1.json"
 APPROVED_ASSET_VERSION = "music-generation-rules-v3.1-r1"
-APPROVED_ASSET_CHECKSUM = "sha256:b8b65b2658ea849945a43884bb786d59689606e4cdb97d63620df8b5179539be"
+APPROVED_ASSET_CHECKSUM = "sha256:c97acc241abe611b91d71c205cb021afaa47cfffd1c7bfe8d447e402d74f0ae0"
 
 
 def _payload():
@@ -35,16 +35,16 @@ def _payload():
                 "bpm": 50,
                 "duration_seconds": 240,
                 "explanations": {
-                    "bpm": "主要目标对应的速度候选。",
-                    "duration": "主要目标对应的预计时长候选。",
+                    "bpm": "睡眠诉求对应的速度候选。",
+                    "duration": "睡眠诉求对应的预计时长候选。",
                 },
             },
             "relaxation": {
                 "ambience": ["溪流"],
                 "duration_seconds": 240,
                 "explanations": {
-                    "ambience": "次要目标对应的环境音候选。",
-                    "duration": "次要目标对应的预计时长候选。",
+                    "ambience": "放松诉求对应的环境音候选。",
+                    "duration": "放松诉求对应的预计时长候选。",
                 },
             },
             "emotion_regulation": {
@@ -184,10 +184,10 @@ def test_loaded_music_generation_rules_drive_deterministic_generation_spec(tmp_p
 
     assert spec.bpm == 50
     assert spec.duration_seconds == 240
-    assert spec.explanations["bpm"] == "主要目标对应的速度候选。"
+    assert spec.explanations["bpm"] == "睡眠诉求对应的速度候选。"
     assert spec.explanations["instruments"] == "按批准规则提供配器参考。"
     assert spec.explanations["ambience"] == "按批准规则提供环境参考。"
-    assert spec.explanations["duration"] == "主要目标对应的预计时长候选。"
+    assert spec.explanations["duration"] == "睡眠诉求对应的预计时长候选。"
     assert spec.readiness == "ready"
 
 
@@ -400,9 +400,9 @@ def test_generation_spec_merges_secondary_goal_without_ignoring_it():
     assert spec.instruments == ["古琴"]
     assert spec.ambience == ["溪流"]
     assert spec.duration_seconds == 240
-    assert spec.explanations["bpm"] == "主要目标对应的速度候选。"
-    assert spec.explanations["ambience"] == "次要目标对应的环境音候选。"
-    assert spec.explanations["duration"] == "主要目标对应的预计时长候选。"
+    assert spec.explanations["bpm"] == "睡眠诉求对应的速度候选。"
+    assert spec.explanations["ambience"] == "放松诉求对应的环境音候选。"
+    assert spec.explanations["duration"] == "睡眠诉求对应的预计时长候选。"
 
 
 def test_primary_goal_wins_deterministically_when_both_goals_set_same_field():
@@ -419,10 +419,32 @@ def test_primary_goal_wins_deterministically_when_both_goals_set_same_field():
     assert spec.instruments == ["笛"]
     assert spec.ambience == ["细雨"]
     assert spec.duration_seconds == 240
-    assert spec.explanations["bpm"] == "主要目标对应的速度候选。"
+    assert spec.explanations["bpm"] == "睡眠诉求对应的速度候选。"
     assert spec.explanations["instruments"] == "目标对应的乐器候选。"
     assert spec.explanations["ambience"] == "按批准规则提供环境参考。"
-    assert spec.explanations["duration"] == "主要目标对应的预计时长候选。"
+    assert spec.explanations["duration"] == "睡眠诉求对应的预计时长候选。"
+
+
+@pytest.mark.parametrize(
+    ("user_goal", "forbidden_role"),
+    [
+        ({"primary_goal": "other", "secondary_goal": "sleep"}, "主要目标"),
+        ({"primary_goal": "relaxation"}, "次要目标"),
+    ],
+)
+def test_goal_explanations_do_not_claim_a_fixed_primary_or_secondary_role(
+    user_goal, forbidden_role
+):
+    from backend.ai_engine.v3.agent3 import build_generation_spec_v31
+    from tests.ai_engine.v3.test_generation_spec_v31 import _profile
+
+    spec = build_generation_spec_v31(
+        profile=_profile(),
+        parameter_rules=_payload(),
+        user_goal=user_goal,
+    )
+
+    assert all(forbidden_role not in text for text in spec.explanations.values())
 
 
 @pytest.mark.parametrize(

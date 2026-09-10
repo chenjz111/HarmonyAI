@@ -25,8 +25,8 @@
       "bpm": 50,
       "duration_seconds": 240,
       "explanations": {
-        "bpm": "主要目标对应的速度候选。",
-        "duration": "主要目标对应的预计时长候选。"
+        "bpm": "睡眠诉求对应的速度候选。",
+        "duration": "睡眠诉求对应的预计时长候选。"
       }
     },
     "relaxation": {
@@ -35,8 +35,8 @@
       ],
       "duration_seconds": 240,
       "explanations": {
-        "ambience": "次要目标对应的环境音候选。",
-        "duration": "次要目标对应的预计时长候选。"
+        "ambience": "放松诉求对应的环境音候选。",
+        "duration": "放松诉求对应的预计时长候选。"
       }
     },
     "emotion_regulation": {
@@ -85,5 +85,5 @@
     },
     "other": {}
   },
-  "content_checksum": "sha256:b8b65b2658ea849945a43884bb786d59689606e4cdb97d63620df8b5179539be"
+  "content_checksum": "sha256:c97acc241abe611b91d71c205cb021afaa47cfffd1c7bfe8d447e402d74f0ae0"
 }
