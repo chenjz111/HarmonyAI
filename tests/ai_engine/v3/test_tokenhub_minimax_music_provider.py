@@ -18,9 +18,13 @@ from backend.ai_engine.v3.generation_provider_adapter import (
     build_music_provider_bundle,
 )
 from backend.ai_engine.v3.music_provider import MusicProviderFailureV3
+from backend.ai_engine.v3 import tokenhub_minimax_music_provider as tokenhub_module
 from backend.ai_engine.v3.tokenhub_minimax_music_provider import (
     DEFAULT_TOKENHUB_MUSIC_MODEL,
     FORBIDDEN_MINIMAX_BASE_URL,
+    INSTRUMENT_ALIASES,
+    PROJECT_INTERNAL_MAX_DURATION_SECONDS,
+    SUPPORTED_INSTRUMENTS,
     TOKENHUB_DEFAULT_BASE_URL,
     TOKENHUB_MAX_DURATION_SECONDS,
     TOKENHUB_MUSIC_PATH,
@@ -28,6 +32,8 @@ from backend.ai_engine.v3.tokenhub_minimax_music_provider import (
     DownloadedAudio,
     TokenHubMinimaxMusicProvider,
     milliseconds_to_seconds,
+    normalize_instrument,
+    normalize_instruments,
 )
 from backend.app.schemas.v3.music import (
     MusicProviderCapabilities,
@@ -70,10 +76,27 @@ def _generation_spec() -> dict[str, object]:
     }
 
 
-def _request() -> ProviderMusicRequest:
+def _request(
+    *,
+    instruments: list[str] | None = None,
+    ambient: list[str] | None = None,
+    duration_seconds: int | None = None,
+) -> ProviderMusicRequest:
+    spec: dict[str, object] = dict(_generation_spec())
+    if instruments is not None:
+        spec["instruments"] = instruments
+    if ambient is not None:
+        spec["ambient_sounds"] = ambient
+    if duration_seconds is not None:
+        spec["duration_seconds"] = duration_seconds
+        spec["structure"] = {
+            "intro_seconds": 6,
+            "main_seconds": duration_seconds - 12,
+            "outro_seconds": 6,
+        }
     return ProviderMusicRequest(
         provider_request_id="pr_tokenhub_test",
-        generation_spec=_generation_spec(),
+        generation_spec=spec,  # type: ignore[arg-type]
         output_format="mp3",
         callback_ref=None,
     )
@@ -636,3 +659,145 @@ def test_async_create_matches_sync(tmp_path):
     assert async_task.status == "succeeded"
     assert async_task.asset_locator == sync_task.asset_locator
     assert Path(async_task.asset_locator).read_bytes() == audio
+
+
+# --------------------------------------------- rule-asset compatibility (music rules)
+
+CHINESE_INSTRUMENT_CASES = [
+    ("古琴", "guqin"),
+    ("箫", "xiao"),
+    ("琵琶", "pipa"),
+    ("笛", "dizi"),
+    ("埙", "xun"),
+]
+
+
+@pytest.mark.parametrize(("chinese", "token"), CHINESE_INSTRUMENT_CASES)
+def test_chinese_rule_instrument_normalizes_for_the_provider(tmp_path, chinese, token):
+    assert normalize_instrument(chinese) == token
+    assert normalize_instruments([chinese]) == [token]
+    assert token in SUPPORTED_INSTRUMENTS
+
+    audio = mp3_bytes(seconds=2)
+    poster = FakePoster(response=FakeResponse(text=_completed_body(audio.hex())))
+    provider = _provider(tmp_path, poster)
+    task = provider.create_task(_request(instruments=[chinese]))
+
+    assert task.status == "succeeded"
+    assert len(poster.calls) == 1  # single POST, automatic retry 0
+    prompt = poster.calls[0]["json"]["prompt"]
+    assert token in prompt
+    assert chinese not in prompt  # provider prompt uses normalized tokens only
+    # the request object itself is untouched (display values preserved upstream)
+    assert _request(instruments=[chinese]).generation_spec.instruments == [chinese]
+
+
+def test_instrument_alias_table_is_fixed_and_bidirectional():
+    for chinese, token in CHINESE_INSTRUMENT_CASES:
+        assert INSTRUMENT_ALIASES[chinese] == token
+        assert INSTRUMENT_ALIASES[token] == token
+    assert len(SUPPORTED_INSTRUMENTS) == 5
+
+
+def test_unknown_instrument_fails_explicitly_before_any_post(tmp_path):
+    for unknown in ("唢呐", "suona", "古筝", "guzheng", "erhu", "unknown"):
+        poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
+        provider = _provider(tmp_path, poster)
+        with pytest.raises(MusicProviderFailureV3) as caught:
+            provider.create_task(_request(instruments=[unknown]))
+        assert caught.value.error_code == "GENERATION_INSTRUMENT_UNSUPPORTED", unknown
+        assert poster.calls == [], unknown
+        assert not list((tmp_path / "generated").glob("**/*")), unknown
+
+
+def test_mixed_known_and_unknown_instrument_fails_explicitly(tmp_path):
+    poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
+    provider = _provider(tmp_path, poster)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request(instruments=["古琴", "唢呐"]))
+    assert caught.value.error_code == "GENERATION_INSTRUMENT_UNSUPPORTED"
+    assert poster.calls == []
+
+
+def test_no_extra_ambient_never_renders_a_contradictory_prompt(tmp_path):
+    poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
+    provider = _provider(tmp_path, poster)
+    provider.create_task(_request(instruments=["古琴"], ambient=["无额外环境音"]))
+    prompt = poster.calls[0]["json"]["prompt"]
+    assert "无额外环境音" not in prompt
+    assert "ambience" not in prompt
+    assert "Atmosphere" not in prompt
+
+
+def test_real_ambient_still_renders_while_no_ambient_token_is_dropped(tmp_path):
+    poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
+    provider = _provider(tmp_path, poster)
+    provider.create_task(
+        _request(instruments=["箫"], ambient=["无额外环境音", "water"])
+    )
+    prompt = poster.calls[0]["json"]["prompt"]
+    assert "soft water ambience" in prompt
+    assert "无额外环境音" not in prompt
+
+
+def test_duration_is_a_prompt_target_not_a_provider_field(tmp_path):
+    audio = mp3_bytes(seconds=3)
+    poster = FakePoster(response=FakeResponse(text=_completed_body(audio.hex())))
+    provider = _provider(tmp_path, poster)
+    task = provider.create_task(_request(duration_seconds=60))
+
+    assert task.status == "succeeded"
+    body = poster.calls[0]["json"]
+    # TokenHub music has no duration parameter at all
+    for forbidden_key in ("duration", "seconds_total", "length", "duration_seconds"):
+        assert forbidden_key not in body
+    prompt = body["prompt"]
+    assert "target length about 60 seconds" in prompt
+
+    meta = provider.last_run_metadata
+    # provider-reported actual duration (ms -> s) stays separate from the target
+    assert meta["provider_reported_duration_ms"] == 25364
+    assert meta["provider_reported_duration_seconds"] == pytest.approx(25.364)
+    assert meta["provider_reported_duration_seconds"] != 60
+
+
+def test_project_internal_duration_cap_is_not_a_provider_claim():
+    provider = _provider(Path("."), FakePoster())
+    assert (
+        provider.capabilities().max_duration_seconds
+        == PROJECT_INTERNAL_MAX_DURATION_SECONDS
+    )
+    assert TOKENHUB_MAX_DURATION_SECONDS == PROJECT_INTERNAL_MAX_DURATION_SECONDS
+    docstring = tokenhub_module.__doc__ or ""
+    assert "NO duration parameter" in docstring
+    assert "TARGET only" in docstring
+
+
+@pytest.mark.parametrize(
+    "failure_payload",
+    ["http_500", "base_resp_1008", "empty_audio", "in_progress"],
+)
+def test_real_failure_never_returns_success_and_never_switches_to_mock(tmp_path, failure_payload):
+    if failure_payload == "http_500":
+        poster = FakePoster(response=FakeResponse(status_code=500, text='{"message":"x"}'))
+    elif failure_payload == "base_resp_1008":
+        poster = FakePoster(response=FakeResponse(text=_completed_body("", base_status=1008)))
+    elif failure_payload == "empty_audio":
+        poster = FakePoster(response=FakeResponse(text=_completed_body("")))
+    else:
+        poster = FakePoster(
+            response=FakeResponse(
+                text=json.dumps({"data": {"status": 1, "audio": None}, "base_resp": {"status_code": 0}})
+            )
+        )
+    provider = _provider(tmp_path, poster)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request(instruments=["古琴"], ambient=["无额外环境音"]))
+    assert caught.value.error_code in {
+        "GENERATION_PROVIDER_UNAVAILABLE",
+        "GENERATION_PROVIDER_REJECTED",
+    }
+    assert len(poster.calls) == 1  # single POST, automatic retry 0
+    assert not list((tmp_path / "generated").glob("**/*"))
+    # no hidden success / fallback object is produced by the provider itself
+    assert provider.last_run_metadata.get("error_code") is not None

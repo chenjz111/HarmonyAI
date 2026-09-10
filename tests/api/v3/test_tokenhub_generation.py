@@ -162,15 +162,27 @@ def _generation_spec() -> dict[str, object]:
     }
 
 
+def _rule_asset_spec() -> dict[str, object]:
+    """Spec as produced by the rule assets: Chinese instruments + no ambience."""
+    spec = dict(_generation_spec())
+    spec["instruments"] = ["古琴", "箫"]
+    spec["ambient_sounds"] = ["无额外环境音"]
+    return spec
+
+
 def _generation_body(
-    prescription_id: str, idempotency_key: str, *, fallback: str = "local_matching"
+    prescription_id: str,
+    idempotency_key: str,
+    *,
+    fallback: str = "local_matching",
+    spec: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "schema_version": "music_generation_v3.0",
         "request_id": f"req_{uuid.uuid4().hex}",
         "prescription_id": prescription_id,
         "idempotency_key": idempotency_key,
-        "generation_spec": _generation_spec(),
+        "generation_spec": spec if spec is not None else _generation_spec(),
         "provider_policy": {"mode": "prefer_real_generation", "fallback": fallback},
     }
 
@@ -480,5 +492,74 @@ def test_tokenhub_failure_without_fallback_returns_failed(tmp_path):
             assert task.status == "failed"
             assert task.provider == PROVIDER_LABEL
             assert task.music_asset_id is None
+    finally:
+        _uninstall_provider()
+
+
+# ------------------------------------------------ rule-asset compatibility (music rules)
+
+
+def test_rule_asset_chinese_instruments_normalize_for_prompt_and_keep_display(tmp_path):
+    audio = _mp3_bytes(seconds=3)
+    poster = _FakePoster(response=_FakeResponse(text=_completed_body(audio)))
+    _install_provider(_provider(tmp_path, poster))
+    try:
+        headers, session_id = _setup_guest(idempotency_key="th-rule-assets")
+        spec = _rule_asset_spec()
+        with _seed_db() as session:
+            public_user_id = _public_user_id(headers["Authorization"].split()[1])
+            rx_id = _seed_chain(
+                session,
+                public_user_id=public_user_id,
+                session_id=session_id,
+                generation_spec=spec,
+            )
+
+        created = client.post(
+            "/api/v3/music/generations",
+            headers=headers,
+            json=_generation_body(rx_id, "sha256:th-rule-assets-1", spec=spec),
+        )
+        assert created.status_code == 201
+        body = _v3_data(created)
+        assert body["status"] == "succeeded"
+
+        # provider prompt uses normalized tokens; no contradictory ambient text
+        assert len(poster.calls) == 1  # single POST, automatic retry 0
+        sent = poster.calls[0]["json"]
+        prompt = sent["prompt"]
+        assert "guqin" in prompt and "xiao" in prompt
+        assert "古琴" not in prompt and "箫" not in prompt
+        assert "无额外环境音" not in prompt
+        assert "ambience" not in prompt and "Atmosphere" not in prompt
+        # duration is a prompt-level target only (no provider duration field)
+        assert "target length about 60 seconds" in prompt
+        for forbidden_key in ("duration", "seconds_total", "length", "duration_seconds"):
+            assert forbidden_key not in sent
+
+        # display/read model keeps the Chinese rule-asset values (no contract change)
+        audio_asset = body["audio_asset"]
+        assert audio_asset["instruments"] == ["古琴", "箫"]
+        assert audio_asset["music_ref"]["source_type"] == "generated"
+        assert audio_asset["duration_seconds"] == 3  # measured, not the 60s target
+
+        with _seed_db() as session:
+            task = (
+                session.query(GenerationTask)
+                .filter(GenerationTask.task_id == body["task_id"])
+                .one()
+            )
+            assert task.provider == PROVIDER_LABEL
+            asset_row = (
+                session.query(MusicAsset)
+                .filter(MusicAsset.music_asset_id == task.music_asset_id)
+                .one()
+            )
+            assert asset_row.instruments_json == ["古琴", "箫"]
+            assert asset_row.duration_seconds == 3
+
+        stream = client.get(audio_asset["stream_url"], headers=headers)
+        assert stream.status_code == 200
+        assert stream.content == audio
     finally:
         _uninstall_provider()

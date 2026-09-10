@@ -75,9 +75,12 @@ SMOKE_GENERATION_SPEC = {
     "schema_version": "generation_spec_v3.0",
     "tone_profile": SMOKE_TONE_PROFILE,
     "bpm": 60,
+    # Chinese rule-asset values are normalized to provider tokens by the adapter
+    # (古琴→guqin, 箫→xiao) while the analysis page keeps the Chinese display.
     "duration_seconds": 60,
-    "instruments": ["guqin", "xiao"],
-    "ambient_sounds": [],
+    "instruments": ["古琴", "箫"],
+    # "no extra ambient sound" must never become "soft 无额外环境音 ambience"
+    "ambient_sounds": ["无额外环境音"],
     "structure": {"intro_seconds": 6, "main_seconds": 48, "outro_seconds": 6},
     "energy_curve": "gentle_decline",
     "forbidden_constraints": [],

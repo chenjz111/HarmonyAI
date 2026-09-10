@@ -45,6 +45,40 @@ GenerationSpec → TokenHub JSON POST（model/prompt/is_instrumental=true/output
 - `extra_info.music_duration` 为**毫秒**；适配器按 `ms / 1000` 转为秒记入运行元数据
   （入库的 `music_assets.duration_seconds` 仍取保存文件的实测值）。
 
+## 音乐规则 ↔ Provider 最小兼容
+
+### 乐器固定映射（规则资产公开中文值 → Provider 规范化 token）
+
+| 规则资产（展示用，保持中文） | Provider token |
+| --- | --- |
+| 古琴 | `guqin` |
+| 箫 | `xiao` |
+| 琵琶 | `pipa` |
+| 笛 | `dizi` |
+| 埙 | `xun` |
+
+- 中文名称继续用于五音解析页显示；**前端显示合同未改动**，请求/持久化仍保留原始中文值
+  （E2E 断言 `music_assets.instruments_json == ["古琴","箫"]` 且读模型返回中文）。
+- Provider prompt 只用规范化 token；**未映射乐器（如 唢呐/古筝/二胡）显式
+  `GENERATION_INSTRUMENT_UNSUPPORTED` 失败**，绝不静默丢弃。
+
+### 环境音「无额外环境音」
+
+- `无额外环境音`（及 `无其他环境音/无环境音/无/none/no_extra_ambient` 等）不会被渲染成
+  `soft 无额外环境音 ambience`；Provider prompt 直接**省略自然环境音段**。
+- 若同时存在真实环境音（如 `water`），只渲染真实项，none 值被剔除。
+
+### 时长真实性
+
+- `GenerationSpec.duration_seconds` **只作为 prompt 中的目标时长**
+  （prompt 文案：`target length about N seconds`）。
+- **不向 TokenHub 发送任何 duration 字段**（JSON body 仅 `model/prompt/is_instrumental/
+  output_format/audio_setting`；单测断言 body 无 `duration/seconds_total/length/duration_seconds`）。
+- 成功后**继续以下载音频的实测时长**入库并供 Player 展示；Provider 返回的
+  `extra_info.music_duration`(ms→s) 仅作为运行元数据对照，不作为入库依据。
+- `300s` 仅为**项目内部上限**（`PROJECT_INTERNAL_MAX_DURATION_SECONDS`），
+  **不是 Provider 已确认能力**，待真实 Smoke 记录后再更新。
+
 ## Provider 音频 URL 安全策略（Owner 加固）
 
 `output_format=url` 返回的临时地址必须同时满足：
@@ -103,6 +137,9 @@ response_is_json=.. transport_error=<异常类型>`；不打印 Key、请求体�
 
 - [ ] 单次真实生成成功；`POST count = 1`（自动重试 0），不重复计费。
 - [ ] 模型为 `minimax-music-v3.0`（精确匹配），Base URL 为官方主机。
+- [ ] 规则资产中文乐器（古琴/箫/琵琶/笛/埙）能规范化并成功生成；未映射乐器显式失败。
+- [ ] `无额外环境音` 不出现在 prompt；有真实环境音时仅渲染真实项。
+- [ ] prompt 中时长为 target 表述；请求体无 duration 字段；入库/展示时长为文件实测。
 - [ ] `source_type=generated` + `provider=tokenhub/minimax-music-v3.0` 落库。
 - [ ] hex 与 url 两种响应都能落盘为自有 MP3（url 场景 `download calls = 1`）。
 - [ ] url 非 HTTPS / 内网地址 / 超 25 MiB / 跳转到 HTTP 或内网 → 全部显式失败且不落盘。
