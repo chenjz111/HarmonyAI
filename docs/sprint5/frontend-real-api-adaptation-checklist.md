@@ -4,7 +4,7 @@
 > 更新日期：2026-09-10
 > 负责人：彭翔
 > 关联 PR：#121（Draft，不合并）
-> 关联后端 PR：#118（feat/s5-v3.1-ai-backend-integration，open）、#120（feat/s5-v3.1-agent4-minimax，open，旧实现待替换）
+> 关联后端 PR：#118（feat/s5-v3.1-ai-backend-integration，open）、#120（feat/s5-v3.1-agent4-minimax，Draft，CI pass，Stability Stable Audio 2.5）
 
 ---
 
@@ -82,7 +82,7 @@
 | `uploadDocument()`（V3 通道） | `POST /api/v3/documents` | PR #118 | document_only, document_plus_questionnaire |
 | `replaceDocument()` → DocumentSet | `POST /api/v3/sessions/{session_id}/document-sets` | PR #118 | document_only, document_plus_questionnaire |
 | `getDocumentRelevance()` | `GET /api/v3/document-sets/{document_set_id}/relevance` | PR #118 | document_only, document_plus_questionnaire |
-| `startMusicGeneration()` | `POST /api/v3/music/generations` | PR #120（旧实现，见 Provider 节） | 全部 |
+| `startMusicGeneration()` | `POST /api/v3/music/generations` | PR #120（Draft，CI pass，见 Provider 节） | 全部 |
 
 ---
 
@@ -123,20 +123,21 @@
 - 生成链路 Agent 边界：
   **Agent2 Diagnosis → Agent3 Prescription/GenerationSpec → prescription_id → Agent4 Generation**
   （`prescription_id` 由 **Agent3** 产出，**不是 Agent2 直接产出**；Agent2 只产出辨证结论。）
-- `POST /api/v3/music/generations` 请求体需要 `prescription_id`，该链路依赖 PR #118（PrescriptionV3 / GenerationSpec 模型）与 PR #120（替换后的 Generation Provider），整链未完成端到端验证。
-- 依赖：PR #118 + PR #120（替换后）合并并串接验证。
+- `POST /api/v3/music/generations` 请求体需要 `prescription_id`，该链路依赖 PR #118（PrescriptionV3 / GenerationSpec 模型）与 PR #120（Stability Stable Audio 2.5），整链未完成端到端验证。
+- 依赖：PR #118 + PR #120（Draft）合并并串接验证。
 
 ---
 
-## Agent4 Provider 状态
+## Agent4 Music Provider 状态
 
 | 项目 | 状态 |
 |------|------|
-| **MiniMax** | `BLOCKED_BY_PROVIDER_ENTITLEMENT`（当前账户权限不可用） |
-| **PR #120**（feat/s5-v3.1-agent4-minimax） | 仍为 MiniMax 实现 → **旧实现待替换**，合入前需确认或等待替换版 |
-| **Sprint5 批准目标** | **Stability AI Stable Audio 2.5** |
-| **最终适配** | 以蔡子鑫后续提交的分支/PR 为准（前端保持 Provider-neutral 任务/资产接口，不写 Provider 细节进用户页面） |
-| **前端原则** | 只按 Provider-neutral 生成任务 + Audio Asset 接口准备 |
+| **当前 Provider** | **Stability AI Stable Audio 2.5**（Sprint5 批准目标，PR #120 已实现并 CI 通过） |
+| **MiniMax** | 保留作为**历史实现、未启用**（`BLOCKED_BY_PROVIDER_ENTITLEMENT`，当前账户权限不可用） |
+| **PR #120** | Draft，等待 Owner 真实 Smoke 和最终复审 |
+| **Real 模式失败策略** | 真实生成失败不会自动切换 Mock——如实分两类：`generated` / `matched_fallback` |
+| **前端原则** | 只按 Provider-neutral 生成任务 + Audio Asset 接口准备；不将 Provider 名称/技术细节传入用户页面 |
+| **最终适配** | 以蔡子鑫后续提交的 PR 或主分支更新为准 |
 
 ---
 
@@ -157,7 +158,7 @@
 ## Remaining Blockers
 
 1. **PR #118 未合入 integration** → 7 项状态①接口不可落地
-2. **PR #120 为旧实现（MiniMax）待替换**，Sprint5 批准目标为 Stability AI Stable Audio 2.5，最终以蔡子鑫提交为准
+2. **PR #120（Draft，CI pass）** 已就绪但需 Owner 真实 Smoke + 最终复审后合入
 3. **评估读取与确认端点缺失**（缺口 1/2）— 不在 PR #118 中，需后续补丁
 4. **V2 上传通道残留**（缺口 6）— 需 V3 multipart 端点就绪
 5. **端到端串接未验证**（缺口 7）— Agent2 Diagnosis → Agent3 Prescription/GenerationSpec → prescription_id → Agent4 Generation 整链
