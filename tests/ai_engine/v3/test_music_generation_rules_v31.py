@@ -281,12 +281,76 @@ def test_loader_rejects_override_explanation_for_unoverridden_field(tmp_path):
         )
 
 
+def test_loader_rejects_override_parameters_without_explanations(tmp_path):
+    from backend.app.services.v3.knowledge_assets import (
+        MusicGenerationRuleAssetNotReady,
+        load_music_generation_rules,
+    )
+
+    payload = _payload()
+    del payload["goals"]["sleep"]["explanations"]
+    payload = _rechecksum(payload)
+
+    with pytest.raises(MusicGenerationRuleAssetNotReady, match="MUSIC_PARAMETER_ASSET_INVALID"):
+        load_music_generation_rules(
+            _write_payload(tmp_path, payload),
+            expected_version=payload["asset_version"],
+            expected_checksum=payload["content_checksum"],
+        )
+
+
+def test_loader_rejects_override_missing_one_parameter_explanation(tmp_path):
+    from backend.app.services.v3.knowledge_assets import (
+        MusicGenerationRuleAssetNotReady,
+        load_music_generation_rules,
+    )
+
+    payload = _payload()
+    del payload["goals"]["sleep"]["explanations"]["duration"]
+    payload = _rechecksum(payload)
+
+    with pytest.raises(MusicGenerationRuleAssetNotReady, match="MUSIC_PARAMETER_ASSET_INVALID"):
+        load_music_generation_rules(
+            _write_payload(tmp_path, payload),
+            expected_version=payload["asset_version"],
+            expected_checksum=payload["content_checksum"],
+        )
+
+
+def test_loader_accepts_empty_other_override_without_explanations(tmp_path):
+    from backend.app.services.v3.knowledge_assets import load_music_generation_rules
+
+    payload = _payload()
+    asset = load_music_generation_rules(
+        _write_payload(tmp_path, payload),
+        expected_version=payload["asset_version"],
+        expected_checksum=payload["content_checksum"],
+    )
+
+    assert asset["goals"]["other"] == {}
+
+
 def test_generation_spec_rejects_incomplete_goal_rules_without_loader_bypass():
     from backend.ai_engine.v3.agent3 import Agent3Blocked, build_generation_spec_v31
     from tests.ai_engine.v3.test_generation_spec_v31 import _profile
 
     payload = _payload()
     del payload["goals"]["focus"]
+
+    with pytest.raises(Agent3Blocked, match="MUSIC_PARAMETER_ASSET_INVALID"):
+        build_generation_spec_v31(
+            profile=_profile(),
+            parameter_rules=payload,
+            user_goal={"primary_goal": "sleep"},
+        )
+
+
+def test_generation_spec_rejects_override_without_explanation_when_loader_is_bypassed():
+    from backend.ai_engine.v3.agent3 import Agent3Blocked, build_generation_spec_v31
+    from tests.ai_engine.v3.test_generation_spec_v31 import _profile
+
+    payload = _payload()
+    del payload["goals"]["sleep"]["explanations"]["bpm"]
 
     with pytest.raises(Agent3Blocked, match="MUSIC_PARAMETER_ASSET_INVALID"):
         build_generation_spec_v31(

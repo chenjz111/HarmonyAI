@@ -114,11 +114,17 @@ class MusicGenerationRuleOverride(V3BaseModel):
             for field_name in ("bpm", "instruments", "ambience", "duration_seconds")
             if getattr(self, field_name) is not None
         }
-        if self.explanations is not None and set(self.explanations) != {
+        expected_explanation_keys = {
             "duration" if field_name == "duration_seconds" else field_name
             for field_name in override_fields
-        }:
+        }
+        if override_fields and (
+            self.explanations is None
+            or set(self.explanations) != expected_explanation_keys
+        ):
             raise ValueError("explanations must describe only overridden parameters")
+        if not override_fields and self.explanations:
+            raise ValueError("empty overrides cannot declare parameter explanations")
         return self
 
 
