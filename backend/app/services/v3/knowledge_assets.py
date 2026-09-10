@@ -17,7 +17,12 @@ from typing import Literal, Mapping
 
 from pydantic import Field, ValidationError, model_validator
 
-from backend.app.schemas.v3.common import ClaimDictionaryEntry, NonEmptyString, V3BaseModel
+from backend.app.schemas.v3.common import (
+    ClaimDictionaryEntry,
+    NonEmptyString,
+    UserGoalCode,
+    V3BaseModel,
+)
 
 
 @dataclass(frozen=True)
@@ -75,8 +80,8 @@ class MusicGenerationRuleRow(V3BaseModel):
     bpm: int = Field(ge=40, le=120)
     instruments: list[NonEmptyString] = Field(min_length=1)
     ambience: list[NonEmptyString] = Field(min_length=1)
-    duration_seconds: int = Field(gt=0)
-    explanations: dict[NonEmptyString, NonEmptyString] | None = None
+    duration_seconds: int = Field(gt=0, le=300)
+    explanations: dict[NonEmptyString, NonEmptyString]
 
     @model_validator(mode="after")
     def require_unique_parameters(self) -> "MusicGenerationRuleRow":
@@ -84,6 +89,8 @@ class MusicGenerationRuleRow(V3BaseModel):
             raise ValueError("instruments must be unique")
         if len(self.ambience) != len(set(self.ambience)):
             raise ValueError("ambience must be unique")
+        if set(self.explanations) != {"bpm", "instruments", "ambience", "duration"}:
+            raise ValueError("explanations must describe all deterministic parameters")
         return self
 
 
@@ -93,7 +100,7 @@ class MusicGenerationRuleOverride(V3BaseModel):
     bpm: int | None = Field(default=None, ge=40, le=120)
     instruments: list[NonEmptyString] | None = Field(default=None, min_length=1)
     ambience: list[NonEmptyString] | None = Field(default=None, min_length=1)
-    duration_seconds: int | None = Field(default=None, gt=0)
+    duration_seconds: int | None = Field(default=None, gt=0, le=300)
     explanations: dict[NonEmptyString, NonEmptyString] | None = None
 
     @model_validator(mode="after")
@@ -102,6 +109,10 @@ class MusicGenerationRuleOverride(V3BaseModel):
             raise ValueError("instruments must be unique")
         if self.ambience is not None and len(self.ambience) != len(set(self.ambience)):
             raise ValueError("ambience must be unique")
+        if self.explanations is not None and set(self.explanations) != {
+            "bpm", "instruments", "ambience", "duration"
+        }:
+            raise ValueError("explanations must describe all deterministic parameters")
         return self
 
 
@@ -112,9 +123,18 @@ class MusicGenerationRulesAsset(V3BaseModel):
     schema_version: NonEmptyString
     asset_version: NonEmptyString
     review_status: Literal["approved"]
+    secondary_goal_merge_policy: Literal["primary_over_secondary_fill_missing"]
     default: MusicGenerationRuleRow
-    goals: dict[NonEmptyString, MusicGenerationRuleOverride] = Field(default_factory=dict)
+    goals: dict[UserGoalCode, MusicGenerationRuleOverride]
     content_checksum: NonEmptyString
+
+    @model_validator(mode="after")
+    def require_complete_formal_goal_set(self) -> "MusicGenerationRulesAsset":
+        goal_codes = {code.value for code in self.goals}
+        expected_codes = {code.value for code in UserGoalCode}
+        if goal_codes != expected_codes:
+            raise ValueError("goals must contain exactly the seven formal UserGoal codes")
+        return self
 
 
 def load_music_generation_rules(

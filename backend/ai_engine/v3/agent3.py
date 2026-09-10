@@ -10,7 +10,15 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from backend.app.schemas.v3.common import NonEmptyString, Score01, ToneCode, V3BaseModel
+from pydantic import Field
+
+from backend.app.schemas.v3.common import (
+    NonEmptyString,
+    Score01,
+    ToneCode,
+    UserGoalCode,
+    V3BaseModel,
+)
 from backend.app.schemas.v3.flow_v31 import (
     BpmExplanation,
     ConfirmedUserStateRef,
@@ -54,10 +62,10 @@ class GenerationSpecV31(V3BaseModel):
     primary_tone: ToneCode
     secondary_tone: ToneCode | None
     tone_weights: dict[ToneCode, Score01]
-    bpm: int
+    bpm: int = Field(ge=40, le=120)
     instruments: list[NonEmptyString]
     ambience: list[NonEmptyString]
-    duration_seconds: int
+    duration_seconds: int = Field(gt=0, le=300)
     explanations: dict[NonEmptyString, NonEmptyString]
     readiness: Literal["ready", "not_ready"]
     blocking_reasons: list[NonEmptyString]
@@ -91,14 +99,41 @@ def build_generation_spec_v31(
     if not isinstance(default, Mapping):
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
+    merge_policy = parameter_rules.get(
+        "secondary_goal_merge_policy", "primary_over_secondary_fill_missing"
+    )
+    if merge_policy != "primary_over_secondary_fill_missing":
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
     selected = dict(default)
-    goal_code = _goal_code(user_goal)
-    if goal_code is not None:
-        goals = parameter_rules.get("goals")
+    primary_goal, secondary_goal = _goal_codes(user_goal)
+    goals = parameter_rules.get("goals")
+    if isinstance(goals, Mapping):
+        goal_codes = {
+            code.value if isinstance(code, UserGoalCode) else code
+            for code in goals
+        }
+        if goal_codes != {code.value for code in UserGoalCode}:
+            raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    if (primary_goal is not None or secondary_goal is not None) and not isinstance(
+        goals, Mapping
+    ):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
+    # Apply secondary first and primary second.  A primary value wins for the
+    # same field; a secondary value fills only a field the primary left out.
+    for goal_code in (secondary_goal, primary_goal):
+        if goal_code is None:
+            continue
         goal_rules = goals.get(goal_code) if isinstance(goals, Mapping) else None
         if not isinstance(goal_rules, Mapping):
             raise Agent3Blocked("USER_GOAL_RULE_NOT_APPROVED")
-        selected.update(goal_rules)
+        for field_name in ("bpm", "instruments", "ambience", "duration_seconds"):
+            value = goal_rules.get(field_name)
+            if value is not None:
+                selected[field_name] = value
+        if goal_rules.get("explanations") is not None:
+            selected["explanations"] = goal_rules["explanations"]
 
     bpm = selected.get("bpm")
     instruments = selected.get("instruments")
@@ -108,7 +143,7 @@ def build_generation_spec_v31(
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
     if not _string_list(instruments) or not _string_list(ambience):
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
-    if type(duration) is not int or duration <= 0:
+    if type(duration) is not int or not 0 < duration <= 300:
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
     explanations = selected.get("explanations") or default.get("explanations")
@@ -144,9 +179,9 @@ def build_generation_spec_v31(
     return spec
 
 
-def _goal_code(user_goal: Mapping[str, Any] | Any | None) -> str | None:
+def _goal_codes(user_goal: Mapping[str, Any] | Any | None) -> tuple[str | None, str | None]:
     if user_goal is None:
-        return None
+        return None, None
     from backend.app.schemas.v3.flow_v31 import UserGoalV31
 
     try:
@@ -158,10 +193,13 @@ def _goal_code(user_goal: Mapping[str, Any] | Any | None) -> str | None:
         and parsed.secondary_goal is None
         and parsed.custom_goal_text is None
     ):
-        return None
+        return None, None
     # Custom text is a bounded preference only. Without an approved goal code,
     # it must not block generation or be interpreted as a medical instruction.
-    return parsed.primary_goal.value if parsed.primary_goal is not None else None
+    return (
+        parsed.primary_goal.value if parsed.primary_goal is not None else None,
+        parsed.secondary_goal.value if parsed.secondary_goal is not None else None,
+    )
 
 
 def _string_list(value: Any) -> list[str]:
