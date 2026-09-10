@@ -1,10 +1,10 @@
-# V3.1 前端真实 API 适配清单（v4 — 复审终版）
+# V3.1 前端真实 API 适配清单（v5 — Provider/Agent3 最新状态同步）
 
 > **基线**：`integration/sprint4-real-input@b01c25a801`
-> 更新日期：2026-09-10
+> 更新日期：2026-09-11
 > 负责人：彭翔
 > 关联 PR：#121（Draft，不合并）
-> 关联后端 PR：#118（feat/s5-v3.1-ai-backend-integration，open）、#120（feat/s5-v3.1-agent4-minimax，Draft，CI pass，Stability Stable Audio 2.5）
+> 关联后端 PR：#118（feat/s5-v3.1-ai-backend-integration，Draft，CI pass）、#120（feat/s5-v3.1-agent4-minimax，Draft，CI pass，Tencent Cloud TokenHub / MiniMax）
 
 ---
 
@@ -82,7 +82,8 @@
 | `uploadDocument()`（V3 通道） | `POST /api/v3/documents` | PR #118 | document_only, document_plus_questionnaire |
 | `replaceDocument()` → DocumentSet | `POST /api/v3/sessions/{session_id}/document-sets` | PR #118 | document_only, document_plus_questionnaire |
 | `getDocumentRelevance()` | `GET /api/v3/document-sets/{document_set_id}/relevance` | PR #118 | document_only, document_plus_questionnaire |
-| `startMusicGeneration()` | `POST /api/v3/music/generations` | PR #120（Draft，CI pass，见 Provider 节） | 全部 |
+| `startMusicGeneration()` | `POST /api/v3/music/generations` | PR #120（Draft，CI pass，TokenHub / MiniMax，见 Provider 节） | 全部 |
+| `getPrescription()` /（Agent3 产物链路） | `GET /api/v3/prescriptions/{prescription_id}` | PR #118（`prescription_router.py` 新增） | document_only, document_plus_questionnaire, questionnaire_only（经 createAssessment 链路间接使用，前端通常不需要直接调用） |
 
 ---
 
@@ -123,21 +124,26 @@
 - 生成链路 Agent 边界：
   **Agent2 Diagnosis → Agent3 Prescription/GenerationSpec → prescription_id → Agent4 Generation**
   （`prescription_id` 由 **Agent3** 产出，**不是 Agent2 直接产出**；Agent2 只产出辨证结论。）
-- `POST /api/v3/music/generations` 请求体需要 `prescription_id`，该链路依赖 PR #118（PrescriptionV3 / GenerationSpec 模型）与 PR #120（Stability Stable Audio 2.5），整链未完成端到端验证。
+- 后端进展（PR #118 最新 HEAD `71cc656`）：
+  - `prescription_router.py` 已新增：`POST /api/v3/prescriptions` + `GET /api/v3/prescriptions/{prescription_id}`（State ① 已记录）
+  - Agent3 closeout：approved RAG corpus 发布（`4ac86e7`）、cosine RAG 强制（`60d6cc4`）、music rules 发布（`8e0f1e9`）、prescription music rule fixture 补齐（`eb35b27`）
+- `POST /api/v3/music/generations` 请求体需要 `prescription_id`，整链仍未在 integration 合入并端到端验证。
 - 依赖：PR #118 + PR #120（Draft）合并并串接验证。
 
 ---
 
 ## Agent4 Music Provider 状态
 
+> **更新（2026-09-11）**：PR #120 最新 HEAD `e7feb13` 已将**官方真实 Provider 定为腾讯云 TokenHub / MiniMax**（commit `5dc6f88 feat(agent4): official real provider = Tencent Cloud TokenHub / MiniMax`），标题同步更新。Stability Stable Audio 2.5 为中间切换方案（`a75ff59`/`af60380`），已被 TokenHub 方案取代。
+
 | 项目 | 状态 |
 |------|------|
-| **当前 Provider** | **Stability AI Stable Audio 2.5**（Sprint5 批准目标，PR #120 已实现并 CI 通过） |
-| **MiniMax** | 保留作为**历史实现、未启用**（`BLOCKED_BY_PROVIDER_ENTITLEMENT`，当前账户权限不可用） |
-| **PR #120** | Draft，等待 Owner 真实 Smoke 和最终复审 |
+| **当前官方 Provider** | **腾讯云 TokenHub / MiniMax**（PR #120 标题已确认，CI pass） |
+| **Stability Stable Audio 2.5** | 曾为 Sprint5 目标并实现（`a75ff59`），后被 `5dc6f88` 切换为 TokenHub / MiniMax 正式链路——现为历史提交中的中间方案 |
+| **PR #120** | Draft，等待 Owner 真实 Smoke 和最终复审（`8d3088a` 硬化 smoke diagnostics；`79b9728` 只读 review 前诊断） |
 | **Real 模式失败策略** | 真实生成失败不会自动切换 Mock——如实分两类：`generated` / `matched_fallback` |
 | **前端原则** | 只按 Provider-neutral 生成任务 + Audio Asset 接口准备；不将 Provider 名称/技术细节传入用户页面 |
-| **最终适配** | 以蔡子鑫后续提交的 PR 或主分支更新为准 |
+| **最终适配** | 以蔡子鑫后续提交的 PR 或主分支更新为准（`e7feb13` 含 rule-asset 乐器映射、no-ambient 处理、真实时长） |
 
 ---
 
@@ -158,9 +164,10 @@
 ## Remaining Blockers
 
 1. **PR #118 未合入 integration** → 7 项状态①接口不可落地
-2. **PR #120（Draft，CI pass）** 已就绪但需 Owner 真实 Smoke + 最终复审后合入
-3. **评估读取与确认端点缺失**（缺口 1/2）— 不在 PR #118 中，需后续补丁
-4. **V2 上传通道残留**（缺口 6）— 需 V3 multipart 端点就绪
-5. **端到端串接未验证**（缺口 7）— Agent2 Diagnosis → Agent3 Prescription/GenerationSpec → prescription_id → Agent4 Generation 整链
-6. **真实联调（状态③）为 0 项** — 所有接口均未完成端到端验证
-7. **本 Draft PR (#121) 不合并**，仅作为适配跟踪清单载体
+2. **PR #120（Draft，CI pass）** 官方 Provider = TokenHub / MiniMax，已就绪但需 Owner 真实 Smoke + 最终复审后合入
+3. **PR #118（Draft，CI pass）** Agent3 closeout 已基本收口（RAG corpus / music rules / prescription_router 已发布），仍未合入 integration
+4. **评估读取与确认端点缺失**（缺口 1/2）— 不在 PR #118 中，需后续补丁
+5. **V2 上传通道残留**（缺口 6）— 需 V3 multipart 端点就绪
+6. **端到端串接未验证**（缺口 7）— Agent2 Diagnosis → Agent3 Prescription/GenerationSpec → prescription_id → Agent4 Generation 整链
+7. **真实联调（状态③）为 0 项** — 所有接口均未完成端到端验证
+8. **本 Draft PR (#121) 不合并**，仅作为适配跟踪清单载体
