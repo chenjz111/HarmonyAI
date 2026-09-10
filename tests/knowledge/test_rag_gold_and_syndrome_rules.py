@@ -7,7 +7,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 GOLD = ROOT / "docs" / "sprint5" / "rag-gold-queries-medical-20260909.json"
 WHITELIST_MD = ROOT / "docs" / "sprint5" / "medical-syndrome-whitelist-and-rag-threshold-20260909.md"
+WHITELIST_JSON = ROOT / "knowledge" / "v3" / "agent2-syndrome-whitelist-v3.1.json"
 EXPECTED_CHUNKS = [f"v31_src_{i:02d}_scope_001" for i in range(1, 14)]
+EXPECTED_CORPUS_CHECKSUM = "sha256:07d7e064dae853343787c9706c2396240ceb4430caf57039020f2471fa7bc9a0"
+EXPECTED_REGISTRY_CHECKSUM = "sha256:5096bf8509fea4641fef8ca4965245b04a253b1e0bd3910dd0a6b64bef9afb85"
 REQUIRED_FIELDS = ["query_id", "query_text", "relevant_chunk_ids",
                    "irrelevant_chunk_ids", "boundary_chunk_ids", "medical_note"]
 
@@ -35,6 +38,7 @@ def test_02_exactly_17_queries_and_chunk_id_integrity():
         assert ids <= chunk_set, q["query_id"]
         assert set(q["relevant_chunk_ids"]) & set(q["irrelevant_chunk_ids"]) == set()
         assert set(q["boundary_chunk_ids"]) & set(q["irrelevant_chunk_ids"]) == set()
+        assert set(q["relevant_chunk_ids"]) & set(q["boundary_chunk_ids"]) == set()
         assert len(q["relevant_chunk_ids"]) + len(q["boundary_chunk_ids"]) + len(q["irrelevant_chunk_ids"]) > 0
 
 
@@ -72,3 +76,29 @@ def test_07_whitelist_md_present_and_mentions_primary_codes():
     text = WHITELIST_MD.read_text(encoding="utf-8")
     assert "syd_001" in text and "syd_008" in text
     assert re.search(r"主键\s*=\s*`?syd_001`?", text) or "syd_001`~`syd_008" in text
+
+
+def test_08_gold_pins_medically_reviewed_corpus_identity():
+    g = _load_gold()
+    identity = g["reviewed_corpus_identity"]
+    assert identity["chunk_count"] == 13
+    assert identity["corpus_content_checksum"] == EXPECTED_CORPUS_CHECKSUM
+    assert identity["source_registry_checksum"] == EXPECTED_REGISTRY_CHECKSUM
+    assert identity["change_requires_medical_rereview"] is True
+
+
+def test_09_machine_readable_whitelist_is_complete_and_approved():
+    asset = json.loads(WHITELIST_JSON.read_text(encoding="utf-8"))
+    assert asset["schema_id"] == "agent2_syndrome_whitelist_v3_1"
+    assert asset["review_status"] == "MEDICALLY_APPROVED"
+    entries = asset["allowed_syndromes"]
+    assert len(entries) == 8
+    assert [entry["stable_code"] for entry in entries] == [
+        f"syd_{i:03d}" for i in range(1, 9)
+    ]
+    assert len({entry["english_alias"] for entry in entries}) == 8
+    for entry in entries:
+        assert entry["display_name"].endswith("倾向")
+        assert entry["medical_meaning"].strip()
+        assert entry["supported_evidence_scope"]
+        assert entry["insufficient_evidence_action"] == "abstain"

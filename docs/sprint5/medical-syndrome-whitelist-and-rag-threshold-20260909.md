@@ -1,13 +1,13 @@
-# 医学规则提案 v0 · Agent2 证候倾向白名单 + RAG 检索医学验收（2026-09-09）
+# Agent2 证候倾向白名单 + RAG 检索医学验收（2026-09-09）
 
-> 作者：nob（肖宇翔，Medical Knowledge Engineer）｜状态：医学侧审核通过候选（未注册）
+> 作者：nob（肖宇翔，Medical Knowledge Engineer）｜状态：医学侧审核通过（机器可读资产已生成）
 > Owner 裁决：Agent2 正式 `syndrome_code` 主键 = `syd_001`~`syd_008`；英文名称为语义 alias（不作主键）
 > 目的：为 Agent2 结构化输出的"证候倾向"提供医学侧白名单；对 RAG 检索阈值给出医学验收意见；确认 13 chunk 空值语义。
 > 边界：不修改 questionnaire-v3.0.1、V3.1 冻结流程、claim/organ/five-tone 映射语义与 AI 代码；本清单只约束"输出面证候倾向的命名与允许集"。
 
-## 1. allowed_syndrome_codes（候选，8 项）
+## 1. allowed_syndrome_codes（医学审核通过，8 项）
 
-| english_code | stable_code(兼容) | 中文展示名（倾向口径） | 医学含义 | 适用证据范围（支撑信号类型，非计分规则） | 不足以判断时 |
+| english_code | stable_code（主键） | 中文展示名（倾向口径） | 医学含义 | 适用证据范围（支撑信号类型，非计分规则） | 不足以判断时 |
 | --- | --- | --- | --- | --- | --- |
 | liver_stagnation_heat | syd_001 | 肝郁化火倾向 | 肝失疏泄、气机郁滞化火；表现为烦躁易怒、口苦胁胀等（经典/教材） | 怒/烦躁类情绪信号（q01 类）、胁肋胀闷类身体信号、压力相关文档事实 | 不输出该倾向，返回 evidence insufficient（abstain，不猜测） |
 | liver_qi_stagnation | syd_002 | 肝气郁结倾向 | 情志不遂致肝气郁滞，善太息、胸胁胀闷（经典/教材） | 情绪低落/思虑类信号、胁肋不舒、情志诱因背景 | 同上 abstain/degrade |
@@ -34,6 +34,13 @@
 - 确认：**有意留空，不是遗漏**——该 13 chunk 为中医理论背景解释片段，不充当问卷 claim/器官证据计算源；留空可避免被误代入 organ_net/辨证聚合。
 - 建议：ingestion manifest 增加显式字段（如 `empty_claim_organ_semantics: intentional_background_explanation`）固化该语义。
 
-## 4. 是否允许生成 medical_rules_v3.1 正式资产
-- 允许（医学侧同意）。建议文件名：`knowledge/v3/agent2-syndrome-whitelist-v3.1.json`（或并入 `medical_rules-v3.1.json`，由 Owner 定名）；
-- 生成须走既有流程：nob 建分支 + 自动化测试 + PR（参照 #114），Owner 批准后注册 manifest；未批准前不作为生产权威。
+## 4. 正式机器可读资产
+- 已生成医学审核通过资产：`knowledge/v3/agent2-syndrome-whitelist-v3.1.json`；
+- 本资产在 Owner 合并并由 Agent2 明确加载前不视为生产执行完成；任何 code、医学含义、证据范围或 abstain 语义变化均须重新医学复核。
+
+## 5. 被审核语料身份
+
+- chunk 数量：13；
+- corpus content checksum：sha256:07d7e064dae853343787c9706c2396240ceb4430caf57039020f2471fa7bc9a0；
+- source registry checksum：sha256:5096bf8509fea4641fef8ca4965245b04a253b1e0bd3910dd0a6b64bef9afb85；
+- PR #118 后续若修改 chunk 正文、数量、ID 或上述 checksum，必须重新进行医学复核。

@@ -3,6 +3,12 @@
   "purpose": "医学侧 gold 标注：query vs 13 approved chunks（解释类知识）。仅用于 AI 侧计算相似度分布并提出 minimum_score 候选；不修改问卷/医学规则，不给阈值数值。",
   "corpus_scope": "knowledge/v3/rag-corpus-chunks-v3.1-candidate.json（src_01..src_13，chunk_id=v31_src_XX_scope_001）",
   "annotation_rule": "未列入 relevant/boundary 的 chunk 一律视为 irrelevant（逐条仅显式列出最易混淆反例以省篇幅）；boundary=相关但非首要证据或语义模糊。",
+  "reviewed_corpus_identity": {
+    "chunk_count": 13,
+    "corpus_content_checksum": "sha256:07d7e064dae853343787c9706c2396240ceb4430caf57039020f2471fa7bc9a0",
+    "source_registry_checksum": "sha256:5096bf8509fea4641fef8ca4965245b04a253b1e0bd3910dd0a6b64bef9afb85",
+    "change_requires_medical_rereview": true
+  },
   "queries": [
     {
       "query_id": "gq_01",
