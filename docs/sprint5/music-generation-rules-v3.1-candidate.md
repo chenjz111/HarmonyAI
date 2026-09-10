@@ -21,9 +21,9 @@ Owner 已批准按本表生成 `music_generation_rules_v3.1` 正式资产，无�
 
 ## Default 与七个正式 UserGoal code
 
-以下是待审核候选，不是最终批准值。除 `default` 外，各行只列出本
-UserGoal 明确覆盖的字段；留空表示该字段交由合并策略继续从 secondary 或
-default 补齐，不表示删除原有候选方向。
+以下表格现作为 Approved JSON 的审核来源记录。除 `default` 外，各行只列出
+本 UserGoal 明确覆盖的字段；留空表示该字段交由合并策略继续从 secondary
+或 default 补齐，不表示删除原有候选方向。
 
 | 场景 / code | BPM 覆盖 | instruments 覆盖 | ambience 覆盖 | 目标/预计时长覆盖 | 候选意图 |
 | --- | ---: | --- | --- | ---: | --- |
