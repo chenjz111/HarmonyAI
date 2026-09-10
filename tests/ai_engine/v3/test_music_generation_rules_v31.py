@@ -1,7 +1,14 @@
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+APPROVED_ASSET_PATH = REPOSITORY_ROOT / "knowledge" / "v3" / "music-generation-rules-v3.1.json"
+APPROVED_ASSET_VERSION = "music-generation-rules-v3.1-r1"
+APPROVED_ASSET_CHECKSUM = "sha256:b8b65b2658ea849945a43884bb786d59689606e4cdb97d63620df8b5179539be"
 
 
 def _payload():
@@ -20,7 +27,7 @@ def _payload():
                 "bpm": "按批准规则提供速度参考。",
                 "instruments": "按批准规则提供配器参考。",
                 "ambience": "按批准规则提供环境参考。",
-                "duration": "按批准规则提供时长参考。",
+                "duration": "按批准规则提供预计时长参考。",
             },
         },
         "goals": {
@@ -89,6 +96,52 @@ def _write_payload(tmp_path, payload):
     path = tmp_path / "music-generation-rules-v3.1.json"
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     return path
+
+
+def test_repository_approved_music_rules_are_versioned_and_checksum_bound():
+    from backend.app.services.v3.knowledge_assets import load_music_generation_rules
+
+    asset = load_music_generation_rules(
+        APPROVED_ASSET_PATH,
+        expected_version=APPROVED_ASSET_VERSION,
+        expected_checksum=APPROVED_ASSET_CHECKSUM,
+    )
+
+    assert asset["asset_version"] == APPROVED_ASSET_VERSION
+    assert asset["content_checksum"] == APPROVED_ASSET_CHECKSUM
+    assert asset["default"] == _payload()["default"]
+    assert asset["goals"] == _payload()["goals"]
+    assert "预计时长" in asset["default"]["explanations"]["duration"]
+
+
+def test_agent3_asset_loader_requires_version_and_checksum(monkeypatch):
+    from backend.app.services.v3 import internal_agent3_service
+
+    monkeypatch.setenv("V31_MUSIC_GENERATION_RULES_PATH", str(APPROVED_ASSET_PATH))
+    monkeypatch.delenv("V31_MUSIC_GENERATION_RULES_VERSION", raising=False)
+    monkeypatch.delenv("V31_MUSIC_GENERATION_RULES_CHECKSUM", raising=False)
+
+    with pytest.raises(
+        internal_agent3_service.Agent3NotReady,
+        match="音乐参数规则资产版本或校验和尚未配置",
+    ) as error:
+        internal_agent3_service.load_agent3_assets()
+
+    assert error.value.code == "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED"
+
+
+def test_agent3_asset_loader_uses_repository_approved_rules(monkeypatch):
+    from backend.app.services.v3 import internal_agent3_service
+
+    monkeypatch.setenv("V31_MUSIC_GENERATION_RULES_PATH", str(APPROVED_ASSET_PATH))
+    monkeypatch.setenv("V31_MUSIC_GENERATION_RULES_VERSION", APPROVED_ASSET_VERSION)
+    monkeypatch.setenv("V31_MUSIC_GENERATION_RULES_CHECKSUM", APPROVED_ASSET_CHECKSUM)
+
+    mapping, rules = internal_agent3_service.load_agent3_assets()
+
+    assert mapping["schema_id"] == "five_tone_mapping_v3"
+    assert rules["asset_version"] == APPROVED_ASSET_VERSION
+    assert rules["content_checksum"] == APPROVED_ASSET_CHECKSUM
 
 
 def test_music_generation_rules_loader_validates_approved_schema_and_checksum(tmp_path):

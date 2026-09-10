@@ -1,0 +1,89 @@
+{
+  "schema_id": "music_generation_rules_v3.1",
+  "schema_version": "3.1.0",
+  "asset_version": "music-generation-rules-v3.1-r1",
+  "review_status": "approved",
+  "secondary_goal_merge_policy": "primary_over_secondary_fill_missing",
+  "default": {
+    "bpm": 60,
+    "instruments": [
+      "古琴"
+    ],
+    "ambience": [
+      "细雨"
+    ],
+    "duration_seconds": 180,
+    "explanations": {
+      "bpm": "按批准规则提供速度参考。",
+      "instruments": "按批准规则提供配器参考。",
+      "ambience": "按批准规则提供环境参考。",
+      "duration": "按批准规则提供预计时长参考。"
+    }
+  },
+  "goals": {
+    "sleep": {
+      "bpm": 50,
+      "duration_seconds": 240,
+      "explanations": {
+        "bpm": "主要目标对应的速度候选。",
+        "duration": "主要目标对应的预计时长候选。"
+      }
+    },
+    "relaxation": {
+      "ambience": [
+        "溪流"
+      ],
+      "duration_seconds": 240,
+      "explanations": {
+        "ambience": "次要目标对应的环境音候选。",
+        "duration": "次要目标对应的预计时长候选。"
+      }
+    },
+    "emotion_regulation": {
+      "instruments": [
+        "古琴",
+        "琵琶"
+      ],
+      "ambience": [
+        "微风"
+      ],
+      "explanations": {
+        "instruments": "目标对应的乐器候选。",
+        "ambience": "目标对应的环境音候选。"
+      }
+    },
+    "focus": {
+      "bpm": 72,
+      "ambience": [
+        "无额外环境音"
+      ],
+      "explanations": {
+        "bpm": "目标对应的速度候选。",
+        "ambience": "目标对应的环境音候选。"
+      }
+    },
+    "energy": {
+      "bpm": 84,
+      "instruments": [
+        "笛"
+      ],
+      "explanations": {
+        "bpm": "目标对应的速度候选。",
+        "instruments": "目标对应的乐器候选。"
+      }
+    },
+    "stress_relief": {
+      "instruments": [
+        "古琴",
+        "埙"
+      ],
+      "duration_seconds": 240,
+      "explanations": {
+        "instruments": "目标对应的乐器候选。",
+        "duration": "目标对应的预计时长候选。"
+      }
+    },
+    "other": {}
+  },
+  "content_checksum": "sha256:b8b65b2658ea849945a43884bb786d59689606e4cdb97d63620df8b5179539be"
+}

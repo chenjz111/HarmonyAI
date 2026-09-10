@@ -5,7 +5,6 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 import os
-from pathlib import Path
 from typing import Mapping
 
 from sqlalchemy.orm import Session
@@ -29,7 +28,11 @@ from backend.app.schemas.v3.prescription import (
     GenerationSpec,
     GenerationStructure,
 )
-from backend.app.services.v3.knowledge_assets import load_five_tone_mapping
+from backend.app.services.v3.knowledge_assets import (
+    MusicGenerationRuleAssetNotReady,
+    load_five_tone_mapping,
+    load_music_generation_rules,
+)
 from backend.app.services.v3.document_relevance_gate import (
     DocumentRelevanceGateError,
     require_active_document_set_relevance,
@@ -49,14 +52,22 @@ def load_agent3_assets() -> tuple[Mapping[str, object], Mapping[str, object]]:
     This deliberately does not initialize Qwen, embeddings, or Chroma again.
     """
     rules_path = os.getenv("V31_MUSIC_GENERATION_RULES_PATH", "").strip()
-    if not rules_path:
+    rules_version = os.getenv("V31_MUSIC_GENERATION_RULES_VERSION", "").strip()
+    rules_checksum = os.getenv("V31_MUSIC_GENERATION_RULES_CHECKSUM", "").strip()
+    if not rules_path or not rules_version or not rules_checksum:
         raise Agent3NotReady(
             "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED",
-            "音乐参数规则资产尚未配置。",
+            "音乐参数规则资产版本或校验和尚未配置。",
         )
     try:
-        rules = json.loads(Path(rules_path).read_text(encoding="utf-8"))
+        rules = load_music_generation_rules(
+            rules_path,
+            expected_version=rules_version,
+            expected_checksum=rules_checksum,
+        )
         mapping = load_five_tone_mapping()
+    except MusicGenerationRuleAssetNotReady as error:
+        raise Agent3NotReady(error.error_code, error.safe_message) from None
     except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError) as error:
         raise Agent3NotReady(
             "MUSIC_PARAMETER_ASSET_INVALID",

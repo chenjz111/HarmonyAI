@@ -1,12 +1,13 @@
 # V3.1 音乐参数规则候选表
 
-状态：`CANDIDATE_FOR_OWNER_AND_MEDICAL_REVIEW`。本文件只提供参数候选和
-确定性合并规则，不是 `Approved` 资产，不可作为 Real readiness 配置，也不
-改变问卷、医学映射、Teacher Flow 或 Frozen Contract。
+状态：`OWNER_APPROVED_ASSET_GENERATED`。本文件保留参数候选与审核来源记录；
+正式运行时只使用 `knowledge/v3/music-generation-rules-v3.1.json`，不得直接将
+本 Markdown 作为 readiness 配置。本次批准不改变问卷、医学映射、Teacher
+Flow 或 Frozen Contract。
 
-这些候选值只描述音乐参数，不表达医学结论，也不从 UserGoal 文本推导医学
-事实。最终值须由 Owner 与肖宇翔审核后，另行生成
-`music_generation_rules_v3.1` JSON、版本和 canonical checksum。
+这些值只描述音乐参数，不表达医学结论，也不从 UserGoal 文本推导医学事实。
+Owner 已批准按本表生成 `music_generation_rules_v3.1` 正式资产，无需重复医学
+复核。
 
 ## 参数边界
 
@@ -69,16 +70,17 @@ override 允许为空；任意自造字符串都必须被 Schema 拒绝。
 说明只描述音乐设计参数及其来源，不描述医学作用、疗效或证候结论。
 `duration_seconds` 是目标/预计时长；播放器最终采用生成文件的实际测量时长。
 
-## 进入 Approved 的必要条件
+## Approved 发布记录
 
-批准后才生成正式 JSON，并补齐：
+正式 JSON 已生成并通过 loader 的版本、Schema 与 canonical checksum 校验：
 
 ```text
+path=knowledge/v3/music-generation-rules-v3.1.json
 schema_id=music_generation_rules_v3.1
 review_status=approved
-asset_version=<Owner批准版本>
-content_checksum=<canonical sha256>
+asset_version=music-generation-rules-v3.1-r1
+content_checksum=sha256:b8b65b2658ea849945a43884bb786d59689606e4cdb97d63620df8b5179539be
 ```
 
-运行时配置只能引用已批准的 `PATH / VERSION / CHECKSUM` 三元组。当前没有
-在本分支设置这些正式值，也没有将本候选表伪装成 Real Smoke 证据。
+运行时配置只能引用以上已批准的 `PATH / VERSION / CHECKSUM` 三元组。本次
+资产发布不等同于真实 Provider Smoke；Real 状态仍以 Owner 环境验证为准。
