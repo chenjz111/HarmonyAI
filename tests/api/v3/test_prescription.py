@@ -45,7 +45,10 @@ def _approved_agent3_assets(monkeypatch):
     }
     rules = {
         "schema_id": "music_generation_rules_v3.1",
+        "schema_version": "test-approved-v1",
+        "asset_version": "owner-approved-test-v1",
         "review_status": "approved",
+        "secondary_goal_merge_policy": "primary_over_secondary_fill_missing",
         "default": {
             "bpm": 60,
             "instruments": ["guqin"],
@@ -59,6 +62,9 @@ def _approved_agent3_assets(monkeypatch):
             },
         },
         "goals": {
+            "sleep": {},
+            "relaxation": {},
+            "emotion_regulation": {},
             "energy": {
                 "bpm": 82,
                 "instruments": ["pipa", "xiao"],
@@ -71,6 +77,8 @@ def _approved_agent3_assets(monkeypatch):
                 "ambience": ["rain"],
                 "duration_seconds": 180,
             },
+            "stress_relief": {},
+            "other": {},
         },
     }
     monkeypatch.setattr(
