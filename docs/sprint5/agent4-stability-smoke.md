@@ -1,10 +1,13 @@
-# Agent4 Stability AI 真实音乐生成 — Smoke 说明（Sprint 5）
+# Agent4 Stability AI 真实音乐生成 — Smoke 说明（历史 / 未启用）
 
-> 状态：**OWNER_APPROVED_FOR_SPRINT5_REAL_MODE**（Owner Smoke：HTTP 200，audio/mpeg，
-> 请求 60s → 实际 ≈61.582s，自动重试 0 次）
+> **状态：历史记录 / 未启用。** Stability Stable Audio 2.5 曾完成 Owner Smoke
+> （HTTP 200 / audio/mpeg / 请求 60s → 实际 ≈61.582s / 自动重试 0），但 Sprint 5
+> 正式真实 Provider 已调整为 **腾讯云 TokenHub / MiniMax (`minimax-music-v3.0`)**，
+> 见 `agent4-tokenhub-minimax-smoke.md`。本文档与 `tools/stability_music_smoke.py`
+> 仅作为 Stability 适配器（保留代码）的历史说明，**不要**写成当前 Owner-approved
+> Provider，也不要作为当前接入目标。
 > 分支：`feat/s5-v3.1-agent4-minimax`（PR #120，Draft，不 Merge）
-> Provider：Stability AI · Model：`stable-audio-2.5`
-> Endpoint：`POST https://api.stability.ai/v2beta/audio/stable-audio-2/text-to-audio`
+> 历史 Endpoint：`POST https://api.stability.ai/v2beta/audio/stable-audio-2/text-to-audio`
 
 ## 目标链路
 

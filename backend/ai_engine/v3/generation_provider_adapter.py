@@ -1,19 +1,22 @@
 """Agent 4 music provider bundle — env-driven, secret-safe.
 
 The concrete provider is selected from deployment environment variables only.
-``MUSIC_PROVIDER=stability`` with a complete configuration wires the Stability
-AI Stable Audio 2.5 adapter (backend/ai_engine/v3/stability_music_provider.py,
-key read from ``STABILITY_API_KEY``).
+``MUSIC_PROVIDER=tokenhub`` with a complete configuration wires the Tencent
+Cloud TokenHub / MiniMax music adapter
+(backend/ai_engine/v3/tokenhub_minimax_music_provider.py) using
+``TOKENHUB_API_KEY`` / ``TOKENHUB_BASE_URL`` / ``TOKENHUB_MUSIC_MODEL``.
 
-MiniMax remains implemented for history (backend/ai_engine/v3/
-minimax_music_provider.py) but is NOT an enabled real target for Sprint 5:
-Owner real smoke returned HTTP 410 / provider code 2153
-(``BLOCKED_BY_PROVIDER_ENTITLEMENT``), so a ``MUSIC_PROVIDER=minimax``
-environment stays ``not_configured`` instead of pretending to work.
+Historical / un-enabled implementations kept for review:
+* ``stability_music_provider.py`` — Stability Stable Audio 2.5 (smoke tested
+  earlier, now NOT the Sprint 5 official provider);
+* ``minimax_music_provider.py`` — direct MiniMax Music API
+  (``BLOCKED_BY_PROVIDER_ENTITLEMENT``, HTTP 410/2153).
+The direct endpoint ``https://api.minimax.io/v1/music_generation`` is forbidden
+for Sprint 5 and is never selected by this builder.
 
-Any missing/unknown configuration keeps the NotConfigured provider so
-generation degrades to reviewed local matching or an explicit failure — never
-fake success and never a silent switch to Mock.
+Any missing/unknown configuration keeps the NotConfigured provider so generation
+degrades to reviewed local matching or an explicit failure — never fake success
+and never a silent switch to Mock.
 """
 
 from __future__ import annotations
@@ -26,10 +29,11 @@ from backend.ai_engine.v3.music_provider import (
     MusicGenerationProvider,
     MusicProviderFailureV3,
 )
-from backend.ai_engine.v3.stability_music_provider import (
-    DEFAULT_STABILITY_MODEL,
-    STABILITY_DEFAULT_BASE_URL,
-    StabilityMusicProvider,
+from backend.ai_engine.v3.tokenhub_minimax_music_provider import (
+    DEFAULT_TOKENHUB_MUSIC_MODEL,
+    TOKENHUB_DEFAULT_BASE_URL,
+    TOKENHUB_MODEL_PREFIX,
+    TokenHubMinimaxMusicProvider,
 )
 from backend.app.schemas.v3.common import ProviderCapabilities, ProviderHealth
 from backend.app.schemas.v3.music import (
@@ -100,74 +104,105 @@ def build_music_provider_bundle(
     """Build the active music provider without logging or returning credentials."""
 
     name = environment.get("MUSIC_PROVIDER", "").strip().lower()
-    api_key = environment.get("STABILITY_API_KEY", "").strip()
-    base_url = environment.get("MUSIC_PROVIDER_BASE_URL", "").strip()
-    model = environment.get("MUSIC_PROVIDER_MODEL", "").strip() or DEFAULT_STABILITY_MODEL
+    tokenhub_key = environment.get("TOKENHUB_API_KEY", "").strip()
+    tokenhub_base = environment.get("TOKENHUB_BASE_URL", "").strip()
+    tokenhub_model = (
+        environment.get("TOKENHUB_MUSIC_MODEL", "").strip()
+        or DEFAULT_TOKENHUB_MUSIC_MODEL
+    )
+    legacy_model = environment.get("MUSIC_PROVIDER_MODEL", "").strip()
 
-    if name == "stability":
-        if not api_key or model != DEFAULT_STABILITY_MODEL:
+    if name == "tokenhub":
+        if not tokenhub_key or not tokenhub_model.startswith(TOKENHUB_MODEL_PREFIX):
             # Fail closed: readiness stays not_configured until the Owner
-            # provides a complete, valid Stability configuration.
+            # provides a complete, valid TokenHub configuration.
             return MusicProviderBundle(
-                provider=NotConfiguredMusicProvider(provider_name="stability"),
+                provider=NotConfiguredMusicProvider(provider_name="tokenhub"),
                 health=ProviderHealth(
                     status="not_configured",
                     provider_kind="cloud",
-                    provider="stability",
-                    model=model if api_key else None,
+                    provider="tokenhub",
+                    model=tokenhub_model if tokenhub_key else None,
                     checked_at=datetime.now(timezone.utc),
                     capabilities=ProviderCapabilities(
                         structured_json=False,
                         max_input_characters=1,
                     ),
                     safe_message=(
-                        "Stability 音乐生成配置不完整（需要 STABILITY_API_KEY 与 "
-                        "stable-audio-2.5 模型）。"
+                        "腾讯云 TokenHub / MiniMax 音乐生成配置不完整"
+                        "（需要 TOKENHUB_API_KEY 与 minimax-music-* 模型）。"
                     ),
                 ),
             )
-        provider = StabilityMusicProvider(
-            api_key=api_key,
-            model=model,
-            base_url=base_url or STABILITY_DEFAULT_BASE_URL,
+        provider = TokenHubMinimaxMusicProvider(
+            api_key=tokenhub_key,
+            model=tokenhub_model,
+            base_url=tokenhub_base or TOKENHUB_DEFAULT_BASE_URL,
             media_root=environment.get("HARMONY_MEDIA_ROOT") or None,
         )
         return MusicProviderBundle(
             provider=provider,
             health=provider.health(),
         )
-    if name == "minimax":
-        # MiniMax is BLOCKED_BY_PROVIDER_ENTITLEMENT for Sprint 5 (Owner real
-        # smoke: HTTP 410 / provider code 2153). The adapter stays in the tree
-        # as an un-enabled historical implementation and must never be selected.
+    if name == "stability":
+        # Stability was smoke tested earlier but is NOT the Sprint 5 official
+        # provider anymore; the adapter stays in the tree as history only.
         return MusicProviderBundle(
-            provider=NotConfiguredMusicProvider(provider_name="minimax"),
+            provider=NotConfiguredMusicProvider(provider_name="stability"),
             health=ProviderHealth(
                 status="not_configured",
                 provider_kind="cloud",
-                provider="minimax",
-                model=environment.get("MUSIC_PROVIDER_MODEL", "").strip() or None,
+                provider="stability",
+                model=legacy_model or None,
                 checked_at=datetime.now(timezone.utc),
                 capabilities=ProviderCapabilities(
                     structured_json=False,
                     max_input_characters=1,
                 ),
                 safe_message=(
-                    "MiniMax 已标记 BLOCKED_BY_PROVIDER_ENTITLEMENT（Owner Smoke "
-                    "HTTP 410/2153），Sprint 5 不启用；代码保留为历史参考。"
+                    "Stability 已调整为历史/未启用实现（Sprint 5 正式 Provider = "
+                    "腾讯云 TokenHub / MiniMax）；代码保留为历史参考。"
                 ),
             ),
         )
-    if name and base_url and environment.get("MUSIC_PROVIDER_API_KEY", "").strip() and model:
+    if name == "minimax":
+        # Direct MiniMax is BLOCKED_BY_PROVIDER_ENTITLEMENT for Sprint 5 (Owner
+        # smoke: HTTP 410 / provider code 2153). Its adapter stays as history and
+        # the direct endpoint https://api.minimax.io/v1/music_generation must
+        # never be called.
+        return MusicProviderBundle(
+            provider=NotConfiguredMusicProvider(provider_name="minimax"),
+            health=ProviderHealth(
+                status="not_configured",
+                provider_kind="cloud",
+                provider="minimax",
+                model=legacy_model or None,
+                checked_at=datetime.now(timezone.utc),
+                capabilities=ProviderCapabilities(
+                    structured_json=False,
+                    max_input_characters=1,
+                ),
+                safe_message=(
+                    "MiniMax 直连已标记 BLOCKED_BY_PROVIDER_ENTITLEMENT（Owner Smoke "
+                    "HTTP 410/2153），Sprint 5 不启用；请使用腾讯云 TokenHub。"
+                ),
+            ),
+        )
+    if (
+        name
+        and environment.get("MUSIC_PROVIDER_BASE_URL", "").strip()
+        and environment.get("MUSIC_PROVIDER_API_KEY", "").strip()
+        and legacy_model
+    ):
         # A configured-but-unwired provider name still degrades instead of
-        # faking generation success (concrete wiring only exists for stability).
+        # faking generation success (concrete wiring only exists for tokenhub).
         return MusicProviderBundle(
             provider=NotConfiguredMusicProvider(provider_name=name),
             health=ProviderHealth(
                 status="not_configured",
                 provider_kind="cloud",
                 provider=name,
-                model=model,
+                model=legacy_model,
                 checked_at=datetime.now(timezone.utc),
                 capabilities=ProviderCapabilities(
                     structured_json=False,

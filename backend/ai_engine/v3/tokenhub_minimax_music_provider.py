@@ -1,0 +1,601 @@
+"""Agent 4 — Tencent Cloud TokenHub / MiniMax Music adapter (official provider).
+
+Owner decision for PR #120:
+
+  Provider : Tencent Cloud TokenHub / MiniMax
+  Endpoint : https://tokenhub.tencentmaas.com/v1/wand/minimax-music/generation
+  Model    : minimax-music-v3.0
+  Key      : TOKENHUB_API_KEY (environment only)
+
+Design boundaries
+-----------------
+* JSON request (``application/json``): model / prompt / is_instrumental=true /
+  output_format (url preferred, hex fully supported) / audio_setting.format=mp3.
+* The generation POST is executed EXACTLY ONCE — automatic retry is 0 — so a
+  transient failure can never cause a duplicate paid generation. Idempotency is
+  the service layer's job (Idempotency-Key).
+* Both response shapes are handled and materialized into the project-owned media
+  root before success is reported:
+    - ``data.audio`` as hex  -> decoded and saved as MP3;
+    - ``data.audio`` as URL  -> downloaded immediately (provider links are
+      short-lived) and saved as an owned asset. The temporary provider URL is
+      never stored in the database, task payload or Player stream.
+* ``extra_info.music_duration`` is milliseconds and is converted to seconds for
+  the ops-internal run metadata (the persisted asset duration remains the
+  measured duration of the saved file).
+* The direct MiniMax endpoint ``https://api.minimax.io/v1/music_generation`` is
+  forbidden for this sprint and is never called by this adapter or the bundle
+  builder (regression-tested).
+* Failures (missing key/permission/balance/timeout/5xx/empty audio) surface as
+  explicit stable failures; Real mode never switches to Mock and never pretends
+  a generated success.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Mapping
+from datetime import datetime, timezone
+from hashlib import sha256
+import json
+import os
+from pathlib import Path
+import re
+import time
+from typing import Protocol
+
+import requests
+
+from backend.ai_engine.v3.music_provider import (
+    MusicProviderFailureV3,
+    validate_provider_request_capabilities,
+)
+from backend.app.schemas.v3.common import (
+    ProviderCapabilities,
+    ProviderHealth,
+)
+from backend.app.schemas.v3.music import (
+    MusicProviderCapabilities,
+    ProviderMusicRequest,
+    ProviderTask,
+)
+
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+
+TOKENHUB_DEFAULT_BASE_URL = "https://tokenhub.tencentmaas.com"
+TOKENHUB_MUSIC_PATH = "/v1/wand/minimax-music/generation"
+DEFAULT_TOKENHUB_MUSIC_MODEL = "minimax-music-v3.0"
+TOKENHUB_MODEL_PREFIX = "minimax-music"
+
+# The direct MiniMax endpoint must never be used for Sprint 5.
+FORBIDDEN_MINIMAX_BASE_URL = "https://api.minimax.io"
+FORBIDDEN_MINIMAX_PATH = "/v1/music_generation"
+
+# Duration envelope per the MiniMax music class used by the app (10-300 s).
+# REAL_SMOKE_REQUIRED: record the exact provider envelope after Owner smoke.
+TOKENHUB_MAX_DURATION_SECONDS = 300
+
+TOKENHUB_PROMPT_MAX_LENGTH = 2000
+
+REFERENCE_INSTRUMENTS = (
+    "guqin",
+    "xiao",
+    "guzheng",
+    "pipa",
+    "erhu",
+    "dizi",
+    "sheng",
+    "xun",
+    "bianzhong",
+)
+
+_TONE_MOOD = {
+    "gong": "steady, grounded, calm earth energy",
+    "shang": "clear, bright metal energy",
+    "jiao": "gentle, flowing wood energy",
+    "zhi": "warm, radiant fire energy",
+    "yu": "fluid, deep water energy",
+}
+
+_MEDIA_ROOT_ENV = "HARMONY_MEDIA_ROOT"
+_GENERATED_SUBDIR = Path("generated") / "tokenhub"
+
+_PUBLIC_ERRORS = {
+    "GENERATION_PROVIDER_UNAVAILABLE": (
+        "GENERATION_PROVIDER_UNAVAILABLE",
+        "音乐生成服务暂时不可用。",
+        True,
+    ),
+    "GENERATION_PROVIDER_TIMEOUT": (
+        "GENERATION_PROVIDER_TIMEOUT",
+        "音乐生成服务响应超时，请稍后重试。",
+        True,
+    ),
+    "GENERATION_PROVIDER_RATE_LIMITED": (
+        "GENERATION_PROVIDER_RATE_LIMITED",
+        "音乐生成服务繁忙，请稍后重试。",
+        True,
+    ),
+    "GENERATION_PROVIDER_AUTH_FAILED": (
+        "GENERATION_PROVIDER_AUTH_FAILED",
+        "音乐生成服务认证失败，请联系管理员。",
+        False,
+    ),
+    "GENERATION_PROVIDER_REJECTED": (
+        "GENERATION_PROVIDER_REJECTED",
+        "音乐生成服务拒绝了本次请求（参数、额度或内容受限）。",
+        False,
+    ),
+}
+
+# TokenHub / MiniMax base_resp.status_code -> stable public error code.
+_STATUS_CODE_MAP = {
+    0: None,
+    1002: "GENERATION_PROVIDER_RATE_LIMITED",
+    1004: "GENERATION_PROVIDER_AUTH_FAILED",
+    1008: "GENERATION_PROVIDER_REJECTED",  # insufficient balance
+    1026: "GENERATION_PROVIDER_REJECTED",  # content flagged
+    2013: "GENERATION_PROVIDER_REJECTED",  # invalid parameters
+    2049: "GENERATION_PROVIDER_AUTH_FAILED",
+}
+
+
+class TokenHubResponse(Protocol):
+    status_code: int
+    headers: Mapping[str, str]
+    content: bytes
+    text: str
+
+
+class TokenHubPoster(Protocol):
+    def __call__(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json_payload: dict[str, object],
+        timeout: tuple[float, float],
+    ) -> TokenHubResponse: ...
+
+
+class TokenHubDownloader(Protocol):
+    def __call__(self, url: str, *, timeout: tuple[float, float]) -> bytes: ...
+
+
+def _requests_poster(
+    url: str,
+    *,
+    headers: dict[str, str],
+    json_payload: dict[str, object],
+    timeout: tuple[float, float],
+) -> TokenHubResponse:
+    """Default JSON poster; requests sets Content-Type: application/json."""
+    return requests.post(
+        url, headers=headers, json=json_payload, timeout=timeout
+    )  # type: ignore[return-value]
+
+
+def _requests_downloader(url: str, *, timeout: tuple[float, float]) -> bytes:
+    response = requests.get(url, timeout=timeout)
+    response.raise_for_status()
+    return response.content
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def milliseconds_to_seconds(value: int | float) -> float:
+    """Convert provider ``music_duration`` (milliseconds) to seconds."""
+    return float(value) / 1000.0
+
+
+def _build_prompt(request: ProviderMusicRequest) -> str:
+    """Deterministic, medical-neutral instrumental prompt from the spec."""
+    spec = request.generation_spec
+    tone_profile = spec.tone_profile
+    tone = getattr(tone_profile, "dominant_tone", None) if tone_profile else None
+    instruments = ", ".join(spec.instruments) or "warm acoustic textures"
+    ambient_parts = [f"soft {item} ambience" for item in spec.ambient_sounds]
+    structure = spec.structure
+    parts = ["Traditional Chinese instrumental healing music"]
+    if tone:
+        mood = _TONE_MOOD.get(tone, "steady, calm")
+        parts.append(f"in {tone} mode ({mood})")
+    parts.extend(
+        [
+            f"bpm {spec.bpm}",
+            f"total duration {spec.duration_seconds} seconds",
+            f"Instruments: {instruments}",
+            (
+                f"Structure: intro {structure.intro_seconds}s, "
+                f"main {structure.main_seconds}s, outro {structure.outro_seconds}s"
+            ),
+            f"Energy: {spec.energy_curve}",
+        ]
+    )
+    if ambient_parts:
+        parts.append("Atmosphere: " + ", ".join(ambient_parts) + ".")
+    if spec.forbidden_constraints:
+        parts.append("Avoid: " + ", ".join(spec.forbidden_constraints) + ".")
+    prompt = " ".join(parts) + "."
+    if len(prompt) > TOKENHUB_PROMPT_MAX_LENGTH:
+        raise MusicProviderFailureV3(
+            "GENERATION_PROVIDER_REJECTED",
+            retryable=False,
+            safe_message="音乐生成提示词过长，无法提交生成服务。",
+        )
+    return prompt
+
+
+def _looks_like_mp3(payload: bytes) -> bool:
+    if not payload:
+        return False
+    if payload.startswith(b"ID3"):
+        return True
+    if len(payload) >= 2 and payload[0] == 0xFF and (payload[1] & 0xE0) == 0xE0:
+        return True
+    return False
+
+
+def _is_http_url(value: str) -> bool:
+    lowered = value.strip().lower()
+    return lowered.startswith("http://") or lowered.startswith("https://")
+
+
+def _safe_provider_task_id(*candidates: object) -> str:
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+        sanitized = re.sub(r"[^A-Za-z0-9_-]", "", candidate)
+        if sanitized:
+            return sanitized[:64]
+    return "tokenhub"
+
+
+class TokenHubMinimaxMusicProvider:
+    """TokenHub / MiniMax music adapter behind the frozen provider protocol."""
+
+    provider_name = "tokenhub"
+    # explicit ops-internal audit label recorded on generation_tasks.provider
+    provider_audit_label = "tokenhub/minimax-music-v3.0"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str = DEFAULT_TOKENHUB_MUSIC_MODEL,
+        base_url: str = TOKENHUB_DEFAULT_BASE_URL,
+        media_root: str | os.PathLike[str] | None = None,
+        connect_timeout: float = 20.0,
+        read_timeout: float = 300.0,
+        poster: TokenHubPoster | None = None,
+        downloader: TokenHubDownloader | None = None,
+    ) -> None:
+        if not api_key or not api_key.strip():
+            raise MusicProviderFailureV3(
+                "PROVIDER_NOT_CONFIGURED",
+                retryable=False,
+                safe_message="音乐生成服务尚未配置。",
+            )
+        if not model or not model.strip().startswith(TOKENHUB_MODEL_PREFIX):
+            raise MusicProviderFailureV3(
+                "PROVIDER_NOT_CONFIGURED",
+                retryable=False,
+                safe_message="TokenHub 音乐模型配置无效（需要 minimax-music-* 模型）。",
+            )
+        resolved_base = (base_url or TOKENHUB_DEFAULT_BASE_URL).rstrip("/")
+        if FORBIDDEN_MINIMAX_BASE_URL in resolved_base:
+            # Hard guard: the direct MiniMax endpoint is not allowed in Sprint 5.
+            raise MusicProviderFailureV3(
+                "PROVIDER_NOT_CONFIGURED",
+                retryable=False,
+                safe_message="音乐生成服务配置错误（禁止直连 api.minimax.io）。",
+            )
+        self._api_key = api_key
+        self.model = model
+        self.base_url = resolved_base
+        self.connect_timeout = max(1.0, float(connect_timeout))
+        self.read_timeout = max(10.0, float(read_timeout))
+        if media_root is not None:
+            self.media_root = Path(media_root)
+        else:
+            self.media_root = Path(os.environ.get(_MEDIA_ROOT_ENV, "media"))
+        self.media_root.mkdir(parents=True, exist_ok=True)
+        self.poster = poster or _requests_poster
+        self.downloader = downloader or _requests_downloader
+        self._health_status: str = "configured"
+        self.last_run_metadata: dict[str, object] = {}
+        self.post_calls = 0
+        self.download_calls = 0
+
+    # ------------------------------------------------------------------ #
+    # Provider protocol
+    # ------------------------------------------------------------------ #
+
+    def capabilities(self) -> MusicProviderCapabilities:
+        return MusicProviderCapabilities(
+            max_duration_seconds=TOKENHUB_MAX_DURATION_SECONDS,
+            supports_progress=False,
+            supports_cancel=False,
+            supported_instruments=list(REFERENCE_INSTRUMENTS),
+            supported_formats=["mp3"],
+        )
+
+    def health(self) -> ProviderHealth:
+        safe_message = None
+        if self._health_status == "degraded":
+            safe_message = "音乐生成服务暂时不稳定。"
+        elif self._health_status == "down":
+            safe_message = "音乐生成服务暂时不可用。"
+        return ProviderHealth(
+            status=self._health_status,  # type: ignore[arg-type]
+            provider_kind="cloud",
+            provider=self.provider_name,
+            model=self.model,
+            checked_at=_utc_now(),
+            capabilities=ProviderCapabilities(
+                structured_json=False,
+                max_input_characters=TOKENHUB_PROMPT_MAX_LENGTH,
+            ),
+            safe_message=safe_message,
+        )
+
+    def create_task(self, request: ProviderMusicRequest) -> ProviderTask:
+        validate_provider_request_capabilities(request, self.capabilities())
+        started = time.perf_counter()
+        prompt = _build_prompt(request)
+        payload: dict[str, object] = {
+            "model": self.model,
+            "prompt": prompt,
+            "is_instrumental": True,
+            "output_format": "url",
+            "audio_setting": {"format": "mp3"},
+        }
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        url = f"{self.base_url}{TOKENHUB_MUSIC_PATH}"
+
+        # REAL RULE: exactly one generation POST; automatic retry is 0.
+        self.post_calls += 1
+        try:
+            response = self.poster(
+                url,
+                headers=headers,
+                json_payload=payload,
+                timeout=(self.connect_timeout, self.read_timeout),
+            )
+        except BaseException as exc:
+            error = self._classify_transport_error(exc)
+            self._record_failure(error, started, 1)
+            raise error from exc
+
+        task = self._parse_response(response=response, started=started)
+        if task.status == "succeeded":
+            self._health_status = "healthy"
+        return task
+
+    def get_task(self, provider_task_id: str) -> ProviderTask:
+        # TokenHub music generation is synchronous; no documented query surface.
+        raise MusicProviderFailureV3(
+            "GENERATION_PROVIDER_UNAVAILABLE",
+            retryable=True,
+            safe_message="当前音乐生成服务不支持任务轮询。",
+        )
+
+    def cancel_task(self, provider_task_id: str) -> ProviderTask:
+        raise MusicProviderFailureV3(
+            "GENERATION_CANCEL_UNSUPPORTED",
+            retryable=False,
+            safe_message="当前生成服务不支持取消任务。",
+        )
+
+    # ---------------------------------------------------------------- #
+    # Async protocol
+    # ---------------------------------------------------------------- #
+
+    async def acreate_task(self, request: ProviderMusicRequest) -> ProviderTask:
+        return await asyncio.to_thread(self.create_task, request)
+
+    async def aget_task(self, provider_task_id: str) -> ProviderTask:
+        return self.get_task(provider_task_id)
+
+    async def acancel_task(self, provider_task_id: str) -> ProviderTask:
+        return self.cancel_task(provider_task_id)
+
+    # ------------------------------------------------------------------ #
+    # Response handling
+    # ------------------------------------------------------------------ #
+
+    def _parse_response(
+        self, *, response: TokenHubResponse, started: float
+    ) -> ProviderTask:
+        status_code = int(getattr(response, "status_code", 0))
+        if status_code != 200:
+            error = self._public_failure(self._map_http_status(status_code))
+            self._record_failure(error, started, 1)
+            raise error from None
+
+        payload = self._decode_json(response)
+        base_resp = payload.get("base_resp") or {}
+        provider_code = (
+            base_resp.get("status_code") if isinstance(base_resp, Mapping) else None
+        )
+        if provider_code not in (None, 0):
+            code = _STATUS_CODE_MAP.get(
+                int(provider_code), "GENERATION_PROVIDER_REJECTED"
+            )
+            error = self._public_failure(code)
+            self._record_failure(error, started, 1)
+            raise error from None
+
+        data = payload.get("data")
+        if not isinstance(data, Mapping):
+            error = self._public_failure("GENERATION_PROVIDER_REJECTED")
+            self._record_failure(error, started, 1)
+            raise error from None
+
+        data_status = data.get("status")
+        if data_status == 1:
+            # In-progress create response without a documented poll handle:
+            # fail closed instead of pretending success we cannot materialize.
+            error = self._public_failure("GENERATION_PROVIDER_UNAVAILABLE")
+            self._record_failure(error, started, 1)
+            raise error from None
+
+        audio_ref = data.get("audio")
+        if data_status != 2 or not isinstance(audio_ref, str) or not audio_ref.strip():
+            error = self._public_failure("GENERATION_PROVIDER_REJECTED")
+            self._record_failure(error, started, 1)
+            raise error from None
+
+        try:
+            locator = self._materialize_audio(audio_ref)
+        except MusicProviderFailureV3 as error:
+            self._record_failure(error, started, 1)
+            raise
+
+        latency_ms = max(0, int((time.perf_counter() - started) * 1000))
+        extra_info = payload.get("extra_info") or {}
+        music_duration_ms = (
+            extra_info.get("music_duration")
+            if isinstance(extra_info, Mapping)
+            else None
+        )
+        usage = payload.get("usage") or {}
+        total_tokens = usage.get("total_tokens") if isinstance(usage, Mapping) else None
+        self.last_run_metadata = {
+            "provider": self.provider_name,
+            "provider_label": self.provider_audit_label,
+            "model": self.model,
+            "attempts": 1,
+            "latency_ms": latency_ms,
+            "error_code": None,
+            "trace_id": payload.get("trace_id"),
+            "request_id": payload.get("request_id"),
+            "total_tokens": total_tokens,
+            "provider_reported_duration_ms": music_duration_ms,
+            "provider_reported_duration_seconds": (
+                milliseconds_to_seconds(music_duration_ms)
+                if isinstance(music_duration_ms, (int, float))
+                else None
+            ),
+        }
+        return ProviderTask(
+            provider_task_id=_safe_provider_task_id(
+                payload.get("trace_id"),
+                payload.get("request_id"),
+                str(payload.get("id") or ""),
+            ),
+            status="succeeded",
+            progress_value=100,
+            asset_locator=locator,
+            error_code=None,
+        )
+
+    @staticmethod
+    def _decode_json(response: TokenHubResponse) -> Mapping[str, object]:
+        try:
+            payload = json.loads(getattr(response, "text", "") or "")
+        except (ValueError, TypeError) as exc:
+            raise MusicProviderFailureV3(
+                "GENERATION_PROVIDER_REJECTED",
+                retryable=False,
+                safe_message="音乐生成服务返回了无效结果。",
+                cause=exc,
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise MusicProviderFailureV3(
+                "GENERATION_PROVIDER_REJECTED",
+                retryable=False,
+                safe_message="音乐生成服务返回了无效结果。",
+            )
+        return payload
+
+    def _materialize_audio(self, audio_ref: str) -> str:
+        """Store owned MP3 bytes for a hex payload or a short-lived provider URL."""
+        if _is_http_url(audio_ref):
+            self.download_calls += 1
+            try:
+                payload = self.downloader(
+                    audio_ref.strip(),
+                    timeout=(self.connect_timeout, self.read_timeout),
+                )
+            except BaseException as exc:
+                raise self._classify_transport_error(exc) from exc
+        else:
+            hex_body = audio_ref.strip()
+            if hex_body.lower().startswith("0x"):
+                hex_body = hex_body[2:]
+            try:
+                payload = bytes.fromhex(hex_body)
+            except ValueError as exc:
+                raise MusicProviderFailureV3(
+                    "GENERATION_PROVIDER_REJECTED",
+                    retryable=False,
+                    safe_message="音乐生成服务返回了无效音频。",
+                    cause=exc,
+                ) from exc
+
+        if not _looks_like_mp3(payload):
+            raise MusicProviderFailureV3(
+                "GENERATION_PROVIDER_REJECTED",
+                retryable=False,
+                safe_message="音乐生成服务未返回可播放音频。",
+            )
+
+        file_name = f"{sha256(payload).hexdigest()[:16]}.mp3"
+        target_dir = self.media_root / _GENERATED_SUBDIR
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / file_name
+        target.write_bytes(payload)
+        return str(target.resolve())
+
+    # ------------------------------------------------------------------ #
+    # Error classification
+    # ------------------------------------------------------------------ #
+
+    def _map_http_status(self, status_code: int) -> str:
+        if status_code in {401, 403}:
+            return "GENERATION_PROVIDER_AUTH_FAILED"
+        if status_code == 429:
+            return "GENERATION_PROVIDER_RATE_LIMITED"
+        if 500 <= status_code <= 599:
+            return "GENERATION_PROVIDER_UNAVAILABLE"
+        return "GENERATION_PROVIDER_REJECTED"
+
+    def _public_failure(self, error_code: str) -> MusicProviderFailureV3:
+        normalized, message, retryable = _PUBLIC_ERRORS.get(
+            error_code, _PUBLIC_ERRORS["GENERATION_PROVIDER_UNAVAILABLE"]
+        )
+        return MusicProviderFailureV3(
+            normalized,
+            retryable=retryable,
+            safe_message=message,
+        )
+
+    def _classify_transport_error(self, exc: BaseException) -> MusicProviderFailureV3:
+        if isinstance(exc, (requests.Timeout, TimeoutError)):
+            return self._public_failure("GENERATION_PROVIDER_TIMEOUT")
+        if isinstance(exc, requests.HTTPError):
+            status = int(getattr(getattr(exc, "response", None), "status_code", 0) or 0)
+            return self._public_failure(self._map_http_status(status) if status else "GENERATION_PROVIDER_REJECTED")
+        if isinstance(exc, (requests.RequestException, OSError)):
+            return self._public_failure("GENERATION_PROVIDER_UNAVAILABLE")
+        return self._public_failure("GENERATION_PROVIDER_UNAVAILABLE")
+
+    def _record_failure(
+        self, error: MusicProviderFailureV3, started: float, attempt: int
+    ) -> None:
+        latency_ms = max(0, int((time.perf_counter() - started) * 1000))
+        self.last_run_metadata = {
+            "provider": self.provider_name,
+            "provider_label": self.provider_audit_label,
+            "model": self.model,
+            "attempts": attempt,
+            "latency_ms": latency_ms,
+            "error_code": error.error_code,
+        }
+        # Raw vendor message/body is intentionally never stored (secret risk).
+        self._health_status = "degraded" if error.retryable else "down"

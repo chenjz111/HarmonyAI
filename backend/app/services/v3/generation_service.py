@@ -280,8 +280,18 @@ def _measure_audio_duration_seconds(locator: str) -> int | None:
 
 
 def _provider_identity(provider: object) -> tuple[str, str | None]:
-    """Safe ops-internal provider name/model without returning credentials."""
-    name = getattr(provider, "provider_name", None)
+    """Safe ops-internal provider name/model without returning credentials.
+
+    A provider may expose ``provider_audit_label`` to record both platform and
+    model (e.g. ``tokenhub/minimax-music-v3.0``) on the generation task; it is
+    still ops-internal metadata and never reaches clients.
+    """
+    label = getattr(provider, "provider_audit_label", None)
+    name = (
+        label
+        if isinstance(label, str) and label
+        else getattr(provider, "provider_name", None)
+    )
     if not isinstance(name, str) or not name:
         name = "music"
     model = getattr(provider, "model", None)

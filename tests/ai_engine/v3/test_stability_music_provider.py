@@ -158,15 +158,20 @@ def _stability_env(**overrides) -> dict[str, str]:
 # ---------------------------------------------------------------- bundle wiring
 
 
-def test_stability_env_builds_real_adapter(tmp_path):
+def test_stability_env_is_historical_and_not_wired(tmp_path):
+    # Stability is no longer the Sprint 5 official provider (Tencent Cloud
+    # TokenHub / MiniMax is). The adapter stays in the tree as history only.
     bundle = build_music_provider_bundle(_stability_env(HARMONY_MEDIA_ROOT=str(tmp_path)))
-    assert isinstance(bundle.provider, StabilityMusicProvider)
+    assert isinstance(bundle.provider, NotConfiguredMusicProvider)
     assert bundle.provider.provider_name == "stability"
-    assert bundle.provider.model == DEFAULT_STABILITY_MODEL
-    assert bundle.health.status == "configured"
+    assert bundle.health.status == "not_configured"
+    assert bundle.health.safe_message is not None
+    assert "历史" in bundle.health.safe_message
     serialized = bundle.health.model_dump_json()
     assert "sk-test-stability-secret" not in serialized
     assert "stability.example.invalid" not in serialized
+    # the Stability adapter itself remains importable as an un-enabled reference
+    assert StabilityMusicProvider is not None
 
 
 def test_stability_env_missing_key_keeps_readiness_not_configured(tmp_path):
