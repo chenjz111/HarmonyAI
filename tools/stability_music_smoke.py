@@ -42,7 +42,6 @@ Exit codes:
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from hashlib import sha256
@@ -105,14 +104,16 @@ class _DiagnosticPoster:
         self.body_bytes: int | None = None
         self.body_is_json: bool | None = None
         self.transport_error: str | None = None
+        self.post_count = 0
 
     def __call__(self, url, *, headers, data, files, timeout):
         inner = self._inner or requests.post
+        self.post_count += 1
         try:
             response = inner(
                 url, headers=headers, data=data, files=files, timeout=timeout
             )
-        except BaseException as exc:  # record type only, never the message
+        except Exception as exc:  # record type only, never the message
             self.transport_error = type(exc).__name__
             raise
         self.status_code = int(getattr(response, "status_code", 0))
@@ -120,19 +121,13 @@ class _DiagnosticPoster:
         self.content_type = str(header_map.get("content-type", "")) or None
         content = getattr(response, "content", b"") or b""
         self.body_bytes = len(content)
-        self.body_is_json = self._looks_like_json(getattr(response, "text", "") or "")
+        self.body_is_json = self._is_json_content_type(self.content_type)
         return response
 
     @staticmethod
-    def _looks_like_json(text: str) -> bool:
-        stripped = text.lstrip()
-        if not stripped or stripped[0] not in "{[":
-            return False
-        try:
-            json.loads(stripped)
-        except (ValueError, TypeError):
-            return False
-        return True
+    def _is_json_content_type(content_type: str | None) -> bool:
+        media_type = (content_type or "").partition(";")[0].strip().lower()
+        return media_type == "application/json" or media_type.endswith("+json")
 
     def safe_fields(self) -> dict[str, object]:
         """JSON-serializable, secret-free diagnostics for the smoke log."""
@@ -142,7 +137,7 @@ class _DiagnosticPoster:
             "response_bytes": self.body_bytes,
             "response_is_json": self.body_is_json,
             "transport_error": self.transport_error,
-            "post_count": 1 if self.status_code is not None or self.transport_error else 0,
+            "post_count": self.post_count,
         }
 
 

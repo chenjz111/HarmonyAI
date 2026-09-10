@@ -91,6 +91,56 @@ def test_diagnostic_poster_records_transport_error_type_only():
     assert "connect timeout" not in json.dumps(fields)
 
 
+def test_diagnostic_poster_reports_the_actual_number_of_post_attempts():
+    def fake_inner(url, *, headers, data, files, timeout):
+        return _FakeResponse(
+            status_code=503,
+            content=b"{}",
+            content_type="application/json",
+            text="{}",
+        )
+
+    poster = smoke._DiagnosticPoster(inner=fake_inner)
+
+    poster("https://example.invalid", headers={}, data={}, files={}, timeout=(1, 2))
+    poster("https://example.invalid", headers={}, data={}, files={}, timeout=(1, 2))
+
+    assert poster.safe_fields()["post_count"] == 2
+
+
+def test_diagnostic_poster_does_not_decode_audio_as_text():
+    class AudioResponse:
+        status_code = 200
+        content = b"ID3\x04\x00\x00audio-bytes"
+        headers = {"content-type": "audio/mpeg"}
+
+        @property
+        def text(self):
+            raise AssertionError("audio responses must not be decoded as text")
+
+    poster = smoke._DiagnosticPoster(inner=lambda *args, **kwargs: AudioResponse())
+
+    poster("https://example.invalid", headers={}, data={}, files={}, timeout=(1, 2))
+
+    fields = poster.safe_fields()
+    assert fields["response_is_json"] is False
+    assert fields["response_bytes"] == len(AudioResponse.content)
+
+
+def test_diagnostic_poster_does_not_treat_process_interrupt_as_transport_error():
+    def interrupted_inner(url, *, headers, data, files, timeout):
+        raise KeyboardInterrupt
+
+    poster = smoke._DiagnosticPoster(inner=interrupted_inner)
+
+    with pytest.raises(KeyboardInterrupt):
+        poster("https://example.invalid", headers={}, data={}, files={}, timeout=(1, 2))
+
+    fields = poster.safe_fields()
+    assert fields["transport_error"] is None
+    assert fields["post_count"] == 1
+
+
 def test_check_mode_sends_no_request_and_passes_with_complete_config(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ):
