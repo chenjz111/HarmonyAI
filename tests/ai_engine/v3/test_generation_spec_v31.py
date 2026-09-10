@@ -44,7 +44,18 @@ def _rules():
             },
         },
         "goals": {
-            "sleep": {"bpm": 50, "instruments": ["古琴", "箫"], "ambience": ["细雨"], "duration_seconds": 240},
+            "sleep": {
+                "bpm": 50,
+                "instruments": ["古琴", "箫"],
+                "ambience": ["细雨"],
+                "duration_seconds": 240,
+                "explanations": {
+                    "bpm": "助眠诉求对应的速度候选。",
+                    "instruments": "助眠诉求对应的配器候选。",
+                    "ambience": "助眠诉求对应的环境音候选。",
+                    "duration": "助眠诉求对应的预计时长候选。",
+                },
+            },
             "relaxation": {},
             "emotion_regulation": {},
             "focus": {},

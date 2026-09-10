@@ -50,6 +50,9 @@ override 允许为空；任意自造字符串都必须被 Schema 拒绝。
    每个字段独立选择，不能用某一目标的整组参数覆盖其他字段。
 5. explanations 也按字段合并：最终字段来自 primary/secondary 时使用对应说明；
    最终值与 default 相同则保留 default 的中性说明，不声称目标已应用。
+   任一非空 override 必须同时提供且只提供其覆盖字段对应的 explanations；
+   缺少说明或夹带未覆盖字段说明时，资产校验必须失败。空的 `other`
+   override 不携带 explanations。
 6. `other`、custom-only 和 skip/null 没有已批准专属映射时，保持 default，
    不从 `custom_goal_text` 推导 BPM、五音、器官、证型或任何医学结论。
 7. 全部参数仍由规则资产确定性生成，LLM 不参与优先级或参数选择。

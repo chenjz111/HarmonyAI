@@ -124,6 +124,8 @@ def build_generation_spec_v31(
         }
         if goal_codes != {code.value for code in UserGoalCode}:
             raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+        for goal_rules in goals.values():
+            _validate_goal_rule_explanations(goal_rules)
     if (primary_goal is not None or secondary_goal is not None) and not isinstance(
         goals, Mapping
     ):
@@ -242,6 +244,25 @@ def _selected_goal_rule(
     if not isinstance(goal_rules, Mapping):
         raise Agent3Blocked("USER_GOAL_RULE_NOT_APPROVED")
     return goal_rules
+
+
+def _validate_goal_rule_explanations(goal_rules: Any) -> None:
+    if not isinstance(goal_rules, Mapping):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    override_fields = {
+        field_name
+        for field_name in _MUSIC_PARAMETER_FIELDS
+        if goal_rules.get(field_name) is not None
+    }
+    expected_keys = {
+        _MUSIC_EXPLANATION_KEYS[field_name] for field_name in override_fields
+    }
+    explanations = goal_rules.get("explanations")
+    if override_fields:
+        if not _valid_explanations(explanations, expected_keys):
+            raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    elif explanations:
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
 
 def _valid_explanations(value: Any, expected_keys: set[str]) -> bool:
