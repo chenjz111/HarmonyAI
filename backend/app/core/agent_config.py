@@ -275,10 +275,26 @@ def get_v31_ai_pipeline_dependencies(
     medical_review_versions = set(
         getattr(rag_store, "medical_review_versions", ())
     )
-    if medical_review_versions != {medical_rule_version}:
+    rag_manifest = getattr(rag_store, "manifest", None)
+    configured_review_version = getattr(rag_manifest, "medical_review_version", None)
+    if configured_review_version:
+        if medical_review_versions != {configured_review_version}:
+            raise V31ReadinessFailure(
+                "MEDICAL_REVIEW_VERSION_MISMATCH",
+                "医学语料审核版本与清单不一致。",
+            )
+    elif medical_review_versions != {medical_rule_version}:
+        # Compatibility for pre-approval test doubles that had no manifest
+        # review-version field and used the rule version as the only identity.
         raise V31ReadinessFailure(
             "MEDICAL_RULE_VERSION_MISMATCH",
             "医学语料与医学规则版本不一致。",
+        )
+    configured_rule_version = getattr(rag_manifest, "medical_rule_version", None)
+    if configured_rule_version and configured_rule_version != medical_rule_version:
+        raise V31ReadinessFailure(
+            "MEDICAL_RULE_VERSION_MISMATCH",
+            "医学语料绑定的医学规则版本与规则资产不一致。",
         )
     provider = get_v31_diagnosis_provider(
         values,
