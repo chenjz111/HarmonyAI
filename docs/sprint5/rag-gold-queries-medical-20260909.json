@@ -92,16 +92,18 @@
       "query_id": "gq_06",
       "query_text": "五音调适：角调对应哪个脏与情绪？",
       "relevant_chunk_ids": [
-        "v31_src_07_scope_001",
+        "v31_src_01_scope_001",
+        "v31_src_07_scope_001"
+      ],
+      "boundary_chunk_ids": [
         "v31_src_10_scope_001"
       ],
-      "boundary_chunk_ids": [],
       "irrelevant_chunk_ids": [
         "v31_src_08_scope_001",
         "v31_src_11_scope_001",
         "v31_src_13_scope_001"
       ],
-      "medical_note": "角-肝-木（src_07）；五音配五行（src_10）。"
+      "medical_note": "角-肝由 src_07 直接支持，怒-肝由 src_01 直接支持；src_10 仅提供五音配五行背景（boundary）。"
     },
     {
       "query_id": "gq_07",
@@ -183,17 +185,17 @@
       "query_id": "gq_12",
       "query_text": "痰饮形成的中医病机解释",
       "relevant_chunk_ids": [
-        "v31_src_12_scope_001"
+        "v31_src_09_scope_001"
       ],
       "boundary_chunk_ids": [
-        "v31_src_09_scope_001"
+        "v31_src_12_scope_001"
       ],
       "irrelevant_chunk_ids": [
         "v31_src_02_scope_001",
         "v31_src_06_scope_001",
         "v31_src_10_scope_001"
       ],
-      "medical_note": "痰饮病机（src_12）；脾为生痰之源为机理细节（boundary src_09）。"
+      "medical_note": "src_09 直接说明脾为生痰之源、肺为贮痰之器；src_12 仅概括痰饮病机（boundary）。"
     },
     {
       "query_id": "gq_13",
@@ -310,12 +312,12 @@
     "english_alias": {
       "syd_001": "liver_stagnation_heat",
       "syd_002": "liver_qi_stagnation",
-      "syd_003": "heart_fire_flaming",
+      "syd_003": "heart_fire_flare",
       "syd_004": "heart_spleen_deficiency",
       "syd_005": "spleen_deficiency_dampness",
       "syd_006": "lung_qi_deficiency",
       "syd_007": "kidney_yin_deficiency",
-      "syd_008": "heart_kidney_disconnection"
+      "syd_008": "heart_kidney_discordance"
     }
   },
   "empty_claim_organ_semantics": "claim_codes=[] / organ_codes=[] 为医学侧有意留空（13 chunk 为中医理论背景解释，不充当问卷 claim/器官证据计算源），非遗漏。"

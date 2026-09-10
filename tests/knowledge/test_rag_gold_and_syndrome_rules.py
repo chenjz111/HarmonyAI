@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Medical rules v3.1 assets: RAG gold query set + syndrome whitelist note — structure & integrity tests."""
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -8,6 +9,9 @@ ROOT = Path(__file__).resolve().parents[2]
 GOLD = ROOT / "docs" / "sprint5" / "rag-gold-queries-medical-20260909.json"
 WHITELIST_MD = ROOT / "docs" / "sprint5" / "medical-syndrome-whitelist-and-rag-threshold-20260909.md"
 WHITELIST_JSON = ROOT / "knowledge" / "v3" / "agent2-syndrome-whitelist-v3.1.json"
+MEDICAL_RULES = ROOT / "knowledge" / "v3" / "medical-rules-v3.1.json"
+CORPUS = ROOT / "knowledge" / "v3" / "rag-corpus-chunks-v3.1-candidate.json"
+SOURCE_REGISTRY = ROOT / "knowledge" / "v3" / "rag-corpus-manifest-v3.1.json"
 EXPECTED_CHUNKS = [f"v31_src_{i:02d}_scope_001" for i in range(1, 14)]
 EXPECTED_CORPUS_CHECKSUM = "sha256:07d7e064dae853343787c9706c2396240ceb4430caf57039020f2471fa7bc9a0"
 EXPECTED_REGISTRY_CHECKSUM = "sha256:5096bf8509fea4641fef8ca4965245b04a253b1e0bd3910dd0a6b64bef9afb85"
@@ -17,6 +21,16 @@ REQUIRED_FIELDS = ["query_id", "query_text", "relevant_chunk_ids",
 
 def _load_gold():
     return json.loads(GOLD.read_text(encoding="utf-8"))
+
+
+def _load(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _canonical_checksum(payload):
+    data = {key: value for key, value in payload.items() if key != "content_checksum"}
+    encoded = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return f"sha256:{hashlib.sha256(encoded.encode('utf-8')).hexdigest()}"
 
 
 def test_01_gold_json_parseable_and_fields():
@@ -60,11 +74,10 @@ def test_04_annotation_rule_explicit():
 def test_05_syndrome_code_authority():
     g = _load_gold()
     auth = g.get("syndrome_code_authority", {})
-    assert auth.get("primary_codes") == ["syd_%03d" % i for i in range(1, 9)]
-    alias = auth.get("english_alias", {})
-    assert len(alias) == 8
-    for i in range(1, 9):
-        assert alias[f"syd_{i:03d}"]  # alias present, primary key stays syd_xxx
+    formal_rules = _load(MEDICAL_RULES)
+    formal_aliases = formal_rules["syndrome_aliases"]
+    assert auth.get("primary_codes") == formal_rules["allowed_syndrome_codes"]
+    assert auth.get("english_alias") == formal_aliases
 
 
 def test_06_empty_claim_organ_semantics_declared():
@@ -76,19 +89,39 @@ def test_07_whitelist_md_present_and_mentions_primary_codes():
     text = WHITELIST_MD.read_text(encoding="utf-8")
     assert "syd_001" in text and "syd_008" in text
     assert re.search(r"主键\s*=\s*`?syd_001`?", text) or "syd_001`~`syd_008" in text
+    for alias in _load(MEDICAL_RULES)["syndrome_aliases"].values():
+        assert alias in text
 
 
 def test_08_gold_pins_medically_reviewed_corpus_identity():
     g = _load_gold()
     identity = g["reviewed_corpus_identity"]
-    assert identity["chunk_count"] == 13
-    assert identity["corpus_content_checksum"] == EXPECTED_CORPUS_CHECKSUM
-    assert identity["source_registry_checksum"] == EXPECTED_REGISTRY_CHECKSUM
+    corpus = _load(CORPUS)
+    registry = _load(SOURCE_REGISTRY)
+    assert identity["chunk_count"] == len(corpus["chunks"]) == 13
+    assert corpus["content_checksum"] == _canonical_checksum(corpus)
+    assert registry["content_checksum"] == _canonical_checksum(registry)
+    assert identity["corpus_content_checksum"] == corpus["content_checksum"] == EXPECTED_CORPUS_CHECKSUM
+    assert identity["source_registry_checksum"] == registry["content_checksum"] == EXPECTED_REGISTRY_CHECKSUM
+    assert corpus["source_registry_checksum"] == registry["content_checksum"]
     assert identity["change_requires_medical_rereview"] is True
+
+
+def test_08b_reviewed_gold_labels_match_medical_decision():
+    queries = {query["query_id"]: query for query in _load_gold()["queries"]}
+    assert queries["gq_06"]["relevant_chunk_ids"] == [
+        "v31_src_01_scope_001",
+        "v31_src_07_scope_001",
+    ]
+    assert queries["gq_06"]["boundary_chunk_ids"] == ["v31_src_10_scope_001"]
+    assert queries["gq_12"]["relevant_chunk_ids"] == ["v31_src_09_scope_001"]
+    assert queries["gq_12"]["boundary_chunk_ids"] == ["v31_src_12_scope_001"]
 
 
 def test_09_machine_readable_whitelist_is_complete_and_approved():
     asset = json.loads(WHITELIST_JSON.read_text(encoding="utf-8"))
+    formal_rules = _load(MEDICAL_RULES)
+    formal_aliases = formal_rules["syndrome_aliases"]
     assert asset["schema_id"] == "agent2_syndrome_whitelist_v3_1"
     assert asset["review_status"] == "MEDICALLY_APPROVED"
     entries = asset["allowed_syndromes"]
@@ -98,6 +131,7 @@ def test_09_machine_readable_whitelist_is_complete_and_approved():
     ]
     assert len({entry["english_alias"] for entry in entries}) == 8
     for entry in entries:
+        assert entry["english_alias"] == formal_aliases[entry["stable_code"]]
         assert entry["display_name"].endswith("倾向")
         assert entry["medical_meaning"].strip()
         assert entry["supported_evidence_scope"]

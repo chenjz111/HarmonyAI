@@ -24,7 +24,7 @@
     },
     {
       "stable_code": "syd_003",
-      "english_alias": "heart_fire_flaming",
+      "english_alias": "heart_fire_flare",
       "display_name": "心火上炎倾向",
       "medical_meaning": "心火亢盛上扰；可见心烦失眠、口舌生疮等中医理论表现。",
       "supported_evidence_scope": ["烦躁或兴奋难静类信号", "睡眠类信号", "心系身体信号"],
@@ -64,7 +64,7 @@
     },
     {
       "stable_code": "syd_008",
-      "english_alias": "heart_kidney_disconnection",
+      "english_alias": "heart_kidney_discordance",
       "display_name": "心肾不交倾向",
       "medical_meaning": "心火亢于上、肾水亏于下；可见心烦不寐与腰膝酸软并见等中医理论表现。",
       "supported_evidence_scope": ["心系失眠或心烦信号", "肾系腰膝或耳鸣信号", "两类信号并存"],

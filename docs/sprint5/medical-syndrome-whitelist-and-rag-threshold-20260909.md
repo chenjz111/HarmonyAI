@@ -11,12 +11,12 @@
 | --- | --- | --- | --- | --- | --- |
 | liver_stagnation_heat | syd_001 | 肝郁化火倾向 | 肝失疏泄、气机郁滞化火；表现为烦躁易怒、口苦胁胀等（经典/教材） | 怒/烦躁类情绪信号（q01 类）、胁肋胀闷类身体信号、压力相关文档事实 | 不输出该倾向，返回 evidence insufficient（abstain，不猜测） |
 | liver_qi_stagnation | syd_002 | 肝气郁结倾向 | 情志不遂致肝气郁滞，善太息、胸胁胀闷（经典/教材） | 情绪低落/思虑类信号、胁肋不舒、情志诱因背景 | 同上 abstain/degrade |
-| heart_fire_flaming | syd_003 | 心火上炎倾向 | 心火亢盛上扰，心烦失眠、口舌生疮（经典/教材） | 烦躁/兴奋难静类信号（q02 类）、睡眠/心系身体信号 | 同上 abstain/degrade |
+| heart_fire_flare | syd_003 | 心火上炎倾向 | 心火亢盛上扰，心烦失眠、口舌生疮（经典/教材） | 烦躁/兴奋难静类信号（q02 类）、睡眠/心系身体信号 | 同上 abstain/degrade |
 | heart_spleen_deficiency | syd_004 | 心脾两虚倾向 | 思虑伤脾、心血不足，多梦健忘、食少倦怠（经典/教材） | 思虑过度类信号、睡眠/食欲/精力类信号并见 | 同上 abstain/degrade |
 | spleen_deficiency_dampness | syd_005 | 脾虚湿困倾向 | 脾气虚运化失司、湿邪困阻，腹胀便溏、身重（经典/教材） | 消化/身体沉重类信号、倦怠类信号 | 同上 abstain/degrade |
 | lung_qi_deficiency | syd_006 | 肺气虚倾向 | 肺气不足、卫外不固，气短声低、易疲（经典/教材） | 呼吸/声音相关身体信号、精力类信号 | 同上 abstain/degrade |
 | kidney_yin_deficiency | syd_007 | 肾阴不足倾向 | 肾阴亏虚、失于濡养，腰膝酸软、耳鸣、五心烦热（经典/教材） | 腰膝/耳鸣等肾系身体信号、长期耗损背景 | 同上 abstain/degrade |
-| heart_kidney_disconnection | syd_008 | 心肾不交倾向 | 心火亢于上、肾水亏于下，心烦不寐、腰膝酸软并见（经典/教材） | 心系(失眠/烦)与肾系(腰膝/耳鸣)信号并存 | 同上 abstain/degrade |
+| heart_kidney_discordance | syd_008 | 心肾不交倾向 | 心火亢于上、肾水亏于下，心烦不寐、腰膝酸软并见（经典/教材） | 心系(失眠/烦)与肾系(腰膝/耳鸣)信号并存 | 同上 abstain/degrade |
 
 ### 医学复核确认项
 - 有医学依据：8 项均有《中医诊断学》《中医内科学》（统编教材）与经典理论支撑（与 knowledge-manifest knowledge_sources 同源）；
