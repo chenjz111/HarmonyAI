@@ -81,6 +81,12 @@ def _rules():
                 "instruments": ["古琴", "箫"],
                 "ambience": ["细雨"],
                 "duration_seconds": 240,
+                "explanations": {
+                    "bpm": "睡眠诉求按已批准规则降低速度。",
+                    "instruments": "睡眠诉求按已批准规则使用舒缓配器。",
+                    "ambience": "睡眠诉求按已批准规则使用柔和环境音。",
+                    "duration": "睡眠诉求按已批准规则延长目标时长。",
+                },
             },
             "relaxation": {},
             "emotion_regulation": {},
