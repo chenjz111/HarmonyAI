@@ -35,14 +35,17 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
+import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import time
 from typing import Protocol
+from urllib.parse import urlsplit
 
 import requests
 
@@ -67,7 +70,6 @@ from backend.app.schemas.v3.music import (
 TOKENHUB_DEFAULT_BASE_URL = "https://tokenhub.tencentmaas.com"
 TOKENHUB_MUSIC_PATH = "/v1/wand/minimax-music/generation"
 DEFAULT_TOKENHUB_MUSIC_MODEL = "minimax-music-v3.0"
-TOKENHUB_MODEL_PREFIX = "minimax-music"
 
 # The direct MiniMax endpoint must never be used for Sprint 5.
 FORBIDDEN_MINIMAX_BASE_URL = "https://api.minimax.io"
@@ -76,6 +78,9 @@ FORBIDDEN_MINIMAX_PATH = "/v1/music_generation"
 # Duration envelope per the MiniMax music class used by the app (10-300 s).
 # REAL_SMOKE_REQUIRED: record the exact provider envelope after Owner smoke.
 TOKENHUB_MAX_DURATION_SECONDS = 300
+
+# Hard cap for provider audio payloads (hex or downloaded URL), 25 MiB.
+TOKENHUB_MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 TOKENHUB_PROMPT_MAX_LENGTH = 2000
 
@@ -160,8 +165,22 @@ class TokenHubPoster(Protocol):
     ) -> TokenHubResponse: ...
 
 
+@dataclass(frozen=True)
+class DownloadedAudio:
+    """Downloaded audio bytes plus the final (post-redirect) URL."""
+
+    content: bytes
+    final_url: str
+
+
+class AudioDownloadTooLarge(RuntimeError):
+    """Raised when a provider audio payload exceeds the configured cap."""
+
+
 class TokenHubDownloader(Protocol):
-    def __call__(self, url: str, *, timeout: tuple[float, float]) -> bytes: ...
+    def __call__(
+        self, url: str, *, timeout: tuple[float, float], max_bytes: int
+    ) -> DownloadedAudio: ...
 
 
 def _requests_poster(
@@ -177,10 +196,59 @@ def _requests_poster(
     )  # type: ignore[return-value]
 
 
-def _requests_downloader(url: str, *, timeout: tuple[float, float]) -> bytes:
-    response = requests.get(url, timeout=timeout)
-    response.raise_for_status()
-    return response.content
+def _requests_downloader(
+    url: str, *, timeout: tuple[float, float], max_bytes: int
+) -> DownloadedAudio:
+    """Streaming HTTPS download with a hard size cap (never buffers unbounded)."""
+    with requests.get(url, timeout=timeout, stream=True, allow_redirects=True) as response:
+        response.raise_for_status()
+        final_url = str(getattr(response, "url", "") or url)
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in response.iter_content(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > max_bytes:
+                raise AudioDownloadTooLarge(
+                    f"provider audio payload exceeds {max_bytes} bytes"
+                )
+            chunks.append(chunk)
+        return DownloadedAudio(content=b"".join(chunks), final_url=final_url)
+
+
+def _is_public_https_url(url: str) -> bool:
+    """Allow only public HTTPS URLs (no HTTP, loopback, private, link-local)."""
+    try:
+        parsed = urlsplit(url.strip())
+    except ValueError:
+        return False
+    if parsed.scheme.lower() != "https":
+        return False
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    host = hostname.strip().lower().rstrip(".")
+    if host in {"localhost", "0.0.0.0"} or host.endswith(
+        (".localhost", ".local", ".internal", ".localdomain")
+    ):
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return True  # a normal DNS name
+    return not (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
+    )
+
+
+def _normalize_base_url(value: str) -> str:
+    return (value or "").strip().rstrip("/").lower()
 
 
 def _utc_now() -> datetime:
@@ -271,6 +339,7 @@ class TokenHubMinimaxMusicProvider:
         media_root: str | os.PathLike[str] | None = None,
         connect_timeout: float = 20.0,
         read_timeout: float = 300.0,
+        max_download_bytes: int = TOKENHUB_MAX_AUDIO_BYTES,
         poster: TokenHubPoster | None = None,
         downloader: TokenHubDownloader | None = None,
     ) -> None:
@@ -280,25 +349,42 @@ class TokenHubMinimaxMusicProvider:
                 retryable=False,
                 safe_message="音乐生成服务尚未配置。",
             )
-        if not model or not model.strip().startswith(TOKENHUB_MODEL_PREFIX):
+        if not model or model.strip() != DEFAULT_TOKENHUB_MUSIC_MODEL:
+            # Exact model match only: no prefix matching, no model drift.
             raise MusicProviderFailureV3(
                 "PROVIDER_NOT_CONFIGURED",
                 retryable=False,
-                safe_message="TokenHub 音乐模型配置无效（需要 minimax-music-* 模型）。",
+                safe_message=(
+                    "TokenHub 音乐模型配置无效（必须精确为 "
+                    f"{DEFAULT_TOKENHUB_MUSIC_MODEL}）。"
+                ),
             )
-        resolved_base = (base_url or TOKENHUB_DEFAULT_BASE_URL).rstrip("/")
-        if FORBIDDEN_MINIMAX_BASE_URL in resolved_base:
+        resolved_base = (base_url or TOKENHUB_DEFAULT_BASE_URL).strip().rstrip("/")
+        normalized_base = _normalize_base_url(resolved_base)
+        if normalized_base == _normalize_base_url(FORBIDDEN_MINIMAX_BASE_URL):
             # Hard guard: the direct MiniMax endpoint is not allowed in Sprint 5.
             raise MusicProviderFailureV3(
                 "PROVIDER_NOT_CONFIGURED",
                 retryable=False,
                 safe_message="音乐生成服务配置错误（禁止直连 api.minimax.io）。",
             )
+        if normalized_base != _normalize_base_url(TOKENHUB_DEFAULT_BASE_URL):
+            # Strict allow-list: the API key must only ever be sent to the
+            # official TokenHub host, never to an arbitrary BASE_URL value.
+            raise MusicProviderFailureV3(
+                "PROVIDER_NOT_CONFIGURED",
+                retryable=False,
+                safe_message=(
+                    "音乐生成服务配置错误（TOKENHUB_BASE_URL 必须为官方 "
+                    f"{TOKENHUB_DEFAULT_BASE_URL}）。"
+                ),
+            )
         self._api_key = api_key
-        self.model = model
+        self.model = model.strip()
         self.base_url = resolved_base
         self.connect_timeout = max(1.0, float(connect_timeout))
         self.read_timeout = max(10.0, float(read_timeout))
+        self.max_download_bytes = max(1, int(max_download_bytes))
         if media_root is not None:
             self.media_root = Path(media_root)
         else:
@@ -513,17 +599,53 @@ class TokenHubMinimaxMusicProvider:
             )
         return payload
 
+    def _reject_audio(self, message: str, cause: BaseException | None = None) -> MusicProviderFailureV3:
+        return MusicProviderFailureV3(
+            "GENERATION_PROVIDER_REJECTED",
+            retryable=False,
+            safe_message=message,
+            cause=cause,
+        )
+
     def _materialize_audio(self, audio_ref: str) -> str:
-        """Store owned MP3 bytes for a hex payload or a short-lived provider URL."""
+        """Store owned MP3 bytes for a hex payload or a short-lived provider URL.
+
+        URL policy (Owner hardening): HTTPS only, public host only, hard size
+        cap, final post-redirect URL re-checked, MP3 validated after download.
+        The temporary provider URL is never returned or persisted.
+        """
         if _is_http_url(audio_ref):
+            candidate = audio_ref.strip()
+            if not _is_public_https_url(candidate):
+                raise self._reject_audio(
+                    "音乐生成服务返回的音频地址不安全（仅允许公共 HTTPS 地址）。"
+                )
             self.download_calls += 1
             try:
-                payload = self.downloader(
-                    audio_ref.strip(),
+                downloaded = self.downloader(
+                    candidate,
                     timeout=(self.connect_timeout, self.read_timeout),
+                    max_bytes=self.max_download_bytes,
                 )
+            except AudioDownloadTooLarge as exc:
+                raise self._reject_audio("音乐生成服务返回的音频过大，已拒绝。", exc) from exc
+            except MusicProviderFailureV3:
+                raise
             except BaseException as exc:
                 raise self._classify_transport_error(exc) from exc
+
+            if isinstance(downloaded, (bytes, bytearray)):
+                payload = bytes(downloaded)
+                final_url = candidate
+            else:
+                payload = downloaded.content
+                final_url = downloaded.final_url or candidate
+            if not _is_public_https_url(final_url):
+                raise self._reject_audio(
+                    "音乐生成服务音频地址跳转不安全（仅允许公共 HTTPS）。"
+                )
+            if len(payload) > self.max_download_bytes:
+                raise self._reject_audio("音乐生成服务返回的音频过大，已拒绝。")
         else:
             hex_body = audio_ref.strip()
             if hex_body.lower().startswith("0x"):
@@ -531,19 +653,12 @@ class TokenHubMinimaxMusicProvider:
             try:
                 payload = bytes.fromhex(hex_body)
             except ValueError as exc:
-                raise MusicProviderFailureV3(
-                    "GENERATION_PROVIDER_REJECTED",
-                    retryable=False,
-                    safe_message="音乐生成服务返回了无效音频。",
-                    cause=exc,
-                ) from exc
+                raise self._reject_audio("音乐生成服务返回了无效音频。", exc) from exc
+            if len(payload) > self.max_download_bytes:
+                raise self._reject_audio("音乐生成服务返回的音频过大，已拒绝。")
 
         if not _looks_like_mp3(payload):
-            raise MusicProviderFailureV3(
-                "GENERATION_PROVIDER_REJECTED",
-                retryable=False,
-                safe_message="音乐生成服务未返回可播放音频。",
-            )
+            raise self._reject_audio("音乐生成服务未返回可播放音频。")
 
         file_name = f"{sha256(payload).hexdigest()[:16]}.mp3"
         target_dir = self.media_root / _GENERATED_SUBDIR

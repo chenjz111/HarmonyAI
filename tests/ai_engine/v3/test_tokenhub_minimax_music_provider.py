@@ -24,6 +24,8 @@ from backend.ai_engine.v3.tokenhub_minimax_music_provider import (
     TOKENHUB_DEFAULT_BASE_URL,
     TOKENHUB_MAX_DURATION_SECONDS,
     TOKENHUB_MUSIC_PATH,
+    AudioDownloadTooLarge,
+    DownloadedAudio,
     TokenHubMinimaxMusicProvider,
     milliseconds_to_seconds,
 )
@@ -138,35 +140,53 @@ class FakePoster:
 
 
 class FakeDownloader:
-    def __init__(self, payload: bytes | None = None, error: BaseException | None = None):
+    def __init__(
+        self,
+        payload: bytes | None = None,
+        error: BaseException | None = None,
+        *,
+        final_url: str | None = None,
+    ):
         self.payload = payload
         self.error = error
+        self.final_url = final_url
         self.calls: list[str] = []
+        self.max_bytes_seen: list[int] = []
 
-    def __call__(self, url, *, timeout):
+    def __call__(self, url, *, timeout, max_bytes):
         self.calls.append(url)
+        self.max_bytes_seen.append(max_bytes)
         if self.error is not None:
             raise self.error
         if self.payload is None:
             raise AssertionError("fake downloader has no payload")
-        return self.payload
+        return DownloadedAudio(
+            content=self.payload, final_url=self.final_url or url
+        )
 
 
-def _provider(tmp_path: Path, poster, downloader=None) -> TokenHubMinimaxMusicProvider:
+def _provider(
+    tmp_path: Path, poster, downloader=None, *, base_url: str = TOKENHUB_DEFAULT_BASE_URL,
+    max_download_bytes: int | None = None,
+) -> TokenHubMinimaxMusicProvider:
+    kwargs: dict[str, object] = {}
+    if max_download_bytes is not None:
+        kwargs["max_download_bytes"] = max_download_bytes
     return TokenHubMinimaxMusicProvider(
         api_key=TEST_KEY,
         model=DEFAULT_TOKENHUB_MUSIC_MODEL,
-        base_url="https://tokenhub.example.invalid",
+        base_url=base_url,
         media_root=tmp_path,
         poster=poster,
         downloader=downloader,
+        **kwargs,  # type: ignore[arg-type]
     )
 
 
 def _env(**overrides) -> dict[str, str]:
     env = {
         "MUSIC_PROVIDER": "tokenhub",
-        "TOKENHUB_BASE_URL": "https://tokenhub.example.invalid",
+        "TOKENHUB_BASE_URL": TOKENHUB_DEFAULT_BASE_URL,
         "TOKENHUB_MUSIC_MODEL": DEFAULT_TOKENHUB_MUSIC_MODEL,
         "TOKENHUB_API_KEY": TEST_KEY,
         "HARMONY_MEDIA_ROOT": str(Path("unused")),
@@ -184,11 +204,10 @@ def test_tokenhub_env_builds_real_adapter(tmp_path):
     assert bundle.provider.provider_name == "tokenhub"
     assert bundle.provider.provider_audit_label == "tokenhub/minimax-music-v3.0"
     assert bundle.provider.model == DEFAULT_TOKENHUB_MUSIC_MODEL
-    assert bundle.provider.base_url == "https://tokenhub.example.invalid"
+    assert bundle.provider.base_url == TOKENHUB_DEFAULT_BASE_URL
     assert bundle.health.status == "configured"
     serialized = bundle.health.model_dump_json()
     assert TEST_KEY not in serialized
-    assert "tokenhub.example.invalid" not in serialized
 
 
 def test_tokenhub_default_endpoint_is_official():
@@ -196,6 +215,25 @@ def test_tokenhub_default_endpoint_is_official():
     assert isinstance(bundle.provider, TokenHubMinimaxMusicProvider)
     assert bundle.provider.base_url == TOKENHUB_DEFAULT_BASE_URL
     assert "api.minimax.io" not in bundle.provider.base_url
+
+
+def test_tokenhub_base_url_is_strictly_allow_listed(tmp_path):
+    # A wrong TOKENHUB_BASE_URL must never send TOKENHUB_API_KEY elsewhere.
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        _provider(tmp_path, FakePoster(), base_url="https://evil.example.com")
+    assert caught.value.error_code == "PROVIDER_NOT_CONFIGURED"
+    assert TEST_KEY not in str(caught.value)
+
+    bundle = build_music_provider_bundle(
+        _env(TOKENHUB_BASE_URL="https://evil.example.com", HARMONY_MEDIA_ROOT=str(tmp_path))
+    )
+    assert isinstance(bundle.provider, NotConfiguredMusicProvider)
+    assert bundle.health.status == "not_configured"
+    assert bundle.health.safe_message is not None
+    assert TOKENHUB_DEFAULT_BASE_URL in bundle.health.safe_message
+
+    with pytest.raises(MusicProviderFailureV3):
+        _provider(tmp_path, FakePoster(), base_url="http://tokenhub.tencentmaas.com")
 
 
 def test_tokenhub_missing_key_keeps_readiness_not_configured(tmp_path):
@@ -209,11 +247,27 @@ def test_tokenhub_missing_key_keeps_readiness_not_configured(tmp_path):
 
 
 def test_tokenhub_invalid_model_keeps_readiness_not_configured(tmp_path):
-    bundle = build_music_provider_bundle(
-        _env(TOKENHUB_MUSIC_MODEL="gpt-4o", HARMONY_MEDIA_ROOT=str(tmp_path))
-    )
-    assert isinstance(bundle.provider, NotConfiguredMusicProvider)
-    assert bundle.health.status == "not_configured"
+    for bad_model in ("gpt-4o", "minimax-music", "minimax-music-v3", "minimax-music-v3.1"):
+        bundle = build_music_provider_bundle(
+            _env(TOKENHUB_MUSIC_MODEL=bad_model, HARMONY_MEDIA_ROOT=str(tmp_path))
+        )
+        assert isinstance(bundle.provider, NotConfiguredMusicProvider), bad_model
+        assert bundle.health.status == "not_configured", bad_model
+
+
+def test_model_must_match_exactly(tmp_path):
+    # prefix-but-not-exact models are rejected by the adapter itself too
+    for bad_model in ("minimax-music-v3.1", "minimax-music", "minimax-music-v3.0-extra"):
+        with pytest.raises(MusicProviderFailureV3) as caught:
+            TokenHubMinimaxMusicProvider(
+                api_key=TEST_KEY,
+                model=bad_model,
+                base_url=TOKENHUB_DEFAULT_BASE_URL,
+                media_root=tmp_path,
+            )
+        assert caught.value.error_code == "PROVIDER_NOT_CONFIGURED"
+    provider = _provider(tmp_path, FakePoster())
+    assert provider.model == DEFAULT_TOKENHUB_MUSIC_MODEL
 
 
 def test_stability_env_is_historical_unenabled(tmp_path):
@@ -294,7 +348,7 @@ def test_hex_response_is_decoded_saved_and_posts_exactly_once(tmp_path):
 
     assert len(poster.calls) == 1  # automatic retry is 0
     call = poster.calls[0]
-    assert call["url"] == "https://tokenhub.example.invalid" + TOKENHUB_MUSIC_PATH
+    assert call["url"] == TOKENHUB_DEFAULT_BASE_URL + TOKENHUB_MUSIC_PATH
     assert call["headers"]["Authorization"] == f"Bearer {TEST_KEY}"
     body = call["json"]
     assert body["model"] == DEFAULT_TOKENHUB_MUSIC_MODEL
@@ -327,7 +381,7 @@ def test_milliseconds_to_seconds_conversion():
 
 def test_url_response_is_downloaded_immediately_and_saved(tmp_path):
     audio = mp3_bytes(seconds=2)
-    temp_url = "https://tokenhub.example.invalid/tmp/audio-abc.mp3"
+    temp_url = "https://cdn.tokenhub-audio.example.com/tmp/audio-abc.mp3"
     poster = FakePoster(response=FakeResponse(text=_completed_body(temp_url)))
     downloader = FakeDownloader(payload=audio)
     provider = _provider(tmp_path, poster, downloader)
@@ -335,12 +389,99 @@ def test_url_response_is_downloaded_immediately_and_saved(tmp_path):
 
     assert task.status == "succeeded"
     assert downloader.calls == [temp_url]
+    assert downloader.max_bytes_seen == [provider.max_download_bytes]
     assert provider.download_calls == 1
     stored = Path(task.asset_locator)
     assert stored.is_file() and stored.read_bytes() == audio
     # the temporary provider URL is never persisted in the task payload
     assert temp_url not in task.model_dump_json()
-    assert "tokenhub.example.invalid" not in task.model_dump_json()
+    assert "cdn.tokenhub-audio.example.com" not in task.model_dump_json()
+
+
+# --------------------------------------------------------------- url security
+
+
+def test_plain_http_audio_url_is_rejected_without_download(tmp_path):
+    temp_url = "http://cdn.example.com/audio.mp3"
+    poster = FakePoster(response=FakeResponse(text=_completed_body(temp_url)))
+    downloader = FakeDownloader(payload=mp3_bytes())
+    provider = _provider(tmp_path, poster, downloader)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request())
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+    assert downloader.calls == []  # never fetched over plain HTTP
+
+
+def test_internal_and_loopback_hosts_are_rejected(tmp_path):
+    for bad_url in (
+        "https://127.0.0.1/audio.mp3",
+        "https://10.1.2.3/audio.mp3",
+        "https://192.168.1.10/audio.mp3",
+        "https://169.254.169.254/latest/meta-data/audio.mp3",
+        "https://localhost/audio.mp3",
+        "https://metadata.internal/audio.mp3",
+    ):
+        poster = FakePoster(response=FakeResponse(text=_completed_body(bad_url)))
+        downloader = FakeDownloader(payload=mp3_bytes())
+        provider = _provider(tmp_path, poster, downloader)
+        with pytest.raises(MusicProviderFailureV3) as caught:
+            provider.create_task(_request())
+        assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED", bad_url
+        assert downloader.calls == [], bad_url
+
+
+def test_redirect_to_unsafe_final_url_is_rejected(tmp_path):
+    temp_url = "https://cdn.example.com/audio.mp3"
+    # provider link redirects to plain HTTP or an internal address
+    for unsafe_final in ("http://cdn.example.com/audio.mp3", "https://127.0.0.1/audio.mp3"):
+        poster = FakePoster(response=FakeResponse(text=_completed_body(temp_url)))
+        downloader = FakeDownloader(payload=mp3_bytes(), final_url=unsafe_final)
+        provider = _provider(tmp_path, poster, downloader)
+        with pytest.raises(MusicProviderFailureV3) as caught:
+            provider.create_task(_request())
+        assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED", unsafe_final
+        assert not list((tmp_path / "generated").glob("**/*")), unsafe_final
+
+
+def test_public_https_redirect_is_allowed(tmp_path):
+    audio = mp3_bytes(seconds=2)
+    temp_url = "https://cdn.example.com/audio.mp3"
+    final_url = "https://audio-cdn.tencentmaas.com/final/track.mp3"
+    poster = FakePoster(response=FakeResponse(text=_completed_body(temp_url)))
+    downloader = FakeDownloader(payload=audio, final_url=final_url)
+    provider = _provider(tmp_path, poster, downloader)
+    task = provider.create_task(_request())
+    assert task.status == "succeeded"
+    assert final_url not in task.model_dump_json()
+
+
+def test_oversized_url_download_is_rejected(tmp_path):
+    temp_url = "https://cdn.example.com/huge.mp3"
+    poster = FakePoster(response=FakeResponse(text=_completed_body(temp_url)))
+    downloader = FakeDownloader(error=AudioDownloadTooLarge("too big"))
+    provider = _provider(tmp_path, poster, downloader, max_download_bytes=1024)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request())
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+    assert not list((tmp_path / "generated").glob("**/*"))
+
+
+def test_oversized_downloaded_payload_is_rejected(tmp_path):
+    temp_url = "https://cdn.example.com/huge.mp3"
+    poster = FakePoster(response=FakeResponse(text=_completed_body(temp_url)))
+    downloader = FakeDownloader(payload=mp3_bytes(seconds=5))
+    provider = _provider(tmp_path, poster, downloader, max_download_bytes=64)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request())
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+
+
+def test_oversized_hex_payload_is_rejected(tmp_path):
+    poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes(seconds=5).hex())))
+    provider = _provider(tmp_path, poster, max_download_bytes=64)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request())
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
 
 
 # ------------------------------------------------------------- fail-closed rules
@@ -446,7 +587,7 @@ def test_transport_failures_are_explicit_and_never_retried(tmp_path):
 
 
 def test_url_download_failure_is_explicit_and_not_retried(tmp_path):
-    temp_url = "https://tokenhub.example.invalid/tmp/audio-abc.mp3"
+    temp_url = "https://cdn.example.com/tmp/audio-abc.mp3"
     poster = FakePoster(response=FakeResponse(text=_completed_body(temp_url)))
     downloader = FakeDownloader(error=requests.Timeout("download slow"))
     provider = _provider(tmp_path, poster, downloader)

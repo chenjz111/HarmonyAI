@@ -35,13 +35,31 @@ GenerationSpec → TokenHub JSON POST（model/prompt/is_instrumental=true/output
 
 - 请求体：`application/json`，字段 `model` / `prompt` / `is_instrumental=true` /
   `output_format=url`（hex 响应同样正确处理）/ `audio_setting.format=mp3`。
+- **模型必须精确等于 `minimax-music-v3.0`**（不使用前缀匹配；`minimax-music-v3.1` 等一律 readiness fail）。
+- **Base URL 白名单**：只允许 `https://tokenhub.tencentmaas.com`；其它值（含 `http://` 变体、
+  `api.minimax.io`、任意第三方域名）在构造/构建阶段即 `PROVIDER_NOT_CONFIGURED`，
+  防止 `TOKENHUB_API_KEY` 被发送到其他服务器。
 - 解析：`HTTP 状态`、`base_resp.status_code`、`base_resp.status_msg`（仅用于判定，
   不写入日志/错误，避免回显密钥）、`data.status`（1=进行中→显式失败；2=完成）、
   `data.audio`、`trace_id`、`request_id`、`usage.total_tokens`、`extra_info.music_duration`。
 - `extra_info.music_duration` 为**毫秒**；适配器按 `ms / 1000` 转为秒记入运行元数据
   （入库的 `music_assets.duration_seconds` 仍取保存文件的实测值）。
-- `output_format=hex`：十六进制解码并校验 MP3 magic 后落盘；
-  `output_format=url`：立即下载（短期有效），落盘为自有资产；**临时 URL 不进入 DB/任务/Player**。
+
+## Provider 音频 URL 安全策略（Owner 加固）
+
+`output_format=url` 返回的临时地址必须同时满足：
+
+1. **仅 HTTPS**（`http://` 一律拒绝，不发起下载）；
+2. **公共地址**：拒绝 `localhost`/`*.local`/`*.internal`、回环、私网、链路本地
+   （如 `169.254.169.254`）、保留/组播地址及 IP 字面量私网；
+3. **最大体积上限** 25 MiB：流式下载累计超限立即拒绝（hex 响应同样受此上限约束）；
+4. **最终跳转地址再校验**：下载后的 `final_url` 必须仍是公共 HTTPS，防止异常重定向到
+   HTTP 或内部地址；
+5. 下载完成后仍做 **MP3 校验**（ID3 / MPEG 同步字）；
+6. 无论 hex 还是 url，最终只把**自有落盘路径**写入资产；Provider 临时 URL
+   不进入数据库、任务响应、日志或 Player。
+
+`output_format=hex`：十六进制解码 + 体积/MP3 校验后落盘。
 
 ## Smoke
 
@@ -84,8 +102,10 @@ response_is_json=.. transport_error=<异常类型>`；不打印 Key、请求体�
 ## 验收清单
 
 - [ ] 单次真实生成成功；`POST count = 1`（自动重试 0），不重复计费。
+- [ ] 模型为 `minimax-music-v3.0`（精确匹配），Base URL 为官方主机。
 - [ ] `source_type=generated` + `provider=tokenhub/minimax-music-v3.0` 落库。
 - [ ] hex 与 url 两种响应都能落盘为自有 MP3（url 场景 `download calls = 1`）。
+- [ ] url 非 HTTPS / 内网地址 / 超 25 MiB / 跳转到 HTTP 或内网 → 全部显式失败且不落盘。
 - [ ] `music_duration` 毫秒→秒转换正确；入库时长为文件实测值。
 - [ ] `401/403、429、5xx、额度/参数类 base_resp、超时、空音频`均显式失败。
 - [ ] `matched_fallback` 仅来自本地审核曲库（`source_type=matched`），不冒充 generated。

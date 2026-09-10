@@ -32,7 +32,6 @@ from backend.ai_engine.v3.music_provider import (
 from backend.ai_engine.v3.tokenhub_minimax_music_provider import (
     DEFAULT_TOKENHUB_MUSIC_MODEL,
     TOKENHUB_DEFAULT_BASE_URL,
-    TOKENHUB_MODEL_PREFIX,
     TokenHubMinimaxMusicProvider,
 )
 from backend.app.schemas.v3.common import ProviderCapabilities, ProviderHealth
@@ -113,9 +112,30 @@ def build_music_provider_bundle(
     legacy_model = environment.get("MUSIC_PROVIDER_MODEL", "").strip()
 
     if name == "tokenhub":
-        if not tokenhub_key or not tokenhub_model.startswith(TOKENHUB_MODEL_PREFIX):
+        base_ok = (
+            not tokenhub_base
+            or tokenhub_base.rstrip("/").lower()
+            == TOKENHUB_DEFAULT_BASE_URL.rstrip("/").lower()
+        )
+        if (
+            not tokenhub_key
+            or tokenhub_model != DEFAULT_TOKENHUB_MUSIC_MODEL
+            or not base_ok
+        ):
             # Fail closed: readiness stays not_configured until the Owner
-            # provides a complete, valid TokenHub configuration.
+            # provides a complete, valid TokenHub configuration. The model must
+            # match exactly and the base URL is restricted to the official host
+            # so TOKENHUB_API_KEY can never be sent elsewhere.
+            if tokenhub_base and not base_ok:
+                message = (
+                    "腾讯云 TokenHub 配置错误（TOKENHUB_BASE_URL 必须为官方 "
+                    f"{TOKENHUB_DEFAULT_BASE_URL}）。"
+                )
+            else:
+                message = (
+                    "腾讯云 TokenHub / MiniMax 音乐生成配置不完整（需要 "
+                    f"TOKENHUB_API_KEY 与精确模型 {DEFAULT_TOKENHUB_MUSIC_MODEL}）。"
+                )
             return MusicProviderBundle(
                 provider=NotConfiguredMusicProvider(provider_name="tokenhub"),
                 health=ProviderHealth(
@@ -128,16 +148,13 @@ def build_music_provider_bundle(
                         structured_json=False,
                         max_input_characters=1,
                     ),
-                    safe_message=(
-                        "腾讯云 TokenHub / MiniMax 音乐生成配置不完整"
-                        "（需要 TOKENHUB_API_KEY 与 minimax-music-* 模型）。"
-                    ),
+                    safe_message=message,
                 ),
             )
         provider = TokenHubMinimaxMusicProvider(
             api_key=tokenhub_key,
             model=tokenhub_model,
-            base_url=tokenhub_base or TOKENHUB_DEFAULT_BASE_URL,
+            base_url=TOKENHUB_DEFAULT_BASE_URL,
             media_root=environment.get("HARMONY_MEDIA_ROOT") or None,
         )
         return MusicProviderBundle(

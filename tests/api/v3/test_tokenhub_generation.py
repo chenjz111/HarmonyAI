@@ -28,6 +28,7 @@ from sqlalchemy import null
 
 from backend.ai_engine.v3.tokenhub_minimax_music_provider import (
     DEFAULT_TOKENHUB_MUSIC_MODEL,
+    TOKENHUB_DEFAULT_BASE_URL,
     TokenHubMinimaxMusicProvider,
 )
 from backend.app.core.database import get_db
@@ -318,7 +319,7 @@ def _provider(tmp_path, poster) -> TokenHubMinimaxMusicProvider:
     return TokenHubMinimaxMusicProvider(
         api_key="tk-test-tokenhub-secret",
         model=DEFAULT_TOKENHUB_MUSIC_MODEL,
-        base_url="https://tokenhub.example.invalid",
+        base_url=TOKENHUB_DEFAULT_BASE_URL,
         media_root=tmp_path,
         poster=poster,
     )
@@ -355,8 +356,8 @@ def test_tokenhub_success_persists_generated_asset_with_provider_metadata(tmp_pa
         audio_asset = body["audio_asset"]
         assert audio_asset["music_ref"]["source_type"] == "generated"
         assert audio_asset["duration_seconds"] == 3  # measured, not requested 60
-        assert "tokenhub.example.invalid" not in created.text
         assert "tk-test-tokenhub-secret" not in created.text
+        assert TOKENHUB_DEFAULT_BASE_URL not in created.text
 
         with _seed_db() as session:
             task = (

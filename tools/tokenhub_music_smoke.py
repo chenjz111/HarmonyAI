@@ -149,6 +149,10 @@ def _fail(message: str, code: int) -> int:
     return code
 
 
+def _base_url_is_official(base_url: str) -> bool:
+    return base_url.rstrip("/").lower() == TOKENHUB_DEFAULT_BASE_URL.rstrip("/").lower()
+
+
 def _check_mode(
     *, provider_name: str, model: str, base_url: str, media_root: str, has_key: bool
 ) -> int:
@@ -168,8 +172,17 @@ def _check_mode(
         f"{SMOKE_GENERATION_SPEC['duration_seconds']}, single POST, automatic retry=0",
         flush=True,
     )
-    if provider_name != "tokenhub" or not model.startswith("minimax-music") or not has_key:
-        return _fail("readiness check failed（配置不完整，未发送任何请求）", 2)
+    if (
+        provider_name != "tokenhub"
+        or model != DEFAULT_TOKENHUB_MUSIC_MODEL
+        or not _base_url_is_official(base_url)
+        or not has_key
+    ):
+        return _fail(
+            "readiness check failed（需要 MUSIC_PROVIDER=tokenhub、精确模型 "
+            f"{DEFAULT_TOKENHUB_MUSIC_MODEL}、官方 base_url、TOKENHUB_API_KEY）",
+            2,
+        )
     print("[SMOKE][CHECK] readiness=READY", flush=True)
     return 0
 
@@ -202,8 +215,15 @@ def main() -> int:
         )
     if not api_key:
         return _fail("缺少 TOKENHUB_API_KEY（只从环境变量读取）。", 2)
-    if not model.startswith("minimax-music"):
-        return _fail("TOKENHUB_MUSIC_MODEL 必须为 minimax-music-* 模型。", 2)
+    if model != DEFAULT_TOKENHUB_MUSIC_MODEL:
+        return _fail(
+            f"TOKENHUB_MUSIC_MODEL 必须精确为 {DEFAULT_TOKENHUB_MUSIC_MODEL}。", 2
+        )
+    if not _base_url_is_official(base_url):
+        return _fail(
+            f"TOKENHUB_BASE_URL 必须为官方 {TOKENHUB_DEFAULT_BASE_URL}（防止 Key 发往其他服务器）。",
+            2,
+        )
 
     diagnostics = _DiagnosticPoster()
     print(
