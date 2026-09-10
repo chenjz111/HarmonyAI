@@ -52,6 +52,12 @@ from backend.app.schemas.v3.me import (
     FeedbackHistoryItem,
 )
 from backend.app.schemas.v3.music import MusicRef
+from backend.app.schemas.v3.prescription import (
+    PreferenceSnapshot,
+    PreferredBpmRange as PrescriptionPreferredBpmRange,
+    PreferredDuration as PrescriptionPreferredDuration,
+    WeightedPreference as PrescriptionWeightedPreference,
+)
 
 _MIN_SAMPLES_FOR_APPLICATION = 3
 
@@ -762,4 +768,68 @@ def get_preferences(
             feedback_count=current.feedback_count,
             minimum_samples_for_application=current.minimum_samples_for_application,
         ),
+    )
+
+
+def get_latest_preference_snapshot(
+    db: Session, principal: AuthPrincipal
+) -> PreferenceSnapshot | None:
+    """Return the latest immutable preference snapshot for Agent3 (prescription).
+
+    Returns None when the user has no applied preference version yet, so the
+    prescription service can decide not to apply personalization. This is the
+    frozen read interface between Agent5 and Agent3.
+    """
+    profile = (
+        db.query(UserMusicPreference)
+        .filter(UserMusicPreference.internal_user_pk == principal.internal_user_pk)
+        .one_or_none()
+    )
+    if profile is None or profile.current_version_id is None:
+        return None
+    current = _current_version(db, profile)
+    if current is None:
+        return None
+    items = (
+        db.query(UserPreferenceItem)
+        .filter(
+            UserPreferenceItem.preference_version_id == current.preference_version_id
+        )
+        .all()
+    )
+
+    def weighted(category: str, polarity: str) -> list[PrescriptionWeightedPreference]:
+        return [
+            PrescriptionWeightedPreference(
+                code=item.code,
+                weight=item.weight,
+                sample_count=item.sample_count,
+            )
+            for item in items
+            if item.category == category and item.polarity == polarity
+        ]
+
+    return PreferenceSnapshot(
+        profile_id=profile.profile_id,
+        version=current.version,
+        preferred_instruments=weighted("instrument", "preferred"),
+        disliked_instruments=weighted("instrument", "disliked"),
+        preferred_bpm_range=(
+            PrescriptionPreferredBpmRange(
+                min=current.preferred_bpm_min,
+                max=current.preferred_bpm_max,
+                weight=current.bpm_weight,
+            )
+            if current.preferred_bpm_min is not None
+            else None
+        ),
+        preferred_duration_seconds=(
+            PrescriptionPreferredDuration(
+                value=current.preferred_duration_seconds,
+                weight=current.duration_weight,
+            )
+            if current.preferred_duration_seconds is not None
+            else None
+        ),
+        preferred_ambient=weighted("ambient", "preferred"),
     )

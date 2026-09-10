@@ -102,6 +102,7 @@ class QwenCompatibleProvider:
         max_retries: int = 2,
         transport: Callable[[str, dict[str, str], bytes, float], bytes] | None = None,
         response_schema: Mapping[str, object] | Callable[[object], None] | None = None,
+        extra_headers: Mapping[str, str] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -112,12 +113,24 @@ class QwenCompatibleProvider:
         self.max_retries = max(0, min(3, max_retries))
         self.transport = transport or self._http_transport
         self.response_schema = response_schema
+        self.extra_headers = {
+            str(key): str(value)
+            for key, value in (extra_headers or {}).items()
+            if str(key).strip() and str(value).strip()
+        }
 
     def complete_json(self, system_prompt: str, user_prompt: str) -> dict[str, object]:
         return self._complete_sync(system_prompt, user_prompt)
 
     async def acomplete_json(self, system_prompt: str, user_prompt: str) -> dict[str, object]:
-        return (await self._complete_async(system_prompt, user_prompt)).data
+        return (await self.acomplete_json_with_metadata(system_prompt, user_prompt)).data
+
+    async def acomplete_json_with_metadata(
+        self, system_prompt: str, user_prompt: str
+    ) -> "_Completion":
+        """Return the structured result together with real transport attempts."""
+
+        return await self._complete_async(system_prompt, user_prompt)
 
     def _request_body(self, system_prompt: str, user_prompt: str) -> tuple[str, dict[str, str], bytes]:
         if not self.base_url or not self.api_key or not self.model:
@@ -138,9 +151,14 @@ class QwenCompatibleProvider:
             },
             ensure_ascii=False,
         ).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        headers.update(self.extra_headers)
         return (
             f"{self.base_url}/chat/completions",
-            {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+            headers,
             body,
         )
 

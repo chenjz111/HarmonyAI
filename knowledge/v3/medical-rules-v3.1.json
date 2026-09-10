@@ -1,0 +1,27 @@
+{
+  "schema_id": "medical_rules_v3.1",
+  "schema_version": "3.1.0",
+  "medical_rule_version": "medical-rules-v3.1-r1",
+  "review_status": "approved",
+  "allowed_syndrome_codes": [
+    "syd_001",
+    "syd_002",
+    "syd_003",
+    "syd_004",
+    "syd_005",
+    "syd_006",
+    "syd_007",
+    "syd_008"
+  ],
+  "syndrome_aliases": {
+    "syd_001": "liver_stagnation_heat",
+    "syd_002": "liver_qi_stagnation",
+    "syd_003": "heart_fire_flare",
+    "syd_004": "heart_spleen_deficiency",
+    "syd_005": "spleen_deficiency_dampness",
+    "syd_006": "lung_qi_deficiency",
+    "syd_007": "kidney_yin_deficiency",
+    "syd_008": "heart_kidney_discordance"
+  },
+  "content_checksum": "sha256:0dd929cb7d2b7b8a11c9c1ad0fb5e4adb8f4807123263af7e2a7c1767b401a3f"
+}

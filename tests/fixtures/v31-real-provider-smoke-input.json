@@ -1,0 +1,57 @@
+{
+  "confirmed_user_state": {
+    "schema_version": "confirmed_user_state_v3.1",
+    "confirmed_user_state_id": "smoke_cus_1",
+    "session_id": "smoke_session_1",
+    "source_mode": "questionnaire_only",
+    "final_confirmed_summary_ref": null,
+    "questionnaire_result_ref": {
+      "questionnaire_result_id": "smoke_qres_1",
+      "revision": 1,
+      "content_checksum": "sha256:69a01d0753908e3e48e41ea947219818436f24eb4e97aeca260f4b4ca4951031",
+      "completion_status": "complete"
+    },
+    "user_goal_ref": null,
+    "confirmed_state_text": "synthetic approved state fixture",
+    "normalized_projection": [
+      {
+        "fact_id": "fact_1",
+        "claim_code": "unrefreshing_sleep",
+        "display_text": "approved fact fixture",
+        "source_refs": ["smoke_qres_1:q01"]
+      }
+    ],
+    "revision": 1,
+    "content_checksum": "sha256:smoke-state",
+    "authority_status": "current",
+    "confirmation_status": "confirmed",
+    "confirmed_by": "user",
+    "session_input_revision": 1,
+    "created_at": "2026-09-07T01:04:00Z"
+  },
+  "assessment_snapshot": {
+    "session_id": "smoke_session_1",
+    "assessment_id": "smoke_assessment_1",
+    "assessment_revision": 1,
+    "organ_codes": ["heart"],
+    "approved_organ_codes": ["heart"],
+    "claim_codes": ["unrefreshing_sleep"],
+    "approved_claim_codes": ["unrefreshing_sleep"],
+    "supporting_fact_ids": ["fact_1"],
+    "contradicting_fact_ids": [],
+    "organ_weights": {"heart": 1.0},
+    "facts": [
+      {
+        "fact_evidence_id": "fact_1",
+        "claim_code": "unrefreshing_sleep",
+        "value": {"type": "frequency_0_4", "value": 3},
+        "direction": "supporting",
+        "time_window": "past_7_days"
+      }
+    ],
+    "top_k": 5,
+    "medical_rule_version": "medical-rules-v3.1-r1",
+    "request_id": "smoke-diagnosis-request-1",
+    "prompt_version": "diagnosis_prompt_v3.1"
+  }
+}
