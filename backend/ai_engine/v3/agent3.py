@@ -48,6 +48,13 @@ class Agent3Blocked(ValueError):
 
 
 _TONE_CODES = ("jiao", "zhi", "gong", "shang", "yu")
+_MUSIC_PARAMETER_FIELDS = ("bpm", "instruments", "ambience", "duration_seconds")
+_MUSIC_EXPLANATION_KEYS = {
+    "bpm": "bpm",
+    "instruments": "instruments",
+    "ambience": "ambience",
+    "duration_seconds": "duration",
+}
 
 
 class GenerationSpecV31(V3BaseModel):
@@ -83,9 +90,12 @@ def build_generation_spec_v31(
 
     UserGoal is only a selector for an explicitly named rule row.  It never
     changes the medical tone profile, and the goal payload is not copied into
-    the GenerationSpec.  A custom-only goal has no approved rule selector and
-    therefore safely uses the default rule row.  Missing or unapproved music
-    rules are an explicit readiness block rather than an invented default.
+    the GenerationSpec.  Approved goal rows are partial field overrides: a
+    primary goal wins a field, a secondary goal fills a field the primary left
+    unspecified, and the default row supplies everything else.  A custom-only
+    goal has no approved rule selector and therefore safely uses the default
+    rule row.  Missing or unapproved music rules are an explicit readiness
+    block rather than an invented default.
     """
 
     if not isinstance(parameter_rules, Mapping):
@@ -105,7 +115,6 @@ def build_generation_spec_v31(
     if merge_policy != "primary_over_secondary_fill_missing":
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
-    selected = dict(default)
     primary_goal, secondary_goal = _goal_codes(user_goal)
     goals = parameter_rules.get("goals")
     if isinstance(goals, Mapping):
@@ -120,20 +129,40 @@ def build_generation_spec_v31(
     ):
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
-    # Apply secondary first and primary second.  A primary value wins for the
-    # same field; a secondary value fills only a field the primary left out.
-    for goal_code in (secondary_goal, primary_goal):
-        if goal_code is None:
-            continue
-        goal_rules = goals.get(goal_code) if isinstance(goals, Mapping) else None
-        if not isinstance(goal_rules, Mapping):
-            raise Agent3Blocked("USER_GOAL_RULE_NOT_APPROVED")
-        for field_name in ("bpm", "instruments", "ambience", "duration_seconds"):
-            value = goal_rules.get(field_name)
-            if value is not None:
-                selected[field_name] = value
-        if goal_rules.get("explanations") is not None:
-            selected["explanations"] = goal_rules["explanations"]
+    default_explanations = default.get("explanations")
+    if not _valid_explanations(default_explanations, set(_MUSIC_EXPLANATION_KEYS.values())):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
+    primary_rules = _selected_goal_rule(goals, primary_goal)
+    secondary_rules = _selected_goal_rule(goals, secondary_goal)
+    selected: dict[str, Any] = {}
+    explanations: dict[str, str] = {}
+    for field_name in _MUSIC_PARAMETER_FIELDS:
+        explanation_key = _MUSIC_EXPLANATION_KEYS[field_name]
+        value = default.get(field_name)
+        source_rules: Mapping[str, Any] | None = None
+        if primary_rules is not None and primary_rules.get(field_name) is not None:
+            value = primary_rules[field_name]
+            source_rules = primary_rules
+        elif secondary_rules is not None and secondary_rules.get(field_name) is not None:
+            value = secondary_rules[field_name]
+            source_rules = secondary_rules
+
+        selected[field_name] = value
+        # A goal that resolves to the default value did not change this
+        # parameter, so retain the neutral default explanation.
+        if value == default.get(field_name):
+            explanations[explanation_key] = str(default_explanations[explanation_key])
+        else:
+            source_explanation = (
+                source_rules.get("explanations", {}).get(explanation_key)
+                if source_rules is not None
+                and isinstance(source_rules.get("explanations"), Mapping)
+                else None
+            )
+            explanations[explanation_key] = str(
+                source_explanation or default_explanations[explanation_key]
+            )
 
     bpm = selected.get("bpm")
     instruments = selected.get("instruments")
@@ -146,14 +175,8 @@ def build_generation_spec_v31(
     if type(duration) is not int or not 0 < duration <= 300:
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
-    explanations = selected.get("explanations") or default.get("explanations")
-    if not isinstance(explanations, Mapping):
-        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
     explanation_keys = {"bpm", "instruments", "ambience", "duration"}
-    if set(explanations) != explanation_keys or any(
-        not isinstance(value, str) or not value.strip()
-        for value in explanations.values()
-    ):
+    if not _valid_explanations(explanations, explanation_keys):
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
     # Secondary tone is optional in the frozen flow. Keep its absence
@@ -199,6 +222,31 @@ def _goal_codes(user_goal: Mapping[str, Any] | Any | None) -> tuple[str | None, 
     return (
         parsed.primary_goal.value if parsed.primary_goal is not None else None,
         parsed.secondary_goal.value if parsed.secondary_goal is not None else None,
+    )
+
+
+def _selected_goal_rule(
+    goals: Mapping[Any, Any] | Any,
+    goal_code: str | None,
+) -> Mapping[str, Any] | None:
+    if goal_code is None:
+        return None
+    if not isinstance(goals, Mapping):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    goal_rules = goals.get(goal_code)
+    if goal_rules is None:
+        try:
+            goal_rules = goals.get(UserGoalCode(goal_code))
+        except ValueError:
+            goal_rules = None
+    if not isinstance(goal_rules, Mapping):
+        raise Agent3Blocked("USER_GOAL_RULE_NOT_APPROVED")
+    return goal_rules
+
+
+def _valid_explanations(value: Any, expected_keys: set[str]) -> bool:
+    return isinstance(value, Mapping) and set(value) == expected_keys and all(
+        isinstance(text, str) and text.strip() for text in value.values()
     )
 
 

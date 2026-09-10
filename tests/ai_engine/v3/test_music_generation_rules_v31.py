@@ -24,12 +24,54 @@ def _payload():
             },
         },
         "goals": {
-            "sleep": {"bpm": 50, "instruments": ["古琴", "箫"], "ambience": ["细雨"], "duration_seconds": 240},
-            "relaxation": {"bpm": 54, "instruments": ["古琴"], "ambience": ["溪流"], "duration_seconds": 240},
-            "emotion_regulation": {"bpm": 60, "instruments": ["古琴", "琵琶"], "ambience": ["微风"], "duration_seconds": 180},
-            "focus": {"bpm": 72, "instruments": ["箫"], "ambience": ["无额外环境音"], "duration_seconds": 180},
-            "energy": {"bpm": 84, "instruments": ["笛"], "ambience": ["流水"], "duration_seconds": 180},
-            "stress_relief": {"bpm": 56, "instruments": ["古琴", "埙"], "ambience": ["细雨"], "duration_seconds": 240},
+            "sleep": {
+                "bpm": 50,
+                "duration_seconds": 240,
+                "explanations": {
+                    "bpm": "主要目标对应的速度候选。",
+                    "duration": "主要目标对应的预计时长候选。",
+                },
+            },
+            "relaxation": {
+                "ambience": ["溪流"],
+                "duration_seconds": 240,
+                "explanations": {
+                    "ambience": "次要目标对应的环境音候选。",
+                    "duration": "次要目标对应的预计时长候选。",
+                },
+            },
+            "emotion_regulation": {
+                "instruments": ["古琴", "琵琶"],
+                "ambience": ["微风"],
+                "explanations": {
+                    "instruments": "目标对应的乐器候选。",
+                    "ambience": "目标对应的环境音候选。",
+                },
+            },
+            "focus": {
+                "bpm": 72,
+                "ambience": ["无额外环境音"],
+                "explanations": {
+                    "bpm": "目标对应的速度候选。",
+                    "ambience": "目标对应的环境音候选。",
+                },
+            },
+            "energy": {
+                "bpm": 84,
+                "instruments": ["笛"],
+                "explanations": {
+                    "bpm": "目标对应的速度候选。",
+                    "instruments": "目标对应的乐器候选。",
+                },
+            },
+            "stress_relief": {
+                "instruments": ["古琴", "埙"],
+                "duration_seconds": 240,
+                "explanations": {
+                    "instruments": "目标对应的乐器候选。",
+                    "duration": "目标对应的预计时长候选。",
+                },
+            },
             "other": {},
         },
         "content_checksum": "",
@@ -89,6 +131,10 @@ def test_loaded_music_generation_rules_drive_deterministic_generation_spec(tmp_p
 
     assert spec.bpm == 50
     assert spec.duration_seconds == 240
+    assert spec.explanations["bpm"] == "主要目标对应的速度候选。"
+    assert spec.explanations["instruments"] == "按批准规则提供配器参考。"
+    assert spec.explanations["ambience"] == "按批准规则提供环境参考。"
+    assert spec.explanations["duration"] == "主要目标对应的预计时长候选。"
     assert spec.readiness == "ready"
 
 
@@ -164,6 +210,24 @@ def test_loader_rejects_missing_deterministic_parameter_explanations(tmp_path):
         )
 
 
+def test_loader_rejects_override_explanation_for_unoverridden_field(tmp_path):
+    from backend.app.services.v3.knowledge_assets import (
+        MusicGenerationRuleAssetNotReady,
+        load_music_generation_rules,
+    )
+
+    payload = _payload()
+    payload["goals"]["focus"]["explanations"]["duration"] = "不应描述未覆盖的预计时长。"
+    payload = _rechecksum(payload)
+
+    with pytest.raises(MusicGenerationRuleAssetNotReady, match="MUSIC_PARAMETER_ASSET_INVALID"):
+        load_music_generation_rules(
+            _write_payload(tmp_path, payload),
+            expected_version=payload["asset_version"],
+            expected_checksum=payload["content_checksum"],
+        )
+
+
 def test_generation_spec_rejects_incomplete_goal_rules_without_loader_bypass():
     from backend.ai_engine.v3.agent3 import Agent3Blocked, build_generation_spec_v31
     from tests.ai_engine.v3.test_generation_spec_v31 import _profile
@@ -179,23 +243,49 @@ def test_generation_spec_rejects_incomplete_goal_rules_without_loader_bypass():
         )
 
 
+@pytest.mark.parametrize(
+    ("goal_code", "expected"),
+    [
+        ("sleep", (50, ["古琴"], ["细雨"], 240)),
+        ("relaxation", (60, ["古琴"], ["溪流"], 240)),
+        ("emotion_regulation", (60, ["古琴", "琵琶"], ["微风"], 180)),
+        ("focus", (72, ["古琴"], ["无额外环境音"], 180)),
+        ("energy", (84, ["笛"], ["细雨"], 180)),
+        ("stress_relief", (60, ["古琴", "埙"], ["细雨"], 240)),
+        ("other", (60, ["古琴"], ["细雨"], 180)),
+    ],
+)
+def test_each_formal_goal_uses_only_its_partial_override(goal_code, expected):
+    from backend.ai_engine.v3.agent3 import build_generation_spec_v31
+    from tests.ai_engine.v3.test_generation_spec_v31 import _profile
+
+    spec = build_generation_spec_v31(
+        profile=_profile(),
+        parameter_rules=_payload(),
+        user_goal={"primary_goal": goal_code},
+    )
+
+    assert (spec.bpm, spec.instruments, spec.ambience, spec.duration_seconds) == expected
+
+
 def test_generation_spec_merges_secondary_goal_without_ignoring_it():
     from backend.ai_engine.v3.agent3 import build_generation_spec_v31
     from tests.ai_engine.v3.test_generation_spec_v31 import _profile
 
     payload = _payload()
-    payload["goals"]["sleep"] = {"bpm": 50}
-
     spec = build_generation_spec_v31(
         profile=_profile(),
         parameter_rules=payload,
-        user_goal={"primary_goal": "sleep", "secondary_goal": "energy"},
+        user_goal={"primary_goal": "sleep", "secondary_goal": "relaxation"},
     )
 
     assert spec.bpm == 50
-    assert spec.instruments == ["笛"]
-    assert spec.ambience == ["流水"]
-    assert spec.duration_seconds == 180
+    assert spec.instruments == ["古琴"]
+    assert spec.ambience == ["溪流"]
+    assert spec.duration_seconds == 240
+    assert spec.explanations["bpm"] == "主要目标对应的速度候选。"
+    assert spec.explanations["ambience"] == "次要目标对应的环境音候选。"
+    assert spec.explanations["duration"] == "主要目标对应的预计时长候选。"
 
 
 def test_primary_goal_wins_deterministically_when_both_goals_set_same_field():
@@ -209,9 +299,13 @@ def test_primary_goal_wins_deterministically_when_both_goals_set_same_field():
     )
 
     assert spec.bpm == 50
-    assert spec.instruments == ["古琴", "箫"]
+    assert spec.instruments == ["笛"]
     assert spec.ambience == ["细雨"]
     assert spec.duration_seconds == 240
+    assert spec.explanations["bpm"] == "主要目标对应的速度候选。"
+    assert spec.explanations["instruments"] == "目标对应的乐器候选。"
+    assert spec.explanations["ambience"] == "按批准规则提供环境参考。"
+    assert spec.explanations["duration"] == "主要目标对应的预计时长候选。"
 
 
 @pytest.mark.parametrize(
@@ -237,6 +331,27 @@ def test_other_custom_only_and_skip_safely_use_default_rules(user_goal):
     assert spec.instruments == ["古琴"]
     assert spec.ambience == ["细雨"]
     assert spec.duration_seconds == 180
+
+
+def test_secondary_goal_equal_to_default_does_not_claim_application():
+    from backend.ai_engine.v3.agent3 import build_generation_spec_v31
+    from tests.ai_engine.v3.test_generation_spec_v31 import _profile
+
+    payload = _payload()
+    payload["goals"]["emotion_regulation"] = {
+        "bpm": 60,
+        "explanations": {"bpm": "次要目标对应的速度候选。"},
+    }
+
+    spec = build_generation_spec_v31(
+        profile=_profile(),
+        parameter_rules=payload,
+        user_goal={"primary_goal": "other", "secondary_goal": "emotion_regulation"},
+    )
+
+    assert spec.bpm == 60
+    assert spec.explanations["bpm"] == "按批准规则提供速度参考。"
+    assert "次要目标" not in spec.explanations["bpm"]
 
 
 def _rechecksum(payload):

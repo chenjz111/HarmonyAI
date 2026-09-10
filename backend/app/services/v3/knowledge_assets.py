@@ -109,10 +109,16 @@ class MusicGenerationRuleOverride(V3BaseModel):
             raise ValueError("instruments must be unique")
         if self.ambience is not None and len(self.ambience) != len(set(self.ambience)):
             raise ValueError("ambience must be unique")
+        override_fields = {
+            field_name
+            for field_name in ("bpm", "instruments", "ambience", "duration_seconds")
+            if getattr(self, field_name) is not None
+        }
         if self.explanations is not None and set(self.explanations) != {
-            "bpm", "instruments", "ambience", "duration"
+            "duration" if field_name == "duration_seconds" else field_name
+            for field_name in override_fields
         }:
-            raise ValueError("explanations must describe all deterministic parameters")
+            raise ValueError("explanations must describe only overridden parameters")
         return self
 
 
