@@ -17,12 +17,21 @@ Readiness rules:
     prints the owned asset path + measured duration + sha256.
 
 Usage (PowerShell):
+  # readiness pre-flight — sends NO provider request (safe before top-up)
+  python tools/stability_music_smoke.py --check
+
+  # real smoke (only after the Owner confirms balance is topped up)
   $env:MUSIC_PROVIDER="stability"
   $env:MUSIC_PROVIDER_MODEL="stable-audio-2.5"
   $env:MUSIC_PROVIDER_BASE_URL="https://api.stability.ai"   # optional
   $env:STABILITY_API_KEY="<real key>"
   $env:HARMONY_MEDIA_ROOT="media"
   python tools/stability_music_smoke.py
+
+Diagnostics: the script records the ACCURATE HTTP status code, response
+content type, response byte length and JSON-envelope shape via
+``[SMOKE][DIAG]`` lines. It never prints the API key, the request body or the
+provider response body text.
 
 Exit codes:
   0  real generation succeeded and the asset is locally playable
@@ -33,10 +42,13 @@ Exit codes:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from hashlib import sha256
 from pathlib import Path
+
+import requests
 
 from backend.ai_engine.v3.music_provider import MusicProviderFailureV3
 from backend.ai_engine.v3.stability_music_provider import (
@@ -77,9 +89,109 @@ SMOKE_GENERATION_SPEC = {
 }
 
 
+class _DiagnosticPoster:
+    """Wraps the HTTP poster and records SAFE provider diagnostics only.
+
+    Captures the exact HTTP status code (the adapter intentionally hides raw
+    statuses from public failures), the response content type, the response
+    byte length and whether the body looked like a JSON envelope. It never
+    stores or prints the API key, the request body or the response body text.
+    """
+
+    def __init__(self, inner=None) -> None:
+        self._inner = inner
+        self.status_code: int | None = None
+        self.content_type: str | None = None
+        self.body_bytes: int | None = None
+        self.body_is_json: bool | None = None
+        self.transport_error: str | None = None
+
+    def __call__(self, url, *, headers, data, files, timeout):
+        inner = self._inner or requests.post
+        try:
+            response = inner(
+                url, headers=headers, data=data, files=files, timeout=timeout
+            )
+        except BaseException as exc:  # record type only, never the message
+            self.transport_error = type(exc).__name__
+            raise
+        self.status_code = int(getattr(response, "status_code", 0))
+        header_map = getattr(response, "headers", {}) or {}
+        self.content_type = str(header_map.get("content-type", "")) or None
+        content = getattr(response, "content", b"") or b""
+        self.body_bytes = len(content)
+        self.body_is_json = self._looks_like_json(getattr(response, "text", "") or "")
+        return response
+
+    @staticmethod
+    def _looks_like_json(text: str) -> bool:
+        stripped = text.lstrip()
+        if not stripped or stripped[0] not in "{[":
+            return False
+        try:
+            json.loads(stripped)
+        except (ValueError, TypeError):
+            return False
+        return True
+
+    def safe_fields(self) -> dict[str, object]:
+        """JSON-serializable, secret-free diagnostics for the smoke log."""
+        return {
+            "http_status": self.status_code,
+            "content_type": self.content_type,
+            "response_bytes": self.body_bytes,
+            "response_is_json": self.body_is_json,
+            "transport_error": self.transport_error,
+            "post_count": 1 if self.status_code is not None or self.transport_error else 0,
+        }
+
+
+def _print_diagnostics(poster: _DiagnosticPoster) -> None:
+    fields = poster.safe_fields()
+    rendered = ", ".join(f"{key}={value}" for key, value in fields.items())
+    print(f"[SMOKE][DIAG] {rendered}", flush=True)
+    if poster.status_code is not None:
+        print(
+            f"[SMOKE][DIAG] accurate_http_status={poster.status_code} "
+            f"(raw provider status is intentionally not hidden anymore)",
+            flush=True,
+        )
+
+
 def _fail(message: str, code: int) -> int:
     print(f"[SMOKE][FAIL] {message}", flush=True)
     return code
+
+
+def _check_mode(
+    *,
+    provider_name: str,
+    model: str,
+    base_url: str,
+    media_root: str,
+    has_key: bool,
+) -> int:
+    """Readiness-only pre-flight; sends NO provider request."""
+    print("[SMOKE][CHECK] no POST will be sent (readiness pre-flight only)", flush=True)
+    print(f"[SMOKE][CHECK] MUSIC_PROVIDER={provider_name or '<unset>'}", flush=True)
+    print(f"[SMOKE][CHECK] MUSIC_PROVIDER_MODEL={model}", flush=True)
+    print(f"[SMOKE][CHECK] base_url={base_url}", flush=True)
+    print(f"[SMOKE][CHECK] HARMONY_MEDIA_ROOT={media_root}", flush=True)
+    print(f"[SMOKE][CHECK] STABILITY_API_KEY_present={bool(has_key)}", flush=True)
+    print(
+        "[SMOKE][CHECK] planned multipart fields="
+        "model,prompt,duration,steps,cfg_scale (seed omitted)",
+        flush=True,
+    )
+    print(
+        f"[SMOKE][CHECK] planned duration_seconds="
+        f"{SMOKE_GENERATION_SPEC['duration_seconds']}, single POST, automatic retry=0",
+        flush=True,
+    )
+    if provider_name != "stability" or model != DEFAULT_STABILITY_MODEL or not has_key:
+        return _fail("readiness check failed（配置不完整，未发送任何请求）", 2)
+    print("[SMOKE][CHECK] readiness=READY", flush=True)
+    return 0
 
 
 def main() -> int:
@@ -88,6 +200,15 @@ def main() -> int:
     api_key = os.environ.get("STABILITY_API_KEY", "").strip()
     base_url = os.environ.get("MUSIC_PROVIDER_BASE_URL", "").strip() or STABILITY_DEFAULT_BASE_URL
     media_root = os.environ.get("HARMONY_MEDIA_ROOT", "media").strip() or "media"
+
+    if "--check" in sys.argv:
+        return _check_mode(
+            provider_name=provider_name,
+            model=model,
+            base_url=base_url,
+            media_root=media_root,
+            has_key=bool(api_key),
+        )
 
     if provider_name != "stability":
         return _fail(
@@ -99,6 +220,7 @@ def main() -> int:
     if model != DEFAULT_STABILITY_MODEL:
         return _fail(f"MUSIC_PROVIDER_MODEL 必须为 {DEFAULT_STABILITY_MODEL}。", 2)
 
+    diagnostics = _DiagnosticPoster()
     print(
         f"[SMOKE] stability provider model={model} base_url={base_url} "
         f"media_root={media_root}",
@@ -110,6 +232,7 @@ def main() -> int:
             model=model,
             base_url=base_url,
             media_root=media_root,
+            poster=diagnostics,
         )
     except MusicProviderFailureV3 as exc:
         return _fail(f"Provider 初始化失败：{exc.error_code}", 2)
@@ -123,11 +246,13 @@ def main() -> int:
     try:
         task = provider.create_task(request)
     except MusicProviderFailureV3 as exc:
+        _print_diagnostics(diagnostics)
         return _fail(
             f"Stability 真实调用失败：code={exc.error_code} retryable={exc.retryable} "
             f"message={exc.safe_message}",
             3,
         )
+    _print_diagnostics(diagnostics)
     if task.status != "succeeded" or not task.asset_locator:
         return _fail("Stability 返回非成功结果（不允许伪装成功）。", 3)
 

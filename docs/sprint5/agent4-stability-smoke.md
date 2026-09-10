@@ -31,6 +31,20 @@ adapter 保留为历史参考。
 
 ## Provider 级真实 Smoke
 
+### 预检（不发任何请求，充值前可安全运行）
+
+```powershell
+$env:PYTHONPATH="."
+$env:MUSIC_PROVIDER="stability"
+$env:MUSIC_PROVIDER_MODEL="stable-audio-2.5"
+$env:STABILITY_API_KEY="<真实 Key>"
+python tools/stability_music_smoke.py --check
+# [SMOKE][CHECK] no POST will be sent (readiness pre-flight only)
+# [SMOKE][CHECK] readiness=READY
+```
+
+### 真实生成（仅当 Owner 确认余额已充值后运行）
+
 ```powershell
 # PowerShell（Windows Owner 机）
 cd <repo>
@@ -41,12 +55,34 @@ $env:MUSIC_PROVIDER_BASE_URL="https://api.stability.ai"
 $env:STABILITY_API_KEY="<真实 Key>"
 $env:HARMONY_MEDIA_ROOT="media"
 python tools/stability_music_smoke.py
-# 期望 [SMOKE][OK] status=succeeded ... owned asset=...\generated\stability\*.mp3
-#      [SMOKE][OK] measured_duration_seconds=61 ...
+# 期望 [SMOKE][DIAG] http_status=200 content_type=audio/mpeg ...
+#      [SMOKE][OK] status=succeeded ... owned asset=...\generated\stability\*.mp3
+#      [SMOKE][OK] measured_duration_seconds≈62
 #      [SMOKE][OK] POST count = 1 (automatic retry = 0)
 ```
 
+失败时同样输出安全诊断：
+`[SMOKE][DIAG] http_status=<精确码> content_type=<..> response_bytes=<..> response_is_json=<..> transport_error=<异常类型>`
+（不打印 Key、不打印请求体、不打印 Provider 响应正文）。
+
 退出码：`0` 成功；`2` 配置缺失（readiness）；`3` Provider 真实失败；`4` 脚本错误。
+
+### Owner 真实 Smoke 结果（2026-09-10，同步记录于 PR #120）
+
+| 项 | 结果 |
+| --- | --- |
+| `STABILITY_API_KEY` | 有效 |
+| 余额查询 | HTTP 200，账户余额 5 credits |
+| 真实 Generation POST 次数 | 1（自动重试 0）✅ |
+| Provider 返回 | `GENERATION_PROVIDER_REJECTED`（未返回音频、未扣费、未切 Mock）✅ 失败处理路径正确 |
+| 原始 HTTP 状态 | 当时被适配器隐藏 → **不能正式认定为 HTTP 402**（仅推测余额不足） |
+| 成功响应 | ❌ 尚未真实验证 |
+| 音频保存 / 实测 duration | ❌ 尚未真实验证 |
+| Android/H5 Player 真实播放 | ❌ 尚未验证 |
+| 单次 60s 生成所需 credits | **UNKNOWN**（官方文档/账单未提供可确认的单次额度口径） |
+
+> 下次真实 Smoke 直接读取 `[SMOKE][DIAG] http_status=...`，即可把“推测余额不足”
+> 升级为可归档结论。等待 Owner 充值并明确通知后再执行，之前不再发送真实 POST。
 
 ## Smoke 验收清单
 
@@ -75,5 +111,6 @@ python tools/stability_music_smoke.py
 ```powershell
 python -m pytest tests/ai_engine/v3/test_stability_music_provider.py -v
 python -m pytest tests/api/v3/test_stability_generation.py -v
+python -m pytest tests/tools/test_stability_smoke_diagnostics.py -v
 python -m pytest tests/ai_engine/v3/test_audio_duration.py -v
 ```
