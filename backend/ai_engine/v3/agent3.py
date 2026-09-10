@@ -29,6 +29,15 @@ from .safe_expression import validate_public_text
 class Agent3Blocked(ValueError):
     """Raised when the deterministic Agent3 gate cannot produce a profile."""
 
+    def __init__(
+        self,
+        error_code: str,
+        safe_message: str = "Agent3 音乐规则资产尚未就绪。",
+    ) -> None:
+        self.error_code = error_code
+        self.safe_message = safe_message
+        super().__init__(f"{error_code}: {safe_message}")
+
 
 _TONE_CODES = ("jiao", "zhi", "gong", "shang", "yu")
 

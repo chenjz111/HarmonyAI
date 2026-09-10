@@ -13,9 +13,11 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import re
-from typing import Mapping
+from typing import Literal, Mapping
 
-from backend.app.schemas.v3.common import ClaimDictionaryEntry
+from pydantic import Field, ValidationError, model_validator
+
+from backend.app.schemas.v3.common import ClaimDictionaryEntry, NonEmptyString, V3BaseModel
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,124 @@ class MedicalRuleAssetNotReady(ValueError):
         self.error_code = error_code
         self.safe_message = safe_message
         super().__init__(f"{error_code}: {safe_message}")
+
+
+class MusicGenerationRuleAssetNotReady(ValueError):
+    """A deterministic Agent3 music-rule asset is absent or not approved."""
+
+    def __init__(self, error_code: str, safe_message: str) -> None:
+        self.error_code = error_code
+        self.safe_message = safe_message
+        super().__init__(f"{error_code}: {safe_message}")
+
+
+class MusicGenerationRuleRow(V3BaseModel):
+    """A complete default or bounded UserGoal music parameter row."""
+
+    bpm: int = Field(ge=40, le=120)
+    instruments: list[NonEmptyString] = Field(min_length=1)
+    ambience: list[NonEmptyString] = Field(min_length=1)
+    duration_seconds: int = Field(gt=0)
+    explanations: dict[NonEmptyString, NonEmptyString] | None = None
+
+    @model_validator(mode="after")
+    def require_unique_parameters(self) -> "MusicGenerationRuleRow":
+        if len(self.instruments) != len(set(self.instruments)):
+            raise ValueError("instruments must be unique")
+        if len(self.ambience) != len(set(self.ambience)):
+            raise ValueError("ambience must be unique")
+        return self
+
+
+class MusicGenerationRuleOverride(V3BaseModel):
+    """A partial deterministic override selected by an approved goal code."""
+
+    bpm: int | None = Field(default=None, ge=40, le=120)
+    instruments: list[NonEmptyString] | None = Field(default=None, min_length=1)
+    ambience: list[NonEmptyString] | None = Field(default=None, min_length=1)
+    duration_seconds: int | None = Field(default=None, gt=0)
+    explanations: dict[NonEmptyString, NonEmptyString] | None = None
+
+    @model_validator(mode="after")
+    def require_unique_parameters(self) -> "MusicGenerationRuleOverride":
+        if self.instruments is not None and len(self.instruments) != len(set(self.instruments)):
+            raise ValueError("instruments must be unique")
+        if self.ambience is not None and len(self.ambience) != len(set(self.ambience)):
+            raise ValueError("ambience must be unique")
+        return self
+
+
+class MusicGenerationRulesAsset(V3BaseModel):
+    """Schema for the reviewed deterministic Agent3 music rules."""
+
+    schema_id: Literal["music_generation_rules_v3.1"]
+    schema_version: NonEmptyString
+    asset_version: NonEmptyString
+    review_status: Literal["approved"]
+    default: MusicGenerationRuleRow
+    goals: dict[NonEmptyString, MusicGenerationRuleOverride] = Field(default_factory=dict)
+    content_checksum: NonEmptyString
+
+
+def load_music_generation_rules(
+    path: str | Path,
+    *,
+    expected_version: str,
+    expected_checksum: str,
+) -> dict[str, object]:
+    """Load only an approved, checksum-bound deterministic Agent3 asset."""
+
+    if not expected_version.strip() or not expected_checksum.startswith("sha256:"):
+        raise MusicGenerationRuleAssetNotReady(
+            "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED",
+            "音乐参数规则资产版本或校验和尚未配置。",
+        )
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise MusicGenerationRuleAssetNotReady(
+            "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED",
+            "音乐参数规则资产无法读取。",
+        ) from error
+    if not isinstance(payload, Mapping):
+        raise MusicGenerationRuleAssetNotReady(
+            "MUSIC_PARAMETER_ASSET_INVALID",
+            "音乐参数规则资产格式无效。",
+        )
+    declared_checksum = payload.get("content_checksum")
+    actual_checksum = _canonical_asset_checksum(payload)
+    if (
+        not isinstance(declared_checksum, str)
+        or declared_checksum != actual_checksum
+        or expected_checksum != actual_checksum
+    ):
+        raise MusicGenerationRuleAssetNotReady(
+            "MUSIC_PARAMETER_ASSET_CHECKSUM_MISMATCH",
+            "音乐参数规则资产校验和不匹配。",
+        )
+    if payload.get("schema_id") != "music_generation_rules_v3.1":
+        raise MusicGenerationRuleAssetNotReady(
+            "MUSIC_PARAMETER_ASSET_SCHEMA_INVALID",
+            "音乐参数规则资产标识无效。",
+        )
+    if payload.get("review_status") != "approved":
+        raise MusicGenerationRuleAssetNotReady(
+            "MUSIC_PARAMETER_ASSET_NOT_APPROVED",
+            "音乐参数规则资产尚未获得生产批准。",
+        )
+    try:
+        asset = MusicGenerationRulesAsset.model_validate(payload)
+    except ValidationError as error:
+        raise MusicGenerationRuleAssetNotReady(
+            "MUSIC_PARAMETER_ASSET_INVALID",
+            "音乐参数规则资产格式无效。",
+        ) from error
+    if asset.asset_version != expected_version:
+        raise MusicGenerationRuleAssetNotReady(
+            "MUSIC_PARAMETER_ASSET_VERSION_MISMATCH",
+            "音乐参数规则资产版本与配置不一致。",
+        )
+    return asset.model_dump(mode="json", exclude_none=True)
 
 
 def _asset_root() -> Path:

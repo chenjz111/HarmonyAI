@@ -25,6 +25,7 @@ class FakeCollection:
     def __init__(self, name):
         self.name = name
         self.rows = {}
+        self.metadata = {}
 
     def upsert(self, *, ids, documents, metadatas, embeddings):
         for row in zip(ids, documents, metadatas, embeddings):
@@ -47,8 +48,9 @@ class FakeClient:
         self.collections = {}
 
     def get_or_create_collection(self, *, name, metadata, embedding_function):
-        del metadata, embedding_function
+        del embedding_function
         self.collections.setdefault(name, FakeCollection(name))
+        self.collections[name].metadata = dict(metadata)
         return self.collections[name]
 
 
@@ -187,8 +189,9 @@ def test_index_builder_fails_when_collection_count_is_not_manifest_count(monkeyp
 
     class DroppingClient(FakeClient):
         def get_or_create_collection(self, *, name, metadata, embedding_function):
-            del metadata, embedding_function
+            del embedding_function
             self.collections.setdefault(name, DroppingCollection(name))
+            self.collections[name].metadata = dict(metadata)
             return self.collections[name]
 
     chunks = [_chunk("chunk_001"), _chunk("chunk_002")]

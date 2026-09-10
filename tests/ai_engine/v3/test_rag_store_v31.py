@@ -6,9 +6,11 @@ class FakeEmbedding:
 
     def __init__(self):
         self.input_types = []
+        self.texts = []
 
     def embed(self, text, *, input_type):
         self.input_types.append(input_type)
+        self.texts.append(text)
         return [0.1] * self.dimension
 
 
@@ -16,6 +18,7 @@ class FakeCollection:
     def __init__(self, name):
         self.name = name
         self.rows = {}
+        self.metadata = {}
 
     def upsert(self, *, ids, documents, metadatas, embeddings):
         for row in zip(ids, documents, metadatas, embeddings):
@@ -55,20 +58,80 @@ class MultiResultCollection(FakeCollection):
         }
 
 
+class BoundaryCollection(FakeCollection):
+    def query(self, *, query_embeddings, n_results, include):
+        del query_embeddings, n_results, include
+        row = next(iter(self.rows.values()))
+        return {
+            "ids": [[row[0]]],
+            "documents": [[row[1]]],
+            "metadatas": [[row[2]]],
+            # Chroma cosine distance for raw cosine similarity 0.65.
+            "distances": [[0.35]],
+        }
+
+
 class FakeClient:
     def __init__(self):
         self.collections = {}
 
     def get_or_create_collection(self, *, name, metadata, embedding_function):
-        del metadata, embedding_function
+        del embedding_function
         self.collections.setdefault(name, FakeCollection(name))
+        self.collections[name].metadata = dict(metadata)
         return self.collections[name]
 
 
 class MultiResultClient(FakeClient):
     def get_or_create_collection(self, *, name, metadata, embedding_function):
-        del metadata, embedding_function
+        del embedding_function
         self.collections.setdefault(name, MultiResultCollection(name))
+        self.collections[name].metadata = dict(metadata)
+        return self.collections[name]
+
+
+class BoundaryClient(FakeClient):
+    def get_or_create_collection(self, *, name, metadata, embedding_function):
+        del embedding_function
+        self.collections.setdefault(name, BoundaryCollection(name))
+        self.collections[name].metadata = dict(metadata)
+        return self.collections[name]
+
+
+class WrongDistanceClient(FakeClient):
+    def get_or_create_collection(self, *, name, metadata, embedding_function):
+        collection = super().get_or_create_collection(
+            name=name, metadata=metadata, embedding_function=embedding_function
+        )
+        collection.metadata["hnsw:space"] = "l2"
+        return collection
+
+
+class ScenarioCollection(FakeCollection):
+    def __init__(self, name, distance):
+        super().__init__(name)
+        self.distance = distance
+
+    def query(self, *, query_embeddings, n_results, include):
+        del query_embeddings, n_results, include
+        row = next(iter(self.rows.values()))
+        return {
+            "ids": [[row[0]]],
+            "documents": [[row[1]]],
+            "metadatas": [[row[2]]],
+            "distances": [[self.distance]],
+        }
+
+
+class ScenarioClient(FakeClient):
+    def __init__(self, distance):
+        super().__init__()
+        self.distance = distance
+
+    def get_or_create_collection(self, *, name, metadata, embedding_function):
+        del embedding_function
+        self.collections.setdefault(name, ScenarioCollection(name, self.distance))
+        self.collections[name].metadata = dict(metadata)
         return self.collections[name]
 
 
@@ -143,6 +206,54 @@ def test_versioned_rag_store_isolates_collection_by_manifest_and_embedding_ident
     assert "text-embedding-v4_1024" in collection_name
 
 
+def test_versioned_rag_store_creates_collection_with_explicit_cosine_distance():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    client = FakeClient()
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=FakeEmbedding(),
+        client=client,
+        production=False,
+    )
+
+    store.ingest(_manifest(), [_chunk()])
+
+    collection = next(iter(client.collections.values()))
+    assert collection.metadata["hnsw:space"] == "cosine"
+
+
+def test_versioned_rag_store_rejects_existing_non_cosine_collection():
+    from backend.ai_engine.v3.rag_store import RagStoreFailure, VersionedRagStore
+
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=FakeEmbedding(),
+        client=WrongDistanceClient(),
+        production=False,
+    )
+
+    with pytest.raises(RagStoreFailure, match="RAG_DISTANCE_METRIC_MISMATCH"):
+        store.ingest(_manifest(), [_chunk()])
+
+
+def test_versioned_rag_store_rejects_non_cosine_manifest_before_indexing():
+    from backend.ai_engine.v3.rag_store import RagStoreFailure, VersionedRagStore
+
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=FakeEmbedding(),
+        client=FakeClient(),
+        production=False,
+    )
+
+    with pytest.raises(RagStoreFailure, match="RAG_DISTANCE_METRIC_NOT_APPROVED"):
+        store.ingest(_manifest().model_copy(update={"distance_metric": "l2"}), [_chunk()])
+
+
 def test_versioned_rag_store_uses_document_embedding_for_ingestion_and_query_embedding_for_retrieval():
     from backend.ai_engine.v3.rag_store import VersionedRagStore
 
@@ -161,6 +272,86 @@ def test_versioned_rag_store_uses_document_embedding_for_ingestion_and_query_emb
     assert result.status == "success"
     assert result.hits[0].chunk_id == "chunk_001"
     assert embedding.input_types == ["document", "query"]
+
+
+def test_versioned_rag_store_serializes_organ_enum_as_value():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+    from backend.app.schemas.v3.common import OrganCode
+
+    embedding = FakeEmbedding()
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=embedding,
+        client=FakeClient(),
+        production=False,
+    )
+    store.ingest(_manifest(), [_chunk()])
+    query = _query().model_copy(update={"organ_codes": [OrganCode.heart]})
+
+    store.query(query)
+
+    assert "OrganCode.heart" not in embedding.texts[-1]
+    assert embedding.texts[-1] == "heart unrefreshing_sleep"
+
+
+def test_versioned_rag_store_applies_approved_cosine_to_runtime_score_conversion():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    manifest = _manifest().model_copy(update={"minimum_score": 0.740741})
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=FakeEmbedding(),
+        client=BoundaryClient(),
+        production=False,
+    )
+
+    store.ingest(manifest, [_chunk()])
+    result = store.query(_query().model_copy(update={"ingestion_manifest_checksum": manifest.manifest_checksum}))
+
+    assert result.status == "success"
+    assert result.hits[0].retrieval_score == pytest.approx(0.7407407407)
+
+
+@pytest.mark.parametrize(
+    ("query_id", "cosine_distance", "expected_status"),
+    [
+        ("gq_02", 0.20, "success"),
+        ("gq_06", 0.30, "success"),
+        ("gq_13", 0.10, "success"),
+        ("gq_14", 0.40, "empty"),
+        ("gq_15", 0.40, "empty"),
+        ("gq_17", 0.40, "empty"),
+    ],
+)
+def test_v31_approved_threshold_has_expected_gold_query_gate(
+    query_id, cosine_distance, expected_status
+):
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    manifest = _manifest().model_copy(update={"minimum_score": 0.740741})
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=FakeEmbedding(),
+        client=ScenarioClient(cosine_distance),
+        production=False,
+    )
+
+    store.ingest(manifest, [_chunk()])
+    result = store.query(
+        _query().model_copy(
+            update={
+                "query_id": query_id,
+                "ingestion_manifest_checksum": manifest.manifest_checksum,
+            }
+        )
+    )
+
+    assert result.status == expected_status
+    if expected_status == "empty":
+        assert result.hits == []
 
 
 def test_versioned_rag_store_reuses_matching_manifest_without_reembedding():

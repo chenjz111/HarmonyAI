@@ -119,3 +119,46 @@ def test_smoke_missing_real_configuration_fails_without_mock(monkeypatch):
             receipt_path="receipt.json",
             fixture_path="fixture.json",
         )
+
+
+def test_smoke_preserves_agent3_blocking_error_code(monkeypatch):
+    from backend.ai_engine.v3 import real_provider_smoke
+    from backend.ai_engine.v3.agent3 import Agent3Blocked
+    from backend.ai_engine.v3.real_provider_smoke import (
+        RealProviderSmokeFailure,
+        run_real_provider_smoke,
+    )
+
+    async def blocked_pipeline(**kwargs):
+        del kwargs
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_NOT_CONFIGURED")
+
+    monkeypatch.setattr(real_provider_smoke, "execute_v31_ai_pipeline", blocked_pipeline)
+
+    with pytest.raises(RealProviderSmokeFailure) as error:
+        run_real_provider_smoke(
+            config={
+                "embedding_model": "text-embedding-v4",
+                "embedding_dimension": 1024,
+                "qwen_model": "qwen-test",
+            },
+            dependencies=SimpleNamespace(
+                rag_store=object(),
+                diagnosis_provider=object(),
+                tone_mapping={},
+                generation_parameter_rules={},
+            ),
+            fixture={
+                "confirmed_user_state": _fixture()["confirmed_user_state"],
+                "assessment_snapshot": _fixture()["assessment_snapshot"],
+            },
+            receipt={
+                "collection_name": "collection",
+                "knowledge_version": "knowledge",
+                "corpus_manifest_checksum": "sha256:manifest",
+                "index_checksum": "sha256:index",
+                "chunk_count": 1,
+            },
+        )
+
+    assert error.value.error_code == "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED"

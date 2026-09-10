@@ -298,6 +298,10 @@ def test_v31_pipeline_factory_rejects_corpus_medical_rule_version_mismatch(
     tmp_path, monkeypatch
 ):
     from types import SimpleNamespace
+    from tests.ai_engine.v3.test_music_generation_rules_v31 import (
+        _payload as music_rules_payload,
+        _write_payload as write_music_rules,
+    )
 
     from backend.app.core import agent_config
     from backend.app.core.agent_config import (
@@ -305,8 +309,8 @@ def test_v31_pipeline_factory_rejects_corpus_medical_rule_version_mismatch(
         get_v31_ai_pipeline_dependencies,
     )
 
-    rules_path = tmp_path / "music-rules.json"
-    rules_path.write_text("{}", encoding="utf-8")
+    music_rules = music_rules_payload()
+    rules_path = write_music_rules(tmp_path, music_rules)
     medical_rules_path, medical_rules = _write_medical_rule_asset(tmp_path)
     monkeypatch.setattr(
         "backend.app.services.v3.knowledge_assets.load_five_tone_mapping",
@@ -334,6 +338,8 @@ def test_v31_pipeline_factory_rejects_corpus_medical_rule_version_mismatch(
                 "V31_MEDICAL_RULE_ASSET_CHECKSUM": medical_rules["content_checksum"],
                 "V31_MEDICAL_RULE_VERSION": "medical-rules-v3.1-r1",
                 "V31_MUSIC_GENERATION_RULES_PATH": str(rules_path),
+                "V31_MUSIC_GENERATION_RULES_VERSION": music_rules["asset_version"],
+                "V31_MUSIC_GENERATION_RULES_CHECKSUM": music_rules["content_checksum"],
             }
         )
 
