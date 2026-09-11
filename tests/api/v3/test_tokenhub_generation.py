@@ -136,14 +136,25 @@ def _create_session(headers: dict[str, str]) -> str:
 
 
 def _tone_profile(source_type: str = "available") -> dict[str, object]:
+    del source_type  # V3.1 ToneProfile has no status variant
     return {
-        "schema_version": "tone_profile_v3.0",
-        "status": source_type,
-        "weights": {"jiao": 0.2, "zhi": 0.2, "gong": 0.2, "shang": 0.2, "yu": 0.2},
-        "dominant_tone": "gong",
+        "schema_version": "tone_profile_v3.1",
+        "weights": {
+            "jiao": 0.2,
+            "zhi": 0.2,
+            "gong": 0.2,
+            "shang": 0.2,
+            "yu": 0.2,
+        },
+        "primary_tone": "gong",
+        "secondary_tone": None,
         "score_semantics": "relative_tone_distribution",
         "mapping_version": "test-only-v1",
-        "basis": {"diagnosis_id": "diag_test", "supporting_fact_ids": ["fev_test"]},
+        "basis": {
+            "diagnosis_id": "diag_test",
+            "diagnosis_revision": 1,
+            "supporting_evidence_refs": ["fev_test"],
+        },
     }
 
 

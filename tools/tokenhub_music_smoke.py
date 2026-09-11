@@ -56,8 +56,7 @@ from backend.app.core.audio_duration import mp3_duration_seconds_from_file
 from backend.app.schemas.v3.music import ProviderMusicRequest
 
 SMOKE_TONE_PROFILE = {
-    "schema_version": "tone_profile_v3.0",
-    "status": "available",
+    "schema_version": "tone_profile_v3.1",
     "weights": {
         "jiao": 0.2,
         "zhi": 0.2,
@@ -65,10 +64,15 @@ SMOKE_TONE_PROFILE = {
         "shang": 0.2,
         "yu": 0.2,
     },
-    "dominant_tone": "gong",
+    "primary_tone": "gong",
+    "secondary_tone": None,
     "score_semantics": "relative_tone_distribution",
-    "mapping_version": "v3.0-approved",
-    "basis": {"diagnosis_id": "smoke_rx", "supporting_fact_ids": []},
+    "mapping_version": "v3.1-approved",
+    "basis": {
+        "diagnosis_id": "smoke_rx",
+        "diagnosis_revision": 1,
+        "supporting_evidence_refs": [],
+    },
 }
 
 SMOKE_GENERATION_SPEC = {

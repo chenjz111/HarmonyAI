@@ -388,7 +388,10 @@ def _build_prompt(request: ProviderMusicRequest, *, instruments: list[str]) -> s
     """
     spec = request.generation_spec
     tone_profile = spec.tone_profile
-    tone = getattr(tone_profile, "dominant_tone", None) if tone_profile else None
+    # V3.1 ToneProfile exposes primary_tone; legacy V3.0 exposes dominant_tone.
+    tone = getattr(tone_profile, "primary_tone", None) or getattr(
+        tone_profile, "dominant_tone", None
+    )
     rendered_instruments = ", ".join(instruments) or "warm acoustic textures"
     ambient_parts = _ambient_prompt_parts(spec.ambient_sounds)
     structure = spec.structure
