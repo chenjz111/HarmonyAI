@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
+from backend.app.models.v3.document import DocumentSet
 from backend.app.models.v3.session import (
     SessionInputRevision,
     V3IdempotencyRecord,
@@ -62,6 +63,14 @@ from backend.app.services.v3.understanding_extraction import (
     extract_facts_for_sources,
     persist_normalized_facts,
     re_extract_facts,
+)
+from backend.app.services.v3.document_relevance_gate import (
+    DocumentRelevanceGateError,
+    require_active_document_set_relevance,
+)
+from backend.app.services.v3.document_relevance_evaluator import (
+    DocumentRelevanceEvaluationError,
+    ensure_document_set_relevance,
 )
 from backend.ai_engine.v3.understanding_provider import ProviderFailureV3
 
@@ -384,6 +393,7 @@ def _persist_run(
 
 
 def _validate_v31_request_sources(
+    db: Session,
     session_row: SessionModel,
     request: UnderstandingV31Request,
 ) -> None:
@@ -398,17 +408,37 @@ def _validate_v31_request_sources(
             "INPUT_SOURCE_MISMATCH",
             "V3.1 无资料模式跳过 Understanding，请完成必填 Q1-Q10。",
         )
-    active_document_id = session_row.active_document_id
-    for source in request.inputs:
-        if (
-            active_document_id is None
-            or source.source_type.value != "document"
-            or source.text_ref != active_document_id
-        ):
-            raise InvalidChange(
-                "INPUT_SOURCE_MISMATCH",
-                "资料与会话当前输入状态不一致，请基于最新上传的资料重试。",
-            )
+    if any(source.source_type.value != "document" for source in request.inputs):
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "资料与会话当前活动资料集不一致，请基于最新资料重试。",
+        )
+    set_row = (
+        db.query(DocumentSet)
+        .filter(
+            DocumentSet.document_set_id == session_row.active_document_set_id,
+            DocumentSet.session_row_id == session_row.id,
+        )
+        .one_or_none()
+    )
+    if set_row is None:
+        raise InvalidChange("DOCUMENT_SET_NOT_ACTIVE", "当前没有可用的活动资料集。")
+    try:
+        ensure_document_set_relevance(db, session_row, set_row)
+    except DocumentRelevanceEvaluationError as error:
+        raise InvalidChange(error.code, error.message) from None
+    try:
+        gate = require_active_document_set_relevance(db, session_row)
+    except DocumentRelevanceGateError as error:
+        raise InvalidChange(error.code, error.message) from None
+    requested_ids = tuple(source.text_ref for source in request.inputs)
+    if (
+        requested_ids != gate.document_ids
+    ):
+        raise InvalidChange(
+            "INPUT_SOURCE_MISMATCH",
+            "资料与会话当前活动资料集不一致，请基于最新资料重试。",
+        )
 
 
 def create_understanding(
@@ -436,7 +466,7 @@ def create_understanding(
             )
         if session_row.input_revision != request.expected_input_revision:
             raise InputRevisionConflict
-        _validate_v31_request_sources(session_row, request)
+        _validate_v31_request_sources(db, session_row, request)
     elif is_new_flow:
         # A v3.0-shaped ingestion on a v3-owner-flow-1 session would mutate
         # session state the session contract owns elsewhere; only v3.1 speaks
@@ -595,6 +625,14 @@ def confirm_understanding(
     )
     if session_row is None:
         raise OwnedResourceNotFound
+    if (
+        run.flow_contract_version == _FLOW_CONTRACT_V3_OWNER
+        and run.input_revision != session_row.input_revision
+    ):
+        # The Understanding belongs to an older authoritative input snapshot.
+        # A caller cannot make it current by supplying the session's newer
+        # revision after documents have been replaced or discarded.
+        raise InputRevisionConflict
     if (
         request.schema_version == "understanding_v3.1"
         and request.decision in {"reject_source", "cannot_confirm"}
@@ -918,10 +956,17 @@ def _validate_bind_matches_active_input(
         )
         .all()
     )
-    ready_document_ids = {row.document_id for row in ready_rows}
+    try:
+        gate = require_active_document_set_relevance(db, session_row)
+    except DocumentRelevanceGateError as error:
+        raise InvalidChange(error.code, error.message) from None
+    ready_document_ids = tuple(
+        row.document_id for row in ready_rows if row.document_id is not None
+    )
     if (
         any(row.source_type not in _DOCUMENT_SOURCE_TYPES for row in ready_rows)
-        or ready_document_ids != {session_row.active_document_id}
+        or len(ready_document_ids) != len(gate.document_ids)
+        or set(ready_document_ids) != set(gate.document_ids)
     ):
         raise InvalidChange(
             "INPUT_SOURCE_MISMATCH",

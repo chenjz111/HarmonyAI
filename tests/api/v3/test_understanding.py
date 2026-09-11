@@ -8,6 +8,7 @@ confirmation flow with immutable revisions.
 
 import base64
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import json
 import uuid
 
@@ -18,6 +19,7 @@ from backend.app.main import app
 from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
 from backend.app.models.v3.identity import UserIdentity
+from backend.app.models.v3.document import DocumentRelevance, DocumentSet, DocumentSetItem
 from backend.app.models.v3.understanding import UnderstandingRun, UnderstandingSource
 
 
@@ -119,6 +121,16 @@ def _seed_document(
             ocr_error_code=ocr_error_code,
         )
     )
+    sess = session.query(SessionModel).filter(SessionModel.session_id == session_id).one()
+    for old in session.query(DocumentSet).filter(
+        DocumentSet.session_row_id == sess.id, DocumentSet.status == "current"
+    ):
+        old.status = "superseded"
+    set_id = f"dset_{uuid.uuid4().hex}"
+    session.add(DocumentSet(document_set_id=set_id, internal_user_pk=user_pk, session_row_id=sess.id, revision=1, status="current"))
+    session.add(DocumentSetItem(document_set_item_id=f"dsi_{uuid.uuid4().hex}", document_set_id=set_id, document_id=document_id, position=1))
+    session.add(DocumentRelevance(document_relevance_id=f"drel_{uuid.uuid4().hex}", document_set_id=set_id, document_set_revision=1, run_id=f"run_{uuid.uuid4().hex}", revision=1, outcome="VALID", reason_code="TEST_VALID", reason="test fixture", evaluator="test", evaluator_version="1", evaluated_at=datetime.now(timezone.utc)))
+    sess.active_document_set_id = set_id
     session.commit()
     return document_id
 
@@ -264,6 +276,23 @@ def test_v31_understanding_create_uses_expected_input_revision():
         f"replace-v31-{uuid.uuid4().hex}",
     )
     assert replaced.status_code == 201, replaced.text
+    # Replacing a document invalidates the previous active set. Re-select the
+    # newly uploaded document's immutable set to model the relevance stage.
+    with _seed_db() as session:
+        selected_set = (
+            session.query(DocumentSet)
+            .join(
+                DocumentSetItem,
+                DocumentSetItem.document_set_id == DocumentSet.document_set_id,
+            )
+            .filter(DocumentSetItem.document_id == document_id)
+            .one()
+        )
+        selected_set.status = "current"
+        session.query(SessionModel).filter(
+            SessionModel.id == selected_set.session_row_id
+        ).one().active_document_set_id = selected_set.document_set_id
+        session.commit()
 
     response = _post_understanding(
         headers,
@@ -452,7 +481,7 @@ def test_v31_rejects_replaced_document_and_keeps_authoritative_pointer():
     )
 
     assert response.status_code == 422, response.text
-    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
+    assert response.json()["error"]["code"] == "DOCUMENT_SET_NOT_ACTIVE"
     with _seed_db() as session:
         row = session.query(SessionModel).filter(
             SessionModel.session_id == session_id
@@ -506,6 +535,18 @@ def test_confirm_rejects_understanding_after_active_document_replacement():
         f"confirm-first-{uuid.uuid4().hex}",
     )
     assert first.status_code == 201, first.text
+    # Select the matching immutable DocumentSet snapshot as the V3.1 authority.
+    with _seed_db() as session:
+        selected_set = (
+            session.query(DocumentSet)
+            .join(DocumentSetItem, DocumentSetItem.document_set_id == DocumentSet.document_set_id)
+            .filter(DocumentSetItem.document_id == first_document_id)
+            .one()
+        )
+        for row in session.query(DocumentSet).filter(DocumentSet.session_row_id == selected_set.session_row_id):
+            row.status = "current" if row.document_set_id == selected_set.document_set_id else "superseded"
+        session.query(SessionModel).filter(SessionModel.id == selected_set.session_row_id).one().active_document_set_id = selected_set.document_set_id
+        session.commit()
     understanding = _post_understanding(
         headers,
         {
@@ -530,6 +571,17 @@ def test_confirm_rejects_understanding_after_active_document_replacement():
         f"confirm-second-{uuid.uuid4().hex}",
     )
     assert second.status_code == 201, second.text
+    with _seed_db() as session:
+        selected_set = (
+            session.query(DocumentSet)
+            .join(DocumentSetItem, DocumentSetItem.document_set_id == DocumentSet.document_set_id)
+            .filter(DocumentSetItem.document_id == second_document_id)
+            .one()
+        )
+        for row in session.query(DocumentSet).filter(DocumentSet.session_row_id == selected_set.session_row_id):
+            row.status = "current" if row.document_set_id == selected_set.document_set_id else "superseded"
+        session.query(SessionModel).filter(SessionModel.id == selected_set.session_row_id).one().active_document_set_id = selected_set.document_set_id
+        session.commit()
 
     response = client.post(
         f"/api/v3/understandings/{understanding_id}/confirmations",
@@ -542,8 +594,8 @@ def test_confirm_rejects_understanding_after_active_document_replacement():
         },
     )
 
-    assert response.status_code == 422, response.text
-    assert response.json()["error"]["code"] == "INPUT_SOURCE_MISMATCH"
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"
     with _seed_db() as session:
         run = session.query(UnderstandingRun).filter(
             UnderstandingRun.understanding_id == understanding_id

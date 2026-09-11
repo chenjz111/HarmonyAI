@@ -27,7 +27,7 @@ class PrescriptionV3(Base):
         ),
         CheckConstraint(
             "prescription_mode IS NULL OR prescription_mode IN "
-            "('syndrome_based', 'conservative_fallback')",
+            "('syndrome_based', 'candidate_blend', 'emotion_based', 'wellness')",
             name="ck_prescription_v3_mode",
         ),
         CheckConstraint(
@@ -59,6 +59,8 @@ class PrescriptionV3(Base):
     generation_spec_json = Column(JSON, nullable=True)
     preference_profile_id = Column(String(64), nullable=True)
     preference_version_id = Column(String(64), nullable=True)
+    user_goal_revision = Column(Integer, nullable=True)
+    user_goal_json = Column(JSON, nullable=True)
     personalization_json = Column(JSON, nullable=False)
     presentation_json = Column(JSON, nullable=False)
     created_at = Column(

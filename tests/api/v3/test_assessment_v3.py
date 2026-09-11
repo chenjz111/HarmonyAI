@@ -20,6 +20,7 @@ from backend.app.models import Session as SessionModel
 from backend.app.models.document import Document
 from backend.app.models.v3.assessment import AssessmentV3
 from backend.app.models.v3.identity import UserIdentity
+from backend.app.models.v3.document import DocumentRelevance, DocumentSet, DocumentSetItem
 from backend.app.models.v3.session import V3IdempotencyRecord
 from backend.app.models.v3.understanding import QuestionnaireSubmissionV3
 from backend.app.schemas.v3.understanding import (
@@ -84,6 +85,12 @@ def _seed_document(db_session, *, user_pk, session_id, ocr_text):
             ocr_error_code=None,
         )
     )
+    sess = db_session.query(SessionModel).filter(SessionModel.session_id == session_id).one()
+    set_id = f"dset_{uuid.uuid4().hex}"
+    db_session.add(DocumentSet(document_set_id=set_id, internal_user_pk=user_pk, session_row_id=sess.id, revision=1, status="current"))
+    db_session.add(DocumentSetItem(document_set_item_id=f"dsi_{uuid.uuid4().hex}", document_set_id=set_id, document_id=document_id, position=1))
+    db_session.add(DocumentRelevance(document_relevance_id=f"drel_{uuid.uuid4().hex}", document_set_id=set_id, document_set_revision=1, run_id=f"run_{uuid.uuid4().hex}", revision=1, outcome="VALID", reason_code="TEST_VALID", reason="test fixture", evaluator="test", evaluator_version="1", evaluated_at=datetime.now(timezone.utc)))
+    sess.active_document_set_id = set_id
     db_session.commit()
     return document_id
 
@@ -207,7 +214,7 @@ def _seed_questionnaire(db, *, headers, session_id, answers):
             Path(__file__).resolve().parents[3]
             / "knowledge"
             / "v3"
-            / "questionnaire-v3.0.json"
+            / "questionnaire-v3.0.1.json"
         ).read_text(encoding="utf-8")
     )
     submission = QuestionnaireSubmissionV3(
@@ -492,7 +499,7 @@ def test_assessment_consumes_complete_questionnaire_without_document(
             Path(__file__).resolve().parents[3]
             / "knowledge"
             / "v3"
-            / "questionnaire-v3.0.json"
+            / "questionnaire-v3.0.1.json"
         ).read_text(encoding="utf-8")
     )
     answers = [

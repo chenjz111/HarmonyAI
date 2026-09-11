@@ -32,9 +32,12 @@ SESSION_EXTENSION_COLUMNS = (
     "input_revision",
     "safety_policy",
     "active_document_id",
+    "active_document_set_id",
     "active_understanding_id",
     "active_understanding_revision",
     "active_questionnaire_submission_id",
+    "user_goal_json",
+    "user_goal_revision",
 )
 
 

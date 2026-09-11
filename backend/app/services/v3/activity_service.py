@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.models.document import Document
 from backend.app.models.session import Session as SessionModel
+from backend.app.models.v3.document import DocumentSet, DocumentSetItem
 from backend.app.models.v3.session import (
     SessionInputRevision,
     V3IdempotencyRecord,
@@ -298,6 +299,35 @@ def apply_input_transition(
         )
         db.add(record)
 
+    # Replacing with a document outside the active set, or discarding the
+    # document path, invalidates the active set. Selecting a document that is
+    # already in the authoritative set does not change the set and must not
+    # make its relevance result unusable.
+    invalidate_active_set = request.action == "discard_document"
+    if request.action == "replace_document" and session_row.active_document_set_id:
+        invalidate_active_set = (
+            db.query(DocumentSetItem)
+            .filter(
+                DocumentSetItem.document_set_id == session_row.active_document_set_id,
+                DocumentSetItem.document_id == request.document_id,
+            )
+            .one_or_none()
+            is None
+        )
+    if invalidate_active_set and session_row.active_document_set_id:
+        set_row = (
+            db.query(DocumentSet)
+            .filter(
+                DocumentSet.document_set_id == session_row.active_document_set_id,
+                DocumentSet.status == "current",
+            )
+            .one_or_none()
+        )
+        if set_row is not None:
+            set_row.status = (
+                "superseded" if request.action == "replace_document" else "discarded"
+            )
+
     # Atomic compare-and-swap: bump input_revision and swap the active refs in
     # one UPDATE guarded by the expected revision (no read-then-write race).
     next_revision = _cas_apply_transition(
@@ -306,6 +336,11 @@ def apply_input_transition(
         request.expected_input_revision,
         input_mode=input_mode,
         active_document_id=active_document_id,
+        active_document_set_id=(
+            None
+            if invalidate_active_set
+            else session_row.active_document_set_id
+        ),
         active_understanding_id=active_understanding_id,
         active_understanding_revision=active_understanding_revision,
         active_questionnaire_submission_id=active_questionnaire_submission_id,
@@ -342,6 +377,7 @@ def _cas_apply_transition(
     *,
     input_mode: str | None,
     active_document_id: str | None,
+    active_document_set_id: str | None,
     active_understanding_id: str | None,
     active_understanding_revision: int | None,
     active_questionnaire_submission_id: str | None,
@@ -356,6 +392,7 @@ def _cas_apply_transition(
             input_revision=expected + 1,
             input_mode=input_mode,
             active_document_id=active_document_id,
+            active_document_set_id=active_document_set_id,
             active_understanding_id=active_understanding_id,
             active_understanding_revision=active_understanding_revision,
             active_questionnaire_submission_id=active_questionnaire_submission_id,
@@ -377,7 +414,7 @@ def _approved_questionnaire_manifest() -> dict | None:
 
     manifest_path = (
         Path(__file__).resolve().parents[4]
-        / "knowledge" / "v3" / "questionnaire-v3.0.json"
+        / "knowledge" / "v3" / "questionnaire-v3.0.1.json"
     )
     if not manifest_path.is_file():
         return None
@@ -406,6 +443,15 @@ def validate_assessment_input_readiness(
             "INPUT_MODE_NOT_SELECTED", "尚未选择输入方式。"
         )
     if session_row.input_mode == "with_document":
+        from backend.app.services.v3.document_relevance_gate import (
+            DocumentRelevanceGateError,
+            require_active_document_set_relevance,
+        )
+
+        try:
+            require_active_document_set_relevance(db, session_row)
+        except DocumentRelevanceGateError as error:
+            raise AssessmentInputNotReady(error.code, error.message) from None
         if (
             session_row.active_understanding_id is None
             or session_row.active_understanding_revision is None
