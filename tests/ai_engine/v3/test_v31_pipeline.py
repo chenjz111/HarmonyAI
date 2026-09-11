@@ -256,6 +256,33 @@ def test_v31_pipeline_runs_agent3_fallback_for_medical_abstain():
     assert result.read_model.generation.status == "ready"
 
 
+def test_v31_pipeline_treats_missing_approved_query_mapping_as_readiness_failure():
+    from backend.ai_engine.v3.rag_store import RagStoreFailure
+    from backend.ai_engine.v3.v31_pipeline import V31PipelineBlocked, execute_v31_ai_pipeline
+
+    class Rag:
+        def query(self, query):
+            del query
+            raise RagStoreFailure(
+                "RAG_QUERY_MAPPING_NOT_APPROVED",
+                "RAG 查询包含未批准的展示映射。",
+            )
+
+    with pytest.raises(V31PipelineBlocked) as error:
+        asyncio.run(
+            execute_v31_ai_pipeline(
+                confirmed_user_state=_confirmed_state(),
+                assessment_snapshot=_snapshot(),
+                rag_store=Rag(),
+                diagnosis_provider=object(),
+                tone_mapping=_mapping(),
+                generation_parameter_rules=_rules(),
+            )
+        )
+
+    assert error.value.error_code == "RAG_QUERY_MAPPING_NOT_APPROVED"
+
+
 def test_v31_pipeline_rejects_non_current_or_unconfirmed_state_before_rag():
     from backend.ai_engine.v3.v31_pipeline import V31PipelineBlocked, execute_v31_ai_pipeline
 

@@ -162,3 +162,114 @@ def test_smoke_preserves_agent3_blocking_error_code(monkeypatch):
         )
 
     assert error.value.error_code == "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED"
+
+
+def _smoke_with_pipeline(
+    monkeypatch,
+    *,
+    hits,
+    status,
+    attempts,
+    real_validation=True,
+    qwen_model="qwen3.6-plus-2026-04-02",
+):
+    from backend.ai_engine.v3 import real_provider_smoke
+    from backend.ai_engine.v3.real_provider_smoke import run_real_provider_smoke
+
+    async def fake_pipeline(**kwargs):
+        del kwargs
+        return SimpleNamespace(
+            rag_result=SimpleNamespace(hits=hits),
+            diagnosis_execution=SimpleNamespace(
+                status=status,
+                attempts=attempts,
+                reason_code=None,
+            ),
+        )
+
+    monkeypatch.setattr(real_provider_smoke, "execute_v31_ai_pipeline", fake_pipeline)
+    return run_real_provider_smoke(
+        config={
+            "embedding_model": "text-embedding-v4",
+            "embedding_dimension": 1024,
+            "qwen_model": qwen_model,
+        },
+        dependencies=SimpleNamespace(
+            rag_store=object(),
+            diagnosis_provider=object(),
+            tone_mapping={},
+            generation_parameter_rules={},
+        ),
+        fixture={
+            "confirmed_user_state": _fixture()["confirmed_user_state"],
+            "assessment_snapshot": _fixture()["assessment_snapshot"],
+        },
+        receipt={
+            "collection_name": "collection",
+            "knowledge_version": "knowledge",
+            "corpus_manifest_checksum": "sha256:manifest",
+            "index_checksum": "sha256:index",
+            "chunk_count": 1,
+        },
+        real_validation=real_validation,
+    )
+
+
+def test_real_smoke_fails_when_rag_has_no_approved_hits(monkeypatch):
+    from backend.ai_engine.v3.real_provider_smoke import RealProviderSmokeFailure
+
+    with pytest.raises(RealProviderSmokeFailure) as error:
+        _smoke_with_pipeline(
+            monkeypatch,
+            hits=[],
+            status="abstained",
+            attempts=0,
+        )
+
+    assert error.value.error_code == "RAG_NO_APPROVED_HITS"
+
+
+def test_real_smoke_fails_when_qwen_was_not_called(monkeypatch):
+    from backend.ai_engine.v3.real_provider_smoke import RealProviderSmokeFailure
+
+    with pytest.raises(RealProviderSmokeFailure) as error:
+        _smoke_with_pipeline(
+            monkeypatch,
+            hits=[SimpleNamespace(chunk_id="chunk_1")],
+            status="abstained",
+            attempts=0,
+        )
+
+    assert error.value.error_code == "QWEN_NOT_CALLED"
+
+
+def test_real_smoke_pass_requires_retrieval_provider_and_validation(monkeypatch):
+    result = _smoke_with_pipeline(
+        monkeypatch,
+        hits=[SimpleNamespace(chunk_id="chunk_1")],
+        status="abstained",
+        attempts=1,
+    )
+
+    assert result["status"] == "REAL_SMOKE_PASSED"
+    assert result["qwen_model"] == "qwen3.6-plus-2026-04-02"
+    assert result["schema_validation"] == "passed"
+    assert result["medical_rule_validation"] == "passed"
+    serialized = json.dumps(result)
+    assert "api-key-secret" not in serialized
+    assert "workspace-secret" not in serialized
+
+
+def test_real_smoke_fails_when_actual_qwen_model_is_not_reported(monkeypatch):
+    from backend.ai_engine.v3.real_provider_smoke import RealProviderSmokeFailure
+
+    with pytest.raises(RealProviderSmokeFailure) as error:
+        _smoke_with_pipeline(
+            monkeypatch,
+            hits=[SimpleNamespace(chunk_id="chunk_1")],
+            status="success",
+            attempts=1,
+            qwen_model="",
+        )
+
+    assert error.value.error_code == "QWEN_MODEL_NOT_REPORTED"

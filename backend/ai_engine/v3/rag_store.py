@@ -20,6 +20,13 @@ from backend.ai_engine.v3.rag_ingestion import validate_production_corpus
 CHROMA_DISTANCE_METADATA_KEY = "hnsw:space"
 APPROVED_DISTANCE_METRIC = "cosine"
 SCORE_COMPARISON_EPSILON = 1e-6
+APPROVED_ORGAN_DISPLAY_NAMES = {
+    "liver": "肝",
+    "heart": "心",
+    "spleen": "脾",
+    "lung": "肺",
+    "kidney": "肾",
+}
 
 
 class RagStoreFailure(RuntimeError):
@@ -42,11 +49,21 @@ class VersionedRagStore:
         embedding_provider,
         client=None,
         production: bool = True,
+        claim_display_names: Mapping[str, str] | None = None,
+        organ_display_names: Mapping[str, str] | None = None,
     ) -> None:
         self.persist_directory = persist_directory
         self.collection_name = collection_name
         self.embedding_provider = embedding_provider
         self.production = production
+        if claim_display_names is None or organ_display_names is None:
+            approved_claims, approved_organs = _load_approved_query_display_names()
+            if claim_display_names is None:
+                claim_display_names = approved_claims
+            if organ_display_names is None:
+                organ_display_names = approved_organs
+        self._claim_display_names = dict(claim_display_names)
+        self._organ_display_names = dict(organ_display_names)
         self._client = client or self._build_client(persist_directory)
         self._collection = None
         self._manifest: IngestionManifest | None = None
@@ -304,10 +321,30 @@ class VersionedRagStore:
             degradation=Degradation(active=False, reason_codes=[]),
         )
 
-    @staticmethod
-    def _query_text(query: RagQuery) -> str:
-        parts = [*query.organ_codes, *query.claim_codes]
-        return " ".join(str(getattr(part, "value", part)) for part in parts) or query.query_id
+    def _query_text(self, query: RagQuery) -> str:
+        organ_codes = [str(getattr(item, "value", item)) for item in query.organ_codes]
+        claim_codes = [str(getattr(item, "value", item)) for item in query.claim_codes]
+        missing_organs = [
+            code for code in organ_codes if code not in self._organ_display_names
+        ]
+        missing_claims = [
+            code for code in claim_codes if code not in self._claim_display_names
+        ]
+        if missing_organs or missing_claims:
+            raise RagStoreFailure(
+                "RAG_QUERY_MAPPING_NOT_APPROVED",
+                "RAG 查询包含未批准的展示映射。",
+            )
+        parts = [
+            *(self._organ_display_names[code] for code in organ_codes),
+            *(self._claim_display_names[code] for code in claim_codes),
+        ]
+        if not parts:
+            raise RagStoreFailure(
+                "RAG_QUERY_MAPPING_NOT_APPROVED",
+                "RAG 查询缺少已批准的展示语义。",
+            )
+        return " ".join(parts)
 
     @staticmethod
     def _assert_cosine_collection(collection) -> None:
@@ -334,3 +371,29 @@ class VersionedRagStore:
         import chromadb
 
         return chromadb.PersistentClient(path=persist_directory)
+
+
+def _load_approved_query_display_names() -> tuple[dict[str, str], dict[str, str]]:
+    """Load checksum-gated public labels without adding medical inference."""
+
+    from backend.app.services.v3.knowledge_assets import (
+        load_claim_dictionary,
+        load_organ_mapping,
+    )
+
+    _version, claim_dictionary = load_claim_dictionary()
+    organ_mapping = load_organ_mapping()
+    approved_organs = set((organ_mapping.get("organ_element") or {}).keys())
+    if (
+        organ_mapping.get("review_status") != "approved"
+        or approved_organs != set(APPROVED_ORGAN_DISPLAY_NAMES)
+    ):
+        raise RagStoreFailure(
+            "RAG_QUERY_MAPPING_NOT_APPROVED",
+            "RAG 五脏展示映射尚未批准。",
+        )
+    claim_names = {
+        code: entry.display_name
+        for code, entry in claim_dictionary.items()
+    }
+    return claim_names, dict(APPROVED_ORGAN_DISPLAY_NAMES)
