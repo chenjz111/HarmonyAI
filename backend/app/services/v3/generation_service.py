@@ -23,6 +23,7 @@ from backend.ai_engine.v3.music_provider import (
     build_matched_fallback_task,
     map_provider_task_to_music_task,
 )
+from backend.app.core.audio_duration import mp3_duration_seconds
 from backend.app.models.v3.music import GenerationTask, MusicAsset
 from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.models.v3.session import V3IdempotencyRecord
@@ -234,6 +235,16 @@ def _persist_generated_asset(
     spec: GenerationSpec,
 ) -> MusicAsset:
     locator = provider_task.asset_locator or ""
+    # Owner rule: the stored duration MUST be measured from the actual saved
+    # audio. If it cannot be measured the generation is an explicit failure —
+    # the requested duration is never silently stored as the real duration.
+    measured_seconds = _measure_audio_duration_seconds(locator)
+    if measured_seconds is None:
+        raise MusicProviderFailureV3(
+            "GENERATION_PROVIDER_REJECTED",
+            retryable=False,
+            safe_message="生成音频时长无法读取，已停止使用该结果。",
+        )
     row = MusicAsset(
         music_asset_id=f"asset_{uuid.uuid4().hex}",
         owner_internal_user_pk=principal_pk,
@@ -242,7 +253,7 @@ def _persist_generated_asset(
         title=f"生成音频 {spec.bpm} BPM",
         storage_key=locator,
         format="mp3",
-        duration_seconds=spec.duration_seconds,
+        duration_seconds=measured_seconds,
         checksum=_locator_checksum(locator),
         tone_profile_json=spec.tone_profile.model_dump(mode="json"),
         bpm=spec.bpm,
@@ -254,11 +265,45 @@ def _persist_generated_asset(
     return row
 
 
+def _measure_audio_duration_seconds(locator: str) -> int | None:
+    """Measured duration of the materialized generated audio, or None."""
+    path = Path(locator)
+    if not path.is_file():
+        return None
+    try:
+        measured = mp3_duration_seconds(path.read_bytes())
+    except (OSError, ValueError):
+        return None
+    if measured is None or measured <= 0:
+        return None
+    return max(1, int(round(measured)))
+
+
+def _provider_identity(provider: object) -> tuple[str, str | None]:
+    """Safe ops-internal provider name/model without returning credentials.
+
+    A provider may expose ``provider_audit_label`` to record both platform and
+    model (e.g. ``tokenhub/minimax-music-v3.0``) on the generation task; it is
+    still ops-internal metadata and never reaches clients.
+    """
+    label = getattr(provider, "provider_audit_label", None)
+    name = (
+        label
+        if isinstance(label, str) and label
+        else getattr(provider, "provider_name", None)
+    )
+    if not isinstance(name, str) or not name:
+        name = "music"
+    model = getattr(provider, "model", None)
+    return name, model if isinstance(model, str) and model else None
+
+
 def _persist_task_outcome(
     db: Session,
     task: GenerationTask,
     music_task: MusicTask,
     provider_task_id: str | None,
+    provider_name: str | None = None,
 ) -> None:
     task.status = music_task.status
     task.progress_value = (
@@ -275,6 +320,8 @@ def _persist_task_outcome(
     task.fallback_reason_code = music_task.fallback.reason_code
     task.error_code = music_task.error_code
     task.provider_task_id = provider_task_id
+    if provider_name is not None:
+        task.provider = provider_name
     if music_task.audio_asset is not None:
         task.music_asset_id = music_task.audio_asset.music_ref.music_id
     if music_task.status in _TERMINAL_STATUSES:
@@ -287,6 +334,7 @@ def _apply_provider_task(
     principal_pk: int,
     task: GenerationTask,
     provider_task,
+    provider_name: str | None = None,
 ) -> MusicTask:
     if provider_task.status == "succeeded":
         asset_row = None
@@ -319,6 +367,7 @@ def _apply_provider_task(
         task,
         music_task,
         provider_task.provider_task_id,
+        provider_name=provider_name,
     )
     return music_task
 
@@ -515,15 +564,15 @@ def create_generation_task(
         output_format="mp3",
         callback_ref=None,
     )
-    provider_task_id: str | None = None
+    provider_name, _ = _provider_identity(provider)
     try:
         provider_task = provider.create_task(provider_request)
-        provider_task_id = provider_task.provider_task_id
         music_task = _apply_provider_task(
             db,
             principal.internal_user_pk,
             task,
             provider_task,
+            provider_name=provider_name,
         )
     except MusicProviderFailureV3 as error:
         fallback_task = _try_fallback(
@@ -537,7 +586,13 @@ def create_generation_task(
             music_task = fallback_task
         else:
             music_task = _failed_music_task(task_id, error.error_code)
-        _persist_task_outcome(db, task, music_task, None)
+        _persist_task_outcome(
+            db,
+            task,
+            music_task,
+            None,
+            provider_name=provider_name,
+        )
 
     record.resource_type = "generation_task"
     record.resource_id = task_id
@@ -560,11 +615,13 @@ def get_generation_task(
         return _music_task_from_db(db, task)
     try:
         provider_task = provider.get_task(task.provider_task_id)
+        provider_name, _ = _provider_identity(provider)
         music_task = _apply_provider_task(
             db,
             principal.internal_user_pk,
             task,
             provider_task,
+            provider_name=provider_name,
         )
         db.commit()
         return music_task
@@ -594,11 +651,13 @@ def cancel_generation_task(
         if error.error_code == "GENERATION_CANCEL_UNSUPPORTED":
             raise GenerationCancelUnsupported from None
         raise
+    provider_name, _ = _provider_identity(provider)
     music_task = _apply_provider_task(
         db,
         principal.internal_user_pk,
         task,
         provider_task,
+        provider_name=provider_name,
     )
     db.commit()
     return music_task
