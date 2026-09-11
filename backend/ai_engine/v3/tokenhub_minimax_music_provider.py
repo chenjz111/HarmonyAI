@@ -53,7 +53,7 @@ from pathlib import Path
 import re
 import time
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -214,6 +214,19 @@ class AudioDownloadTooLarge(RuntimeError):
     """Raised when a provider audio payload exceeds the configured cap."""
 
 
+class UnsafeAudioRedirect(RuntimeError):
+    """Raised when a redirect target is not a public HTTPS address."""
+
+
+class TooManyAudioRedirects(RuntimeError):
+    """Raised when the audio redirect chain exceeds the allowed hop count."""
+
+
+# Audio downloads follow redirects manually so every hop is validated first.
+MAX_AUDIO_REDIRECTS = 3
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+
+
 class TokenHubDownloader(Protocol):
     def __call__(
         self, url: str, *, timeout: tuple[float, float], max_bytes: int
@@ -236,22 +249,52 @@ def _requests_poster(
 def _requests_downloader(
     url: str, *, timeout: tuple[float, float], max_bytes: int
 ) -> DownloadedAudio:
-    """Streaming HTTPS download with a hard size cap (never buffers unbounded)."""
-    with requests.get(url, timeout=timeout, stream=True, allow_redirects=True) as response:
-        response.raise_for_status()
-        final_url = str(getattr(response, "url", "") or url)
-        chunks: list[bytes] = []
-        total = 0
-        for chunk in response.iter_content(chunk_size=64 * 1024):
-            if not chunk:
+    """Hop-by-hop HTTPS download: validate every redirect before following it.
+
+    ``allow_redirects=False`` guarantees we never follow an unvalidated hop; each
+    Location target must be a public HTTPS URL, the hop count is bounded, the
+    payload is streamed with a hard size cap.
+    """
+    current = url
+    for hop in range(MAX_AUDIO_REDIRECTS + 1):
+        if not _is_public_https_url(current):
+            raise UnsafeAudioRedirect(f"unsafe audio URL at hop {hop}")
+        with requests.get(
+            current, timeout=timeout, stream=True, allow_redirects=False
+        ) as response:
+            status = int(getattr(response, "status_code", 0))
+            if status in _REDIRECT_STATUSES:
+                location = (getattr(response, "headers", {}) or {}).get("location")
+                if not location:
+                    raise UnsafeAudioRedirect("redirect without Location header")
+                target = urljoin(current, str(location))
+                if not _is_public_https_url(target):
+                    # never follow a hop to HTTP / localhost / private / link-local
+                    raise UnsafeAudioRedirect("redirect target is not public HTTPS")
+                if hop >= MAX_AUDIO_REDIRECTS:
+                    raise TooManyAudioRedirects(
+                        f"more than {MAX_AUDIO_REDIRECTS} audio redirects"
+                    )
+                current = target
                 continue
-            total += len(chunk)
-            if total > max_bytes:
-                raise AudioDownloadTooLarge(
-                    f"provider audio payload exceeds {max_bytes} bytes"
-                )
-            chunks.append(chunk)
-        return DownloadedAudio(content=b"".join(chunks), final_url=final_url)
+
+            response.raise_for_status()
+            final_url = str(getattr(response, "url", "") or current)
+            if not _is_public_https_url(final_url):
+                raise UnsafeAudioRedirect("final audio URL is not public HTTPS")
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > max_bytes:
+                    raise AudioDownloadTooLarge(
+                        f"provider audio payload exceeds {max_bytes} bytes"
+                    )
+                chunks.append(chunk)
+            return DownloadedAudio(content=b"".join(chunks), final_url=final_url)
+    raise TooManyAudioRedirects(f"more than {MAX_AUDIO_REDIRECTS} audio redirects")
 
 
 def _is_public_https_url(url: str) -> bool:
@@ -726,6 +769,14 @@ class TokenHubMinimaxMusicProvider:
                 )
             except AudioDownloadTooLarge as exc:
                 raise self._reject_audio("音乐生成服务返回的音频过大，已拒绝。", exc) from exc
+            except (UnsafeAudioRedirect, TooManyAudioRedirects) as exc:
+                raise self._reject_audio(
+                    "音乐生成服务音频地址跳转不安全或次数过多，已拒绝。", exc
+                ) from exc
+            except requests.TooManyRedirects as exc:
+                raise self._reject_audio(
+                    "音乐生成服务音频地址跳转过多，已拒绝。", exc
+                ) from exc
             except MusicProviderFailureV3:
                 raise
             except BaseException as exc:

@@ -801,3 +801,173 @@ def test_real_failure_never_returns_success_and_never_switches_to_mock(tmp_path,
     assert not list((tmp_path / "generated").glob("**/*"))
     # no hidden success / fallback object is produced by the provider itself
     assert provider.last_run_metadata.get("error_code") is not None
+
+
+# ------------------------------------------------- audio URL redirect safety (P1)
+
+
+class _FakeHttpResponse:
+    """Minimal requests.Response stand-in for the hop-by-hop downloader."""
+
+    def __init__(self, *, status_code: int, url: str, headers: dict[str, str] | None = None,
+                 content: bytes = b""):
+        self.status_code = status_code
+        self.url = url
+        self.headers = headers or {}
+        self._content = content
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.closed = True
+        return False
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"status {self.status_code}", response=self)
+
+    def iter_content(self, chunk_size: int = 65536):
+        for start in range(0, len(self._content), chunk_size):
+            yield self._content[start : start + chunk_size]
+
+
+class _RecordingGet:
+    """Records every hop and replays a scripted response chain."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(self, url, *, timeout=None, stream=None, allow_redirects=None):
+        self.calls.append(
+            {
+                "url": url,
+                "allow_redirects": allow_redirects,
+                "stream": stream,
+                "timeout": timeout,
+            }
+        )
+        if not self._responses:
+            raise AssertionError("unexpected extra HTTP hop")
+        return self._responses.pop(0)
+
+
+def _install_get(monkeypatch, responses):
+    recorder = _RecordingGet(responses)
+    monkeypatch.setattr(tokenhub_module.requests, "get", recorder)
+    return recorder
+
+
+def test_redirect_chain_is_followed_hop_by_hop_with_public_https(monkeypatch):
+    audio = mp3_bytes(seconds=2)
+    first = "https://cdn.example.com/a.mp3"
+    second = "https://audio.tencentmaas.com/b.mp3"
+    recorder = _install_get(
+        monkeypatch,
+        [
+            _FakeHttpResponse(status_code=302, url=first, headers={"location": second}),
+            _FakeHttpResponse(status_code=200, url=second, content=audio),
+        ],
+    )
+
+    result = tokenhub_module._requests_downloader(
+        first, timeout=(1.0, 2.0), max_bytes=1024 * 1024
+    )
+    assert result.content == audio
+    assert result.final_url == second
+    # redirects are never auto-followed: each hop is validated before the call
+    assert [call["allow_redirects"] for call in recorder.calls] == [False, False]
+    assert [call["url"] for call in recorder.calls] == [first, second]
+
+
+def test_redirect_to_plain_http_is_rejected_before_following(monkeypatch):
+    first = "https://cdn.example.com/a.mp3"
+    recorder = _install_get(
+        monkeypatch,
+        [
+            _FakeHttpResponse(
+                status_code=302,
+                url=first,
+                headers={"location": "http://cdn.example.com/a.mp3"},
+            )
+        ],
+    )
+    with pytest.raises(tokenhub_module.UnsafeAudioRedirect):
+        tokenhub_module._requests_downloader(first, timeout=(1.0, 2.0), max_bytes=1024)
+    assert len(recorder.calls) == 1  # the unsafe hop was never requested
+
+
+@pytest.mark.parametrize(
+    "unsafe_target",
+    [
+        "https://127.0.0.1/a.mp3",
+        "https://10.1.2.3/a.mp3",
+        "https://192.168.1.5/a.mp3",
+        "https://169.254.169.254/latest/meta-data/a.mp3",
+        "https://localhost/a.mp3",
+        "https://metadata.internal/a.mp3",
+        "https://0.0.0.0/a.mp3",
+    ],
+)
+def test_redirect_to_internal_or_reserved_host_is_rejected(monkeypatch, unsafe_target):
+    first = "https://cdn.example.com/a.mp3"
+    recorder = _install_get(
+        monkeypatch,
+        [_FakeHttpResponse(status_code=302, url=first, headers={"location": unsafe_target})],
+    )
+    with pytest.raises(tokenhub_module.UnsafeAudioRedirect):
+        tokenhub_module._requests_downloader(first, timeout=(1.0, 2.0), max_bytes=1024)
+    assert len(recorder.calls) == 1
+
+
+def test_redirect_without_location_is_rejected(monkeypatch):
+    first = "https://cdn.example.com/a.mp3"
+    _install_get(monkeypatch, [_FakeHttpResponse(status_code=302, url=first, headers={})])
+    with pytest.raises(tokenhub_module.UnsafeAudioRedirect):
+        tokenhub_module._requests_downloader(first, timeout=(1.0, 2.0), max_bytes=1024)
+
+
+def test_redirect_hop_limit_is_enforced(monkeypatch):
+    first = "https://cdn.example.com/a.mp3"
+    responses = [
+        _FakeHttpResponse(status_code=302, url=first, headers={"location": first})
+        for _ in range(tokenhub_module.MAX_AUDIO_REDIRECTS + 2)
+    ]
+    recorder = _install_get(monkeypatch, responses)
+    with pytest.raises(tokenhub_module.TooManyAudioRedirects):
+        tokenhub_module._requests_downloader(first, timeout=(1.0, 2.0), max_bytes=1024)
+    assert len(recorder.calls) == tokenhub_module.MAX_AUDIO_REDIRECTS + 1
+
+
+def test_size_cap_still_enforced_after_redirect(monkeypatch):
+    first = "https://cdn.example.com/a.mp3"
+    second = "https://cdn2.example.com/b.mp3"
+    huge = b"\xff\xfb\x90\x00" * 4096
+    _install_get(
+        monkeypatch,
+        [
+            _FakeHttpResponse(status_code=307, url=first, headers={"location": second}),
+            _FakeHttpResponse(status_code=200, url=second, content=huge),
+        ],
+    )
+    with pytest.raises(tokenhub_module.AudioDownloadTooLarge):
+        tokenhub_module._requests_downloader(first, timeout=(1.0, 2.0), max_bytes=1024)
+
+
+def test_adapter_maps_unsafe_and_excessive_redirects_to_rejected(tmp_path):
+    temp_url = "https://cdn.example.com/a.mp3"
+    for error in (
+        tokenhub_module.UnsafeAudioRedirect("unsafe"),
+        tokenhub_module.TooManyAudioRedirects("too many"),
+        requests.TooManyRedirects("too many"),
+    ):
+        poster = FakePoster(response=FakeResponse(text=_completed_body(temp_url)))
+        downloader = FakeDownloader(error=error)
+        provider = _provider(tmp_path, poster, downloader)
+        with pytest.raises(MusicProviderFailureV3) as caught:
+            provider.create_task(_request())
+        assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED", error
+        assert not list((tmp_path / "generated").glob("**/*")), error
+        assert provider.post_calls == 1

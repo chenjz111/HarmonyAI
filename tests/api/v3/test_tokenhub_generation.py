@@ -563,3 +563,99 @@ def test_rule_asset_chinese_instruments_normalize_for_prompt_and_keep_display(tm
         assert stream.content == audio
     finally:
         _uninstall_provider()
+
+
+# ------------------------------------------- duration truthfulness (P0 guard)
+
+
+def test_anomalous_generated_audio_never_writes_a_bogus_duration(tmp_path):
+    """Magic-valid but structurally anomalous audio must fail, not store ~1 s."""
+    bogus = b"\xff\xfb\x90\x00" + b"\x00" * 300_000  # one frame + 300 KB garbage
+    poster = _FakePoster(response=_FakeResponse(text=_completed_body(bogus)))
+    _install_provider(_provider(tmp_path, poster))
+    try:
+        headers, session_id = _setup_guest(idempotency_key="th-bad-duration")
+        with _seed_db() as session:
+            public_user_id = _public_user_id(headers["Authorization"].split()[1])
+            rx_id = _seed_chain(
+                session,
+                public_user_id=public_user_id,
+                session_id=session_id,
+                generation_spec=_generation_spec(),
+            )
+
+        response = client.post(
+            "/api/v3/music/generations",
+            headers=headers,
+            json=_generation_body(rx_id, "sha256:th-bad-duration-1", fallback="none"),
+        )
+        assert response.status_code == 201
+        body = _v3_data(response)
+        assert body["status"] == "failed"
+        assert body["error_code"] == "GENERATION_PROVIDER_REJECTED"
+        assert body["audio_asset"] is None
+
+        with _seed_db() as session:
+            task = (
+                session.query(GenerationTask)
+                .filter(GenerationTask.task_id == body["task_id"])
+                .one()
+            )
+            assert task.status == "failed"
+            assert task.music_asset_id is None
+            # no generated asset row (and therefore no bogus duration) was written
+            assets = (
+                session.query(MusicAsset)
+                .filter(MusicAsset.generation_task_id == body["task_id"])
+                .all()
+            )
+            assert assets == []
+        assert len(poster.calls) == 1
+    finally:
+        _uninstall_provider()
+
+
+def test_anomalous_generated_audio_degrades_to_matched_not_generated(tmp_path):
+    catalog = _mp3_bytes(seconds=2)
+    audio_path = tmp_path / "matched.mp3"
+    audio_path.write_bytes(catalog)
+
+    bogus = b"\xff\xfb\x90\x00" + b"\x00" * 300_000
+    poster = _FakePoster(response=_FakeResponse(text=_completed_body(bogus)))
+    _install_provider(_provider(tmp_path, poster))
+    try:
+        headers, session_id = _setup_guest(idempotency_key="th-bad-duration-fb")
+        with _seed_db() as session:
+            public_user_id = _public_user_id(headers["Authorization"].split()[1])
+            _seed_catalog_asset(session, audio_path=audio_path, title="审核曲库-角调")
+            rx_id = _seed_chain(
+                session,
+                public_user_id=public_user_id,
+                session_id=session_id,
+                generation_spec=_generation_spec(),
+            )
+
+        response = client.post(
+            "/api/v3/music/generations",
+            headers=headers,
+            json=_generation_body(rx_id, "sha256:th-bad-duration-fb-1"),
+        )
+        assert response.status_code == 201
+        body = _v3_data(response)
+        # never a fake generated success; explicit reviewed fallback instead
+        assert body["status"] == "matched_fallback"
+        assert body["audio_asset"]["music_ref"]["source_type"] == "matched"
+        assert body["fallback"]["applied"] is True
+
+        with _seed_db() as session:
+            generated = (
+                session.query(MusicAsset)
+                .filter(
+                    MusicAsset.generation_task_id == body["task_id"],
+                    MusicAsset.source_type == "generated",
+                )
+                .all()
+            )
+            assert generated == []
+    finally:
+        _uninstall_provider()

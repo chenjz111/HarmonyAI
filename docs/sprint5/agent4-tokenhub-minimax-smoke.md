@@ -74,8 +74,16 @@ GenerationSpec → TokenHub JSON POST（model/prompt/is_instrumental=true/output
   （prompt 文案：`target length about N seconds`）。
 - **不向 TokenHub 发送任何 duration 字段**（JSON body 仅 `model/prompt/is_instrumental/
   output_format/audio_setting`；单测断言 body 无 `duration/seconds_total/length/duration_seconds`）。
-- 成功后**继续以下载音频的实测时长**入库并供 Player 展示；Provider 返回的
-  `extra_info.music_duration`(ms→s) 仅作为运行元数据对照，不作为入库依据。
+- 成功后**以下载音频的实测时长**入库并供 Player 展示；Provider 返回的
+  `extra_info.music_duration`(ms→s) 仅作对照元数据，**不直接当成本地实测值**。
+- 探针（`backend/app/core/audio_duration.py`）兼容真实返回结构：
+  - 跳过 ID3v2（含 footer 标记）；
+  - **逐帧解析每个帧头**，不再假设所有帧长度与首帧相同（兼容 VBR）；
+  - 优先使用 **Xing/Info** 或 **VBRI** 帧数（首帧常为 Xing 头帧，长度与数据帧不同）；
+  - 声明的帧数与物理扫描不一致（>5%）时以扫描值为准；
+  - **合理性护栏**：按体积/时长推算的平均码率必须落在 8–448 kbps，否则判为异常 →
+    探针返回不可用 → 任务显式失败，**绝不把错误数值写入数据库**
+    （旧实现把真实 75.89s 文件测成 ~0.052s → 入库 1s 的问题由此根治）。
 - `300s` 仅为**项目内部上限**（`PROJECT_INTERNAL_MAX_DURATION_SECONDS`），
   **不是 Provider 已确认能力**，待真实 Smoke 记录后再更新。
 
@@ -86,10 +94,11 @@ GenerationSpec → TokenHub JSON POST（model/prompt/is_instrumental=true/output
 1. **仅 HTTPS**（`http://` 一律拒绝，不发起下载）；
 2. **公共地址**：拒绝 `localhost`/`*.local`/`*.internal`、回环、私网、链路本地
    （如 `169.254.169.254`）、保留/组播地址及 IP 字面量私网；
-3. **最大体积上限** 25 MiB：流式下载累计超限立即拒绝（hex 响应同样受此上限约束）；
-4. **最终跳转地址再校验**：下载后的 `final_url` 必须仍是公共 HTTPS，防止异常重定向到
-   HTTP 或内部地址；
-5. 下载完成后仍做 **MP3 校验**（ID3 / MPEG 同步字）；
+3. **逐跳重定向校验**：下载禁用自动跟随（`allow_redirects=False`），每次跳转**先校验**
+   目标仍是公共 HTTPS，再发起下一跳；**最大跳转 3 次**，超过即拒绝；
+   跳转到 HTTP/localhost/私网/链路本地/保留地址一律拒绝且不发起该跳；
+4. **最大体积上限** 25 MiB：流式下载累计超限立即拒绝（hex 响应同样受此上限约束）；
+5. 下载完成后仍做 **MP3 校验**（ID3 / MPEG 同步字），并再次确认最终地址安全；
 6. 无论 hex 还是 url，最终只把**自有落盘路径**写入资产；Provider 临时 URL
    不进入数据库、任务响应、日志或 Player。
 
