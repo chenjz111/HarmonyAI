@@ -10,7 +10,15 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from backend.app.schemas.v3.common import NonEmptyString, Score01, ToneCode, V3BaseModel
+from pydantic import Field
+
+from backend.app.schemas.v3.common import (
+    NonEmptyString,
+    Score01,
+    ToneCode,
+    UserGoalCode,
+    V3BaseModel,
+)
 from backend.app.schemas.v3.flow_v31 import (
     BpmExplanation,
     ConfirmedUserStateRef,
@@ -29,8 +37,24 @@ from .safe_expression import validate_public_text
 class Agent3Blocked(ValueError):
     """Raised when the deterministic Agent3 gate cannot produce a profile."""
 
+    def __init__(
+        self,
+        error_code: str,
+        safe_message: str = "Agent3 音乐规则资产尚未就绪。",
+    ) -> None:
+        self.error_code = error_code
+        self.safe_message = safe_message
+        super().__init__(f"{error_code}: {safe_message}")
+
 
 _TONE_CODES = ("jiao", "zhi", "gong", "shang", "yu")
+_MUSIC_PARAMETER_FIELDS = ("bpm", "instruments", "ambience", "duration_seconds")
+_MUSIC_EXPLANATION_KEYS = {
+    "bpm": "bpm",
+    "instruments": "instruments",
+    "ambience": "ambience",
+    "duration_seconds": "duration",
+}
 
 
 class GenerationSpecV31(V3BaseModel):
@@ -45,10 +69,10 @@ class GenerationSpecV31(V3BaseModel):
     primary_tone: ToneCode
     secondary_tone: ToneCode | None
     tone_weights: dict[ToneCode, Score01]
-    bpm: int
+    bpm: int = Field(ge=40, le=120)
     instruments: list[NonEmptyString]
     ambience: list[NonEmptyString]
-    duration_seconds: int
+    duration_seconds: int = Field(gt=0, le=300)
     explanations: dict[NonEmptyString, NonEmptyString]
     readiness: Literal["ready", "not_ready"]
     blocking_reasons: list[NonEmptyString]
@@ -66,9 +90,12 @@ def build_generation_spec_v31(
 
     UserGoal is only a selector for an explicitly named rule row.  It never
     changes the medical tone profile, and the goal payload is not copied into
-    the GenerationSpec.  A custom-only goal has no approved rule selector and
-    therefore safely uses the default rule row.  Missing or unapproved music
-    rules are an explicit readiness block rather than an invented default.
+    the GenerationSpec.  Approved goal rows are partial field overrides: a
+    primary goal wins a field, a secondary goal fills a field the primary left
+    unspecified, and the default row supplies everything else.  A custom-only
+    goal has no approved rule selector and therefore safely uses the default
+    rule row.  Missing or unapproved music rules are an explicit readiness
+    block rather than an invented default.
     """
 
     if not isinstance(parameter_rules, Mapping):
@@ -82,14 +109,62 @@ def build_generation_spec_v31(
     if not isinstance(default, Mapping):
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
-    selected = dict(default)
-    goal_code = _goal_code(user_goal)
-    if goal_code is not None:
-        goals = parameter_rules.get("goals")
-        goal_rules = goals.get(goal_code) if isinstance(goals, Mapping) else None
-        if not isinstance(goal_rules, Mapping):
-            raise Agent3Blocked("USER_GOAL_RULE_NOT_APPROVED")
-        selected.update(goal_rules)
+    merge_policy = parameter_rules.get(
+        "secondary_goal_merge_policy", "primary_over_secondary_fill_missing"
+    )
+    if merge_policy != "primary_over_secondary_fill_missing":
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
+    primary_goal, secondary_goal = _goal_codes(user_goal)
+    goals = parameter_rules.get("goals")
+    if isinstance(goals, Mapping):
+        goal_codes = {
+            code.value if isinstance(code, UserGoalCode) else code
+            for code in goals
+        }
+        if goal_codes != {code.value for code in UserGoalCode}:
+            raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+        for goal_rules in goals.values():
+            _validate_goal_rule_explanations(goal_rules)
+    if (primary_goal is not None or secondary_goal is not None) and not isinstance(
+        goals, Mapping
+    ):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
+    default_explanations = default.get("explanations")
+    if not _valid_explanations(default_explanations, set(_MUSIC_EXPLANATION_KEYS.values())):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
+    primary_rules = _selected_goal_rule(goals, primary_goal)
+    secondary_rules = _selected_goal_rule(goals, secondary_goal)
+    selected: dict[str, Any] = {}
+    explanations: dict[str, str] = {}
+    for field_name in _MUSIC_PARAMETER_FIELDS:
+        explanation_key = _MUSIC_EXPLANATION_KEYS[field_name]
+        value = default.get(field_name)
+        source_rules: Mapping[str, Any] | None = None
+        if primary_rules is not None and primary_rules.get(field_name) is not None:
+            value = primary_rules[field_name]
+            source_rules = primary_rules
+        elif secondary_rules is not None and secondary_rules.get(field_name) is not None:
+            value = secondary_rules[field_name]
+            source_rules = secondary_rules
+
+        selected[field_name] = value
+        # A goal that resolves to the default value did not change this
+        # parameter, so retain the neutral default explanation.
+        if value == default.get(field_name):
+            explanations[explanation_key] = str(default_explanations[explanation_key])
+        else:
+            source_explanation = (
+                source_rules.get("explanations", {}).get(explanation_key)
+                if source_rules is not None
+                and isinstance(source_rules.get("explanations"), Mapping)
+                else None
+            )
+            explanations[explanation_key] = str(
+                source_explanation or default_explanations[explanation_key]
+            )
 
     bpm = selected.get("bpm")
     instruments = selected.get("instruments")
@@ -99,17 +174,11 @@ def build_generation_spec_v31(
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
     if not _string_list(instruments) or not _string_list(ambience):
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
-    if type(duration) is not int or duration <= 0:
+    if type(duration) is not int or not 0 < duration <= 300:
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
-    explanations = selected.get("explanations") or default.get("explanations")
-    if not isinstance(explanations, Mapping):
-        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
     explanation_keys = {"bpm", "instruments", "ambience", "duration"}
-    if set(explanations) != explanation_keys or any(
-        not isinstance(value, str) or not value.strip()
-        for value in explanations.values()
-    ):
+    if not _valid_explanations(explanations, explanation_keys):
         raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
 
     # Secondary tone is optional in the frozen flow. Keep its absence
@@ -135,9 +204,9 @@ def build_generation_spec_v31(
     return spec
 
 
-def _goal_code(user_goal: Mapping[str, Any] | Any | None) -> str | None:
+def _goal_codes(user_goal: Mapping[str, Any] | Any | None) -> tuple[str | None, str | None]:
     if user_goal is None:
-        return None
+        return None, None
     from backend.app.schemas.v3.flow_v31 import UserGoalV31
 
     try:
@@ -149,10 +218,57 @@ def _goal_code(user_goal: Mapping[str, Any] | Any | None) -> str | None:
         and parsed.secondary_goal is None
         and parsed.custom_goal_text is None
     ):
-        return None
+        return None, None
     # Custom text is a bounded preference only. Without an approved goal code,
     # it must not block generation or be interpreted as a medical instruction.
-    return parsed.primary_goal.value if parsed.primary_goal is not None else None
+    return (
+        parsed.primary_goal.value if parsed.primary_goal is not None else None,
+        parsed.secondary_goal.value if parsed.secondary_goal is not None else None,
+    )
+
+
+def _selected_goal_rule(
+    goals: Mapping[Any, Any] | Any,
+    goal_code: str | None,
+) -> Mapping[str, Any] | None:
+    if goal_code is None:
+        return None
+    if not isinstance(goals, Mapping):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    goal_rules = goals.get(goal_code)
+    if goal_rules is None:
+        try:
+            goal_rules = goals.get(UserGoalCode(goal_code))
+        except ValueError:
+            goal_rules = None
+    if not isinstance(goal_rules, Mapping):
+        raise Agent3Blocked("USER_GOAL_RULE_NOT_APPROVED")
+    return goal_rules
+
+
+def _validate_goal_rule_explanations(goal_rules: Any) -> None:
+    if not isinstance(goal_rules, Mapping):
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    override_fields = {
+        field_name
+        for field_name in _MUSIC_PARAMETER_FIELDS
+        if goal_rules.get(field_name) is not None
+    }
+    expected_keys = {
+        _MUSIC_EXPLANATION_KEYS[field_name] for field_name in override_fields
+    }
+    explanations = goal_rules.get("explanations")
+    if override_fields:
+        if not _valid_explanations(explanations, expected_keys):
+            raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+    elif explanations:
+        raise Agent3Blocked("MUSIC_PARAMETER_ASSET_INVALID")
+
+
+def _valid_explanations(value: Any, expected_keys: set[str]) -> bool:
+    return isinstance(value, Mapping) and set(value) == expected_keys and all(
+        isinstance(text, str) and text.strip() for text in value.values()
+    )
 
 
 def _string_list(value: Any) -> list[str]:

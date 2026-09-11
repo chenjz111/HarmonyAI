@@ -28,12 +28,14 @@ def _rules():
     return {
         "schema_id": "music_generation_rules_v3.1",
         "schema_version": "owner-pending",
+        "asset_version": "owner-approved-test-v1",
         "review_status": "approved",
+        "secondary_goal_merge_policy": "primary_over_secondary_fill_missing",
         "default": {
             "bpm": 60,
             "instruments": ["古琴"],
             "ambience": ["细雨"],
-            "duration_seconds": 900,
+            "duration_seconds": 180,
             "explanations": {
                 "bpm": "按已批准的音乐参数规则提供参考速度。",
                 "instruments": "按已批准的音乐参数规则提供配器参考。",
@@ -46,8 +48,20 @@ def _rules():
                 "bpm": 50,
                 "instruments": ["古琴", "箫"],
                 "ambience": ["细雨"],
-                "duration_seconds": 1200,
-            }
+                "duration_seconds": 240,
+                "explanations": {
+                    "bpm": "助眠诉求对应的速度候选。",
+                    "instruments": "助眠诉求对应的配器候选。",
+                    "ambience": "助眠诉求对应的环境音候选。",
+                    "duration": "助眠诉求对应的预计时长候选。",
+                },
+            },
+            "relaxation": {},
+            "emotion_regulation": {},
+            "focus": {},
+            "energy": {},
+            "stress_relief": {},
+            "other": {},
         },
     }
 
@@ -65,7 +79,7 @@ def test_generation_spec_is_deterministic_and_bounded_by_approved_rules():
     assert spec.secondary_tone is None
     assert spec.bpm == 50
     assert spec.instruments == ["古琴", "箫"]
-    assert spec.duration_seconds == 1200
+    assert spec.duration_seconds == 240
     assert spec.secondary_tone_blocked is True
     assert spec.readiness == "ready"
     assert spec.blocking_reasons == []
@@ -108,6 +122,6 @@ def test_generation_spec_custom_text_without_goal_code_falls_back_to_default_rul
     assert spec.bpm == 60
     assert spec.instruments == ["古琴"]
     assert spec.ambience == ["细雨"]
-    assert spec.duration_seconds == 900
+    assert spec.duration_seconds == 180
     assert spec.readiness == "ready"
     assert spec.blocking_reasons == []

@@ -17,6 +17,11 @@ from backend.app.schemas.v3.diagnosis import (
 from backend.ai_engine.v3.rag_ingestion import validate_production_corpus
 
 
+CHROMA_DISTANCE_METADATA_KEY = "hnsw:space"
+APPROVED_DISTANCE_METRIC = "cosine"
+SCORE_COMPARISON_EPSILON = 1e-6
+
+
 class RagStoreFailure(RuntimeError):
     """Stable store failure that contains no user source text."""
 
@@ -108,6 +113,11 @@ class VersionedRagStore:
                     "CORPUS_CHUNK_COUNT_MISMATCH",
                     "医学语料块数量与清单不一致。",
                 )
+        if checked.distance_metric != APPROVED_DISTANCE_METRIC:
+            raise RagStoreFailure(
+                "RAG_DISTANCE_METRIC_NOT_APPROVED",
+                "RAG 索引必须使用已批准的 cosine 距离。",
+            )
         checked_chunks = [KnowledgeChunk.model_validate(chunk) for chunk in chunks]
         incoming_checksums = {
             chunk.chunk_id: chunk.content_checksum for chunk in checked_chunks
@@ -127,9 +137,11 @@ class VersionedRagStore:
                     "knowledge_version": checked.knowledge_version,
                     "embedding_version": checked.embedding_version,
                     "manifest_checksum": checked.manifest_checksum,
+                    CHROMA_DISTANCE_METADATA_KEY: APPROVED_DISTANCE_METRIC,
                 },
                 embedding_function=None,
             )
+            self._assert_cosine_collection(collection)
             if self._collection_matches(collection, checked_chunks, checked):
                 self._bind_collection(collection, checked, checked_chunks, collection_name)
                 return collection_name
@@ -225,6 +237,7 @@ class VersionedRagStore:
             raise RagStoreFailure("RAG_KNOWLEDGE_VERSION_MISMATCH", "RAG 知识版本不一致。")
         if query.ingestion_manifest_checksum != manifest.manifest_checksum:
             raise RagStoreFailure("RAG_MANIFEST_MISMATCH", "RAG 清单版本不一致。")
+        self._assert_cosine_collection(self._collection)
         try:
             query_vector = self.embedding_provider.embed(
                 self._query_text(query),
@@ -251,9 +264,14 @@ class VersionedRagStore:
         for index, (document, metadata, distance) in enumerate(
             zip(documents, metadatas, distances)
         ):
-            score = 1.0 / (1.0 + float(distance))
+            cosine_distance = float(distance)
+            cosine_similarity = 1.0 - cosine_distance
+            score = 1.0 / (2.0 - cosine_similarity)
             metadata = metadata or {}
-            if score < manifest.minimum_score or metadata.get("review_status") != "approved":
+            if (
+                score + SCORE_COMPARISON_EPSILON < manifest.minimum_score
+                or metadata.get("review_status") != "approved"
+            ):
                 continue
             if index >= len(ids):
                 raise RagStoreFailure(
@@ -289,7 +307,16 @@ class VersionedRagStore:
     @staticmethod
     def _query_text(query: RagQuery) -> str:
         parts = [*query.organ_codes, *query.claim_codes]
-        return " ".join(str(part) for part in parts) or query.query_id
+        return " ".join(str(getattr(part, "value", part)) for part in parts) or query.query_id
+
+    @staticmethod
+    def _assert_cosine_collection(collection) -> None:
+        metadata = getattr(collection, "metadata", None)
+        if not isinstance(metadata, Mapping) or metadata.get(CHROMA_DISTANCE_METADATA_KEY) != APPROVED_DISTANCE_METRIC:
+            raise RagStoreFailure(
+                "RAG_DISTANCE_METRIC_MISMATCH",
+                "RAG 索引距离配置不是 cosine。",
+            )
 
     def _versioned_collection_name(self, manifest: IngestionManifest) -> str:
         identity = "_".join(

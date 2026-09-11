@@ -8,7 +8,6 @@ switch to a mock provider.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -250,19 +249,33 @@ def get_v31_ai_pipeline_dependencies(
             "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED",
             "音乐参数规则资产尚未配置。",
         )
+    rules_version = values.get("V31_MUSIC_GENERATION_RULES_VERSION", "").strip()
+    rules_checksum = values.get("V31_MUSIC_GENERATION_RULES_CHECKSUM", "").strip()
+    if not rules_version or not rules_checksum:
+        raise V31ReadinessFailure(
+            "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED",
+            "音乐参数规则资产版本或校验和尚未配置。",
+        )
 
     try:
-        from backend.app.services.v3.knowledge_assets import load_five_tone_mapping
+        from backend.app.services.v3.knowledge_assets import (
+            load_five_tone_mapping,
+            load_music_generation_rules,
+        )
 
         tone_mapping = load_five_tone_mapping()
-        generation_parameter_rules = json.loads(
-            Path(rules_path).read_text(encoding="utf-8")
+        generation_parameter_rules = load_music_generation_rules(
+            rules_path,
+            expected_version=rules_version,
+            expected_checksum=rules_checksum,
         )
-    except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError) as error:
+    except ValueError as error:
+        error_code = getattr(error, "error_code", "MUSIC_PARAMETER_ASSET_INVALID")
+        safe_message = getattr(error, "safe_message", "音乐参数规则资产格式无效。")
         raise V31ReadinessFailure(
-            "MUSIC_PARAMETER_ASSET_INVALID",
-            "音乐参数规则资产格式无效。",
-        ) from error
+            error_code,
+            safe_message,
+        ) from None
     if not isinstance(tone_mapping, Mapping) or not isinstance(
         generation_parameter_rules, Mapping
     ):
@@ -275,10 +288,26 @@ def get_v31_ai_pipeline_dependencies(
     medical_review_versions = set(
         getattr(rag_store, "medical_review_versions", ())
     )
-    if medical_review_versions != {medical_rule_version}:
+    rag_manifest = getattr(rag_store, "manifest", None)
+    configured_review_version = getattr(rag_manifest, "medical_review_version", None)
+    if configured_review_version:
+        if medical_review_versions != {configured_review_version}:
+            raise V31ReadinessFailure(
+                "MEDICAL_REVIEW_VERSION_MISMATCH",
+                "医学语料审核版本与清单不一致。",
+            )
+    elif medical_review_versions != {medical_rule_version}:
+        # Compatibility for pre-approval test doubles that had no manifest
+        # review-version field and used the rule version as the only identity.
         raise V31ReadinessFailure(
             "MEDICAL_RULE_VERSION_MISMATCH",
             "医学语料与医学规则版本不一致。",
+        )
+    configured_rule_version = getattr(rag_manifest, "medical_rule_version", None)
+    if configured_rule_version and configured_rule_version != medical_rule_version:
+        raise V31ReadinessFailure(
+            "MEDICAL_RULE_VERSION_MISMATCH",
+            "医学语料绑定的医学规则版本与规则资产不一致。",
         )
     provider = get_v31_diagnosis_provider(
         values,

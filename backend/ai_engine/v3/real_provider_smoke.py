@@ -85,6 +85,12 @@ def run_real_provider_smoke(
         )
     except V31PipelineBlocked as error:
         raise RealProviderSmokeFailure(error.error_code) from None
+    except Exception as error:
+        from backend.ai_engine.v3.agent3 import Agent3Blocked
+
+        if isinstance(error, Agent3Blocked):
+            raise RealProviderSmokeFailure(error.error_code) from None
+        raise
 
     status = pipeline.diagnosis_execution.status
     if status not in {"success", "abstained"}:

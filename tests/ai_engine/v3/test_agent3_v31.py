@@ -28,12 +28,14 @@ def _generation_rules():
     return {
         "schema_id": "music_generation_rules_v3.1",
         "schema_version": "test-approved-v1",
+        "asset_version": "owner-approved-test-v1",
         "review_status": "approved",
+        "secondary_goal_merge_policy": "primary_over_secondary_fill_missing",
         "default": {
             "bpm": 60,
             "instruments": ["古琴"],
             "ambience": ["细雨"],
-            "duration_seconds": 900,
+            "duration_seconds": 180,
             "explanations": {
                 "bpm": "按已批准规则提供速度参考。",
                 "instruments": "按已批准规则提供配器参考。",
@@ -41,7 +43,15 @@ def _generation_rules():
                 "duration": "按已批准规则提供时长参考。",
             },
         },
-        "goals": {},
+        "goals": {
+            "sleep": {},
+            "relaxation": {},
+            "emotion_regulation": {},
+            "focus": {},
+            "energy": {},
+            "stress_relief": {},
+            "other": {},
+        },
     }
 
 

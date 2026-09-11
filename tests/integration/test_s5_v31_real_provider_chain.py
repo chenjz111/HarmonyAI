@@ -81,6 +81,7 @@ class _EmbeddingTransport:
 class _Collection:
     def __init__(self):
         self.rows = {}
+        self.metadata = {}
 
     def upsert(self, *, ids, documents, metadatas, embeddings):
         for row in zip(ids, documents, metadatas, embeddings):
@@ -106,8 +107,9 @@ class _ChromaClient:
         self.names = []
 
     def get_or_create_collection(self, *, name, metadata, embedding_function):
-        del metadata, embedding_function
+        del embedding_function
         self.names.append(name)
+        self.collection.metadata = dict(metadata)
         return self.collection
 
 

@@ -22,6 +22,7 @@ class ProductionCorpusNotReady(RuntimeError):
 
 
 EMPTY_LABEL_SEMANTICS = "claim_codes_and_organ_codes_intentionally_empty_by_medical_review"
+NORMALIZED_SCORE_CONVERSION = "normalized_similarity = 1 / (2 - cosine)"
 
 
 def _content_checksum(payload: Mapping[str, object], field: str) -> str:
@@ -46,6 +47,8 @@ def _content_checksum(payload: Mapping[str, object], field: str) -> str:
 def validate_production_corpus(
     manifest: IngestionManifest | Mapping[str, object],
     chunks: Sequence[KnowledgeChunk | Mapping[str, object]],
+    *,
+    corpus_payload: Mapping[str, object] | None = None,
 ) -> IngestionManifest:
     """Validate an immutable manifest/chunk set before production ingestion."""
 
@@ -74,6 +77,33 @@ def validate_production_corpus(
             "CORPUS_MANIFEST_CHECKSUM_MISMATCH",
             "医学语料清单校验和不匹配。",
         )
+
+    if (checked_manifest.source_cosine_threshold is None) != (
+        checked_manifest.score_conversion is None
+    ):
+        raise ProductionCorpusNotReady(
+            "CORPUS_SCORE_METADATA_INVALID",
+            "医学语料清单的来源阈值与换算规则必须成对记录。",
+        )
+    if checked_manifest.source_cosine_threshold is not None:
+        expected_runtime_score = 1.0 / (2.0 - checked_manifest.source_cosine_threshold)
+        if (
+            checked_manifest.retrieval_score_semantics != "normalized_similarity"
+            or checked_manifest.score_conversion != NORMALIZED_SCORE_CONVERSION
+            or abs(checked_manifest.minimum_score - expected_runtime_score) > 0.000001
+        ):
+            raise ProductionCorpusNotReady(
+                "CORPUS_SCORE_METADATA_INVALID",
+                "医学语料清单的来源阈值与运行时阈值换算不一致。",
+            )
+    if checked_manifest.corpus_checksum is not None:
+        if corpus_payload is not None and checked_manifest.corpus_checksum != _content_checksum(
+            corpus_payload, "content_checksum"
+        ):
+            raise ProductionCorpusNotReady(
+                "CORPUS_CHECKSUM_MISMATCH",
+                "医学语料包校验和不匹配。",
+            )
 
     if (
         checked_manifest.embedding_model != "text-embedding-v4"
@@ -120,7 +150,32 @@ def validate_production_corpus(
                 "CORPUS_VERSION_MISMATCH",
                 "医学语料块版本与清单不一致。",
             )
+        if (
+            checked_manifest.medical_review_version is not None
+            and chunk.medical_review_version != checked_manifest.medical_review_version
+        ):
+            raise ProductionCorpusNotReady(
+                "CORPUS_MEDICAL_REVIEW_VERSION_MISMATCH",
+                "医学语料块审核版本与清单不一致。",
+            )
         validated_chunks.append(chunk)
+
+    if checked_manifest.chunk_checksums is not None:
+        expected_checksums = [
+            {
+                "chunk_id": chunk.chunk_id,
+                "content_checksum": chunk.content_checksum,
+            }
+            for chunk in validated_chunks
+        ]
+        actual_checksums = [
+            item.model_dump(mode="json") for item in checked_manifest.chunk_checksums
+        ]
+        if actual_checksums != expected_checksums:
+            raise ProductionCorpusNotReady(
+                "CORPUS_CHUNK_CHECKSUM_MANIFEST_MISMATCH",
+                "医学语料清单未完整绑定语料块校验和。",
+            )
 
     all_labels_empty = bool(validated_chunks) and all(
         not chunk.claim_codes and not chunk.organ_codes for chunk in validated_chunks
@@ -163,6 +218,7 @@ def load_production_corpus(
             "CORPUS_NOT_PRODUCTION_APPROVED",
             "候选医学语料尚未获得生产放行。",
         )
+    corpus_payload = chunks_payload if isinstance(chunks_payload, Mapping) else None
     if isinstance(chunks_payload, Mapping):
         chunks_payload = chunks_payload.get("chunks")
     if not isinstance(manifest_payload, Mapping) or not isinstance(chunks_payload, list):
@@ -178,4 +234,8 @@ def load_production_corpus(
             "CORPUS_FILES_INVALID",
             "医学语料文件内容无效。",
         ) from error
-    return validate_production_corpus(manifest, chunks), chunks
+    return validate_production_corpus(
+        manifest,
+        chunks,
+        corpus_payload=corpus_payload,
+    ), chunks
