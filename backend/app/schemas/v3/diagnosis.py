@@ -73,28 +73,108 @@ class KnowledgeChunk(V3BaseModel):
     chunk_id: NonEmptyString
     source_id: NonEmptyString
     source_title: NonEmptyString
+    source_reference: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    source_content_hash: Annotated[str, Field(pattern=r"^sha256:.+")] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     section: NonEmptyString
     text: NonEmptyString
     display_summary: NonEmptyString
     claim_codes: list[NonEmptyString]
     organ_codes: list[OrganCode]
     review_status: Literal["approved"]
+    source_registry_review_status: Literal["medically_reviewed"] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    source_registry_reviewed_at: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    source_registry_reviewer: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     medical_review_version: NonEmptyString
     knowledge_version: NonEmptyString
     content_checksum: Annotated[str, Field(pattern=r"^sha256:.+")]
 
 
+class IngestionChunkChecksum(V3BaseModel):
+    chunk_id: NonEmptyString
+    content_checksum: Annotated[str, Field(pattern=r"^sha256:.+")]
+
+
 class IngestionManifest(V3BaseModel):
+    schema_id: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    schema_version: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     knowledge_version: NonEmptyString
+    source_registry_path: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    source_registry_checksum: Annotated[str, Field(pattern=r"^sha256:.+")] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    corpus_path: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    corpus_checksum: Annotated[str, Field(pattern=r"^sha256:.+")] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    medical_review_version: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    medical_rule_version: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     embedding_provider: NonEmptyString
     embedding_model: NonEmptyString
+    embedding_dimension: Literal[1024] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     embedding_version: NonEmptyString
     distance_metric: NonEmptyString
     retrieval_score_semantics: NonEmptyString
+    source_cosine_threshold: Score01 | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    score_conversion: NonEmptyString | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     minimum_score: Score01
     chunk_count: Annotated[int, Field(ge=0)]
+    chunk_checksums: list[IngestionChunkChecksum] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     manifest_checksum: Annotated[str, Field(pattern=r"^sha256:.+")]
     review_status: Literal["approved"]
+    index_status: Literal["NOT_BUILT_OWNER_PENDING"] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    label_semantics: Literal[
+        "claim_codes_and_organ_codes_intentionally_empty_by_medical_review"
+    ] | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class RagQuery(V3BaseModel):

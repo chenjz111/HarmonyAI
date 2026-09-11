@@ -86,7 +86,7 @@ _OPERATION = "create_v3_assessment"
 def _approved_questionnaire_manifest() -> dict | None:
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[4] / "knowledge" / "v3" / "questionnaire-v3.0.json"
+    path = Path(__file__).resolve().parents[4] / "knowledge" / "v3" / "questionnaire-v3.0.1.json"
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):

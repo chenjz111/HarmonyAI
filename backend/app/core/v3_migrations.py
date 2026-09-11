@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 from pathlib import Path
+import re
 
 from sqlalchemy import event, inspect
 from sqlalchemy.engine import Engine
@@ -14,6 +15,12 @@ V3_MIGRATION_VERSIONS = [
     "0001_v3_foundation",
     "0002_v3_business",
     "0003_v3_owner_flow",
+    "0004_v3_multidoc",
+    "0005_v3_relevance",
+    "0006_v3_doc_fk",
+    "0007_v3_prescription_mode",
+    "0008_v3_prescription_user_goal_snapshot",
+    "0009_v3_five_tone_read_model",
 ]
 
 _REQUIRED_TABLES = {
@@ -55,6 +62,11 @@ _REQUIRED_TABLES = {
     "favorites",
     # 0003 owner flow amendment (session activity audit)
     "session_input_revisions",
+    # 0004 multi-document (document set)
+    "document_sets",
+    "document_set_items",
+    # 0005 document relevance
+    "document_relevances",
 }
 
 
@@ -127,6 +139,34 @@ def _has_owner_flow_session_columns(engine: Engine) -> bool:
     }
 
 
+def _render_sqlite_five_tone_migration(engine: Engine, sql: str) -> str:
+    """Skip already-present 0009 columns in model-created local schemas.
+
+    ``init_database`` creates the current SQLAlchemy model schema before it
+    applies versioned migrations. A fresh local database can therefore already
+    contain some or all of the nullable 0009 columns. The source SQL checksum
+    remains unchanged; only execution omits duplicate ADD COLUMN statements.
+    Legacy databases still execute every missing ADD COLUMN normally.
+    """
+    if "diagnosis_runs" not in inspect(engine).get_table_names():
+        return sql
+
+    present = {
+        column["name"]
+        for column in inspect(engine).get_columns("diagnosis_runs")
+    }
+    rendered_lines: list[str] = []
+    add_column = re.compile(
+        r"^ALTER TABLE diagnosis_runs ADD COLUMN (?P<name>[A-Za-z0-9_]+)"
+    )
+    for line in sql.splitlines():
+        match = add_column.match(line.strip())
+        if match and match.group("name") in present:
+            continue
+        rendered_lines.append(line)
+    return "\n".join(rendered_lines)
+
+
 def _enable_sqlite_foreign_keys(engine: Engine) -> None:
     if getattr(engine, "_harmonyai_v3_fk_listener", False):
         return
@@ -185,6 +225,8 @@ def _apply_sqlite_migration(
                 rendered = _remove_marked_block(rendered, "V3_SESSION_UPGRADE")
         if session_owner_flow and _has_owner_flow_session_columns(engine):
             rendered = _remove_marked_block(rendered, "V3_OWNER_FLOW_SESSION")
+        if version == "0009_v3_five_tone_read_model":
+            rendered = _render_sqlite_five_tone_migration(engine, rendered)
         raw.executescript(rendered)
         cursor.execute(
             "INSERT INTO schema_migrations (version, checksum) VALUES (?, ?)",
