@@ -1,6 +1,8 @@
 # Agent4 TokenHub / MiniMax Music 真实 Provider — Smoke 说明（Sprint 5）
 
 > 状态：**当前 Sprint 5 正式真实 Provider**
+> **真实 Smoke：2026-09-11 SUCCESS**（HTTP 200 / Provider succeeded / 单次 POST / 重试 0 /
+> 音频落盘 / Provider 时长与本地实测一致）——详见下文「Owner 真实 Smoke 结果」
 > 分支/PR：`feat/s5-v3.1-agent4-minimax` → PR #120（Draft，不 Merge）
 > Provider：Tencent Cloud TokenHub / MiniMax
 > Endpoint：`POST https://tokenhub.tencentmaas.com/v1/wand/minimax-music/generation`
@@ -142,28 +144,88 @@ response_is_json=.. transport_error=<异常类型>`；不打印 Key、请求体�
 
 退出码：`0` 成功；`2` 配置缺失（readiness）；`3` Provider 真实失败；`4` 脚本错误。
 
+## Owner 真实 Smoke 结果（2026-09-11：SUCCESS）
+
+| 项 | 结果 |
+| --- | --- |
+| Owner 执行日期 | 2026-09-11 |
+| RESULT | **SUCCESS** |
+| HTTP status | **200** |
+| Provider | Tencent Cloud TokenHub |
+| Model | `minimax-music-v3.0` |
+| Provider status | **succeeded** |
+| Generation POST count | **1**（自动重试 **0**） |
+| Download calls | **1** |
+| Audio returned | YES（MP3） |
+| Audio size | 957,325 bytes |
+| Provider `music_duration` | 238,994 ms = **238.994 s** |
+| 本地 MP3 探针实测 | **238.99428571428572 s** |
+| Provider 与本地实测 | **一致** |
+| 自有音频资产落盘 | 成功 |
+| Mock fallback | **未使用** |
+| `source_type` | 预期 `generated`（Smoke 工具不查询 DB；E2E 测试已覆盖该字段） |
+| `total_tokens` / 精确费用 | **UNKNOWN**（Provider 未返回 tokens，未做任何推测） |
+| API Key | 未打印、未写入仓库 |
+
+### 验证状态
+
+- **成功响应兼容：PASS**（HTTP 200 / Provider succeeded / 单次 POST / 重试 0）
+- **音频保存：PASS**（url 响应立即下载，1 次下载，落盘为自有 Audio Asset）
+- **时长验证：PASS**（Provider 238.994 s 与本地探针 238.99428571… s 一致；两种来源互相印证）
+
+### 时长真实性（不得声明精确时长控制）
+
+- 本次请求的 `duration_seconds=60` **仅为 Prompt 目标时长**，不是 Provider 保证值；
+- 实际生成约 **239 秒（≈4 分钟）**；
+- TokenHub / MiniMax Music **不提供精确时长控制字段**，本 PR 不声称 Provider 支持按秒精确控制；
+- 入库与 Player 展示始终使用**保存音频的本地实测时长**（Provider 的 238.994 s 仅作对照元数据）。
+
+### Owner 人工试听结论（本次样本）
+
+| 项 | 结论 |
+| --- | --- |
+| 无人声 | **PASS** |
+| 古琴 | 明显 |
+| 箫 | 较弱，但可辨识、不影响验收 |
+| 整体氛围 | 舒缓，符合放松方向 |
+| 明显噪声或异常 | 无 |
+| 时长（≈4 分钟） | 可接受 |
+| 人工试听结论 | **PASS** |
+
+> 边界说明：该结论仅证明**本次样本**的音乐表现可接受，**不得**扩展为 Provider 每次都能稳定还原
+> 相同乐器或效果；跨样本稳定性仍需后续样本累积验证。
+
 ## 验收清单
 
-- [ ] 单次真实生成成功；`POST count = 1`（自动重试 0），不重复计费。
-- [ ] 模型为 `minimax-music-v3.0`（精确匹配），Base URL 为官方主机。
-- [ ] 规则资产中文乐器（古琴/箫/琵琶/笛/埙）能规范化并成功生成；未映射乐器显式失败。
-- [ ] `无额外环境音` 不出现在 prompt；有真实环境音时仅渲染真实项。
-- [ ] prompt 中时长为 target 表述；请求体无 duration 字段；入库/展示时长为文件实测。
-- [ ] `source_type=generated` + `provider=tokenhub/minimax-music-v3.0` 落库。
-- [ ] hex 与 url 两种响应都能落盘为自有 MP3（url 场景 `download calls = 1`）。
-- [ ] url 非 HTTPS / 内网地址 / 超 25 MiB / 跳转到 HTTP 或内网 → 全部显式失败且不落盘。
-- [ ] `music_duration` 毫秒→秒转换正确；入库时长为文件实测值。
-- [ ] `401/403、429、5xx、额度/参数类 base_resp、超时、空音频`均显式失败。
-- [ ] `matched_fallback` 仅来自本地审核曲库（`source_type=matched`），不冒充 generated。
-- [ ] Player 走受控 stream；DB/Player 不保存 Provider 临时 URL。
-- [ ] 记录 trace_id / request_id / total_tokens / 延迟 / 费用；不记录 Secret。
+- [x] 单次真实生成成功；`POST count = 1`（自动重试 0），不重复计费。
+- [x] 模型为 `minimax-music-v3.0`（精确匹配），Base URL 为官方主机。
+- [x] 规则资产中文乐器（古琴/箫）本次 Smoke 走规范化路径并被 Provider 接受；未映射乐器显式失败（单测覆盖）。
+- [x] `无额外环境音` 不出现在 prompt；有真实环境音时仅渲染真实项（单测覆盖）。
+- [x] prompt 中时长为 target 表述；请求体无 duration 字段；入库/展示时长为文件实测（真实 Smoke 已验证实测维度）。
+- [ ] `source_type=generated` + `provider=tokenhub/minimax-music-v3.0` 落库（E2E 测试已覆盖，真实链路 DB 查询待补）。
+- [x] url 响应落盘为自有 MP3（真实 Smoke：`download calls = 1`）；hex 路径由单测覆盖。
+- [x] url 非 HTTPS / 内网地址 / 超 25 MiB / 跳转到 HTTP 或内网 → 全部显式失败且不落盘（单测覆盖）。
+- [x] `music_duration` 毫秒→秒转换正确（238,994 ms → 238.994 s）；入库时长为文件实测值。
+- [x] `401/403、429、5xx、额度/参数类 base_resp、超时、空音频`均显式失败（单测覆盖）。
+- [x] `matched_fallback` 仅来自本地审核曲库（`source_type=matched`），不冒充 generated（E2E 覆盖）。
+- [x] Player 走受控 stream；DB/Player 不保存 Provider 临时 URL。
+- [ ] `total_tokens` / 精确费用记录（Provider 未返回 → UNKNOWN）。
 
-## 仍需 Owner 确认
+## Remaining Blockers
 
-1. 真实请求字段与 `minimax-music-v3.0` 模型在 TokenHub 侧的实际可用性（首次真实生成验证）。
-2. 实际时长上限（当前 `max_duration_seconds=300`，超出即显式失败）。
-3. `usage.total_tokens` 的计费口径与实际费用；单次生成成本记录。
-4. 五音/古琴等乐器还原度。
+1. **H5 / Android Player 真机播放验收**：尚未验证（需前端联调侧在真机通过受控
+   `/api/v3/music/assets/{id}/stream` 播放本次生成的资产）。
+2. **人工试听正式验收记录**：本次样本已 PASS（见上表），但仍需按验收流程留档，并累积更多样本后再下稳定性结论。
+3. `usage.total_tokens` 与精确费用：**UNKNOWN**（Provider 未返回，不做推测）。
+4. 真实链路 DB 抽查：确认真实 Smoke 产生 `source_type=generated` 且
+   `provider=tokenhub/minimax-music-v3.0`（自动化 E2E 已覆盖，真实链路未查）。
+
+## 已由真实 Smoke 关闭的确认项
+
+1. ~~真实请求字段与 `minimax-music-v3.0` 模型在 TokenHub 侧的实际可用性~~ → **已确认可用（2026-09-11 SUCCESS）**。
+2. 实际时长上限：当前项目内部上限 `max_duration_seconds=300`；本次实际生成 ≈239 s，
+   **未探测到上限边界**，上限仍属项目内部约束（非 Provider 已确认能力）。
+3. 五音/古琴等乐器还原度：本次样本古琴明显、箫较弱但可辨识（仅样本级结论）。
 
 ## 测试
 
