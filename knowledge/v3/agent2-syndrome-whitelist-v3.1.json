@@ -1,0 +1,74 @@
+{
+  "schema_id": "agent2_syndrome_whitelist_v3_1",
+  "schema_version": "3.1.0",
+  "review_status": "MEDICALLY_APPROVED",
+  "reviewer": "nob（肖宇翔，Medical Knowledge Engineer）",
+  "reviewed_at": "2026-09-09",
+  "usage_boundary": "Agent2 structured-output allowlist only; not a diagnosis, scoring rule, questionnaire mapping, or treatment claim.",
+  "allowed_syndromes": [
+    {
+      "stable_code": "syd_001",
+      "english_alias": "liver_stagnation_heat",
+      "display_name": "肝郁化火倾向",
+      "medical_meaning": "肝失疏泄、气机郁滞化火；可见烦躁易怒、口苦胁胀等中医理论表现。",
+      "supported_evidence_scope": ["怒或烦躁类情绪信号", "胁肋胀闷类身体信号", "压力相关资料事实"],
+      "insufficient_evidence_action": "abstain"
+    },
+    {
+      "stable_code": "syd_002",
+      "english_alias": "liver_qi_stagnation",
+      "display_name": "肝气郁结倾向",
+      "medical_meaning": "情志不遂、肝气郁滞；可见善太息、胸胁胀闷等中医理论表现。",
+      "supported_evidence_scope": ["情绪低落或思虑类信号", "胁肋不舒", "情志诱因背景"],
+      "insufficient_evidence_action": "abstain"
+    },
+    {
+      "stable_code": "syd_003",
+      "english_alias": "heart_fire_flare",
+      "display_name": "心火上炎倾向",
+      "medical_meaning": "心火亢盛上扰；可见心烦失眠、口舌生疮等中医理论表现。",
+      "supported_evidence_scope": ["烦躁或兴奋难静类信号", "睡眠类信号", "心系身体信号"],
+      "insufficient_evidence_action": "abstain"
+    },
+    {
+      "stable_code": "syd_004",
+      "english_alias": "heart_spleen_deficiency",
+      "display_name": "心脾两虚倾向",
+      "medical_meaning": "思虑伤脾、心血不足；可见多梦健忘、食少倦怠等中医理论表现。",
+      "supported_evidence_scope": ["思虑过度类信号", "睡眠类信号", "食欲与精力类信号并见"],
+      "insufficient_evidence_action": "abstain"
+    },
+    {
+      "stable_code": "syd_005",
+      "english_alias": "spleen_deficiency_dampness",
+      "display_name": "脾虚湿困倾向",
+      "medical_meaning": "脾气虚、运化失司、湿邪困阻；可见腹胀便溏、身重等中医理论表现。",
+      "supported_evidence_scope": ["消化类信号", "身体沉重类信号", "倦怠类信号"],
+      "insufficient_evidence_action": "abstain"
+    },
+    {
+      "stable_code": "syd_006",
+      "english_alias": "lung_qi_deficiency",
+      "display_name": "肺气虚倾向",
+      "medical_meaning": "肺气不足、卫外不固；可见气短声低、易疲等中医理论表现。",
+      "supported_evidence_scope": ["呼吸类身体信号", "声音相关身体信号", "精力类信号"],
+      "insufficient_evidence_action": "abstain"
+    },
+    {
+      "stable_code": "syd_007",
+      "english_alias": "kidney_yin_deficiency",
+      "display_name": "肾阴不足倾向",
+      "medical_meaning": "肾阴亏虚、失于濡养；可见腰膝酸软、耳鸣、五心烦热等中医理论表现。",
+      "supported_evidence_scope": ["腰膝类身体信号", "耳鸣类身体信号", "长期耗损背景"],
+      "insufficient_evidence_action": "abstain"
+    },
+    {
+      "stable_code": "syd_008",
+      "english_alias": "heart_kidney_discordance",
+      "display_name": "心肾不交倾向",
+      "medical_meaning": "心火亢于上、肾水亏于下；可见心烦不寐与腰膝酸软并见等中医理论表现。",
+      "supported_evidence_scope": ["心系失眠或心烦信号", "肾系腰膝或耳鸣信号", "两类信号并存"],
+      "insufficient_evidence_action": "abstain"
+    }
+  ]
+}
