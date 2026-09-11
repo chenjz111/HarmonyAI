@@ -56,6 +56,7 @@ async def test_async_qwen_provider_returns_json_and_usage_metadata():
     assert response.attempts == 1
     assert calls[0][0] == "https://qwen.example/chat/completions"
     assert calls[0][1]["Authorization"] == "Bearer test-key"
+    assert calls[0][2]["enable_thinking"] is False
 
 
 @pytest.mark.asyncio

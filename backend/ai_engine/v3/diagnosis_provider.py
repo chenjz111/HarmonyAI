@@ -75,11 +75,17 @@ class DiagnosisProvider:
         rag_chunk_ids: Sequence[str],
         rag_context: Sequence[Mapping[str, object]] | None = None,
     ) -> tuple[DiagnosisProviderResponse, int]:
+        response_schema = json.dumps(
+            DiagnosisProviderResponse.model_json_schema(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         system_prompt = (
             "Return one JSON object matching DiagnosisProviderResponse. "
             "Candidates are advisory and must use only the supplied approved "
             "syndrome, fact, and knowledge-chunk identifiers. Do not create "
-            "facts, citations, organs, tones, prescriptions, or diagnoses."
+            "facts, citations, organs, tones, prescriptions, or diagnoses. "
+            f"Required JSON Schema: {response_schema}"
         )
         payload = {
             "request": _safe_model_dump(request),

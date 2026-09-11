@@ -144,6 +144,7 @@ class QwenCompatibleProvider:
                 "model": self.model,
                 "temperature": 0,
                 "response_format": {"type": "json_object"},
+                "enable_thinking": False,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},

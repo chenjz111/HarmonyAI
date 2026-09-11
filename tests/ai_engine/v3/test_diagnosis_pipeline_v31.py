@@ -286,6 +286,9 @@ def test_diagnosis_provider_repairs_schema_once_then_accepts_grounded_response()
     assert result.status == "success"
     assert len(backend.calls) == 2
     assert "corrected" in backend.calls[1][0]
+    assert '"candidate_tendencies"' in backend.calls[0][0]
+    assert '"syndrome_code"' in backend.calls[0][0]
+    assert '"abstained"' in backend.calls[0][0]
 
 
 def test_diagnosis_provider_maps_provider_failure_without_user_text():
