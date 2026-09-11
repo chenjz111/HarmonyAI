@@ -20,6 +20,19 @@ def _fixture():
     )
 
 
+def test_real_smoke_fixture_uses_a_directly_supported_approved_corpus_signal():
+    fixture = _fixture()
+    state = fixture["confirmed_user_state"]
+    snapshot = fixture["assessment_snapshot"]
+
+    assert state["normalized_projection"][0]["claim_code"] == "anger_tendency"
+    assert snapshot["organ_codes"] == ["liver"]
+    assert snapshot["approved_organ_codes"] == ["liver"]
+    assert snapshot["claim_codes"] == ["anger_tendency"]
+    assert snapshot["approved_claim_codes"] == ["anger_tendency"]
+    assert snapshot["facts"][0]["claim_code"] == "anger_tendency"
+
+
 def test_smoke_runs_fake_embedding_chroma_qwen_chain_with_safe_output():
     from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
     from backend.ai_engine.v3.real_provider_smoke import run_real_provider_smoke

@@ -77,6 +77,11 @@ class DiagnosisProvider:
         rag_chunk_ids: Sequence[str],
         rag_context: Sequence[Mapping[str, object]] | None = None,
     ) -> tuple[DiagnosisProviderResponse, int]:
+        response_schema = json.dumps(
+            DiagnosisProviderResponse.model_json_schema(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
         system_prompt = (
             "Return one JSON object matching DiagnosisProviderResponse. "
             "Candidates are advisory and must use only the supplied approved "
@@ -88,7 +93,8 @@ class DiagnosisProvider:
             "Never invent, normalize, translate, rewrite, infer, or replace a "
             "fact ID with a claim code, Chinese name, display name, array "
             "position, or user text. If no exact fact ID supports or contradicts "
-            "a candidate, use an empty list; never fabricate a reference."
+            "a candidate, use an empty list; never fabricate a reference. "
+            f"Required JSON Schema: {response_schema}"
         )
         payload = {
             "request": _safe_model_dump(request),

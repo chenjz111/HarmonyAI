@@ -16,8 +16,8 @@
     "normalized_projection": [
       {
         "fact_id": "fact_1",
-        "claim_code": "unrefreshing_sleep",
-        "display_text": "approved fact fixture",
+        "claim_code": "anger_tendency",
+        "display_text": "synthetic anger tendency fixture",
         "source_refs": ["smoke_qres_1:q01"]
       }
     ],
@@ -33,17 +33,17 @@
     "session_id": "smoke_session_1",
     "assessment_id": "smoke_assessment_1",
     "assessment_revision": 1,
-    "organ_codes": ["heart"],
-    "approved_organ_codes": ["heart"],
-    "claim_codes": ["unrefreshing_sleep"],
-    "approved_claim_codes": ["unrefreshing_sleep"],
+    "organ_codes": ["liver"],
+    "approved_organ_codes": ["liver"],
+    "claim_codes": ["anger_tendency"],
+    "approved_claim_codes": ["anger_tendency"],
     "supporting_fact_ids": ["fact_1"],
     "contradicting_fact_ids": [],
-    "organ_weights": {"heart": 1.0},
+    "organ_weights": {"liver": 1.0},
     "facts": [
       {
         "fact_evidence_id": "fact_1",
-        "claim_code": "unrefreshing_sleep",
+        "claim_code": "anger_tendency",
         "value": {"type": "frequency_0_4", "value": 3},
         "direction": "supporting",
         "time_window": "past_7_days"
