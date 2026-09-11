@@ -141,6 +141,136 @@ def test_diagnosis_response_requires_approved_syndrome_and_evidence_references()
         )
 
 
+def test_diagnosis_response_reports_only_safe_details_for_unknown_supporting_fact():
+    from backend.ai_engine.v3.diagnosis_pipeline import (
+        DiagnosisPipelineFailure,
+        validate_diagnosis_provider_response,
+    )
+
+    with pytest.raises(DiagnosisPipelineFailure, match="FACT_REFERENCE_INVALID") as caught:
+        validate_diagnosis_provider_response(
+            _provider_response(fact_id="fact_unknown"),
+            allowed_syndrome_codes={"syndrome_1"},
+            allowed_fact_ids={"fact_1", "fact_2"},
+            allowed_chunk_ids={"chunk_1"},
+        )
+
+    assert caught.value.safe_diagnostics == {
+        "error_code": "FACT_REFERENCE_INVALID",
+        "invalid_fact_ids": ["fact_unknown"],
+        "allowed_fact_ids": ["fact_1", "fact_2"],
+    }
+
+
+def test_diagnosis_response_reports_only_safe_details_for_unknown_contradicting_fact():
+    from backend.app.schemas.v3.diagnosis import ProviderCandidateTendency
+    from backend.ai_engine.v3.diagnosis_pipeline import (
+        DiagnosisPipelineFailure,
+        validate_diagnosis_provider_response,
+    )
+
+    response = _provider_response().model_copy(deep=True)
+    candidate_payload = response.candidate_tendencies[0].model_dump(mode="json")
+    candidate_payload.update(
+        supporting_fact_ids=[],
+        contradicting_fact_ids=["fact_unknown"],
+    )
+    response.candidate_tendencies[0] = ProviderCandidateTendency(
+        **candidate_payload,
+    )
+
+    with pytest.raises(DiagnosisPipelineFailure, match="FACT_REFERENCE_INVALID") as caught:
+        validate_diagnosis_provider_response(
+            response,
+            allowed_syndrome_codes={"syndrome_1"},
+            allowed_fact_ids={"fact_1", "fact_2"},
+            allowed_chunk_ids={"chunk_1"},
+            fact_directions={"fact_1": "supporting", "fact_2": "contradicting"},
+        )
+
+    assert caught.value.safe_diagnostics == {
+        "error_code": "FACT_REFERENCE_INVALID",
+        "invalid_fact_ids": ["fact_unknown"],
+        "allowed_fact_ids": ["fact_1", "fact_2"],
+    }
+
+
+def test_diagnosis_response_accepts_exact_supporting_and_contradicting_fact_references():
+    from backend.app.schemas.v3.diagnosis import ProviderCandidateTendency
+    from backend.ai_engine.v3.diagnosis_pipeline import validate_diagnosis_provider_response
+
+    response = _provider_response().model_copy(deep=True)
+    candidate_payload = response.candidate_tendencies[0].model_dump(mode="json")
+    candidate_payload.update(
+        supporting_fact_ids=["fact_1"],
+        contradicting_fact_ids=["fact_2"],
+    )
+    response.candidate_tendencies[0] = ProviderCandidateTendency(
+        **candidate_payload,
+    )
+
+    checked = validate_diagnosis_provider_response(
+        response,
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1", "fact_2"},
+        allowed_chunk_ids={"chunk_1"},
+        fact_directions={"fact_1": "supporting", "fact_2": "contradicting"},
+    )
+
+    assert checked == response
+
+
+def test_diagnosis_response_accepts_candidate_with_empty_fact_references():
+    from backend.app.schemas.v3.diagnosis import (
+        DiagnosisProviderResponse,
+        ProviderCandidateTendency,
+    )
+    from backend.ai_engine.v3.diagnosis_pipeline import validate_diagnosis_provider_response
+
+    response = DiagnosisProviderResponse(
+        status="success",
+        candidate_tendencies=[
+            ProviderCandidateTendency(
+                syndrome_code="syndrome_1",
+                display_name="safe tendency",
+                relative_support=0.8,
+                supporting_fact_ids=[],
+                contradicting_fact_ids=[],
+                knowledge_chunk_ids=["chunk_1"],
+                reasoning_summary="grounded summary",
+            )
+        ],
+        abstained=False,
+        abstain_reason=None,
+    )
+
+    assert validate_diagnosis_provider_response(
+        response,
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    ) == response
+
+
+def test_diagnosis_response_accepts_abstain_without_fact_references():
+    from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse
+    from backend.ai_engine.v3.diagnosis_pipeline import validate_diagnosis_provider_response
+
+    response = DiagnosisProviderResponse(
+        status="abstained",
+        candidate_tendencies=[],
+        abstained=True,
+        abstain_reason="evidence_insufficient",
+    )
+
+    assert validate_diagnosis_provider_response(
+        response,
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    ) == response
+
+
 def test_diagnosis_response_rejects_duplicate_evidence_references():
     from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse, ProviderCandidateTendency
     from backend.ai_engine.v3.diagnosis_pipeline import (
@@ -396,6 +526,127 @@ def test_diagnosis_provider_sends_only_current_approved_rag_content_to_qwen():
         }
     ]
     assert "whole corpus" not in json.dumps(backend.payload, ensure_ascii=False)
+
+
+def test_diagnosis_provider_requires_exact_fact_evidence_id_copying_in_prompt():
+    import json
+
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
+
+    class Backend:
+        def __init__(self):
+            self.system_prompt = None
+            self.payload = None
+
+        async def acomplete_json(self, system_prompt, user_prompt):
+            self.system_prompt = system_prompt
+            self.payload = json.loads(user_prompt)
+            return _provider_response().model_dump(mode="json")
+
+    backend = Backend()
+    provider = DiagnosisProvider(
+        backend=backend,
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+
+    result = __import__("asyncio").run(
+        provider.acomplete_json(
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[
+                {
+                    "fact_evidence_id": "fact_1",
+                    "claim_code": "approved_claim",
+                    "direction": "supporting",
+                }
+            ],
+            rag_chunk_ids=["chunk_1"],
+        )
+    )
+
+    assert result.status == "success"
+    assert "fact_evidence_id" in backend.system_prompt
+    assert "character-for-character" in backend.system_prompt
+    assert "Chinese name" in backend.system_prompt
+    assert backend.payload["allowed_fact_ids"] == ["fact_1"]
+
+
+def test_diagnosis_execution_propagates_safe_fact_reference_diagnostics_only():
+    import asyncio
+    import json
+
+    from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
+
+    class Backend:
+        async def acomplete_json(self, system_prompt, user_prompt):
+            del system_prompt, user_prompt
+            return _provider_response(fact_id="fact_unknown").model_dump(
+                mode="json"
+            )
+
+    provider = DiagnosisProvider(
+        backend=Backend(),
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1", "fact_2"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+    result = asyncio.run(
+        execute_diagnosis_provider(
+            provider=provider,
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=["fact_1"],
+            rag_result=_rag_result(),
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.reason_code == "FACT_REFERENCE_INVALID"
+    assert result.safe_diagnostics == {
+        "error_code": "FACT_REFERENCE_INVALID",
+        "invalid_fact_ids": ["fact_unknown"],
+        "allowed_fact_ids": ["fact_1", "fact_2"],
+    }
+    assert "private" not in json.dumps(result.safe_diagnostics)
+
+
+def test_diagnosis_execution_preserves_provider_abstain_after_provider_call():
+    import asyncio
+
+    from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
+
+    class Backend:
+        async def acomplete_json(self, system_prompt, user_prompt):
+            del system_prompt, user_prompt
+            return {
+                "status": "abstained",
+                "candidate_tendencies": [],
+                "abstained": True,
+                "abstain_reason": "evidence_insufficient",
+            }
+
+    provider = DiagnosisProvider(
+        backend=Backend(),
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+    result = asyncio.run(
+        execute_diagnosis_provider(
+            provider=provider,
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=["fact_1"],
+            rag_result=_rag_result(),
+        )
+    )
+
+    assert result.status == "abstained"
+    assert result.reason_code == "evidence_insufficient"
+    assert result.provider_run_id is not None
+    assert result.attempts == 1
+    assert result.safe_diagnostics == {}
 
 
 def test_diagnosis_execution_rejects_unapproved_rag_hit_without_calling_qwen():

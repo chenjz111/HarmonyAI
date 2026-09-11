@@ -49,11 +49,13 @@ class V31PipelineBlocked(ValueError):
         *,
         audit_context: "V31PipelineAuditContext | None" = None,
         retryable: bool = False,
+        safe_diagnostics: Mapping[str, object] | None = None,
     ) -> None:
         self.error_code = error_code
         self.safe_message = safe_message
         self.audit_context = audit_context
         self.retryable = retryable
+        self.safe_diagnostics = dict(safe_diagnostics or {})
         super().__init__(f"{error_code}: {safe_message}")
 
 
@@ -147,6 +149,7 @@ async def execute_v31_ai_pipeline(
             execution.reason_code or "DIAGNOSIS_FAILED",
             audit_context=audit_context,
             retryable=execution.retryable,
+            safe_diagnostics=execution.safe_diagnostics,
         )
     if execution.response is None and execution.status != "abstained":
         raise V31PipelineBlocked("DIAGNOSIS_FAILED", audit_context=audit_context)

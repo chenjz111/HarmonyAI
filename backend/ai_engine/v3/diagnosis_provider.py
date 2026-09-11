@@ -27,11 +27,13 @@ class DiagnosisProviderFailure(RuntimeError):
         *,
         retryable: bool,
         attempts: int = 1,
+        safe_diagnostics: Mapping[str, object] | None = None,
     ) -> None:
         self.error_code = error_code
         self.safe_message = safe_message
         self.retryable = retryable
         self.attempts = max(0, int(attempts))
+        self.safe_diagnostics = dict(safe_diagnostics or {})
         super().__init__(f"{error_code}: {safe_message}")
 
 
@@ -79,7 +81,14 @@ class DiagnosisProvider:
             "Return one JSON object matching DiagnosisProviderResponse. "
             "Candidates are advisory and must use only the supplied approved "
             "syndrome, fact, and knowledge-chunk identifiers. Do not create "
-            "facts, citations, organs, tones, prescriptions, or diagnoses."
+            "facts, citations, organs, tones, prescriptions, or diagnoses. "
+            "supporting_fact_ids and contradicting_fact_ids are opaque fact "
+            "evidence identifiers: copy them character-for-character from the "
+            "provided facts[].fact_evidence_id values and allowed_fact_ids. "
+            "Never invent, normalize, translate, rewrite, infer, or replace a "
+            "fact ID with a claim code, Chinese name, display name, array "
+            "position, or user text. If no exact fact ID supports or contradicts "
+            "a candidate, use an empty list; never fabricate a reference."
         )
         payload = {
             "request": _safe_model_dump(request),
@@ -138,6 +147,7 @@ class DiagnosisProvider:
                     error.safe_message,
                     retryable=False,
                     attempts=attempts_used,
+                    safe_diagnostics=error.safe_diagnostics,
                 ) from None
             except ValidationError:
                 if attempt == 1:

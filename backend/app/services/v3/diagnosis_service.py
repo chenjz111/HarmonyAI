@@ -109,11 +109,13 @@ class V31PipelineFailure(RuntimeError):
         *,
         audit_context: V31PipelineAuditContext | None = None,
         retryable: bool = False,
+        safe_diagnostics: Mapping[str, object] | None = None,
     ):
         self.error_code = error_code
         self.safe_message = safe_message
         self.audit_context = audit_context
         self.retryable = retryable
+        self.safe_diagnostics = dict(safe_diagnostics or {})
         self.request_id: str | None = None
         super().__init__(f"{error_code}: {safe_message}")
 
@@ -477,11 +479,16 @@ def _run_v31_pipeline(
             error.safe_message,
             audit_context=error.audit_context,
             retryable=error.retryable,
+            safe_diagnostics=error.safe_diagnostics,
         ) from None
     except (DiagnosisPipelineFailure, Agent3Blocked) as error:
         error_code = getattr(error, "error_code", "V31_PIPELINE_FAILED")
         safe_message = getattr(error, "safe_message", "V3.1 AI 链路执行失败。")
-        raise V31PipelineFailure(error_code, safe_message) from None
+        raise V31PipelineFailure(
+            error_code,
+            safe_message,
+            safe_diagnostics=getattr(error, "safe_diagnostics", None),
+        ) from None
 
 
 def _diagnosis_from_v31_pipeline(

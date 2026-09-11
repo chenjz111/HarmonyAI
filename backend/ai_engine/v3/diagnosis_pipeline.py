@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 import inspect
 import json
@@ -28,9 +28,16 @@ from backend.app.schemas.v3.diagnosis import (
 class DiagnosisPipelineFailure(RuntimeError):
     """Safe validation failure for an untrusted provider result."""
 
-    def __init__(self, error_code: str, safe_message: str) -> None:
+    def __init__(
+        self,
+        error_code: str,
+        safe_message: str,
+        *,
+        safe_diagnostics: Mapping[str, object] | None = None,
+    ) -> None:
         self.error_code = error_code
         self.safe_message = safe_message
+        self.safe_diagnostics = dict(safe_diagnostics or {})
         super().__init__(f"{error_code}: {safe_message}")
 
 
@@ -50,6 +57,7 @@ class DiagnosisProviderExecution:
     request_hash: str
     response_hash: str | None
     retryable: bool
+    safe_diagnostics: Mapping[str, object] = field(default_factory=dict)
 
 
 def build_diagnosis_query(snapshot: Mapping[str, object]) -> RagQuery:
@@ -120,15 +128,19 @@ def validate_diagnosis_provider_response(
                 "DUPLICATE_EVIDENCE_REFERENCE",
                 "辨证结果包含重复知识片段引用。",
             )
-        if not set(candidate.supporting_fact_ids) <= allowed_fact_ids:
+        referenced_fact_ids = set(candidate.supporting_fact_ids) | set(
+            candidate.contradicting_fact_ids
+        )
+        invalid_fact_ids = sorted(referenced_fact_ids - allowed_fact_ids)
+        if invalid_fact_ids:
             raise DiagnosisPipelineFailure(
                 "FACT_REFERENCE_INVALID",
                 "辨证结果引用了无效事实。",
-            )
-        if not set(candidate.contradicting_fact_ids) <= allowed_fact_ids:
-            raise DiagnosisPipelineFailure(
-                "FACT_REFERENCE_INVALID",
-                "辨证结果引用了无效事实。",
+                safe_diagnostics={
+                    "error_code": "FACT_REFERENCE_INVALID",
+                    "invalid_fact_ids": invalid_fact_ids,
+                    "allowed_fact_ids": sorted(allowed_fact_ids),
+                },
             )
         if fact_directions is not None:
             for fact_id in candidate.supporting_fact_ids:
@@ -182,6 +194,7 @@ async def execute_diagnosis_provider(
         reason_code: str | None,
         attempts: int = 0,
         retryable: bool = False,
+        safe_diagnostics: Mapping[str, object] | None = None,
     ) -> DiagnosisProviderExecution:
         response_hash = (
             _request_hash(response.model_dump(mode="json"))
@@ -203,6 +216,7 @@ async def execute_diagnosis_provider(
             request_hash=request_hash,
             response_hash=response_hash,
             retryable=retryable,
+            safe_diagnostics=dict(safe_diagnostics or {}),
         )
 
     if rag_result.status == "empty":
@@ -278,6 +292,7 @@ async def execute_diagnosis_provider(
             reason_code=error.error_code,
             attempts=error.attempts,
             retryable=error.retryable,
+            safe_diagnostics=error.safe_diagnostics,
         )
     return execution(
         response.status,
