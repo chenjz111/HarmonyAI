@@ -10,11 +10,14 @@ GOLD = ROOT / "docs" / "sprint5" / "rag-gold-queries-medical-20260909.json"
 WHITELIST_MD = ROOT / "docs" / "sprint5" / "medical-syndrome-whitelist-and-rag-threshold-20260909.md"
 WHITELIST_JSON = ROOT / "knowledge" / "v3" / "agent2-syndrome-whitelist-v3.1.json"
 MEDICAL_RULES = ROOT / "knowledge" / "v3" / "medical-rules-v3.1.json"
-CORPUS = ROOT / "knowledge" / "v3" / "rag-corpus-chunks-v3.1-candidate.json"
+CORPUS = ROOT / "knowledge" / "v3" / "rag-corpus-chunks-v3.1-approved.json"
+INGESTION_MANIFEST = ROOT / "knowledge" / "v3" / "rag-ingestion-manifest-v3.1-approved.json"
 SOURCE_REGISTRY = ROOT / "knowledge" / "v3" / "rag-corpus-manifest-v3.1.json"
 EXPECTED_CHUNKS = [f"v31_src_{i:02d}_scope_001" for i in range(1, 14)]
-EXPECTED_CORPUS_CHECKSUM = "sha256:07d7e064dae853343787c9706c2396240ceb4430caf57039020f2471fa7bc9a0"
+EXPECTED_CORPUS_CHECKSUM = "sha256:fbf2207de75b963d316fc4bc54cb3e8e6c91f475d7766d4b27adec237101961a"
 EXPECTED_REGISTRY_CHECKSUM = "sha256:5096bf8509fea4641fef8ca4965245b04a253b1e0bd3910dd0a6b64bef9afb85"
+EXPECTED_MANIFEST_CHECKSUM = "sha256:4ffef480fd66d38cd8f3cecc96ccce4e1135869cdccbbf7b2162cbf9139a8f76"
+EXPECTED_MEDICAL_REVIEW_VERSION = "medical-review-20260909-r1"
 REQUIRED_FIELDS = ["query_id", "query_text", "relevant_chunk_ids",
                    "irrelevant_chunk_ids", "boundary_chunk_ids", "medical_note"]
 
@@ -98,6 +101,7 @@ def test_08_gold_pins_medically_reviewed_corpus_identity():
     identity = g["reviewed_corpus_identity"]
     corpus = _load(CORPUS)
     registry = _load(SOURCE_REGISTRY)
+    manifest = _load(INGESTION_MANIFEST)
     assert identity["chunk_count"] == len(corpus["chunks"]) == 13
     assert corpus["content_checksum"] == _canonical_checksum(corpus)
     assert registry["content_checksum"] == _canonical_checksum(registry)
@@ -105,6 +109,28 @@ def test_08_gold_pins_medically_reviewed_corpus_identity():
     assert identity["source_registry_checksum"] == registry["content_checksum"] == EXPECTED_REGISTRY_CHECKSUM
     assert corpus["source_registry_checksum"] == registry["content_checksum"]
     assert identity["change_requires_medical_rereview"] is True
+    # Approved 身份三方对账：语料 / ingestion manifest / gold 的版本与 checksum 必须一致
+    assert corpus["review_status"] == "approved"
+    assert corpus["medical_review_version"] == EXPECTED_MEDICAL_REVIEW_VERSION
+    assert manifest["medical_review_version"] == EXPECTED_MEDICAL_REVIEW_VERSION
+    assert identity["medical_review_version"] == EXPECTED_MEDICAL_REVIEW_VERSION
+    assert manifest["corpus_checksum"] == corpus["content_checksum"] == EXPECTED_CORPUS_CHECKSUM
+    assert manifest["manifest_checksum"] == EXPECTED_MANIFEST_CHECKSUM
+    assert identity["ingestion_manifest_checksum"] == manifest["manifest_checksum"]
+    assert manifest["source_registry_checksum"] == registry["content_checksum"]
+    assert identity["corpus_path"] == "knowledge/v3/rag-corpus-chunks-v3.1-approved.json"
+
+
+def test_08c_approved_corpus_ids_and_text_match_reviewed_version():
+    """13 chunk 的 ID/顺序与 gold 声明一致；正文一致性由 approved content_checksum 覆盖。"""
+    corpus = _load(CORPUS)
+    g = _load_gold()
+    ids = [chunk["chunk_id"] for chunk in corpus["chunks"]]
+    assert ids == EXPECTED_CHUNKS == g["chunk_id_set"]
+    assert corpus["chunk_count"] == len(ids) == 13
+    assert all(str(chunk.get("text", "")).strip() for chunk in corpus["chunks"])
+    assert all(chunk.get("claim_codes") == [] and chunk.get("organ_codes") == []
+               for chunk in corpus["chunks"])
 
 
 def test_08b_reviewed_gold_labels_match_medical_decision():

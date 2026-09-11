@@ -1,12 +1,17 @@
 {
   "gold_set_id": "rag_gold_v3_1_medical_20260909",
   "purpose": "医学侧 gold 标注：query vs 13 approved chunks（解释类知识）。仅用于 AI 侧计算相似度分布并提出 minimum_score 候选；不修改问卷/医学规则，不给阈值数值。",
-  "corpus_scope": "knowledge/v3/rag-corpus-chunks-v3.1-candidate.json（src_01..src_13，chunk_id=v31_src_XX_scope_001）",
+  "corpus_scope": "knowledge/v3/rag-corpus-chunks-v3.1-approved.json（src_01..src_13，chunk_id=v31_src_XX_scope_001；medical_review_version=medical-review-20260909-r1）",
   "annotation_rule": "未列入 relevant/boundary 的 chunk 一律视为 irrelevant（逐条仅显式列出最易混淆反例以省篇幅）；boundary=相关但非首要证据或语义模糊。",
   "reviewed_corpus_identity": {
     "chunk_count": 13,
-    "corpus_content_checksum": "sha256:07d7e064dae853343787c9706c2396240ceb4430caf57039020f2471fa7bc9a0",
+    "corpus_path": "knowledge/v3/rag-corpus-chunks-v3.1-approved.json",
+    "corpus_content_checksum": "sha256:fbf2207de75b963d316fc4bc54cb3e8e6c91f475d7766d4b27adec237101961a",
+    "source_registry_path": "knowledge/v3/rag-corpus-manifest-v3.1.json",
     "source_registry_checksum": "sha256:5096bf8509fea4641fef8ca4965245b04a253b1e0bd3910dd0a6b64bef9afb85",
+    "medical_review_version": "medical-review-20260909-r1",
+    "ingestion_manifest_path": "knowledge/v3/rag-ingestion-manifest-v3.1-approved.json",
+    "ingestion_manifest_checksum": "sha256:4ffef480fd66d38cd8f3cecc96ccce4e1135869cdccbbf7b2162cbf9139a8f76",
     "change_requires_medical_rereview": true
   },
   "queries": [

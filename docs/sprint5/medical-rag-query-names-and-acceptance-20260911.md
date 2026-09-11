@@ -2,7 +2,8 @@
 
 > 作者：nob（肖宇翔，Medical Knowledge Engineer）
 > 任务来源：Owner review 指派（支援钟睿宸 AI 侧修复「英文内部 code 不能命中中文语料」的医学语义来源问题）
-> 状态：医学侧核对完成（只读核对 + 验收组合建议；未修改任何资产）
+> 状态：医学侧核对完成（只读核对 + 验收组合建议；未修改任何医学资产）
+> **修订 r1（2026-09-11，按复审意见）**：① 语料身份引用由 candidate 更新为 `rag-corpus-chunks-v3.1-approved.json`（medical_review_version=medical-review-20260909-r1），并补 ingestion manifest 对账；② 修正组合 E 的错误验收标准（不再要求英文查询「必须零命中」，改为对 Query Builder 的结构性断言 + 观察记录）。13 条 chunk 正文与 Gold 标签未作任何改动。
 
 ## 0. 范围与依据
 
@@ -11,7 +12,9 @@
 | knowledge/v3/claim-dictionary-v3.0.json | approved, medical_v3.0 | 9a20931048e775fb |
 | knowledge/v3/organ-mapping-v3.0.json | approved, organ_mapping_v3.0 | 771ca8d799a2df6f |
 | knowledge/v3/five-tone-mapping-v3.0.json | approved | 8f6bd8b91a598920 |
-| knowledge/v3/rag-corpus-chunks-v3.1-candidate.json | PR #118 复核版（13 chunks） | 07d7e064dae85334 |
+| knowledge/v3/rag-corpus-chunks-v3.1-approved.json | approved, 3.1.0-approved-v1（13 chunks，medical_review_version=medical-review-20260909-r1） | fbf2207de75b963d |
+| knowledge/v3/rag-ingestion-manifest-v3.1-approved.json | approved, 3.1.0-ingestion-approved-v1 | 4ffef480fd66d38c |
+| knowledge/v3/rag-corpus-manifest-v3.1.json | source registry（MEDICAL_SOURCE_REGISTRY_ONLY） | 5096bf8509fea464 |
 
 **约束遵守声明**：本文档仅做只读核对与验收组合定义；未新增医学描述，未修改问卷、语料正文或阈值。
 
@@ -121,10 +124,18 @@
 - **示例 query 文本**：「社交退缩 日常影响程度」
 - **预期**：13 chunk 零命中（语料不含行为/功能状态内容）。正确行为 = 返回空结果集，**不得**强行召回低相关 chunk 充数。
 
-### 组合 E（空例 · 英文 code 直查 + 域外词，应返回空）
-- **输入 1**：query 文本直接用英文内部 code：「anger_tendency liver」
-- **输入 2**：query 文本用非医学域词：「运动健身计划」
-- **预期**：两者均零命中。其中输入 1 是本修复的**反向验收锚点**：修复前英文 code 命中不了中文语料（缺陷），修复后 query 改用中文 display_name（组合 A 应命中）；若实现仍把英文 code 拼进 query 文本，组合 A 应转为失败——**组合 A + E 合用可验证 query 构造是否真正切换到了中文命名来源**。
+### 组合 E（验收 · 英文内部 code 查询的处理方式）
+
+> **修正说明（2026-09-11）**：本组合此前的表述要求英文查询「必须零命中」，该标准不可靠——embedding 模型（text-embedding-v4）为多语言模型，英文文本可能与中文语料产生跨语言相似度，命中与否不能作为判断 query 构造是否正确的判据。已按下述方式修正。
+
+- **输入**：query 文本直接用英文内部 code：「anger_tendency liver」
+- **正确验收方式（结构性断言，确定性判据）**：
+  1. 断言运行时 Query Builder 使用正式中文 display_name 与五脏中文展示名构造 query（如「烦躁易怒倾向 肝」）；
+  2. 断言英文内部 code（claim_code / organ_code）**不进入最终 query 文本**——英文 code 仅用于结构化过滤与结果对账；
+  3. 英文 query 的实际检索结果**只记录观察，不要求为空**（跨语言相似度是模型特性，不是缺陷）。
+- **域外查询（可要求为空）**：真正非医学域的文本（如「运动健身计划」）在阈值过滤后应返回空结果集——这是阈值有效性的验收项，与查询语言的英文/中文无关。
+
+> 组合 A 与上述断言 1/2 合用即可验证 query 构造是否已切换到中文命名来源：断言 1/2 是结构性判据（确定性、不受模型影响），组合 A 作为端到端命中判据（依赖模型行为，辅助参考）。
 
 ---
 
