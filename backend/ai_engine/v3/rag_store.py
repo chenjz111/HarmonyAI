@@ -27,6 +27,16 @@ APPROVED_ORGAN_DISPLAY_NAMES = {
     "lung": "肺",
     "kidney": "肾",
 }
+# These anchors are copied from the approved corpus wording.  They are
+# retrieval vocabulary only; they do not add a claim, diagnosis, or rule.
+APPROVED_QUERY_INTENT_TERMS = {
+    "anger_tendency": ("五志五脏对应关系和相关说明", ("怒",)),
+    "agitation_tendency": ("五志五脏对应关系和相关说明", ("喜",)),
+    "overthinking_tendency": ("五志五脏对应关系和相关说明", ("思",)),
+    "sadness_tendency": ("五志五脏对应关系和相关说明", ("悲",)),
+    "fear_tendency": ("五志五脏对应关系和相关说明", ("恐",)),
+    "sleep_disturbance": ("状态关联和相关说明", ("不寐",)),
+}
 
 
 class RagStoreFailure(RuntimeError):
@@ -322,8 +332,12 @@ class VersionedRagStore:
         )
 
     def _query_text(self, query: RagQuery) -> str:
-        organ_codes = [str(getattr(item, "value", item)) for item in query.organ_codes]
-        claim_codes = [str(getattr(item, "value", item)) for item in query.claim_codes]
+        organ_codes = sorted(
+            {str(getattr(item, "value", item)) for item in query.organ_codes}
+        )
+        claim_codes = sorted(
+            {str(getattr(item, "value", item)) for item in query.claim_codes}
+        )
         missing_organs = [
             code for code in organ_codes if code not in self._organ_display_names
         ]
@@ -335,16 +349,29 @@ class VersionedRagStore:
                 "RAG_QUERY_MAPPING_NOT_APPROVED",
                 "RAG 查询包含未批准的展示映射。",
             )
-        parts = [
-            *(self._organ_display_names[code] for code in organ_codes),
-            *(self._claim_display_names[code] for code in claim_codes),
-        ]
-        if not parts:
+        organ_names = [self._organ_display_names[code] for code in organ_codes]
+        claim_names = [self._claim_display_names[code] for code in claim_codes]
+        if not organ_names and not claim_names:
             raise RagStoreFailure(
                 "RAG_QUERY_MAPPING_NOT_APPROVED",
                 "RAG 查询缺少已批准的展示语义。",
             )
-        return " ".join(parts)
+        if organ_names and claim_names:
+            subject = f"{'、'.join(organ_names)}与{'、'.join(claim_names)}"
+        else:
+            subject = "、".join([*organ_names, *claim_names])
+        intent = "状态关联和相关说明"
+        query_terms: list[str] = []
+        for code in claim_codes:
+            configured = APPROVED_QUERY_INTENT_TERMS.get(code)
+            if configured is None:
+                continue
+            intent = configured[0] if len(claim_codes) == 1 else intent
+            query_terms.extend(configured[1])
+        text = f"已批准资料中关于{subject}的{intent}。"
+        if query_terms:
+            text += f"相关词：{'、'.join(sorted(set(query_terms)))}。"
+        return text
 
     @staticmethod
     def _assert_cosine_collection(collection) -> None:

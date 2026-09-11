@@ -294,7 +294,9 @@ def test_versioned_rag_store_serializes_organ_enum_as_value():
     assert "OrganCode.heart" not in embedding.texts[-1]
     assert "heart" not in embedding.texts[-1]
     assert "unrefreshing_sleep" not in embedding.texts[-1]
-    assert embedding.texts[-1] == "心 睡眠不解乏"
+    assert embedding.texts[-1] == (
+        "已批准资料中关于心与睡眠不解乏的状态关联和相关说明。"
+    )
 
 
 def test_versioned_rag_store_uses_only_approved_display_semantics_for_query():
@@ -312,7 +314,9 @@ def test_versioned_rag_store_uses_only_approved_display_semantics_for_query():
 
     store.query(_query())
 
-    assert embedding.texts[-1] == "心 睡眠不解乏"
+    assert embedding.texts[-1] == (
+        "已批准资料中关于心与睡眠不解乏的状态关联和相关说明。"
+    )
     assert all(
         forbidden not in embedding.texts[-1]
         for forbidden in ("help me sleep", "raw ocr", "free narrative")
@@ -356,7 +360,96 @@ def test_versioned_rag_store_query_text_is_deterministic():
     store.query(_query())
     store.query(_query())
 
-    assert embedding.texts[-2:] == ["心 睡眠不解乏", "心 睡眠不解乏"]
+    expected = "已批准资料中关于心与睡眠不解乏的状态关联和相关说明。"
+    assert embedding.texts[-2:] == [expected, expected]
+
+
+def test_versioned_rag_store_uses_approved_natural_language_intent_for_liver_anger():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    embedding = FakeEmbedding()
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=embedding,
+        client=FakeClient(),
+        production=False,
+    )
+    store.ingest(_manifest(), [_chunk()])
+
+    store.query(
+        _query().model_copy(
+            update={
+                "organ_codes": ["liver"],
+                "claim_codes": ["anger_tendency"],
+            }
+        )
+    )
+
+    assert embedding.texts[-1] == (
+        "已批准资料中关于肝与烦躁易怒倾向的五志五脏对应关系和相关说明。"
+        "相关词：怒。"
+    )
+    assert "liver" not in embedding.texts[-1]
+    assert "anger_tendency" not in embedding.texts[-1]
+
+
+def test_versioned_rag_store_uses_approved_sleep_intent_for_heart_sleep_disturbance():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    embedding = FakeEmbedding()
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=embedding,
+        client=FakeClient(),
+        production=False,
+    )
+    store.ingest(_manifest(), [_chunk()])
+
+    store.query(
+        _query().model_copy(
+            update={
+                "organ_codes": ["heart"],
+                "claim_codes": ["sleep_disturbance"],
+            }
+        )
+    )
+
+    assert embedding.texts[-1] == (
+        "已批准资料中关于心与睡眠障碍的状态关联和相关说明。"
+        "相关词：不寐。"
+    )
+    assert "heart" not in embedding.texts[-1]
+    assert "sleep_disturbance" not in embedding.texts[-1]
+
+
+def test_versioned_rag_store_keeps_unsupported_unrefreshing_signal_without_approved_alias():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    embedding = FakeEmbedding()
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=embedding,
+        client=ScenarioClient(0.40),
+        production=False,
+    )
+    manifest = _manifest().model_copy(update={"minimum_score": 0.740741})
+    store.ingest(manifest, [_chunk()])
+
+    result = store.query(
+        _query().model_copy(
+            update={
+                "claim_codes": ["unrefreshing_sleep"],
+                "ingestion_manifest_checksum": manifest.manifest_checksum,
+            }
+        )
+    )
+
+    assert result.status == "empty"
+    assert result.hits == []
+    assert "不寐" not in embedding.texts[-1]
 
 
 def test_versioned_rag_store_applies_approved_cosine_to_runtime_score_conversion():
