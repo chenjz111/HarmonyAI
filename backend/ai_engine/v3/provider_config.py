@@ -109,6 +109,7 @@ class V31ProviderConfig:
             "qwen_configured": all(
                 (self.qwen_base_url, self.qwen_api_key, self.qwen_model)
             ),
+            "qwen_model": self.qwen_model,
             "dashscope_configured": bool(self.dashscope_workspace_id),
             "readiness_error": self.readiness_error,
         }

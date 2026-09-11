@@ -238,6 +238,11 @@ def _query_rag(rag_store, query: RagQuery, snapshot: Mapping[str, object]) -> Ra
 
         if not isinstance(error, RagStoreFailure):
             raise
+        if error.error_code == "RAG_QUERY_MAPPING_NOT_APPROVED":
+            raise V31PipelineBlocked(
+                error.error_code,
+                error.safe_message,
+            ) from None
         return RagResult(
             retrieval_id=f"rag_degraded_{uuid.uuid4().hex}",
             status="degraded",

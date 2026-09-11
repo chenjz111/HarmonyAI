@@ -62,6 +62,22 @@ def test_diagnosis_query_is_canonical_and_uses_only_approved_codes():
     assert first.contradicting_fact_ids == ["fact_3"]
 
 
+def test_diagnosis_query_excludes_user_goal_and_unconfirmed_source_text():
+    from backend.ai_engine.v3.diagnosis_pipeline import build_diagnosis_query
+
+    baseline = build_diagnosis_query(_snapshot())
+    with_untrusted_fields = build_diagnosis_query(
+        {
+            **_snapshot(),
+            "user_goal": {"primary_goal": "sleep"},
+            "ocr_text": "unconfirmed raw ocr",
+            "narrative": "unconfirmed free narrative",
+        }
+    )
+
+    assert with_untrusted_fields == baseline
+
+
 def _provider_response(*, syndrome_code="syndrome_1", fact_id="fact_1", chunk_id="chunk_1"):
     from backend.app.schemas.v3.diagnosis import (
         DiagnosisProviderResponse,

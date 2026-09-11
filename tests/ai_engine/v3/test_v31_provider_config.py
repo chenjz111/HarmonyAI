@@ -58,7 +58,9 @@ def test_v31_provider_config_requires_explicit_real_mode_configuration():
     assert config.embedding_model == "text-embedding-v4"
     assert config.chroma_collection == "harmony_v31"
     assert config.safe_dict()["embedding_configured"] is True
+    assert config.safe_dict()["qwen_model"] == "qwen-approved"
     assert "configured-value" not in str(config.safe_dict())
+    assert "workspace-test" not in str(config.safe_dict())
 
 
 def test_v31_provider_config_reports_missing_real_embedding_as_not_ready():

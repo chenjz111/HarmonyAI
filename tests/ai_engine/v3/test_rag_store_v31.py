@@ -292,7 +292,71 @@ def test_versioned_rag_store_serializes_organ_enum_as_value():
     store.query(query)
 
     assert "OrganCode.heart" not in embedding.texts[-1]
-    assert embedding.texts[-1] == "heart unrefreshing_sleep"
+    assert "heart" not in embedding.texts[-1]
+    assert "unrefreshing_sleep" not in embedding.texts[-1]
+    assert embedding.texts[-1] == "心 睡眠不解乏"
+
+
+def test_versioned_rag_store_uses_only_approved_display_semantics_for_query():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    embedding = FakeEmbedding()
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=embedding,
+        client=FakeClient(),
+        production=False,
+    )
+    store.ingest(_manifest(), [_chunk()])
+
+    store.query(_query())
+
+    assert embedding.texts[-1] == "心 睡眠不解乏"
+    assert all(
+        forbidden not in embedding.texts[-1]
+        for forbidden in ("help me sleep", "raw ocr", "free narrative")
+    )
+
+
+def test_versioned_rag_store_rejects_missing_approved_query_mapping():
+    from backend.ai_engine.v3.rag_store import RagStoreFailure, VersionedRagStore
+
+    embedding = FakeEmbedding()
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=embedding,
+        client=FakeClient(),
+        production=False,
+        claim_display_names={},
+        organ_display_names={"heart": "心"},
+    )
+    store.ingest(_manifest(), [_chunk()])
+
+    with pytest.raises(RagStoreFailure, match="RAG_QUERY_MAPPING_NOT_APPROVED"):
+        store.query(_query())
+
+    assert embedding.input_types == ["document"]
+
+
+def test_versioned_rag_store_query_text_is_deterministic():
+    from backend.ai_engine.v3.rag_store import VersionedRagStore
+
+    embedding = FakeEmbedding()
+    store = VersionedRagStore(
+        persist_directory="unused",
+        collection_name="harmony_v31",
+        embedding_provider=embedding,
+        client=FakeClient(),
+        production=False,
+    )
+    store.ingest(_manifest(), [_chunk()])
+
+    store.query(_query())
+    store.query(_query())
+
+    assert embedding.texts[-2:] == ["心 睡眠不解乏", "心 睡眠不解乏"]
 
 
 def test_versioned_rag_store_applies_approved_cosine_to_runtime_score_conversion():

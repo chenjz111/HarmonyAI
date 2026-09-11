@@ -97,7 +97,14 @@ def run_real_provider_smoke(
         raise RealProviderSmokeFailure(
             pipeline.diagnosis_execution.reason_code or "DIAGNOSIS_FAILED"
         )
-    called_provider = status == "success" or pipeline.diagnosis_execution.attempts > 0
+    retrieved_chunk_count = len(pipeline.rag_result.hits)
+    if real_validation and retrieved_chunk_count <= 0:
+        raise RealProviderSmokeFailure("RAG_NO_APPROVED_HITS")
+    called_provider = pipeline.diagnosis_execution.attempts > 0
+    if real_validation and not called_provider:
+        raise RealProviderSmokeFailure("QWEN_NOT_CALLED")
+    if real_validation and not qwen_model:
+        raise RealProviderSmokeFailure("QWEN_MODEL_NOT_REPORTED")
     return {
         "status": "REAL_SMOKE_PASSED" if real_validation else "NOT_REAL_VALIDATED",
         "embedding_model": embedding_model,
@@ -105,7 +112,7 @@ def run_real_provider_smoke(
         "corpus_manifest_checksum": str(receipt["corpus_manifest_checksum"]),
         "index_checksum": str(receipt["index_checksum"]),
         "collection_name": str(receipt["collection_name"]),
-        "retrieved_chunk_count": len(pipeline.rag_result.hits),
+        "retrieved_chunk_count": retrieved_chunk_count,
         "qwen_model": qwen_model,
         "provider_status": status,
         "schema_validation": "passed" if called_provider else "not_called",
