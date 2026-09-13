@@ -422,6 +422,37 @@ test("V3.1 final state confirmation operates on Assessment, never Understanding"
   assert.ok(!confirm.includes("apiV3.confirmUnderstanding("), "final state page must not mutate source Understanding")
 })
 
+test("V3.1: full-text correction guards empty input before calling the real confirmation API", () => {
+  const confirm = readPage("v3-confirm/v3-confirm.vue")
+  // 最小前端保护：contract 的 edited_summary_text 要求 min_length >= 1
+  assert.match(
+    confirm,
+    /\(this\.draftSummaryText \|\| ""\)\.trim\(\)/,
+    "edited summary must be trimmed before submit",
+  )
+  assert.ok(confirm.includes("状态总结内容不能为空"), "empty edit needs explicit user-facing copy")
+
+  const start = confirm.indexOf("async saveCorrect()")
+  assert.ok(start > -1, "saveCorrect must exist")
+  const rest = confirm.slice(start)
+  const end = rest.indexOf("\n    async ", 1)
+  const block = end > -1 ? rest.slice(0, end) : rest
+  const guardAt = block.indexOf("状态总结内容不能为空")
+  const callAt = block.indexOf("apiV3.confirmAssessment")
+  assert.ok(guardAt > -1, "guard must live inside saveCorrect")
+  assert.ok(callAt > -1, "saveCorrect must still call the real confirmation API")
+  assert.ok(guardAt < callAt, "guard must run before the real confirmation call")
+  assert.match(
+    block,
+    /状态总结内容不能为空[\s\S]{0,120}return/,
+    "empty text must return without submitting a request",
+  )
+  // 非空时保持既有真实 confirm_with_changes 流程
+  assert.ok(block.includes('decision: "confirm_with_changes"'), "non-empty edits keep confirm_with_changes")
+  assert.ok(block.includes("edited_summary_text"), "non-empty edits keep edited_summary_text")
+  assert.ok(block.includes("expected_revision: this.model.revision"), "revision semantics unchanged")
+})
+
 test("V3.1: final confirm is titled 完成近期状态总结 and sits after optional goal page", () => {
   const confirm = readPage("v3-confirm/v3-confirm.vue")
   assert.ok(confirm.includes("完成近期状态总结"), "Issue #100: confirm page title")

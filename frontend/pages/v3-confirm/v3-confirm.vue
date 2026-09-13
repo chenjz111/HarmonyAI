@@ -88,7 +88,14 @@ export default {
     },
     async saveCorrect() {
       if (this.confirming) return
-      
+      // 最小前端保护：contract 要求 edited_summary_text 至少 1 个字符（min_length >= 1），
+      // 空白内容不发请求，避免用户只看到泛化的"提交失败，请重试"。
+      const editedSummaryText = (this.draftSummaryText || "").trim()
+      if (!editedSummaryText) {
+        uni.showToast({ title: "状态总结内容不能为空", icon: "none" })
+        return
+      }
+
       this.confirming = true
       try {
         // 最终状态总结属于 Assessment；不得回写资料 Understanding。
@@ -96,7 +103,7 @@ export default {
           expected_revision: this.model.revision,
           decision: "confirm_with_changes",
           changes: [],
-          edited_summary_text: this.draftSummaryText,
+          edited_summary_text: editedSummaryText,
         })
         uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
       } catch (e) {
