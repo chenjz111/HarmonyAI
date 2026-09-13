@@ -108,9 +108,23 @@ test("entry page uses the frozen dual-entry wording (V3.1 freeze §3)", () => {
     !entry.includes("/pages/v3-supplement/v3-supplement"),
     "home must not route into the supplement page",
   )
-  // 冻结 §3 首页副标语
-  assert.ok(entry.includes("了解你的近况"), "frozen hero line 1")
-  assert.ok(entry.includes("为你生成专属音乐"), "frozen hero line 2")
+  // Owner 首页视觉稿：业务入口不变，仅更新展示标语。
+  assert.ok(entry.includes("让音乐，陪你回到更好的自己"), "Owner reference slogan")
+  assert.ok(entry.includes("以中医为本 · 用音乐疗愈身心"), "Owner reference subtitle")
+})
+
+test("entry page starts a fresh session whenever the cached Home tab becomes visible again", () => {
+  const entry = readPage("entry/entry.vue")
+  assert.match(
+    entry,
+    /onShow\s*\(\)\s*\{\s*this\.init\(\)\s*\}/,
+    "returning to the cached Home tab must create a fresh authoritative session",
+  )
+  assert.doesNotMatch(
+    entry,
+    /onLoad\s*\(\)\s*\{\s*this\.init\(\)\s*\}/,
+    "session initialization must not run only on first load",
+  )
 })
 
 test("V3.1: material page uploads 1-3 files; OCR failure routes to the standalone error page", () => {
@@ -204,11 +218,12 @@ test("V3 pages do not leak internal fields to users", () => {
 
 // ===== PR #92 Review 修复回归（P0-1/P0-2/P0-3/P1-1/P1-2/P1-3） =====
 
-test("P1-3: tabBar and feedback go-home route to V3 pages, never Sprint 3", () => {
+test("P1-3: tabBar keeps Home/My and feedback returns to V3 home", () => {
   const tabs = pagesConfig.tabBar.list.map((t) => t.pagePath)
   assert.equal(tabs.length, 2, "tabBar keeps two items")
   assert.equal(tabs[0], "pages/entry/entry", "home tab must be the V3 entry page")
-  assert.equal(tabs[1], "pages/v3-player/v3-player", "player tab must align with the V3 player entry")
+  assert.equal(tabs[1], "pages/v3-profile/v3-profile", "second tab is the My upgrade placeholder")
+  assert.ok(routes.includes("pages/v3-profile/v3-profile"), "My placeholder route must be registered")
   for (const legacy of ["pages/index/index", "pages/player/player"]) {
     assert.ok(!tabs.includes(legacy), `tabBar must not point to Sprint 3 page: ${legacy}`)
   }
@@ -217,11 +232,12 @@ test("P1-3: tabBar and feedback go-home route to V3 pages, never Sprint 3", () =
   assert.ok(feedback.includes('"/pages/entry/entry"'), "feedback goHome must reLaunch to V3 entry")
   assert.ok(!feedback.includes("/pages/index/index"), "feedback must not route back to Sprint 3 home")
 
-  // tab 页面入口必须使用合法导航方式（navigateTo/redirectTo 打不开 tab 页）
+  // 首页仍是 tab 页面；播放器已从 tabBar 移除，生成成功后使用普通页面导航。
   const welcome = readPage("welcome/welcome.vue")
   assert.ok(welcome.includes("reLaunch"), "welcome must use reLaunch to open the tab page entry")
   const basis = readPage("v3-basis/v3-basis.vue")
-  assert.ok(basis.includes("switchTab"), "basis must use switchTab to open the tab page v3-player")
+  assert.ok(basis.includes("redirectTo"), "basis must redirect to the non-tab V3 player")
+  assert.ok(!basis.includes("switchTab"), "basis must not treat the player as a tab page")
 
   // Sprint 3 旧页面保留用于兼容（页面文件与路由不删）
   assert.ok(routes.includes("pages/index/index"), "legacy home page remains for compatibility")
@@ -406,6 +422,37 @@ test("V3.1 final state confirmation operates on Assessment, never Understanding"
   assert.ok(!confirm.includes("apiV3.confirmUnderstanding("), "final state page must not mutate source Understanding")
 })
 
+test("V3.1: full-text correction guards empty input before calling the real confirmation API", () => {
+  const confirm = readPage("v3-confirm/v3-confirm.vue")
+  // 最小前端保护：contract 的 edited_summary_text 要求 min_length >= 1
+  assert.match(
+    confirm,
+    /\(this\.draftSummaryText \|\| ""\)\.trim\(\)/,
+    "edited summary must be trimmed before submit",
+  )
+  assert.ok(confirm.includes("状态总结内容不能为空"), "empty edit needs explicit user-facing copy")
+
+  const start = confirm.indexOf("async saveCorrect()")
+  assert.ok(start > -1, "saveCorrect must exist")
+  const rest = confirm.slice(start)
+  const end = rest.indexOf("\n    async ", 1)
+  const block = end > -1 ? rest.slice(0, end) : rest
+  const guardAt = block.indexOf("状态总结内容不能为空")
+  const callAt = block.indexOf("apiV3.confirmAssessment")
+  assert.ok(guardAt > -1, "guard must live inside saveCorrect")
+  assert.ok(callAt > -1, "saveCorrect must still call the real confirmation API")
+  assert.ok(guardAt < callAt, "guard must run before the real confirmation call")
+  assert.match(
+    block,
+    /状态总结内容不能为空[\s\S]{0,120}return/,
+    "empty text must return without submitting a request",
+  )
+  // 非空时保持既有真实 confirm_with_changes 流程
+  assert.ok(block.includes('decision: "confirm_with_changes"'), "non-empty edits keep confirm_with_changes")
+  assert.ok(block.includes("edited_summary_text"), "non-empty edits keep edited_summary_text")
+  assert.ok(block.includes("expected_revision: this.model.revision"), "revision semantics unchanged")
+})
+
 test("V3.1: final confirm is titled 完成近期状态总结 and sits after optional goal page", () => {
   const confirm = readPage("v3-confirm/v3-confirm.vue")
   assert.ok(confirm.includes("完成近期状态总结"), "Issue #100: confirm page title")
@@ -432,9 +479,9 @@ test("V3.1 freeze: questionnaire has no skip exit; Q1-Q10 are all mandatory (fre
   )
   // "是否填写问卷"的选择在轻量选择页（v3-supplement）完成
   const supplement = readPage("v3-supplement/v3-supplement.vue")
-  assert.ok(supplement.includes("想再补充一些近况吗？"), "choice page title (freeze §4.4)")
+  assert.ok(supplement.includes("资料已整理完成"), "Owner visual choice page title")
   assert.ok(
-    supplement.includes("填写问卷可以帮助我们更完整地了解你最近的状态。"),
+    supplement.includes("问卷可以帮助我们更全面地了解你的"),
     "choice page description (freeze §4.4)",
   )
   assert.ok(
@@ -475,8 +522,7 @@ test("V3.1 freeze: questionnaire step label reads session input_mode for display
 test("V3.1: goal page is an optional healing-intent page without removed goal concepts", () => {
   const goal = readPage("v3-goal/v3-goal.vue")
   assert.ok(goal.includes("疗愈诉求"), "page title")
-  assert.ok(goal.includes("主要诉求"), "primary intent section")
-  assert.ok(goal.includes("次要诉求"), "secondary intent section")
+  assert.ok(goal.includes("最多选择 2 项"), "structured intent selection keeps the two-item limit")
   assert.ok(goal.includes("选填"), "must be marked optional")
   assert.ok(goal.includes("submitHealingIntent"), "must persist via api submitHealingIntent")
   assert.ok(goal.includes("skip"), "must allow skipping the whole step")
@@ -494,8 +540,11 @@ test("V3.1: goal page is an optional healing-intent page without removed goal co
   for (const legacy of ["relax", "soothe", "lift_mood"]) {
     assert.ok(!INTENT_CODES.some((it) => it.code === legacy), `intent module must not reuse removed code: ${legacy}`)
   }
-  // 200 字补充输入上限
-  assert.ok(goal.includes("maxlength=\"200\""), "supplement text must cap at 200 chars")
+  // Owner 2026-09-11 决策：用户界面隐藏 other 与自由文字；API 校验继续兼容旧字段。
+  const goalTemplate = (goal.match(/<template>[\s\S]*?<\/template>/) || [""])[0]
+  assert.ok(!goalTemplate.includes("<textarea"), "healing-intent UI must not expose free text")
+  assert.ok(!goalTemplate.includes("其他想法"), "healing-intent UI must hide the Other section")
+  assert.ok(goal.includes('filter((item) => item.code !== "other")'), "visible choices must filter out other")
   assert.equal(MAX_CUSTOM_LEN, 200, "MAX_CUSTOM_LEN must be 200 in validation module")
 })
 
@@ -690,7 +739,7 @@ test("V3.1: basis page is 五音调适解析 without a Generation Complete stopo
   assert.ok(basis.includes("生成本次调适的解析与方案"), "subtitle must frame generation output")
   // 生成成功后直接进入播放器，删除独立"生成完成"中间步骤
   assert.ok(basis.includes("goPlayer()"), "must still have the goPlayer method")
-  assert.ok(basis.includes("switchTab"), "must keep switchTab to open tab page v3-player")
+  assert.ok(basis.includes("redirectTo"), "must redirect to the non-tab v3-player page")
   const template = (basis.match(/<template>[\s\S]*?<\/template>/) || [""])[0]
   assert.ok(!template.includes("生成完成"), "template must not show a Generation Complete stopover")
   assert.ok(!template.includes("done-card") && !template.includes("done-icon"), "done card markup removed")
@@ -722,43 +771,31 @@ test("V3.1: player footer offers feedback vs end-session as an explicit choice",
 
 // ===== V3 反馈页（feedback_v3.0） =====
 
-test("feedback page: optional 2x2 change cards with deep-green selected state (V3.1)", () => {
+test("feedback page: optional illustrated change cards preserve the V3 feedback contract", () => {
   const feedback = readPage("v3-feedback/v3-feedback.vue")
   const template = (feedback.match(/<template>[\s\S]*?<\/template>/) || [""])[0]
   // 2×2 状态变化卡片：四个 change label
   for (const label of ["much_better", "slightly_better", "no_change", "worse"]) {
     assert.ok(feedback.includes(label), `feedback must include change label: ${label}`)
   }
-  // 深绿色选中态（#2f5d43）+ 白字 + ✓
-  assert.ok(feedback.includes("#2f5d43"), "selected state must use deep green")
-  assert.ok(feedback.includes("change-card-active"), "change cards need active state")
-  assert.ok(feedback.includes("change-label-active"), "active label must turn white")
-  assert.ok(feedback.includes("change-check"), "active card must show check mark")
+  assert.ok(feedback.includes("feedback-option--active"), "change cards need an active state")
+  assert.ok(feedback.includes("feedback-option-selected-marker"), "active card must show a selected marker")
   // Issue #100：反馈改为选填，允许一条不填直接提交或跳过（校验用户可见文案）
   assert.ok(feedback.includes("选填"), "feedback must be marked optional")
-  assert.ok(template.includes("暂不反馈，返回首页"), "must offer skipping feedback to home")
+  assert.ok(template.includes("暂时跳过"), "must offer skipping feedback to home")
   assert.ok(!template.includes("必填"), "change selection must no longer be required (user copy)")
   assert.ok(feedback.includes("post_state"), "must submit post_state")
   assert.ok(feedback.includes("change_label"), "must include change_label field")
 })
 
-test("feedback page: mutex adjustment groups match backend contract", () => {
+test("feedback page: approved four visual adjustments map to valid backend preferences", () => {
   const feedback = readPage("v3-feedback/v3-feedback.vue")
-  // 后端 FeedbackV3 校验的互斥对
-  assert.ok(feedback.includes('["slower_tempo", "faster_tempo"]'), "tempo mutex group")
-  assert.ok(feedback.includes('["shorter_duration", "longer_duration"]'), "duration mutex group")
-  assert.ok(feedback.includes("MUTEX_GROUPS"), "mutex groups defined")
-  // 调整项全集与后端 AdjustmentPreference 一致
-  for (const adj of [
-    "slower_tempo",
-    "faster_tempo",
-    "change_instruments",
-    "adjust_volume",
-    "adjust_ambient",
-    "shorter_duration",
-    "longer_duration",
-  ]) {
-    assert.ok(feedback.includes(`"${adj}"`), `feedback must include adjustment option: ${adj}`)
+  for (const option of ["slower_tempo", "quieter_ambience", "more_natural_sound", "clearer_melody"]) {
+    assert.ok(feedback.includes(`"${option}"`), `feedback must include approved visual option: ${option}`)
+  }
+  assert.ok(feedback.includes("ADJUSTMENT_PAYLOAD_MAP"), "visual choices need an explicit API mapping")
+  for (const preference of ["slower_tempo", "adjust_ambient", "change_instruments"]) {
+    assert.ok(feedback.includes(`"${preference}"`), `payload mapping must use valid backend preference: ${preference}`)
   }
   assert.ok(feedback.includes("adjustment_preferences"), "must submit adjustment_preferences")
   assert.ok(feedback.includes("continue_use"), "must submit continue_use")
@@ -775,7 +812,7 @@ test("questionnaire page renders per-question options from the canonical manifes
   assert.ok(page.includes("frequency_0_4"), "page must branch on frequency question type")
   assert.ok(page.includes("answer_type"), "page must dispatch by answer_type")
   assert.ok(
-    page.includes('v-for="opt in q.options"'),
+    page.includes('v-for="(opt, optIndex) in q.options"'),
     "frequency options must render from each question's own options",
   )
   assert.ok(page.includes("opt.score"), "frequency selection must use the authoritative score")
@@ -789,10 +826,11 @@ test("V3.1: questionnaire is paginated 5 pages x 2 questions with step progress"
   assert.ok(page.includes("totalSteps"), "page must compute total steps (5)")
   assert.ok(page.includes("pageAnswered"), "page must gate on both questions answered")
   // 进度以页为单位 1/5 ~ 5/5
-  assert.ok(page.includes("第 {{ current + 1 }} / {{ totalSteps }} 页"), "progress must show step x / 5")
+  assert.ok(page.includes("{{ current + 1 }}/{{ totalSteps || 5 }}"), "progress must show step x/5")
   // 分页导航文案
-  assert.ok(page.includes("上一页"), "pagination must offer prev-page")
-  assert.ok(page.includes("下一页"), "pagination must offer next-page")
+  assert.ok(page.includes("上一题"), "pagination must offer Owner-approved previous label")
+  assert.ok(page.includes("下一题"), "pagination must use the Owner-approved next label")
+  assert.ok(page.includes("完成问卷"), "final page must use the completion label")
   // 一次作答收集，仍提交全部 10 题（answers 对象贯穿所有页）
   assert.ok(page.includes("submitQuestionnaire(this.answers)"), "submit must send the whole answer set once")
 })
@@ -1194,9 +1232,9 @@ test("V3.1 freeze: supplement page is the lightweight questionnaire choice page 
   // 冻结：v3-supplement 不再是文字/语音输入页，而是"想再补充一些近况吗？"轻量选择页。
   // 旧 narrative 依赖注记已随页面删除（自由描述页冻结删除，不再有补充提交语义）。
   const supplement = readPage("v3-supplement/v3-supplement.vue")
-  assert.ok(supplement.includes("想再补充一些近况吗？"), "frozen choice page title")
+  assert.ok(supplement.includes("资料已整理完成"), "Owner visual choice page title")
   assert.ok(
-    supplement.includes("填写问卷可以帮助我们更完整地了解你最近的状态。"),
+    supplement.includes("问卷可以帮助我们更全面地了解你的"),
     "frozen choice page description",
   )
   // 两个出口：填写问卷 / 直接继续

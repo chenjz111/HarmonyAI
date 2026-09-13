@@ -775,6 +775,7 @@ function persistMusicTask(task) {
         duration_seconds: task.audio_asset.duration_seconds,
         source_label: task.status === "matched_fallback" ? "审核曲库匹配音乐" : "AI生成音乐",
         tone_label: toneLabel(task.audio_asset.tone_profile),
+        tone_code: toneCode(task.audio_asset.tone_profile),
         instrument_labels: task.audio_asset.instruments || [],
         disclaimer: "音乐调养不能替代专业医疗或心理帮助。",
       },
@@ -788,8 +789,17 @@ const TONE_LABELS = { jiao: "角音", zhi: "徵音", gong: "宫音", shang: "商
 
 function toneLabel(toneProfile) {
   if (!toneProfile) return ""
-  const key = toneProfile.dominant_tone || ""
+  const key = toneCode(toneProfile)
   return (TONE_LABELS[key] || "") + "为主"
+}
+
+// 视觉主题需要稳定的五音 code：V3.1 ToneProfile 的主音可能是对象或字符串，
+// 这里做展示层适配，不改变任何 real wiring 语义。
+function toneCode(toneProfile) {
+  if (!toneProfile) return ""
+  const primary = toneProfile.primary_tone
+  if (primary && typeof primary === "object") return primary.code || primary.tone || primary.value || ""
+  return primary || toneProfile.dominant_tone || ""
 }
 
 // ===== Mock 状态机（虚构 fixture；仅供显式 mock/hybrid 模式与自动测试） =====
@@ -935,6 +945,7 @@ function mockMusic(sourceType) {
     stream_url: "/static/music/jiao-demo.wav", // mock：本地示例音频（仅显式 mock/hybrid 模式）
     duration_seconds: 300,
     instrument_labels: ["古琴", "洞箫"],
+    tone_code: "gong",
     favorite: false,
     disclaimer: "音乐调养不能替代专业医疗或心理帮助。",
   }

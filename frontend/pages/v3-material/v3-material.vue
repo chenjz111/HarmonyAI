@@ -23,12 +23,12 @@
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
 import { apiV3 } from "../../common/api-v3.js"
-import HanSideNav from "../../components/sprint3/han-side-nav.vue"
+import DocumentHeader from "../../components/v31/document-header.vue"
 
 const MAX_FILES = 3
 
 export default {
-  components: { HanSideNav },
+  components: { DocumentHeader },
   data() {
     return {
       state: "pick", // pick（选图/列表） | uploading | uploaded
@@ -42,6 +42,7 @@ export default {
     },
   },
   methods: {
+    goHome() { uni.switchTab({ url: "/pages/entry/entry" }) },
     chooseFiles() {
       if (this.state === "uploading" || !this.canAdd) return
       const remain = MAX_FILES - this.files.length
@@ -104,348 +105,64 @@ export default {
 </script>
 
 <template>
-  <view class="page han-page side-nav-page">
-    <han-side-nav current="material" />
-    <view class="han-page-content container">
-      <view class="header ink-fade-in">
-        <view class="header-row">
-          <view class="stage-seal">
-            <text class="stage-seal-text">声</text>
+  <view class="doc-page material-page">
+    <view class="doc-container">
+      <document-header :step="1" title="上传就诊资料" :quote="'用音乐\n陪伴更好的你'" subtitle="可上传 1~3 张近期病历、检查报告或相关就诊记录。" @back="goHome" />
+      <view class="upload-area">
+        <button role="button" v-if="files.length === 0 && state === 'pick'" class="upload-card" @click="chooseFiles">
+          <view class="upload-icon" aria-hidden="true"></view>
+          <text class="upload-title">点击上传文件</text>
+          <view class="upload-seal" aria-hidden="true">◇</view>
+          <text class="upload-hint">最多 3 张 · 仅用于本次评估</text>
+        </button>
+        <view v-if="files.length > 0 && state === 'pick'" class="file-grid">
+          <view v-for="(f, idx) in files" :key="idx" class="file-tile">
+            <image class="file-thumb" :src="f.path" mode="aspectFill" />
+            <button role="button" class="file-remove file-remove--top-right" :aria-label="`删除第${idx + 1}张资料`" @click.stop="removeFile(idx)">×</button>
+            <text class="file-name">{{ f.name }}</text>
           </view>
-          <view class="header-titles">
-            <text class="step-tag">有资料流程 · 第 1 步</text>
-            <text class="page-title han-title-brush revealed">上传就诊资料</text>
-          </view>
+          <button role="button" v-if="canAdd" class="file-tile file-add" aria-label="添加资料" @click="chooseFiles"><text class="file-add-plus">+</text><text>继续添加</text></button>
         </view>
-        <text class="page-subtitle">可上传 1~3 张近期病历、检查报告或相关就诊记录。</text>
+        <view v-if="state === 'uploading'" class="status-card"><view class="status-ring"></view><text class="status-label">正在识别资料</text><text class="status-msg">通常需要几秒钟，请稍候。</text></view>
+        <view v-if="state === 'uploaded'" class="status-card"><text class="status-check">✓</text><text class="status-label">资料识别完成</text><text class="status-msg">正在为你整理资料摘要…</text></view>
       </view>
-
-      <!-- 空态：点击添加第一张 -->
-      <view
-        v-if="files.length === 0 && state === 'pick'"
-        class="han-card upload-card ink-fade-up"
-        @click="chooseFiles"
-      >
-        <view class="upload-icon"><text class="upload-plus">+</text></view>
-        <text class="upload-title">点击上传文件</text>
-        <view class="upload-divider han-divider han-divider--seal"></view>
-        <text class="upload-hint">最多 3 张 · 仅用于本次评估</text>
-      </view>
-
-      <!-- 文件缩略图网格 -->
-      <view v-if="files.length > 0 && state === 'pick'" class="file-grid ink-fade-up">
-        <view v-for="(f, idx) in files" :key="idx" class="file-tile">
-          <image class="file-thumb" :src="f.path" mode="aspectFill" />
-          <view class="file-remove" @click="removeFile(idx)"><text class="file-remove-text">×</text></view>
-          <view class="file-name">
-            <text class="file-name-text">{{ f.name }}</text>
-          </view>
-        </view>
-        <view v-if="canAdd" class="file-tile file-add" @click="chooseFiles">
-          <text class="file-add-plus">+</text>
-          <text class="file-add-text">添加</text>
-        </view>
-      </view>
-
-      <!-- 上传中 -->
-      <view v-if="state === 'uploading'" class="han-card status-card">
-        <view class="status-ring"></view>
-        <text class="status-label">正在识别资料</text>
-        <text class="status-msg">通常需要几秒钟，请稍候。</text>
-      </view>
-
-      <!-- 全部识别成功：短暂提示后进入摘要确认 -->
-      <view v-if="state === 'uploaded'" class="han-card status-card">
-        <view class="status-done-seal">
-          <text class="status-done-seal-text">成</text>
-        </view>
-        <text class="status-label">资料识别完成</text>
-        <text class="status-msg">正在为你整理资料摘要…</text>
-      </view>
-
-      <!-- 开始识别按钮（仅选图阶段展示） -->
       <view v-if="state === 'pick'" class="action-area">
-        <view
-          class="han-btn han-btn-primary btn-start"
-          :class="{ 'btn-start-disabled': files.length === 0 }"
-          @click="startUpload"
-        >
-          <text class="btn-start-text">{{ files.length > 0 ? `识别并继续（${files.length} 张）` : "开始识别" }}</text>
-        </view>
-        <text v-if="files.length > 0 && canAdd" class="action-hint">还可再添加 {{ 3 - files.length }} 张</text>
+        <!-- 识别并继续：仍由用户手动触发，不在选择图片时发送。 -->
+        <button role="button" class="primary-button btn-start" :disabled="files.length === 0" :aria-disabled="files.length === 0" @click="startUpload">开始识别 <text aria-hidden="true">→</text></button>
+        <text v-if="files.length > 0" class="action-hint">已选择 {{ files.length }} 张<text v-if="canAdd"> · 还可再添加 {{ 3 - files.length }} 张</text></text>
       </view>
-
-      <view class="privacy-note">
-        <text class="privacy-note-text">资料仅用于本次评估 · 请勿上传他人资料</text>
-      </view>
+      <text class="privacy-note">资料仅用于本次评估 · 请勿上传他人资料</text>
+      <view class="doc-footer"><text>MUSIC HEALS A BETTER YOU</text></view>
     </view>
   </view>
 </template>
 
-<style scoped>
-.container {
-  min-height: 100vh;
-  padding: 72rpx 48rpx 60rpx;
-  box-sizing: border-box;
-}
-
-/* ===== 页头（印章 + 楷体标题） ===== */
-.header {
-  margin-bottom: 52rpx;
-}
-.header-row {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-  margin-bottom: 20rpx;
-}
-.stage-seal {
-  width: 88rpx;
-  height: 88rpx;
-  background: var(--ink-seal);
-  border-radius: var(--radius-seal);
-  transform: rotate(-4deg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: var(--shadow-seal);
-  flex-shrink: 0;
-}
-.stage-seal-text {
-  color: var(--text-inverse);
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-  font-size: 44rpx;
-  font-weight: 700;
-}
-.header-titles {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-}
-.step-tag {
-  display: inline-block;
-  align-self: flex-start;
-  font-size: 22rpx;
-  color: var(--ink-primary);
-  background: rgba(107, 124, 94, 0.12);
-  border: 1rpx solid rgba(107, 124, 94, 0.2);
-  border-radius: 8rpx;
-  padding: 4rpx 16rpx;
-}
-.page-title {
-  font-size: 44rpx;
-}
-.page-subtitle {
-  display: block;
-  font-size: 28rpx;
-  color: var(--text-secondary);
-  line-height: 1.7;
-}
-
-/* ===== 上传空卡（宣纸虚线） ===== */
-.upload-card {
-  border: 2rpx dashed var(--border-soft);
-  border-radius: var(--radius-lg);
-  padding: 96rpx 40rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.upload-icon {
-  width: 110rpx;
-  height: 110rpx;
-  border-radius: 50%;
-  background: rgba(107, 124, 94, 0.1);
-  border: 1rpx solid rgba(107, 124, 94, 0.22);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 28rpx;
-}
-.upload-plus {
-  font-size: 60rpx;
-  color: var(--ink-primary);
-  font-weight: 300;
-}
-.upload-title {
-  font-size: 32rpx;
-  color: var(--ink-700);
-  font-weight: 500;
-  margin-bottom: 8rpx;
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-}
-.upload-divider {
-  width: 200rpx;
-  margin: 8rpx 0 20rpx;
-}
-.upload-hint {
-  font-size: 24rpx;
-  color: var(--text-muted);
-}
-
-/* ===== 缩略图网格 ===== */
-.file-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20rpx;
-}
-.file-tile {
-  position: relative;
-  width: 200rpx;
-  height: 240rpx;
-  border-radius: 16rpx;
-  overflow: hidden;
-  background: var(--paper-card-solid);
-  border: 2rpx solid var(--border-light);
-  box-shadow: var(--shadow-card);
-}
-.file-thumb {
-  width: 100%;
-  height: 172rpx;
-  display: block;
-}
-.file-remove {
-  position: absolute;
-  top: 8rpx;
-  right: 8rpx;
-  width: 44rpx;
-  height: 44rpx;
-  border-radius: 50%;
-  background: rgba(26, 25, 22, 0.65);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.file-remove-text {
-  color: #fdfbf5;
-  font-size: 32rpx;
-  line-height: 1;
-}
-.file-name {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 8rpx 12rpx;
-  background: rgba(251, 249, 244, 0.94);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.file-name-text {
-  font-size: 20rpx;
-  color: var(--text-secondary);
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.file-add {
-  border: 2rpx dashed var(--border-soft);
-  background: rgba(251, 249, 244, 0.6);
-  box-shadow: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-.file-add-plus {
-  font-size: 56rpx;
-  color: var(--text-muted);
-  line-height: 1;
-  margin-bottom: 8rpx;
-  font-weight: 300;
-}
-.file-add-text {
-  font-size: 24rpx;
-  color: var(--text-muted);
-}
-
-/* ===== 识别状态卡 ===== */
-.status-card {
-  border-radius: var(--radius-lg);
-  padding: 80rpx 40rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.status-ring {
-  width: 72rpx;
-  height: 72rpx;
-  border: 6rpx solid var(--paper-deep);
-  border-top-color: var(--ink-primary);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 28rpx;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.status-done-seal {
-  width: 88rpx;
-  height: 88rpx;
-  background: var(--ink-primary);
-  border-radius: var(--radius-seal);
-  transform: rotate(-4deg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 24rpx;
-  box-shadow: 0 6rpx 18rpx rgba(107, 124, 94, 0.3);
-}
-.status-done-seal-text {
-  color: var(--text-inverse);
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-  font-size: 40rpx;
-  font-weight: 700;
-}
-.status-label {
-  font-size: 32rpx;
-  color: var(--ink-700);
-  font-weight: 500;
-  margin-bottom: 12rpx;
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-}
-.status-msg {
-  font-size: 26rpx;
-  color: var(--text-muted);
-}
-
-/* ===== 主按钮 ===== */
-.action-area {
-  margin-top: 48rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.btn-start {
-  width: 100%;
-}
-.btn-start-disabled {
-  opacity: 0.45;
-  box-shadow: none;
-  background: var(--text-disabled);
-}
-.btn-start-text {
-  color: var(--text-inverse);
-  font-size: 32rpx;
-  font-weight: 600;
-  letter-spacing: 2rpx;
-}
-.action-hint {
-  margin-top: 20rpx;
-  font-size: 24rpx;
-  color: var(--text-muted);
-}
-
-.privacy-note {
-  margin-top: 64rpx;
-  text-align: center;
-}
-.privacy-note-text {
-  font-size: 22rpx;
-  color: var(--text-muted);
-  letter-spacing: 2rpx;
-}
+<style scoped lang="scss">
+@import "../../common/v31-document.scss";
+.upload-area { margin-top: 40px; }
+.upload-card { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; min-height: 300px; margin: 0; padding: 38px 16px; border: 1px dashed #a4c7ba; border-radius: 18px; background: rgba(255,255,250,.22); line-height: 1.5; }
+.upload-card::after { border: none; }
+.upload-icon { width: 112px; height: 112px; border-radius: 50%; background: #e4ecdf url('/static/v31-document/camera.png') center center / 120% auto no-repeat; box-shadow: 0 0 0 5px rgba(255,255,249,.65),0 0 0 7px rgba(149,179,156,.21); }
+.upload-title { margin-top: 18px; font: 700 21px/1.5 "KaiTi","STKaiti",serif; letter-spacing: .06em; color: #174b3e; }
+.upload-seal { margin: 6px 0 12px; font-size: 17px; line-height: 1; color: #c95339; }
+.upload-hint { font-size: 14px; color: #7d8880; letter-spacing: .04em; }
+.file-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); align-content: start; gap: 10px; min-height: 300px; padding: 14px 10px; border: 1px dashed #a4c7ba; border-radius: 18px; box-sizing: border-box; background: rgba(255,255,250,.4); }
+.file-tile { min-width: 0; height: 146px; position: relative; border-radius: 12px; background: #f9fbf5; overflow: hidden; border: 1px solid #d9e5db; box-sizing: border-box; }
+.file-thumb { display: block; width: 100%; height: 114px; }
+.file-name { display: block; padding: 7px 6px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #536e60; }
+.file-remove { position: absolute; top: 0; right: 0; width: 44px; height: 44px; padding: 0; margin: 0; border-radius: 0 0 0 16px; background: rgba(22,60,49,.72); color: white; font: 26px/44px Arial,sans-serif; }
+.file-remove::after { border: none; }
+.file-add { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; margin: 0; padding: 0; font-size: 12px; color: #54846f; border-style: dashed; background: rgba(255,255,250,.6); }
+.file-add::after { border: none; }
+.file-add-plus { font-size: 36px; line-height: 1.3; font-weight: 300; }
+.status-card { min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #a4c7ba; border-radius: 18px; background: rgba(255,255,250,.55); }
+.status-label { display: block; margin-top: 18px; font-size: 19px; }
+.status-msg { margin-top: 10px; font-size: 13px; color: #708478; }
+.status-check { font-size: 44px; color: #4c8e73; }
+.action-area { width: 84%; margin: 24px auto 0; }
+.btn-start { border-radius: 20px; }
+.btn-start text { margin-left: 10px; }
+.action-hint { display: block; text-align: center; font-size: 12px; margin-top: 9px; color: #657c70; }
+.privacy-note { display: block; text-align: center; font-size: 11px; line-height: 1.5; color: #829087; margin-top: 14px; }
+@media(max-width:350px) { .upload-area { margin-top: 28px; } .upload-card,.file-grid,.status-card { min-height: 280px; } .file-tile { height: 130px; } .file-thumb { height: 98px; } }
 </style>
