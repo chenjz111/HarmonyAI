@@ -60,6 +60,8 @@ def _entry_read_model(
     session_id: str,
     *,
     flow_contract_version: str | None = None,
+    input_mode: str | None = None,
+    input_revision: int | None = None,
 ) -> EntryReadModel:
     without_document_route = (
         "/v3/questionnaire"
@@ -88,6 +90,15 @@ def _entry_read_model(
                 next_route=without_document_route,
             ),
         ],
+        # Frozen Contract §3: every flow read model carries the server-owned
+        # common flow fields so clients never derive input_revision locally.
+        flow_contract_version=(
+            FLOW_CONTRACT_V3_OWNER
+            if flow_contract_version == FLOW_CONTRACT_V3_OWNER
+            else None
+        ),
+        input_mode=input_mode,
+        input_revision=input_revision,
     )
 
 
@@ -129,6 +140,8 @@ def create_v3_session(
                 return _entry_read_model(
                     session.session_id,
                     flow_contract_version=session.flow_contract_version,
+                    input_mode=session.input_mode,
+                    input_revision=session.input_revision,
                 ), True
 
     session_id = f"sess_{uuid.uuid4().hex}"
@@ -177,7 +190,9 @@ def create_v3_session(
         raise
     return _entry_read_model(
         session_id,
-        flow_contract_version=flow_contract_version,
+        flow_contract_version=session.flow_contract_version,
+        input_mode=session.input_mode,
+        input_revision=session.input_revision,
     ), False
 
 
@@ -196,6 +211,8 @@ def get_owned_v3_session(
     return _entry_read_model(
         session.session_id,
         flow_contract_version=session.flow_contract_version,
+        input_mode=session.input_mode,
+        input_revision=session.input_revision,
     )
 
 

@@ -172,6 +172,43 @@ def test_legacy_session_has_no_flow_contract():
     assert row.safety_policy is None
 
 
+def test_entry_read_model_reports_server_flow_state():
+    """Frozen Contract §3: the entry read model carries the common flow fields."""
+
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+
+    created = _v3_data(
+        client.post(
+            "/api/v3/sessions",
+            headers={**headers, "Idempotency-Key": f"rm-{uuid.uuid4().hex}"},
+            json={"flow_contract_version": "v3-owner-flow-1"},
+        )
+    )
+    assert created["flow_contract_version"] == "v3-owner-flow-1"
+    assert created["input_mode"] is None
+    assert created["input_revision"] == 1
+
+    select = _transition(
+        headers, session_id, "rm-sel",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+    )
+    assert select.status_code == 201, select.text
+
+    read = _v3_data(client.get(f"/api/v3/sessions/{session_id}", headers=headers))
+    assert read["flow_contract_version"] == "v3-owner-flow-1"
+    assert read["input_mode"] == "without_document"
+    assert read["input_revision"] == _v3_data(select)["input_revision"]
+    # The contract does not place active_document_id on this read model.
+    assert "active_document_id" not in read
+
+    legacy_id = _legacy_session(headers)
+    legacy_read = _v3_data(client.get(f"/api/v3/sessions/{legacy_id}", headers=headers))
+    assert legacy_read["flow_contract_version"] is None
+    assert legacy_read["input_mode"] is None
+    assert legacy_read["input_revision"] is None
+
+
 def test_select_mode_then_replace_and_discard_document():
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
