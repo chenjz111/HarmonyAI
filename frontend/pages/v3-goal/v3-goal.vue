@@ -1,18 +1,16 @@
 <template>
-  <view class="page han-page side-nav-page">
-    <han-side-nav current="question" />
-    <view class="han-page-content container">
-      <view class="header ink-fade-in">
-        <view class="header-row">
-          <view class="stage-seal">
-            <text class="stage-seal-text">愿</text>
-          </view>
-          <view class="header-titles">
-            <text class="step-tag">{{ withDocument ? "有资料流程 · 第 5 步 · 选填" : "无资料流程 · 第 3 步 · 选填" }}</text>
-            <text class="page-title han-title-brush revealed">疗愈诉求</text>
-          </view>
-        </view>
-        <text class="page-subtitle">如果对这次调适有特别的期待，可以告诉我们；没有的话直接跳过即可。这一步选填。</text>
+  <view class="goal-page v31-scroll-page">
+    <view class="goal-container">
+      <view class="brand-row">
+        <button class="back-button" role="button" aria-label="返回" @click="back"><view class="back-chevron" /></button>
+        <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
+        <view class="brand-copy"><text class="brand-name">HarmonyAI</text><text class="brand-tagline">用音乐，陪伴更好的你</text></view>
+      </view>
+
+      <view class="goal-hero ink-fade-in">
+        <text class="step-tag">可选填写</text>
+        <text class="page-title">疗愈诉求</text>
+        <text class="page-subtitle">最后，如果想的话，告诉我们：现在最希望音乐帮你做点什么？（不填也没关系）</text>
       </view>
 
       <view v-if="submitting" class="loading-wrap">
@@ -21,73 +19,34 @@
       </view>
 
       <template v-else>
-        <view class="han-card card ink-fade-up">
+        <view class="intent-picker ink-fade-up">
           <view class="card-head">
-            <view class="card-head-seal"><text class="card-head-seal-text">主</text></view>
-            <text class="card-title">主要诉求</text>
-            <text class="card-hint">选择一项最希望调适的方面</text>
+            <view class="card-head-seal"><text class="card-head-seal-text">♥</text></view>
+            <view class="card-head-copy">
+              <text class="card-title">选择你的诉求</text>
+              <text class="card-hint">最多选择 2 项，按选择顺序记录</text>
+            </view>
           </view>
-          <view class="chip-grid">
+          <view class="intent-grid">
             <view
               v-for="it in intents"
               :key="it.code"
-              class="chip"
-              :class="{ 'chip-active': primary_goal === it.code }"
-              @click="pickPrimaryGoal(it.code)"
+              class="intent-card"
+              :class="{ 'intent-card--active': isSelected(it.code) }"
+              @click="toggleIntent(it.code)"
             >
-              <text class="chip-text" :class="{ 'chip-text-active': primary_goal === it.code }">{{ it.label }}</text>
+              <image class="intent-icon-image" :src="intentImage(it.code)" mode="aspectFit" />
+              <text class="intent-label">{{ it.label }}</text>
+              <view class="intent-check"><text>{{ isSelected(it.code) ? (primary_goal === it.code ? '1' : '2') : '' }}</text></view>
             </view>
           </view>
         </view>
 
-        <view class="han-card card ink-fade-up">
-          <view class="card-head">
-            <view class="card-head-seal card-head-seal--ink"><text class="card-head-seal-text">次</text></view>
-            <text class="card-title">次要诉求</text>
-            <text class="card-hint">还可以再选一项</text>
-          </view>
-          <view class="chip-grid">
-            <view
-              v-for="it in intents"
-              :key="it.code"
-              class="chip"
-              :class="{ 'chip-active': secondary_goal === it.code, 'chip-dim': primary_goal === it.code }"
-              @click="pickSecondaryGoal(it.code)"
-            >
-              <text class="chip-text" :class="{ 'chip-text-active': secondary_goal === it.code }">{{ it.label }}</text>
-            </view>
-          </view>
+        <view class="goal-actions">
+          <view class="goal-button goal-button-secondary" @click="skip"><text>暂时跳过</text></view>
+          <view class="goal-button goal-button-primary" @click="next"><text>完成</text></view>
         </view>
-
-        <view class="han-card card ink-fade-up">
-          <view class="card-head">
-            <view class="card-head-seal card-head-seal--primary"><text class="card-head-seal-text">余</text></view>
-            <text class="card-title">其他想法</text>
-            <text class="card-hint">选填</text>
-          </view>
-          <textarea
-            class="custom-input"
-            v-model="custom_goal_text"
-            :maxlength="200"
-            placeholder="例如：希望音乐更舒缓一些、节奏慢一些……"
-          />
-          <view class="custom-count"><text class="custom-count-text">{{ (custom_goal_text || '').length }} / 200</text></view>
-        </view>
-
-        <!-- 如实标注：该信息本机暂存，不会丢失（此步无后端持久化依赖） -->
-        <view class="save-note">
-          <view class="save-note-dot"></view>
-          <text class="save-note-text">这一步选填。你的选择会保存在本机，不会丢失；之后随时可以重新体验来更新它。</text>
-        </view>
-
-        <view class="actions">
-          <view class="han-btn han-btn-primary btn-primary" @click="next">
-            <text class="btn-primary-text">继续</text>
-          </view>
-          <view class="btn-link" @click="skip">
-            <text class="btn-link-text">暂不选择，直接继续</text>
-          </view>
-        </view>
+        <view class="page-motto"><text>—　五音和鸣 · 乐养身心　—</text></view>
       </template>
     </view>
   </view>
@@ -97,23 +56,16 @@
 /**
  * V3.1 疗愈诉求页（Issue #100：Provisional Flow 选填加回）
  *
- * 意图代码使用合同权威枚举（frontend-read-model-contract-v3.md §10 + 复审指令）：
- *   sleep / relaxation / emotion_regulation / focus / energy / stress_relief / other
- * - 不使用自定义代码（如 relax/soothe/lift_mood 等），与后端契约字段一一对应，
- *   便于上游 Agent / 下游生成器直接消费。
+ * 意图代码沿用合同权威枚举；Owner 2026-09-11 决定本版界面只展示
+ * sleep / relaxation / emotion_regulation / focus / energy / stress_relief 六项。
+ * `other` 与自由文字只保留在底层兼容模块，不向用户展示。
  * - 整页选填、可整步跳过；最多 2 项：主诉求（primary_goal）+ 次诉求（secondary_goal）。
- * - "其他想法"补充输入 ≤ 200 字（前端 maxlength=200；后端写入时也按同样上限校验）。
  * - 不虚构、不默认补全任何偏好：用户未选择时不留占位、不提交空对象。
  * - 后端暂无对应保存能力 → 选择内容本机暂存（safeSet），页面如实标注，
  *   mock 状态机同步记录。后端交付后由 apiV3.submitHealingIntent 替换为本请求。
  *
- * 复审指令（合同校验）：
- *   1. 用户不能只填"其他想法"而不选择主要诉求
- *   2. primary_goal === "other" 时，必须填写 1~200 字补充内容
- *   3. 全空 → 视为整页跳过，可直接继续
- *   4. secondary_goal 不能脱离 primary_goal 单独存在
- *   5. 前端保存字段与正式合同对应：primary_goal / secondary_goal / custom_goal_text
- *   6. 不再使用 primary / secondary / custom_text 作为最终提交字段
+ * 合同校验仍由公共模块负责；界面提交字段保持
+ * primary_goal / secondary_goal / custom_goal_text，后者固定为空。
  * - 校验逻辑集中在 common/v3-healing-intent.js（decideHealingIntent），
  *   本组件只负责 UI 绑定 + 调用 + toast 提示。
  *
@@ -122,7 +74,6 @@
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
 import { apiV3 } from "../../common/api-v3.js"
-import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 import {
   INTENT_CODES,
   decideHealingIntent,
@@ -130,11 +81,12 @@ import {
 } from "../../common/v3-healing-intent.js"
 
 export default {
-  components: { HanSideNav },
   data() {
     return {
       withDocument: false,
-      intents: INTENT_CODES,
+      // Owner 2026-09-11 override: hide `other` and the free-text UI.
+      // Keep the backend-compatible payload shape with an empty custom_goal_text.
+      intents: INTENT_CODES.filter((item) => item.code !== "other"),
       // 合同权威字段名（primary_goal / secondary_goal / custom_goal_text），
       // 与 Read Model §10 一一对应；后端未交付时本机暂存同样采用这套字段，
       // 接入真实接口时无需再做映射。
@@ -152,37 +104,39 @@ export default {
       .catch(() => {})
   },
   methods: {
-    pickPrimaryGoal(code) {
-      if (this.primary_goal === code) {
-        this.primary_goal = null
-        // 清空主诉求时不清空文字：custom_goal_text 独立合法（冻结规则）
-        return
-      }
-      this.primary_goal = code
-      if (this.secondary_goal === code) this.secondary_goal = null
+    back() {
+      uni.navigateBack()
     },
-    pickSecondaryGoal(code) {
+    isSelected(code) {
+      return this.primary_goal === code || this.secondary_goal === code
+    },
+    intentImage(code) {
+      const index = ({ sleep: 1, relaxation: 2, emotion_regulation: 3, focus: 4, energy: 5, stress_relief: 6 })[code]
+      return `/static/v31-goal/intent-${index}.png`
+    },
+    toggleIntent(code) {
       if (this.primary_goal === code) {
-        uni.showToast({ title: "已在主要诉求中", icon: "none" })
-        return
-      }
-      if (!this.primary_goal) {
-        // 没有主诉求时不允许先选次要诉求
-        uni.showToast({ title: "需要先选择主要诉求", icon: "none" })
+        this.primary_goal = this.secondary_goal
+        this.secondary_goal = null
         return
       }
       if (this.secondary_goal === code) {
         this.secondary_goal = null
         return
       }
-      this.secondary_goal = code
+      if (!this.primary_goal) {
+        this.primary_goal = code
+        return
+      }
+      if (!this.secondary_goal) {
+        this.secondary_goal = code
+        return
+      }
+      uni.showToast({ title: "最多选择 2 项", icon: "none" })
     },
     /**
-     * 继续按钮：先走合同校验 → 全空 skip / 不合规 toast / 合规 submit
-     * 与原行为等价，仅：
-     *   - 字段名改为 primary_goal / secondary_goal / custom_goal_text
-     *   - 增加"只填文字不选主要诉求" / "other 必填文字" / "secondary 脱离 primary"
-     *     / "文字超长" 四类校验
+     * 继续按钮：先走合同校验 → 全空 skip / 不合规 toast / 合规 submit。
+     * Owner 界面隐藏项不会由本组件生成，底层校验仅用于保持接口兼容。
      */
     async next() {
       if (this.submitting) return
@@ -450,4 +404,71 @@ export default {
   font-size: 26rpx;
   color: var(--text-muted);
 }
+</style>
+
+<style scoped>
+/* Owner 2026-09-13：疗愈诉求手机视觉 */
+.goal-page {
+  width: 100%;
+  max-width: 430px;
+  min-height: 100vh;
+  margin: 0 auto;
+  color: #064c50;
+  background: #f8f8f1 url('/static/v31-questionnaire/questionnaire-background-q34.png') center top / 100% 100% no-repeat;
+  font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+.goal-container { min-height:100vh; box-sizing:border-box; padding:calc(12px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); }
+.goal-page .brand-row { display:flex; align-items:center; min-height:46px; gap:8px; }
+.goal-page .back-button { display:flex; align-items:center; justify-content:center; width:28px; height:40px; margin:0; padding:0; border:0; background:transparent; }
+.goal-page .back-button::after { border:0; }
+.goal-page .back-chevron { width:11px; height:11px; border-left:2px solid #064c50; border-bottom:2px solid #064c50; transform:rotate(45deg); }
+.goal-page .brand-leaf { width:42px; height:42px; }
+.goal-page .brand-copy { display:flex; flex-direction:column; gap:1px; }
+.goal-page .brand-name { font-size:18px; font-weight:750; line-height:1.15; }
+.goal-page .brand-tagline { font-size:10px; letter-spacing:2px; }
+.goal-hero { margin:18px 14px 18px; }
+.goal-page .step-tag { display:inline-block; margin-bottom:8px; padding:4px 10px; border:0; border-radius:7px; color:#28675f; background:rgba(205,224,215,.66); font-size:12px; }
+.goal-page .page-title { display:block; color:#064c50; font-family:'KaiTi','STKaiti',serif; font-size:34px; font-weight:800; letter-spacing:3px; line-height:1.2; }
+.goal-page .page-subtitle { display:block; margin-top:10px; color:#18585c; font-size:14px; line-height:1.75; }
+.goal-page .intent-picker { box-sizing:border-box; padding:16px 13px; border:1px solid rgba(57,104,93,.08); border-radius:14px; background:rgba(255,255,251,.82); box-shadow:0 3px 12px rgba(31,72,62,.10); }
+.goal-page .card-head { display:flex; align-items:center; gap:10px; margin-bottom:13px; }
+.goal-page .card-head-seal { display:flex; align-items:center; justify-content:center; width:42px; min-width:42px; height:42px; border:0; border-radius:50%; transform:none; background:#deede6; box-shadow:none; }
+.goal-page .card-head-seal-text { color:#155f56; font-family:inherit; font-size:20px; }
+.goal-page .card-head-copy { display:flex; flex-direction:column; min-width:0; }
+.goal-page .card-title { color:#0b4f51; font-family:inherit; font-size:17px; font-weight:750; }
+.goal-page .card-hint { margin-top:3px; color:#567472; font-size:11px; }
+.goal-page .intent-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:0; }
+.goal-page .intent-card { position:relative; min-height:132px; box-sizing:border-box; padding:9px 5px 10px; border:1px solid rgba(58,93,87,.13); border-radius:9px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; background:rgba(255,255,252,.72); transition:.2s ease; }
+.goal-page .intent-card--active { border-color:#167461; background:linear-gradient(145deg,#f4fbf7,#e2f2e9); box-shadow:0 4px 10px rgba(24,112,91,.12); }
+.goal-page .intent-icon-image { width:61px; max-width:100%; height:61px; flex-shrink:0; border-radius:50%; mix-blend-mode:multiply; }
+.goal-page .intent-label { margin-top:6px; color:#0c4b51; font-size:12px; font-weight:700; line-height:1.35; text-align:center; }
+.goal-page .intent-check { position:absolute; top:7px; right:7px; width:18px; height:18px; border:1px solid #b7c5c0; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:10px; }
+.goal-page .intent-card--active .intent-check { border-color:#176f5e; background:#176f5e; }
+.goal-actions { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin:18px 36px 0; }
+.goal-button { display:flex; align-items:center; justify-content:center; min-height:48px; border-radius:26px; font-size:15px; font-weight:650; }
+.goal-button-secondary { color:#15565a; background:rgba(221,232,228,.82); }
+.goal-button-primary { color:#fff; background:linear-gradient(105deg,#24695e,#28776a); box-shadow:0 5px 12px rgba(27,105,89,.15); }
+.goal-page .page-motto { margin-top:14px; color:#285e5b; text-align:center; font-family:'KaiTi','STKaiti',serif; font-size:11px; letter-spacing:1px; }
+@media (max-width:350px) {
+  .goal-container { padding-left:10px; padding-right:10px; }
+  .goal-hero { margin-left:8px; margin-right:8px; }
+  .goal-page .intent-picker { padding-left:8px; padding-right:8px; }
+  .goal-page .intent-grid { gap:5px; }
+  .goal-page .intent-card { min-height:122px; padding-left:2px; padding-right:2px; }
+  .goal-page .intent-icon-image { width:54px; height:54px; }
+  .goal-page .intent-label { font-size:11px; }
+  .goal-actions { margin-left:22px; margin-right:22px; }
+}
+</style>
+
+<style scoped>
+.intent-picker { padding:30rpx; border-radius:34rpx; }
+.intent-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18rpx; margin-top:24rpx; }
+.intent-card { position:relative; min-height:180rpx; box-sizing:border-box; padding:28rpx 22rpx; border:2rpx solid #e0e6df; border-radius:24rpx; display:flex; flex-direction:column; justify-content:center; background:rgba(255,255,255,.72); transition:.2s ease; }
+.intent-card--active { border-color:#167461; background:linear-gradient(145deg,#f4fbf7,#e2f2e9); box-shadow:0 12rpx 30rpx rgba(24,112,91,.14); }
+.intent-icon { width:66rpx; height:66rpx; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#e4f1ea; color:#0f6558; font-family:"STKaiti",serif; font-size:31rpx; }
+.intent-label { margin-top:16rpx; color:#0c4b46; font-size:26rpx; font-weight:700; line-height:1.35; }
+.intent-check { position:absolute; top:16rpx; right:16rpx; width:38rpx; height:38rpx; border:2rpx solid #b7c5c0; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:20rpx; }
+.intent-card--active .intent-check { background:#176f5e; border-color:#176f5e; }
+@media (max-width:350px) { .intent-card{min-height:158rpx;padding:22rpx 18rpx}.intent-label{font-size:23rpx} }
 </style>

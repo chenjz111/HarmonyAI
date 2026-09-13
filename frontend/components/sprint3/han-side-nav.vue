@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   { key: "material", glyph: "声", step: "02", tip: "呈声", path: "/pages/v3-material/v3-material", tab: false },
   { key: "question", glyph: "问", step: "03", tip: "问询", path: "/pages/v3-questionnaire/v3-questionnaire", tab: false },
   { key: "confirm", glyph: "承", step: "04", tip: "确认", path: "/pages/v3-confirm/v3-confirm", tab: false },
-  { key: "listen", glyph: "听", step: "05", tip: "聆听", path: "/pages/v3-player/v3-player", tab: true },
+  { key: "listen", glyph: "听", step: "05", tip: "聆听", path: "/pages/v3-player/v3-player", tab: false },
 ]
 
 export default {

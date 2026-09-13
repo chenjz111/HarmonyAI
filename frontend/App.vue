@@ -598,4 +598,30 @@ page {
 .ink-fade-up { animation: ink-fade-up 0.7s var(--ease-out); }
 .ink-breathe { animation: ink-breathe 4s ease-in-out infinite; }
 .ink-float { animation: ink-float 5s ease-in-out infinite; }
+
+/* ===== V3.1 Owner visual refresh: responsive mobile canvas ===== */
+.side-nav-page .han-side-nav { display: none !important; }
+.side-nav-page .han-page-content { padding-left: 36rpx !important; padding-right: 36rpx !important; max-width: 750rpx; margin: 0 auto; }
+.side-nav-page .header { padding-top: calc(28rpx + env(safe-area-inset-top)); }
+.side-nav-page .header-row { align-items: flex-start; }
+.side-nav-page .stage-seal { width: 68rpx; height: 68rpx; border-radius: 50%; transform: none; background: linear-gradient(145deg, #8fc8b2, #0e6357); box-shadow: 0 12rpx 28rpx rgba(22, 96, 79, .18); }
+.side-nav-page .stage-seal-text { font-size: 32rpx; }
+.side-nav-page .step-tag { border: 0; border-radius: 12rpx; background: rgba(25, 105, 87, .1); color: #1a6659; }
+.side-nav-page .page-title { color: #093f3c; font-size: clamp(36rpx, 6vw, 50rpx); letter-spacing: .06em; }
+.side-nav-page .page-subtitle { color: #5f7671; }
+.side-nav-page .han-card { border-color: rgba(41, 105, 88, .12); border-radius: 28rpx; background: rgba(255, 254, 249, .82); box-shadow: 0 18rpx 50rpx rgba(27, 85, 69, .1); backdrop-filter: blur(18rpx); }
+.side-nav-page .han-btn-primary { border-radius: 999rpx; background: linear-gradient(135deg, #4f9e84, #176b59); box-shadow: 0 16rpx 34rpx rgba(23, 107, 89, .2); }
+.side-nav-page .han-btn-ghost { border-radius: 999rpx; border-color: rgba(18, 94, 80, .42); color: #0d574d; background: rgba(255, 255, 255, .56); }
+.side-nav-page .edit-textarea { border-radius: 22rpx; background: rgba(249, 253, 250, .9); border: 2rpx solid rgba(19, 104, 87, .38); caret-color: #0b715d; }
+.v31-scroll-page { min-height: 100vh; overflow-y: auto; }
+
+@media (min-width: 768px) {
+  page { background: #dfeee8; }
+  .han-page, .profile-page { width: 430px; min-height: 100vh; margin: 0 auto; box-shadow: 0 0 70px rgba(20, 75, 61, .16); }
+}
+
+@media (max-width: 350px) {
+  .side-nav-page .han-page-content { padding-left: 26rpx !important; padding-right: 26rpx !important; }
+  .side-nav-page .page-title { font-size: 38rpx; }
+}
 </style>

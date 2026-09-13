@@ -18,15 +18,15 @@
  *   - 业务逻辑 togglePlay/toggleFavorite/goFeedback/exitSession 完全保留
  */
 import { apiV3 } from "../../common/api-v3.js"
-import HanSideNav from "../../components/sprint3/han-side-nav.vue"
+import { formatPlaybackTime, toneThemeFor } from "../../common/v31-tone-theme.js"
 
 export default {
-  components: { HanSideNav },
   data() {
     return {
       loading: true,
       error: "",
       music: null,
+      basis: null,
       playing: false,
       audioCtx: null,
       resolvedAudioSrc: "",
@@ -54,8 +54,39 @@ export default {
       const p = (this.currentTime / this.totalSeconds) * 100
       return Math.max(0, Math.min(100, p))
     },
-    progressText() {
-      return this.formatDuration(this.currentTime) + " / " + this.formatDuration(this.totalSeconds)
+    toneTheme() {
+      return toneThemeFor((this.music && (this.music.tone_code || this.music.tone_label)) || "gong")
+    },
+    playerStyle() {
+      return {
+        "--tone-accent": this.toneTheme.accent,
+        "--tone-soft": this.toneTheme.soft,
+        backgroundImage: `linear-gradient(rgba(255,255,252,.08),rgba(255,255,252,.08)), url('/static/v31-player/${this.toneTheme.code}-1.png')`,
+      }
+    },
+    toneHeroSrc() {
+      return `/static/v31-player/${this.toneTheme.code}-2.png`
+    },
+    basisMatchesTone() {
+      return !!(this.basis && this.basis.primary_tone && this.basis.primary_tone.tone === this.toneTheme.code)
+    },
+    displayTitle() {
+      return (this.music && this.music.title) || this.toneTheme.title
+    },
+    displayBpm() {
+      return this.basis && this.basis.bpm ? `${this.basis.bpm.value} BPM` : "—"
+    },
+    displayInstruments() {
+      if (this.basisMatchesTone && this.basis.instruments) return this.basis.instruments.values.join(" · ")
+      if (this.music && this.music.instrument_labels && this.music.instrument_labels.length) return this.music.instrument_labels.join(" · ")
+      return this.toneTheme.instruments
+    },
+    displayAmbience() {
+      return this.basis && this.basis.ambience ? this.basis.ambience.values.join(" · ") : this.toneTheme.ambience
+    },
+    summaryDuration() {
+      if (!this.totalSeconds) return "—"
+      return `${Math.max(1, Math.round(this.totalSeconds / 60))}分钟`
     },
   },
   onLoad() {
@@ -72,6 +103,11 @@ export default {
         this.music = await apiV3.getMusic()
         this.favorite = !!this.music.favorite
         this.simulated = !!apiV3.AGENT_SIMULATED
+        try {
+          this.basis = await apiV3.getMusicBasis()
+        } catch (e) {
+          this.basis = null
+        }
       } catch (e) {
         if (e.agentPending) {
           this.error = e.message
@@ -181,9 +217,7 @@ export default {
       }
     },
     formatDuration(sec) {
-      const m = Math.floor(sec / 60)
-      const s = sec % 60
-      return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s)
+      return formatPlaybackTime(sec)
     },
     goFeedback() {
       this.stopAudio()
@@ -198,13 +232,13 @@ export default {
 </script>
 
 <template>
-  <view class="page han-page side-nav-page">
-    <han-side-nav current="listen" />
-    <view class="han-page-content container">
-      <view class="header ink-fade-in">
-        <view class="step-tag">
-          <text class="step-tag-text">音乐调养</text>
-        </view>
+  <view class="tone-player-page" :style="playerStyle">
+    <view class="player-shell">
+      <view class="brand-row">
+        <button class="back-button" role="button" aria-label="返回" @click="exitSession"><view class="back-chevron" /></button>
+        <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
+        <view class="brand-copy"><text class="brand-name">HarmonyAI</text><text class="brand-tagline">用音乐，陪伴更好的你</text></view>
+        <view class="brand-motto"><text>五音和鸣</text><text>心自安宁</text><text class="motto-seal">和</text></view>
       </view>
 
       <view v-if="loading" class="loading-wrap">
@@ -224,42 +258,39 @@ export default {
         <text class="error-hint">你不必着急 · 待服务就绪再来聆听</text>
       </view>
 
-      <view v-else class="player-card han-card ink-fade-up">
+      <view v-else class="player-content ink-fade-up">
         <view v-if="simulated" class="demo-banner">
           <text class="demo-banner-text">演示模式：当前音乐为模拟数据</text>
         </view>
 
-        <!-- 唱片：水墨渐变 + 朱砂印章角标（主视觉占位，冻结 §9：后续重新设计） -->
-        <view class="disc-wrap">
-          <view class="disc" :class="{ 'disc-spinning': playing }">
-            <view class="disc-inner">
-              <text class="disc-tone">乐</text>
+        <view class="hero-wrap">
+          <view class="wave-ring" :class="{ 'wave-ring--playing': playing }">
+            <view class="tone-hero-frame">
+              <image class="tone-hero-image" :src="toneHeroSrc" mode="aspectFill" />
+              <view class="tone-copy">
+                <view class="tone-glyph-row"><text class="tone-glyph">{{ toneTheme.glyph }}</text><text class="tone-seal">主音</text></view>
+                <text class="tone-traits">{{ toneTheme.traits }}</text>
+              </view>
             </view>
-            <view class="disc-groove"></view>
-          </view>
-          <view class="disc-seal">
-            <text class="disc-seal-text">调</text>
           </view>
         </view>
 
-        <text class="music-title">{{ music.title }}</text>
-        <text class="music-instruments">{{ music.instrument_labels.join(" · ") }}</text>
+        <text class="music-title">{{ displayTitle }}</text>
+        <text class="tone-pair">{{ toneTheme.glyph }}音 · {{ toneTheme.partner }}</text>
+        <text class="music-instruments">—　{{ displayInstruments }} · {{ displayAmbience }}　—</text>
+        <text class="music-caption">让音乐回归身心的自然节奏，在静谧中遇见更好的自己。</text>
 
         <!-- 控制区：时间和进度均来自真实播放器事件 -->
         <view class="progress-wrap">
           <view class="progress-track">
-            <view class="progress-value" :style="{ width: progressPercent + '%' }"></view>
+            <view class="progress-value" :style="{ width: progressPercent + '%' }"><view class="progress-thumb" /></view>
           </view>
           <view class="progress-times">
-            <text class="progress-time">{{ progressText }}</text>
+            <text class="progress-time">{{ formatDuration(currentTime) }}</text>
+            <text class="progress-time">{{ formatDuration(totalSeconds) }}</text>
           </view>
         </view>
         <view class="controls">
-          <view class="ctrl-fav" @click="toggleFavorite">
-            <view class="ctrl-fav-icon" :class="{ 'fav-active': favorite }" aria-label="收藏">
-              <view class="heart-shape"></view>
-            </view>
-          </view>
           <view class="ctrl-play" @click="togglePlay" :aria-label="playing ? '暂停' : '播放'">
             <view v-if="playing" class="pause-shape" aria-hidden="true">
               <view class="pause-bar"></view>
@@ -267,24 +298,31 @@ export default {
             </view>
             <view v-else class="play-shape" aria-hidden="true"></view>
           </view>
-          <view class="ctrl-duration">
-            <text class="ctrl-duration-text">{{ formatDuration(totalSeconds) }}</text>
-          </view>
         </view>
 
-        <!-- 免责声明 -->
-        <view class="disclaimer-box">
-          <text class="disclaimer-text">{{ music.disclaimer }}</text>
+        <view class="music-summary-card">
+          <view class="summary-heading"><view class="summary-note">♫</view><text>本次音乐</text></view>
+          <view class="music-summary-grid">
+            <view class="music-summary-cell"><text class="summary-value">{{ toneTheme.glyph }}音主调</text><text class="summary-label">{{ toneTheme.traits }}</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ displayBpm }}</text><text class="summary-label">舒缓节奏</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ summaryDuration }}</text><text class="summary-label">聆听时长</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ displayInstruments }}</text><text class="summary-label">主要乐器</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ displayAmbience }}</text><text class="summary-label">音乐氛围</text></view>
+          </view>
         </view>
 
         <view class="actions">
-          <view class="han-btn han-btn-primary btn-primary" @click="goFeedback">
-            <text class="btn-text">反馈本次体验</text>
+          <view class="player-action feedback-action" @click="goFeedback">
+            <view class="action-icon leaf-action-icon"><image src="/static/v31-document/leaf.svg" mode="aspectFit" /></view>
+            <view class="action-copy"><text class="action-title">反馈本次体验</text><text class="action-subtitle">让我们做得更好</text></view><text class="action-arrow">→</text>
           </view>
-          <view class="han-btn han-btn-ghost btn-ghost" @click="exitSession">
-            <text class="btn-text-ghost">结束本次聆听</text>
+          <view class="player-action end-action" @click="exitSession">
+            <view class="action-icon"><view class="stop-square" /></view>
+            <view class="action-copy"><text class="action-title">结束本次聆听</text><text class="action-subtitle">愿你身心安宁</text></view>
           </view>
         </view>
+        <text class="player-disclaimer">{{ music.disclaimer }}</text>
+        <view class="page-motto"><text>—　五音和鸣 · 乐养身心　—</text></view>
       </view>
     </view>
   </view>
@@ -783,5 +821,109 @@ export default {
   border-radius: var(--radius-seal);
   padding: 8rpx 20rpx;
   letter-spacing: 0.05em;
+}
+</style>
+
+<style scoped>
+.tone-player { background:radial-gradient(circle at 65% 8%,var(--tone-soft),transparent 30%),linear-gradient(180deg,#fffdf8 0%,var(--tone-soft) 100%); }
+.tone-player .player-card { border:0; background:rgba(255,255,255,.72); border-radius:38rpx; box-shadow:0 24rpx 70rpx rgba(23,76,63,.13); }
+.tone-player .disc { background:radial-gradient(circle at 50% 45%,#fffdf4 0 16%,var(--tone-soft) 17% 54%,rgba(255,255,255,.75) 55% 100%); border:4rpx solid rgba(255,255,255,.9); box-shadow:0 0 0 16rpx color-mix(in srgb,var(--tone-accent) 14%,transparent),0 26rpx 60rpx rgba(34,67,57,.18); }
+.tone-player .disc-tone { color:var(--tone-accent); font-size:112rpx; font-family:"STKaiti","KaiTi",serif; }
+.tone-player .disc-seal,.tone-player .ctrl-play,.tone-player .progress-value { background:var(--tone-accent); }
+.tone-player .music-title { color:#103f3c; font-family:"STKaiti","KaiTi",serif; font-size:50rpx; }
+.tone-player .ctrl-play { box-shadow:0 0 0 18rpx color-mix(in srgb,var(--tone-accent) 12%,transparent),0 16rpx 40rpx rgba(38,72,60,.2); }
+.tone-player .btn-primary { background:linear-gradient(135deg,#c8553f,#a93b2e); border-radius:999rpx; }
+.tone-player .btn-ghost { border-radius:999rpx; }
+</style>
+
+<style scoped>
+/* ===== Owner V3.1 五音动态播放器 ===== */
+.tone-player-page {
+  width:100%;
+  max-width:430px;
+  min-height:100vh;
+  margin:0 auto;
+  color:#164f50;
+  background-color:#f8f6ed;
+  background-repeat:no-repeat;
+  background-position:center top;
+  background-size:100% 100%;
+}
+.player-shell { min-height:100vh; padding:14px 16px 26px; box-sizing:border-box; }
+.tone-player-page .brand-row { display:flex; align-items:center; min-height:46px; gap:8px; }
+.tone-player-page .back-button { display:flex; align-items:center; justify-content:center; width:28px; height:40px; margin:0; padding:0; border:0; background:transparent; }
+.tone-player-page .back-button::after { border:0; }
+.tone-player-page .back-chevron { width:11px; height:11px; border-left:2px solid #173e3d; border-bottom:2px solid #173e3d; transform:rotate(45deg); }
+.tone-player-page .brand-leaf { width:42px; height:42px; }
+.tone-player-page .brand-copy { display:flex; flex-direction:column; gap:1px; }
+.tone-player-page .brand-name { color:#194f4e; font-size:18px; font-weight:750; line-height:1.15; }
+.tone-player-page .brand-tagline { color:#416663; font-size:10px; letter-spacing:2px; }
+.brand-motto { position:relative; display:flex; flex-direction:column; align-items:flex-end; margin-left:auto; padding-right:18px; color:#285c59; font-family:'KaiTi','STKaiti',serif; font-size:11px; font-weight:700; line-height:1.25; transform:rotate(-5deg); }
+.motto-seal { position:absolute; right:0; bottom:0; display:flex; align-items:center; justify-content:center; width:14px; height:25px; border-radius:3px; color:#fff; background:#9d2821; font-size:8px; }
+.player-content { display:flex; flex-direction:column; align-items:center; }
+.tone-player-page .demo-banner { margin:2px 0 4px; }
+.tone-player-page .demo-banner-text { padding:3px 8px; font-size:8px; }
+.hero-wrap { display:flex; align-items:center; justify-content:center; width:100%; margin:7px 0 8px; }
+.wave-ring { position:relative; display:flex; align-items:center; justify-content:center; width:286px; max-width:82vw; height:286px; max-height:82vw; border-radius:50%; background:repeating-conic-gradient(from -3deg,var(--tone-accent) 0 1deg,transparent 1deg 3.6deg); opacity:.98; }
+.wave-ring::before { content:''; position:absolute; inset:12px; border-radius:50%; background:rgba(255,255,250,.82); box-shadow:0 0 0 1px color-mix(in srgb,var(--tone-accent) 30%,transparent); }
+.wave-ring--playing { animation:pulse-ring 2.6s ease-in-out infinite; }
+@keyframes pulse-ring { 50% { transform:scale(1.018); filter:saturate(1.08); } }
+.tone-hero-frame { position:relative; width:250px; max-width:72vw; height:250px; max-height:72vw; border:4px solid rgba(255,255,248,.88); border-radius:50%; overflow:hidden; z-index:1; box-shadow:0 5px 18px rgba(42,67,59,.16); background:var(--tone-soft); }
+.tone-hero-image { width:100%; height:100%; border-radius:50%; }
+.tone-copy { position:absolute; top:45px; left:29px; display:flex; flex-direction:column; align-items:center; z-index:2; text-shadow:0 1px 2px rgba(255,255,255,.85); }
+.tone-glyph-row { display:flex; align-items:center; gap:6px; }
+.tone-glyph { color:#382b1c; font-family:'KaiTi','STKaiti',serif; font-size:42px; font-weight:800; line-height:1; }
+.tone-seal { display:flex; align-items:center; justify-content:center; width:18px; height:32px; border-radius:4px; color:#fff; background:#9e3028; font-family:'KaiTi','STKaiti',serif; font-size:9px; writing-mode:vertical-rl; }
+.tone-traits { width:16px; margin-top:5px; color:#263d37; font-family:'KaiTi','STKaiti',serif; font-size:11px; line-height:1.35; writing-mode:vertical-rl; letter-spacing:2px; }
+.tone-player-page .music-title { margin:0 0 5px; color:#1e302c; font-family:'KaiTi','STKaiti',serif; font-size:30px; font-weight:800; letter-spacing:2px; line-height:1.2; }
+.tone-pair { color:#65462e; font-family:'KaiTi','STKaiti',serif; font-size:14px; letter-spacing:2px; }
+.tone-player-page .music-instruments { margin:8px 0 5px; color:#6c5039; font-family:'KaiTi','STKaiti',serif; font-size:13px; letter-spacing:1px; }
+.music-caption { color:#536a66; font-size:10px; line-height:1.5; text-align:center; }
+.tone-player-page .progress-wrap { width:90%; margin:15px 0 0; }
+.tone-player-page .progress-track { width:100%; height:4px; margin:0; overflow:visible; border-radius:3px; background:rgba(73,85,80,.28); }
+.tone-player-page .progress-value { position:relative; height:100%; border-radius:3px; background:var(--tone-accent); }
+.progress-thumb { position:absolute; top:50%; right:-5px; width:10px; height:10px; border-radius:50%; background:var(--tone-accent); transform:translateY(-50%); }
+.tone-player-page .progress-times { display:flex; justify-content:space-between; margin-top:7px; }
+.tone-player-page .progress-time { color:#3f5551; font-size:10px; letter-spacing:0; }
+.tone-player-page .controls { display:flex; justify-content:center; margin:3px 0 15px; }
+.tone-player-page .ctrl-play { display:flex; align-items:center; justify-content:center; width:78px; height:78px; border-radius:50%; background:var(--tone-accent); box-shadow:0 0 0 12px color-mix(in srgb,var(--tone-accent) 10%,transparent),0 8px 22px rgba(47,64,57,.22); }
+.tone-player-page .play-shape { border-top-width:13px; border-bottom-width:13px; border-left-width:21px; margin-left:5px; }
+.tone-player-page .pause-shape { gap:8px; }
+.tone-player-page .pause-bar { width:7px; height:25px; border-radius:3px; }
+.music-summary-card { width:100%; padding:12px 10px 13px; box-sizing:border-box; border:1px solid rgba(84,92,80,.12); border-radius:13px; background:rgba(255,255,250,.84); box-shadow:0 3px 12px rgba(62,74,65,.10); }
+.summary-heading { display:flex; align-items:center; gap:8px; margin-bottom:9px; color:#233e3a; font-family:'KaiTi','STKaiti',serif; font-size:17px; font-weight:800; }
+.summary-note { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:rgba(221,229,215,.9); color:var(--tone-accent); font-size:18px; }
+.music-summary-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); }
+.music-summary-cell { display:flex; flex-direction:column; align-items:center; min-width:0; min-height:54px; padding:4px 3px; box-sizing:border-box; border-right:1px solid rgba(80,90,82,.12); text-align:center; }
+.music-summary-cell:last-child { border-right:0; }
+.summary-value { max-width:100%; color:#2d3f3b; font-family:'KaiTi','STKaiti',serif; font-size:10px; font-weight:750; line-height:1.35; overflow-wrap:anywhere; }
+.summary-label { margin-top:4px; color:#667a75; font-size:8px; line-height:1.3; }
+.tone-player-page .actions { display:flex; flex-direction:column; gap:9px; width:78%; margin-top:13px; }
+.player-action { display:grid; grid-template-columns:36px minmax(0,1fr) 24px; align-items:center; min-height:58px; padding:7px 17px; box-sizing:border-box; border-radius:31px; }
+.feedback-action { color:#fff; background:linear-gradient(105deg,#c7513d,#b53d31); box-shadow:0 5px 15px rgba(155,54,43,.2); }
+.end-action { grid-template-columns:36px minmax(0,1fr); color:#243b37; border:1px solid rgba(255,255,255,.9); background:rgba(239,239,230,.84); }
+.action-icon { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border:1px solid currentColor; border-radius:50%; }
+.leaf-action-icon image { width:21px; height:21px; filter:brightness(0) invert(1); }
+.stop-square { width:9px; height:9px; border-radius:1px; background:currentColor; }
+.action-copy { display:flex; flex-direction:column; align-items:center; }
+.action-title { font-family:'KaiTi','STKaiti',serif; font-size:16px; font-weight:700; line-height:1.2; }
+.action-subtitle { margin-top:2px; font-size:8px; opacity:.82; }
+.action-arrow { font-size:22px; }
+.player-disclaimer { margin-top:10px; color:#637773; font-size:8px; text-align:center; }
+.tone-player-page .page-motto { margin-top:13px; color:#496c67; font-family:'KaiTi','STKaiti',serif; font-size:10px; letter-spacing:1px; }
+.tone-player-page .loading-wrap,.tone-player-page .error-wrap { min-height:600px; padding:120px 20px; box-sizing:border-box; }
+.tone-player-page .error-text { color:#4f6661; }
+@media (max-width:350px) {
+  .player-shell { padding-left:10px; padding-right:10px; }
+  .brand-motto { font-size:10px; }
+  .wave-ring { width:254px; height:254px; }
+  .tone-hero-frame { width:220px; height:220px; }
+  .tone-copy { top:38px; left:24px; }
+  .tone-glyph { font-size:37px; }
+  .tone-player-page .music-title { font-size:27px; }
+  .music-summary-card { padding-left:6px; padding-right:6px; }
+  .music-summary-cell { padding-left:1px; padding-right:1px; }
+  .summary-value { font-size:9px; }
+  .tone-player-page .actions { width:84%; }
 }
 </style>

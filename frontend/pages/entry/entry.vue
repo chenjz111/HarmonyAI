@@ -1,67 +1,54 @@
 <template>
-  <view class="page han-page">
+  <view class="page han-page v31-home">
     <view class="han-page-content page-inner">
-      <!-- 品牌头部 -->
-      <view class="hero ink-fade-in">
+      <view class="hero">
         <view class="brand-row">
-          <view class="brand-seal">
-            <text class="brand-seal-text">和</text>
-          </view>
+          <view class="brand-logo home-art home-art--logo" aria-hidden="true"></view>
           <view class="brand-meta">
             <text class="brand-name">HarmonyAI</text>
-            <text class="brand-tagline">中医五音 · 音乐调养</text>
+            <text class="brand-tagline">中医灵感 · 音乐疗愈</text>
           </view>
         </view>
       </view>
-
-      <!-- 主内容 -->
       <view class="content-area">
-        <!-- 加载态 -->
         <view v-if="loading" class="loading-state">
           <view class="loading-ring"></view>
           <text class="loading-text">正在备茶</text>
         </view>
-
-        <!-- 错误态 -->
-        <view v-else-if="error" class="error-state ink-fade-in">
-          <view class="error-seal">
-            <text class="error-seal-text">静</text>
-          </view>
+        <view v-else-if="error" class="error-state">
+          <view class="error-seal"><text class="error-seal-text">静</text></view>
           <text class="error-title">暂时无法开始</text>
           <text class="error-desc">{{ error }}</text>
-          <view class="han-btn han-btn-primary retry-btn" @click="init">
-            <text class="btn-text">重试</text>
-          </view>
+          <button class="retry-btn" @click="init">重试</button>
           <text class="error-hint">若持续出现，请检查网络后再次尝试 · 你不必着急</text>
         </view>
-
-        <!-- 正常态 -->
-        <view v-else class="entry-content ink-fade-up">
-          <text class="hero-title">了解你的近况</text>
-          <text class="hero-desc">为你生成专属音乐。</text>
-
+        <view v-else class="entry-content">
+          <text class="home-slogan">让音乐，陪你回到更好的自己</text>
+          <view class="home-slogan-line"></view>
+          <text class="home-subtitle">以中医为本 · 用音乐疗愈身心</text>
           <view class="choice-stack">
-            <view
+            <button
               v-for="(choice, idx) in entry.choices"
               :key="choice.id"
               class="choice-card"
               :class="{ 'choice-card-loading': submittingId === choice.id }"
+              :disabled="submitting"
               @click="choose(choice)"
             >
-              <view class="choice-seal">
-                <text class="choice-seal-text">{{ idx === 0 ? '资' : '心' }}</text>
+              <view class="choice-card-main">
+                <view class="choice-icon home-art" :class="idx === 0 ? 'home-art--document' : 'home-art--survey'" aria-hidden="true"></view>
+                <view class="choice-body">
+                  <text class="choice-label">{{ choice.label }}</text>
+                  <text class="choice-desc">{{ choice.desc }}</text>
+                </view>
+                <view class="choice-arrow" aria-hidden="true"><text class="choice-arrow-text">›</text></view>
               </view>
-              <view class="choice-body">
-                <text class="choice-label">{{ choice.label }}</text>
-                <text class="choice-desc">{{ choice.desc }}</text>
-              </view>
-              <view class="choice-arrow">
-                <text class="choice-arrow-text">›</text>
-              </view>
-            </view>
+              <text class="choice-detail">{{ choice.detail }}</text>
+            </button>
           </view>
-
-          <view class="footer-seal-wrap">
+          <view class="home-footer">
+            <text class="home-footer-copy">MUSIC HEALS A BETTER YOU</text>
+            <view class="footer-stroke"></view>
             <text class="footer-hint">全程数据仅用于本次聆听</text>
           </view>
         </view>
@@ -100,7 +87,8 @@ export default {
       error: "",
     }
   },
-  onLoad() {
+  // 首页是 tabBar 页面，返回时实例不会重新创建；每次重新显示都开始一轮新评估。
+  onShow() {
     this.init()
   },
   methods: {
@@ -118,8 +106,8 @@ export default {
           description: "为你生成专属音乐。",
           // 冻结 §3：首页只保留两个核心入口
           choices: [
-            { id: "with_document", label: "我有就诊资料", desc: "上传资料", route: "/pages/v3-material/v3-material" },
-            { id: "without_document", label: "我没有就诊资料", desc: "填写问卷", route: "/pages/v3-questionnaire/v3-questionnaire" },
+            { id: "with_document", label: "我有就诊资料", desc: "上传资料", detail: "基于就诊资料，生成更个性化的音乐方案", route: "/pages/v3-material/v3-material" },
+            { id: "without_document", label: "我没有就诊资料", desc: "填写问卷", detail: "通过问卷了解身心状态，定制专属音乐方案", route: "/pages/v3-questionnaire/v3-questionnaire" },
           ],
         }
       } catch (e) {
@@ -148,322 +136,98 @@ export default {
 
 <style scoped>
 .page {
-  min-height: 100vh;
-  box-sizing: border-box;
-}
-
-.page-inner {
-  padding: 48rpx 40rpx 64rpx;
-  min-height: 100vh;
-  box-sizing: border-box;
-}
-
-/* ===== 品牌头部 ===== */
-.hero {
-  margin-bottom: 56rpx;
-  padding-top: 24rpx;
-}
-
-.brand-row {
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-}
-
-.brand-seal {
-  width: 84rpx;
-  height: 84rpx;
-  border-radius: var(--radius-seal);
-  background: var(--ink-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4rpx 18rpx rgba(107, 124, 94, 0.22);
-  transform: rotate(-3deg);
-}
-
-.brand-seal-text {
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-  font-size: 44rpx;
-  font-weight: 700;
-  color: var(--text-inverse);
-}
-
-.brand-meta {
-  display: flex;
-  flex-direction: column;
-}
-
-.brand-name {
-  font-size: 34rpx;
-  font-weight: 700;
-  color: var(--ink-700);
-  letter-spacing: 0.1em;
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", "Noto Serif SC", serif;
-}
-
-.brand-tagline {
-  font-size: 22rpx;
-  color: var(--text-muted);
-  margin-top: 4rpx;
-  letter-spacing: 0.1em;
-}
-
-/* ===== 加载态 ===== */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 220rpx 0;
-  color: var(--text-muted);
-}
-
-.loading-ring {
-  width: 56rpx;
-  height: 56rpx;
-  border: 4rpx solid var(--border-light);
-  border-top-color: var(--ink-primary);
-  border-radius: 50%;
-  margin-bottom: 20rpx;
-  animation: spin 0.9s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.loading-text {
-  font-size: 26rpx;
-  color: var(--text-muted);
-  letter-spacing: 0.15em;
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-}
-
-/* ===== 错误态 ===== */
-.error-state {
-  padding: 120rpx 0;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.error-seal {
-  width: 128rpx;
-  height: 128rpx;
-  border-radius: var(--radius-seal);
-  background: var(--paper-card-solid);
-  border: 2rpx solid var(--ink-seal);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 36rpx;
-  box-shadow: var(--shadow-seal);
-  transform: rotate(-4deg);
-}
-
-.error-seal-text {
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-  font-size: 72rpx;
-  color: var(--ink-seal);
-  font-weight: 700;
-}
-
-.error-title {
-  font-size: 40rpx;
-  font-weight: 700;
-  color: var(--ink-700);
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", "Noto Serif SC", serif;
-  letter-spacing: 0.1em;
-  margin-bottom: 16rpx;
-}
-
-.error-desc {
-  font-size: 26rpx;
-  color: var(--text-secondary);
-  line-height: 1.7;
-  margin-bottom: 40rpx;
-  max-width: 520rpx;
-}
-
-.retry-btn {
-  min-width: 240rpx;
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-}
-
-.btn-text {
-  color: inherit;
-  font-size: 30rpx;
-}
-
-.error-hint {
-  margin-top: 32rpx;
-  font-size: 22rpx;
-  color: var(--text-muted);
-  letter-spacing: 0.05em;
-}
-
-/* ===== 正常态 ===== */
-.entry-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.hero-title {
-  font-size: 64rpx;
-  font-weight: 700;
-  color: var(--ink-700);
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", "Noto Serif SC", serif;
-  letter-spacing: 0.12em;
-  line-height: 1.2;
-  margin-bottom: 18rpx;
-}
-
-.hero-title::after {
-  content: "";
-  display: block;
-  width: 120rpx;
-  height: 4rpx;
-  margin-top: 20rpx;
-  background: linear-gradient(90deg, var(--ink-700), transparent);
-  border-radius: 50%;
-  filter: blur(0.5px);
-}
-
-.hero-desc {
-  font-size: 28rpx;
-  color: var(--text-secondary);
-  line-height: 1.7;
-  margin-bottom: 56rpx;
-}
-
-.choice-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 28rpx;
-  margin-bottom: 56rpx;
-}
-
-.choice-card {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-  padding: 32rpx 28rpx;
-  background: var(--paper-card);
-  border-radius: var(--radius-lg);
-  border: 1rpx solid var(--border-soft);
-  box-shadow: var(--shadow-card);
-  backdrop-filter: blur(8rpx);
-  transition: all 0.25s var(--ease-out);
   position: relative;
+  width: 100%;
+  max-width: 430px;
+  min-height: calc(100vh - 66px);
+  margin: 0 auto;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: #eef8f2 url("/static/v31-home/home-watercolor-v1.png") center top / cover no-repeat;
 }
-
-.choice-card::before {
-  content: "";
-  position: absolute;
-  top: 18rpx;
-  left: 18rpx;
-  width: 22rpx;
-  height: 22rpx;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CCC5B6' stroke-width='1'%3E%3Cpath d='M2 2 Q8 2 8 8 M2 2 Q2 8 8 8'/%3E%3C/svg%3E");
-  background-size: contain;
-  opacity: 0.45;
+.v31-home::before, .v31-home::after { display: none !important; content: none !important; }
+.page-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 430px;
+  min-height: calc(100vh - 66px);
+  margin: 0 auto;
+  padding: calc(32px + env(safe-area-inset-top)) clamp(14px, 4.6vw, 20px) 110px;
+  box-sizing: border-box;
 }
-
-.choice-card::after {
-  content: "";
-  position: absolute;
-  bottom: 18rpx;
-  right: 18rpx;
-  width: 22rpx;
-  height: 22rpx;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CCC5B6' stroke-width='1'%3E%3Cpath d='M2 2 Q8 2 8 8 M2 2 Q2 8 8 8'/%3E%3C/svg%3E");
-  background-size: contain;
-  opacity: 0.45;
-  transform: rotate(180deg);
-}
-
-.choice-card:active {
-  transform: translateY(-4rpx);
-  box-shadow: var(--shadow-lg);
-}
-
-.choice-card-loading {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.choice-seal {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: var(--radius-seal);
-  background: var(--paper-card-solid);
-  border: 2rpx solid var(--ink-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow: var(--shadow-sm);
-}
-
-.choice-seal-text {
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-  font-size: 30rpx;
-  color: var(--ink-primary);
-  font-weight: 700;
-}
-
-.choice-body {
-  flex: 1;
+.hero { margin-bottom: 26px; }
+.brand-row, .brand-meta, .entry-content, .loading-state, .error-state, .choice-body, .home-footer {
   display: flex;
   flex-direction: column;
-}
-
-.choice-label {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: var(--ink-700);
-  font-family: "LXGW WenKai", "KaiTi", "STKaiti", "Noto Serif SC", serif;
-  margin-bottom: 8rpx;
-  letter-spacing: 0.05em;
-}
-
-.choice-desc {
-  font-size: 24rpx;
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
-.choice-arrow {
-  width: 52rpx;
-  height: 52rpx;
-  display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
 }
-
-.choice-arrow-text {
-  font-size: 44rpx;
-  color: var(--text-muted);
-  font-weight: 300;
-  line-height: 1;
+.brand-row { gap: 6px; }
+.home-art {
+  background-image: url("/static/v31-home/home-icons-v2.png");
+  background-repeat: no-repeat;
+  background-size: 300% 100%;
 }
-
-.footer-seal-wrap {
-  display: flex;
-  justify-content: center;
+.home-art--logo { width: 60px; height: 60px; border-radius: 17px; background-position: left; box-shadow: 0 8px 22px rgba(13,113,87,.19); }
+.brand-name { margin-top: 1px; font: 700 26px/1.15 Georgia,"Times New Roman",serif; letter-spacing: .01em; color: #103f36; }
+.brand-tagline { margin-top: 4px; font-size: 13px; line-height: 1.4; letter-spacing: .12em; color: #78847f; }
+.content-area { width: 100%; }
+.loading-state { justify-content: center; min-height: 360px; color: #68807a; }
+.loading-ring { width: 28px; height: 28px; margin-bottom: 12px; border: 2px solid rgba(7,151,119,.18); border-top-color: #079777; border-radius: 50%; animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font: 15px/1.4 "KaiTi","STKaiti",serif; letter-spacing: .12em; }
+.error-state { padding: 54px 12px; text-align: center; }
+.error-seal { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; margin-bottom: 18px; border: 1px solid #a64c3d; border-radius: 12px; background: rgba(255,255,255,.72); }
+.error-seal-text { font: 700 34px/1 "KaiTi","STKaiti",serif; color: #a64c3d; }
+.error-title { margin-bottom: 8px; font: 700 21px/1.3 "KaiTi","STKaiti",serif; color: #174d44; }
+.error-desc { max-width: 290px; margin-bottom: 20px; font-size: 14px; line-height: 1.65; color: #667873; }
+.retry-btn { min-width: 150px; min-height: 44px; border-radius: 12px; background: #08795f; color: #fff; font-size: 15px; }
+.error-hint { margin-top: 16px; font-size: 12px; line-height: 1.6; color: #7b8d88; }
+.home-slogan { display: block; text-align: center; font: 400 clamp(17px,4.7vw,19px)/1.5 "STKaiti","KaiTi",serif; letter-spacing: .035em; color: #176251; }
+.home-slogan-line { width: 112px; height: 4px; margin: 6px auto 13px; border-radius: 50%; background: linear-gradient(90deg,transparent,#0e765b 35%,rgba(19,117,91,.55) 78%,transparent); transform: rotate(-2deg); }
+.home-subtitle { display: block; margin-bottom: 23px; text-align: center; font-size: 13px; line-height: 1.45; letter-spacing: .1em; color: #6e7d76; }
+.choice-stack { display: flex; flex-direction: column; gap: 12px; width: 100%; margin-bottom: 16px; }
+.choice-card {
+  position: relative; display: flex; flex-direction: column; justify-content: center;
+  width: 100%; min-height: 144px; margin: 0; padding: 12px 13px 13px;
+  box-sizing: border-box; border: 3px solid rgba(255,255,255,.96); border-radius: 23px;
+  text-align: left; white-space: normal; line-height: normal;
+  background: rgba(240,252,247,.86);
+  box-shadow: 0 8px 22px rgba(31,105,84,.12),inset 0 0 0 1px rgba(73,154,126,.09);
+  backdrop-filter: blur(4px); transition: transform .2s ease;
 }
-
-.footer-hint {
-  font-size: 22rpx;
-  color: var(--text-muted);
-  letter-spacing: 0.05em;
-  text-align: center;
-  padding: 12rpx 28rpx;
-  background: rgba(251, 249, 244, 0.6);
-  border-radius: var(--radius-pill);
-  border: 1rpx solid var(--border-light);
+.choice-card::after { border: none; }
+.choice-card:nth-child(2) { background: rgba(255,248,235,.9); box-shadow: 0 8px 22px rgba(150,110,54,.1); }
+.choice-card:active { transform: translateY(-2px); }
+.choice-card:focus-visible { outline: 2px solid #079777; outline-offset: 3px; }
+.choice-card-loading { opacity: .62; }
+.choice-card-main { display: flex; align-items: center; width: 100%; gap: 12px; }
+.choice-icon { width: clamp(72px,23vw,92px); height: clamp(72px,23vw,92px); flex: 0 0 auto; border-radius: 50%; }
+.home-art--document { background-position: center; }
+.home-art--survey { background-position: right; }
+.choice-body { align-items: flex-start; min-width: 0; flex: 1; }
+.choice-label { font-size: clamp(18px,5.3vw,21px); font-weight: 700; line-height: 1.3; color: #103d34; }
+.choice-desc { margin-top: 6px; font-size: clamp(15px,4.35vw,17px); line-height: 1.3; color: #7b8580; }
+.choice-arrow { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%; background: rgba(7,151,119,.1); }
+.choice-card:nth-child(2) .choice-arrow { background: rgba(190,139,43,.12); }
+.choice-arrow-text { margin-top: -2px; font: 300 30px/1 Arial,sans-serif; color: #079777; }
+.choice-card:nth-child(2) .choice-arrow-text { color: #a77419; }
+.choice-detail { display: block; width: 100%; margin-top: 8px; box-sizing: border-box; font-size: 12px; line-height: 1.55; color: #6c8077; }
+.home-footer { gap: 8px; margin-top: 2px; }
+.home-footer-copy { font: 400 8px/1.4 Arial,sans-serif; letter-spacing: .32em; color: #598178; }
+.footer-stroke { width: 43px; height: 2px; background: linear-gradient(90deg,transparent,#176251,transparent); }
+.footer-hint { font-size: 10px; line-height: 1.35; color: #58776b; }
+@media (max-width: 350px) {
+  .page-inner { padding-left: 12px; padding-right: 12px; padding-top: 24px; }
+  .hero { margin-bottom: 20px; }
+  .home-art--logo { width: 54px; height: 54px; }
+  .brand-name { font-size: 24px; }
+  .choice-card { min-height: 132px; padding: 10px; }
+  .choice-card-main { gap: 8px; }
+  .choice-icon { width: 67px; height: 67px; }
+  .choice-arrow { width: 24px; height: 24px; }
+  .choice-label { font-size: 17px; }
+  .choice-detail { font-size: 11px; }
 }
+@media (prefers-reduced-motion: reduce) { .loading-ring { animation: none; } .choice-card { transition: none; } }
 </style>
