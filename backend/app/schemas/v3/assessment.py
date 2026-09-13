@@ -227,14 +227,20 @@ class AssessmentRevisionChange(V3BaseModel):
 
 class AssessmentConfirmationRequest(V3BaseModel):
     expected_revision: Annotated[int, Field(ge=1)]
+    expected_input_revision: Annotated[int, Field(ge=1)]
     decision: Literal["confirm", "confirm_with_changes"]
     changes: list[AssessmentRevisionChange] = Field(default_factory=list)
+    edited_summary_text: Annotated[str, Field(min_length=1, max_length=2000)] | None = None
 
     @model_validator(mode="after")
     def validate_decision_changes(self) -> "AssessmentConfirmationRequest":
-        if self.decision == "confirm_with_changes" and not self.changes:
-            raise ValueError("confirm_with_changes requires at least one change")
-        if self.decision == "confirm" and self.changes:
+        if self.decision == "confirm_with_changes" and not (
+            self.changes or self.edited_summary_text is not None
+        ):
+            raise ValueError("confirm_with_changes requires a change")
+        if self.changes and self.edited_summary_text is not None:
+            raise ValueError("structured changes and edited_summary_text are mutually exclusive")
+        if self.decision == "confirm" and (self.changes or self.edited_summary_text is not None):
             raise ValueError("confirm cannot include changes")
         return self
 

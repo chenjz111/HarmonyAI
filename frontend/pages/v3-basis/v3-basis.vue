@@ -9,8 +9,7 @@
  * - Provider 未报告真实进度时显示不定进度，不伪造百分比
  * - 生成成功后直接切到播放器（无独立完成卡），失败/取消可重试
  * - 不显示候选分数、规则 ID 或任何目标类字段（该概念已在 V3 删除）
- * - real 模式下解析/生成依赖后端辨证能力（尚未交付）：
- *   遇 AGENT_PENDING 进入明确等待状态，不伪造解析或生成结果
+ * - real 模式调用真实辨证、处方与生成接口；失败显式提示且不回退示例音乐
  *
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
@@ -77,7 +76,11 @@ export default {
       this.phase = "generating"
       try {
         this.task = await apiV3.startMusicGeneration()
-        this.schedulePoll()
+        if (this.task.status === "succeeded" || this.task.status === "matched_fallback") {
+          this.goPlayer()
+        } else {
+          this.schedulePoll()
+        }
       } catch (e) {
         if (e.agentPending) {
           // real 模式：音乐生成依赖辨证处方能力（未接入），明确等待，不伪造进度
