@@ -45,6 +45,7 @@ from backend.app.models.v3.understanding import (
     UnderstandingRun,
 )
 from backend.app.routers.v3.generation_router import get_music_provider
+from generation_poll import is_terminal_task, poll_until
 
 client = TestClient(app)
 
@@ -349,7 +350,9 @@ def test_minimax_success_persists_generated_asset_and_provider_metadata(tmp_path
             json=_generation_body(rx_id, "sha256:mmx-success-1"),
         )
         assert created.status_code == 201
-        body = _v3_data(created)
+        created_task = _v3_data(created)
+        assert created_task["status"] == "queued"
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
         # real provider success -> real generated asset, never fallback
         assert body["status"] == "succeeded"
         assert body["fallback"]["applied"] is False
@@ -429,7 +432,9 @@ def test_minimax_failure_degrades_to_explicit_matched_fallback(tmp_path):
             json=_generation_body(rx_id, "sha256:mmx-fallback-1"),
         )
         assert response.status_code == 201
-        body = _v3_data(response)
+        created_task = _v3_data(response)
+        assert created_task["status"] == "queued"
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
         # explicit reviewed fallback, never a fake generated success
         assert body["status"] == "matched_fallback"
         assert body["fallback"]["applied"] is True
@@ -494,7 +499,9 @@ def test_minimax_failure_without_fallback_returns_failed(tmp_path):
             ),
         )
         assert response.status_code == 201
-        body = _v3_data(response)
+        created_task = _v3_data(response)
+        assert created_task["status"] == "queued"
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
         assert body["status"] == "failed"
         assert body["error_code"] == "GENERATION_PROVIDER_AUTH_FAILED"
         assert body["audio_asset"] is None

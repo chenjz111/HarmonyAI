@@ -3,7 +3,7 @@
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from backend.app.services.v3.generation_service import (
     OwnedResourceNotFound,
     cancel_generation_task,
     create_generation_task,
+    execute_generation_task,
     get_generation_task,
     get_playable_asset_stream_path,
 )
@@ -50,6 +51,7 @@ def _not_found() -> V3APIError:
 def create_generation(
     response: Response,
     body: MusicGenerationV3Request,
+    background_tasks: BackgroundTasks,
     principal: AuthPrincipal = Depends(get_current_v3_principal),
     provider: MusicGenerationProvider = Depends(get_music_provider),
     db: Session = Depends(get_db),
@@ -72,6 +74,16 @@ def create_generation(
         ) from None
     if replayed:
         response.status_code = 200
+    else:
+        # The real provider call runs after the response is sent, in its own database
+        # session, so a multi-minute generation can never block or lose this task id.
+        background_tasks.add_task(
+            execute_generation_task,
+            result.task_id,
+            provider,
+            fallback_mode=body.provider_policy.fallback,
+            bind=db.get_bind(),
+        )
     return v3_success(result)
 
 
