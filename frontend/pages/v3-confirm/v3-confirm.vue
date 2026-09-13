@@ -8,8 +8,7 @@
  * - 确认只有一次；可带修正（changes[]）提交，返回 revision+1
  * - 不展示 evidence_coverage、provider_metadata、内部 enum、置信度等禁止字段
  * - Safety policy/状态不显示（deferred_v3 / not_run 为内部字段）
- * - real 模式下评估依赖后端综合评估能力（尚未交付）：
- *   加载/确认遇 AGENT_PENDING 进入明确等待状态，不伪造评估结果
+ * - real 模式读取并确认真实 Assessment；失败显式提示且不伪造评估结果
  *
  * v2 重写（水墨国风）：
  *   - 全页 .han-page 山水背景

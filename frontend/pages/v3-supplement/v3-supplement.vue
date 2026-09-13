@@ -41,7 +41,14 @@ export default {
       this.analyzing = true
       try {
         // document_only：understanding_ref 携带已确认摘要，questionnaire_ref=null
-        await apiV3.createAssessment()
+        const assessment = await apiV3.createAssessment()
+        // 用户已确认资料摘要；document_only 不再展示第二个总结页，但下游仍只消费
+        // confirmed Assessment，因此在“直接继续”这一明确操作中完成普通确认。
+        await apiV3.confirmAssessment({
+          expected_revision: assessment.revision,
+          decision: "confirm",
+          changes: [],
+        })
         uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
       } catch (e) {
         if (e && e.agentPending) {

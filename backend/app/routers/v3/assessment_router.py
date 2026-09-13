@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
 from backend.app.routers.v3.transport import V3APIError, v3_success
-from backend.app.schemas.v3.assessment import AssessmentV31Request, AssessmentV31Response
+from backend.app.schemas.v3.assessment import AssessmentConfirmationRequest, AssessmentV31Request, AssessmentV31Response
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.envelope import V3SuccessEnvelope
 from backend.app.services.v3.assessment_service import (
@@ -15,13 +15,36 @@ from backend.app.services.v3.assessment_service import (
     IdempotencyConflict,
     IdempotencyInProgress,
     InputRevisionConflict,
+    AssessmentRevisionConflict,
     OwnedResourceNotFound,
     create_assessment,
+    confirm_assessment,
+    get_assessment,
 )
 from backend.app.services.v3.auth_service import get_current_v3_principal
 
 
 router = APIRouter()
+
+
+@router.get("/assessments/{assessment_id}", response_model=V3SuccessEnvelope[AssessmentV31Response])
+def get_current_assessment(assessment_id: str, principal: AuthPrincipal = Depends(get_current_v3_principal), db: Session = Depends(get_db)):
+    try:
+        return v3_success(get_assessment(db, principal, assessment_id))
+    except OwnedResourceNotFound:
+        raise V3APIError(404, "RESOURCE_NOT_FOUND", "未找到对应资源。") from None
+
+
+@router.post("/assessments/{assessment_id}/confirmations", response_model=V3SuccessEnvelope[AssessmentV31Response])
+def confirm_current_assessment(assessment_id: str, body: AssessmentConfirmationRequest, response: Response, principal: AuthPrincipal = Depends(get_current_v3_principal), db: Session = Depends(get_db)):
+    try:
+        result, created = confirm_assessment(db, principal, assessment_id, body)
+    except OwnedResourceNotFound:
+        raise V3APIError(404, "RESOURCE_NOT_FOUND", "未找到对应资源。") from None
+    except AssessmentRevisionConflict:
+        raise V3APIError(409, "REVISION_CONFLICT", "评估版本已变化，请刷新后重试。") from None
+    response.status_code = 201 if created else 200
+    return v3_success(result)
 
 
 @router.post(

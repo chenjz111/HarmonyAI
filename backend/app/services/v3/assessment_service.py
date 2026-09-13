@@ -30,17 +30,21 @@ from backend.app.models.v3.assessment import (
     OrganEvidence as OrganEvidenceRow,
 )
 from backend.app.models.v3.understanding import (
+    FactSourceRef,
+    NormalizedFact,
     NormalizedFact as NormalizedFactRow,
     QuestionnaireSubmissionV3,
     UnderstandingRevision,
 )
 from backend.app.schemas.v3.assessment import (
+    AssessmentConfirmationRequest,
     AssessmentV31Presentation,
     AssessmentV31Request,
     AssessmentV31Response,
     FactEvidence,
     OrganEvidenceLink,
 )
+from datetime import datetime, timezone
 from backend.app.schemas.v3.common import (
     AuthPrincipal,
     Conflict,
@@ -80,7 +84,203 @@ class InputRevisionConflict(RuntimeError):
     pass
 
 
+class AssessmentRevisionConflict(RuntimeError):
+    pass
+
+
 _OPERATION = "create_v3_assessment"
+
+
+def _assessment_read_model(db: Session, run: AssessmentV3) -> AssessmentV31Response:
+    revision = db.query(AssessmentRevisionV3).filter(
+        AssessmentRevisionV3.assessment_id == run.assessment_id,
+        AssessmentRevisionV3.revision == run.current_revision,
+    ).one()
+    evidence_rows = db.query(FactEvidenceRow).filter(
+        FactEvidenceRow.assessment_id == run.assessment_id,
+        FactEvidenceRow.assessment_revision == run.current_revision,
+    ).order_by(FactEvidenceRow.fact_evidence_id).all()
+    evidence = []
+    row_by_pk = {}
+    for row in evidence_rows:
+        fact = db.get(NormalizedFact, row.normalized_fact_row_id)
+        source_rows = db.query(FactSourceRef).filter(
+            FactSourceRef.fact_row_id == row.normalized_fact_row_id
+        ).order_by(FactSourceRef.source_type, FactSourceRef.source_id).all()
+        evidence.append(FactEvidence(
+            fact_evidence_id=row.fact_evidence_id,
+            assessment_id=row.assessment_id,
+            assessment_revision=row.assessment_revision,
+            fact_id=fact.fact_id,
+            claim_code=row.claim_code,
+            display_name=row.display_name,
+            category=row.category,
+            value=row.value_json,
+            time_window=row.time_window,
+            direction=row.direction,
+            reliability=row.reliability,
+            source_refs=[{"source_type": src.source_type, "source_id": src.source_id, "span_ref": src.span_ref} for src in source_rows],
+            confirmation_status=row.confirmation_status,
+        ))
+        row_by_pk[row.fact_evidence_row_id] = row.fact_evidence_id
+    link_rows = db.query(OrganEvidenceRow).filter(
+        OrganEvidenceRow.fact_evidence_row_id.in_(list(row_by_pk))
+    ).order_by(OrganEvidenceRow.organ_evidence_link_id).all() if row_by_pk else []
+    links = [OrganEvidenceLink(
+        organ_evidence_link_id=row.organ_evidence_link_id,
+        fact_evidence_id=row_by_pk[row.fact_evidence_row_id],
+        organ=row.organ,
+        element=row.element,
+        direction=row.direction,
+        link_strength=row.link_strength,
+        mapping_rule_id=row.mapping_rule_id,
+        mapping_version=row.mapping_version,
+        explanation_summary=row.explanation_summary,
+    ) for row in link_rows]
+    return AssessmentV31Response(
+        schema_version="assessment_v3.1", agent_id="assessment_agent",
+        assessment_id=run.assessment_id, revision=revision.revision,
+        status=revision.status, understanding_ref=(
+            {"understanding_id": run.understanding_id, "revision": run.understanding_revision}
+            if run.understanding_id is not None else None
+        ),
+        state_summary=revision.state_summary,
+        recent_context_summary=revision.recent_context_summary or "",
+        organ_profile=revision.organ_profile_json,
+        fact_evidence=evidence, organ_evidence_links=links,
+        conflicts=revision.conflicts_json or [],
+        missing_information=revision.missing_information_json or [],
+        evidence_coverage=revision.evidence_coverage,
+        evidence_coverage_semantics="confirmed_available_source_coverage",
+        source_diversity=revision.source_diversity,
+        requires_user_confirmation=revision.confirmation_status != "confirmed",
+        safety_status=None, degradation=revision.degradation_json,
+        flow_contract_version="v3-owner-flow-1",
+        input_revision=run.input_revision,
+        safety_policy="deferred_v3", safety_evaluation_status="not_run",
+        presentation=revision.presentation_json,
+    )
+
+
+def get_assessment(db: Session, principal: AuthPrincipal, assessment_id: str) -> AssessmentV31Response:
+    run = db.query(AssessmentV3).filter(
+        AssessmentV3.assessment_id == assessment_id,
+        AssessmentV3.internal_user_pk == principal.internal_user_pk,
+        AssessmentV3.flow_contract_version == "v3-owner-flow-1",
+    ).one_or_none()
+    if run is None:
+        raise OwnedResourceNotFound
+    return _assessment_read_model(db, run)
+
+
+def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str, request: AssessmentConfirmationRequest) -> tuple[AssessmentV31Response, bool]:
+    run = db.query(AssessmentV3).filter(
+        AssessmentV3.assessment_id == assessment_id,
+        AssessmentV3.internal_user_pk == principal.internal_user_pk,
+        AssessmentV3.flow_contract_version == "v3-owner-flow-1",
+    ).one_or_none()
+    if run is None:
+        raise OwnedResourceNotFound
+    session_row = db.get(SessionModel, run.session_row_id)
+    if (
+        session_row is None
+        or session_row.user_id != principal.internal_user_pk
+        or run.current_revision != request.expected_revision
+        or run.input_revision != request.expected_input_revision
+        or session_row.input_revision != request.expected_input_revision
+    ):
+        raise AssessmentRevisionConflict
+    current = db.query(AssessmentRevisionV3).filter(
+        AssessmentRevisionV3.assessment_id == assessment_id,
+        AssessmentRevisionV3.revision == run.current_revision,
+    ).one()
+    if request.decision == "confirm":
+        current.status = "confirmed"
+        current.confirmation_status = "confirmed"
+        current.confirmed_at = datetime.now(timezone.utc)
+        run.status = "confirmed"
+        db.query(FactEvidenceRow).filter(
+            FactEvidenceRow.assessment_id == assessment_id,
+            FactEvidenceRow.assessment_revision == run.current_revision,
+        ).update({"confirmation_status": "confirmed"}, synchronize_session=False)
+        db.commit()
+        return _assessment_read_model(db, run), False
+
+    next_revision = run.current_revision + 1
+    presentation = dict(current.presentation_json or {})
+    summary = request.edited_summary_text or current.state_summary
+    if request.edited_summary_text is not None:
+        presentation["summary"] = request.edited_summary_text
+    new_revision = AssessmentRevisionV3(
+        assessment_id=assessment_id, revision=next_revision,
+        previous_revision=current.revision,
+        understanding_revision=current.understanding_revision,
+        input_revision=current.input_revision, status="confirmed",
+        confirmation_status="confirmed", state_summary=summary,
+        recent_context_summary=current.recent_context_summary,
+        organ_profile_json=current.organ_profile_json,
+        evidence_coverage=current.evidence_coverage,
+        source_diversity=current.source_diversity,
+        conflicts_json=current.conflicts_json,
+        missing_information_json=current.missing_information_json,
+        degradation_json=current.degradation_json,
+        presentation_json=presentation,
+        confirmed_at=datetime.now(timezone.utc),
+    )
+    db.add(new_revision)
+    db.flush()
+    old_rows = db.query(FactEvidenceRow).filter(
+        FactEvidenceRow.assessment_id == assessment_id,
+        FactEvidenceRow.assessment_revision == current.revision,
+    ).all()
+    changes = {item.target_id: item for item in request.changes}
+    evidence_by_id = {row.fact_evidence_id: row for row in old_rows}
+    if set(changes) - set(evidence_by_id):
+        raise AssessmentRevisionConflict
+    for target_id, change in changes.items():
+        value = evidence_by_id[target_id].value_json or {}
+        if (
+            change.field != "severity"
+            or value.get("type") != "severity"
+            or value.get("value") != change.old_value
+            or change.new_value not in {"none", "mild", "moderate", "severe"}
+        ):
+            raise AssessmentRevisionConflict
+    new_rows = {}
+    for old in old_rows:
+        value = dict(old.value_json)
+        change = changes.get(old.fact_evidence_id)
+        if change is not None:
+            value["value"] = change.new_value
+        new = FactEvidenceRow(
+            fact_evidence_row_id=f"fer_{uuid.uuid4().hex}",
+            fact_evidence_id=old.fact_evidence_id,
+            assessment_id=assessment_id, assessment_revision=next_revision,
+            normalized_fact_row_id=old.normalized_fact_row_id,
+            claim_code=old.claim_code, display_name=old.display_name,
+            category=old.category, value_json=value,
+            time_window=old.time_window, direction=old.direction,
+            reliability=old.reliability, confirmation_status="confirmed",
+        )
+        db.add(new)
+        new_rows[old.fact_evidence_row_id] = new
+    db.flush()
+    old_links = db.query(OrganEvidenceRow).filter(
+        OrganEvidenceRow.fact_evidence_row_id.in_(list(new_rows))
+    ).all() if new_rows else []
+    for old in old_links:
+        db.add(OrganEvidenceRow(
+            organ_evidence_link_id=f"oel_{uuid.uuid4().hex}",
+            fact_evidence_row_id=new_rows[old.fact_evidence_row_id].fact_evidence_row_id,
+            organ=old.organ, element=old.element, direction=old.direction,
+            link_strength=old.link_strength, mapping_rule_id=old.mapping_rule_id,
+            mapping_version=old.mapping_version,
+            explanation_summary=old.explanation_summary,
+        ))
+    run.current_revision = next_revision
+    run.status = "confirmed"
+    db.commit()
+    return _assessment_read_model(db, run), True
 
 
 def _approved_questionnaire_manifest() -> dict | None:

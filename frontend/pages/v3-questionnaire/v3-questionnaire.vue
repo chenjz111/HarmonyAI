@@ -11,8 +11,7 @@
  * - 展示分页：PAGE_SIZE = 2，共 5 步（进度以页为单位 1/5 ~ 5/5）；提交时一次性提交全部答案
  * - 冻结规则：Q1-Q10 全部必答，问卷内不提供跳过出口
  *   （"是否填写问卷"的选择在资料摘要后的轻量选择页完成）
- * - real 模式下提交/评估依赖后端综合评估能力（尚未交付）：
- *   捕获 AGENT_PENDING 后进入明确等待状态，不伪造结果、不静默失败
+ * - real 模式下提交问卷并创建真实 Assessment；失败显式提示且保留当前答案
  *
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
@@ -189,7 +188,7 @@ export default {
         this.submittingAssessment = false
       }
     },
-    // submit 阶段的 AGENT_PENDING：同样进入等待状态
+    // 兼容旧演示构建的等待态；正式 real 模式不会再产生该状态
     handleAgentPending(e) {
       if (e && e.agentPending) {
         this.agentPending = true

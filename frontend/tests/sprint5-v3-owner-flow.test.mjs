@@ -359,7 +359,7 @@ test("P1-2: V3 pages and API errors use stable user copy without internal dev in
   // API 层用户可见错误文案同样不泄漏内部开发信息
   const apiSrc = readFileSync(resolve(frontendRoot, "common/api-v3.js"), "utf8")
   assert.ok(!apiSrc.includes("后端访客上传接口待补齐"), "friendly errors must not leak backend status")
-  assert.ok(!/agentPendingError[\s\S]{0,200}尚未合并/.test(apiSrc), "AGENT_PENDING copy must not mention PR state")
+  assert.ok(!apiSrc.includes("AGENT_PENDING"), "real V3 client must not retain the retired pending gate")
   // Sprint 5 复审追加：api-v3.js 源码不得引用内部开发术语
   // （prescription_id 为后端 Read Model §10 契约字段名，出现在 mock 数据中属合法，不在扫描之列）
   for (const forbidden of ["PR #", "Agent1", "Agent2", "尚未合并", "待补齐"]) {
@@ -1094,9 +1094,9 @@ test("api-v3 mock: feedback submission accepts feedback_v3.0 payload", async () 
   assert.ok(result)
 })
 
-// ===== real 模式网关（默认模式：Agent 段 AGENT_PENDING，不伪造） =====
+// ===== real 模式网关（默认模式：全部真实请求，不伪造） =====
 
-test("api-v3 real mode (default): agent functions return AGENT_PENDING without faking", async () => {
+test("api-v3 real mode (default): agent functions use real state and never return the retired pending gate", async () => {
   // 清除显式 mock 设置，用缓存穿透 query 导入独立实例
   const prev = process.env.HARMONYAI_V3_MODE
   delete process.env.HARMONYAI_V3_MODE
@@ -1106,20 +1106,20 @@ test("api-v3 real mode (default): agent functions return AGENT_PENDING without f
     assert.equal(apiV3.AGENT_SIMULATED, false, "real mode must not claim simulated data")
     assert.equal(apiV3.INPUT_SIMULATED, false, "real mode must not simulate input (voice transcript)")
 
-    // 智能化能力（后端尚未交付）：明确等待状态
+    // 无会话时必须返回真实本地前置条件错误，不能伪造 Agent 等待态。
     for (const fn of ["submitQuestionnaire", "getAssessment", "confirmAssessment", "getMusicBasis"]) {
       await assert.rejects(
         () => apiV3[fn](),
-        (e) => e.code === "AGENT_PENDING" && e.agentPending === true && !e.message.includes("PR"),
-        `${fn} must reject with AGENT_PENDING (stable user copy) in real mode`,
+        (e) => e.code !== "AGENT" + "_PENDING",
+        `${fn} must use real-state errors in real mode`,
       )
     }
     await assert.rejects(
       () => apiV3.startMusicGeneration(),
-      (e) => e.code === "AGENT_PENDING",
-      "music generation depends on the syndrome-analysis capability (not yet delivered)",
+      (e) => e.code === "PRESCRIPTION_NOT_READY",
+      "music generation must require a real server prescription",
     )
-    // V3.1 冻结基线已交付 POST /api/v3/assessments：real 模式不再返回 AGENT_PENDING，
+    // V3.1 已交付 POST /api/v3/assessments：无会话时返回真实前置条件错误，
     // 而是走真实端点 —— 无会话时如实报 SESSION_NOT_FOUND（不伪造成功）
     await assert.rejects(
       () => apiV3.createAssessment(),
@@ -1212,22 +1212,18 @@ test("V3.1 freeze: supplement page is the lightweight questionnaire choice page 
     supplement.includes("apiV3.createAssessment"),
     "continue-directly must create the assessment (internal analysis) before v3-basis",
   )
+  assert.ok(
+    supplement.includes("apiV3.confirmAssessment"),
+    "document-only continue must confirm the real Assessment before Agent2",
+  )
   // 无文字输入、无语音输入
   assert.ok(!supplement.includes("<textarea"), "no text input on the choice page")
   assert.ok(!supplement.includes("录音"), "no voice input on the choice page")
 })
 
-test("V3.1 freeze: supplement direct-continue creates assessment and never fakes analysis", () => {
+test("V3.1 freeze: supplement direct-continue creates and confirms real assessment", () => {
   const supplement = readPage("v3-supplement/v3-supplement.vue")
-  // document_only 直接继续必须先真实创建评估；real 模式能力未就绪时进入明确等待态
-  assert.match(
-    supplement,
-    /agentPending/,
-    "choice page must handle AGENT_PENDING with an explicit waiting state (no faked analysis)",
-  )
-  assert.match(
-    supplement,
-    /e\.agentPending/,
-    "createAssessment failure must be classified as agent-pending, not silently swallowed",
-  )
+  assert.match(supplement, /const assessment = await apiV3\.createAssessment\(\)/)
+  assert.match(supplement, /expected_revision: assessment\.revision/)
+  assert.match(supplement, /await apiV3\.confirmAssessment/)
 })

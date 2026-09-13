@@ -27,9 +27,8 @@
  *  4. mock 数据全部为虚构脱敏内容，不含任何真实用户信息
  *
  * 模式（mock 只能显式开启，默认 real）：
- *  - "real"（默认）：全部走真实后端。后端尚未交付的智能化能力
- *    （问卷提交→综合评估、辨证、音乐生成）返回 AGENT_PENDING 错误，
- *    页面显示明确的"服务升级维护中"等待状态，绝不伪造成功。
+ *  - "real"（默认）：问卷、评估、辨证、处方、生成与反馈全部走真实后端。
+ *    任一环节失败都会显式报错，绝不伪造成功或回退演示音频。
  *  - "hybrid"（显式）：输入段（鉴权/会话/输入切换/资料上传/资料理解）走真实后端，
  *    Agent 段（评估/辨证/生成）走 mock 演示数据，页面显示"演示数据"标识。
  *  - "mock"（显式）：全 fixture 状态机，供自动测试与本地开发。
@@ -166,16 +165,6 @@ const FRIENDLY_ERRORS = {
 
 function apiError(message, code, extra) {
   return Object.assign(new Error(message), Object.assign({ code: code || "REQUEST_FAILED" }, extra || {}))
-}
-
-// AGENT_PENDING：Agent 能力未接入时的统一等待状态（页面据此显示等待卡）
-// P1-2：文案为稳定用户文案，不暴露 PR 编号等内部开发信息
-function agentPendingError(what) {
-  return apiError(
-    what + "服务正在升级维护中，暂时无法使用。页面保持等待状态，不会影响你已填写的内容。",
-    "AGENT_PENDING",
-    { agentPending: true },
-  )
 }
 
 // ===== 真实请求 =====
@@ -463,25 +452,83 @@ const realInputApi = {
   async createAssessment() {
     const state = loadFlowState()
     if (!state.session_id) throw apiError("会话未创建", "SESSION_NOT_FOUND")
-    if (!state.understanding_id) {
-      // questionnaire_only / document_plus_questionnaire：等待问卷提交端点交付
-      throw agentPendingError("问卷提交与评估创建")
-    }
+    const understandingRef = state.understanding_id
+      ? { understanding_id: state.understanding_id, revision: state.understanding_revision }
+      : null
+    const questionnaireRef = state.questionnaire_ref || null
     const data = await realRequest("/api/v3/assessments", {
       method: "POST",
       data: {
         schema_version: "assessment_v3.1",
         session_id: state.session_id,
         expected_input_revision: state.input_revision || 1,
-        understanding_ref: {
-          understanding_id: state.understanding_id,
-          revision: state.understanding_revision || 1,
-        },
-        questionnaire_ref: null,
+        understanding_ref: understandingRef,
+        questionnaire_ref: questionnaireRef,
       },
       headers: { "Idempotency-Key": idempotencyKey() },
     })
+    saveFlowState({ assessment_id: data.assessment_id, assessment_revision: data.revision, assessment: data })
     return data
+  },
+
+  async submitQuestionnaire(answers) {
+    const state = loadFlowState()
+    if (!state.session_id) throw apiError("会话未创建", "SESSION_NOT_FOUND")
+    const typedAnswers = QUESTIONNAIRE_MANIFEST.questions.map((question) => ({
+      question_id: question.question_id,
+      answer_type: question.answer_type,
+      value: answers[question.question_id],
+    }))
+    const now = new Date().toISOString()
+    const data = await realRequest("/api/v3/sessions/" + encodeURIComponent(state.session_id) + "/questionnaire", {
+      method: "POST",
+      data: {
+        session_id: state.session_id,
+        expected_input_revision: state.input_revision || 1,
+        schema_id: QUESTIONNAIRE_MANIFEST.schema_id,
+        schema_version: QUESTIONNAIRE_MANIFEST.schema_version,
+        manifest_version: QUESTIONNAIRE_MANIFEST.manifest_version,
+        content_checksum: QUESTIONNAIRE_MANIFEST.content_checksum,
+        answers: typedAnswers,
+        started_at: state.questionnaire_started_at || now,
+        completed_at: now,
+      },
+      headers: { "Idempotency-Key": idempotencyKey() },
+    })
+    const questionnaireRef = {
+      questionnaire_submission_id: data.questionnaire_submission_id,
+      schema_id: data.schema_id,
+      schema_version: data.schema_version,
+      manifest_version: data.manifest_version,
+      content_checksum: data.content_checksum,
+    }
+    saveFlowState({ questionnaire_submission: data, questionnaire_ref: questionnaireRef, input_revision: data.input_revision })
+    return data
+  },
+
+  async getAssessment() {
+    const state = loadFlowState()
+    if (!state.assessment_id) throw apiError("评估尚未生成", "NOT_FOUND")
+    const data = await realRequest("/api/v3/assessments/" + encodeURIComponent(state.assessment_id))
+    saveFlowState({ assessment_revision: data.revision, assessment: data })
+    return assessmentPageModel(data)
+  },
+
+  async confirmAssessment(payload) {
+    const state = loadFlowState()
+    if (!state.assessment_id) throw apiError("评估尚未生成", "NOT_FOUND")
+    const data = await realRequest("/api/v3/assessments/" + encodeURIComponent(state.assessment_id) + "/confirmations", {
+      method: "POST",
+      data: {
+        expected_revision: payload.expected_revision,
+        expected_input_revision: state.input_revision,
+        decision: payload.decision,
+        changes: payload.changes || [],
+        edited_summary_text: payload.edited_summary_text || undefined,
+      },
+    })
+    saveFlowState({ assessment_revision: data.revision, assessment: data })
+    return assessmentPageModel(data)
   },
 
   // 最近情况描述真实提交（narrative 源，inline text）
@@ -541,18 +588,18 @@ const realInputApi = {
   //   primary_goal / secondary_goal / custom_goal_text
   // 不再使用 primary / secondary / custom_text 作为最终字段
   async submitHealingIntent(payload) {
-    await delay(60)
-    const clean = payload
-      ? {
-          primary_goal: payload.primary_goal || null,
-          secondary_goal: payload.secondary_goal || null,
-          custom_goal_text: payload.custom_goal_text || null,
-        }
-      : null
-    if (clean) {
-      try { safeSet("v3_healing_intent", JSON.stringify(clean)) } catch (e) { /* ignore */ }
-    }
-    return { received: true, saved_locally: !!clean }
+    const state = loadFlowState()
+    if (!state.session_id) throw apiError("会话未创建", "SESSION_NOT_FOUND")
+    const clean = payload ? {
+      primary_goal: payload.primary_goal || null,
+      secondary_goal: payload.secondary_goal || null,
+      custom_goal_text: payload.custom_goal_text || null,
+    } : null
+    const data = await realRequest("/api/v3/sessions/" + encodeURIComponent(state.session_id) + "/user-goal", {
+      method: "PUT", data: { user_goal: clean },
+    })
+    saveFlowState({ user_goal: data.user_goal || null })
+    return data
   },
 
   async submitFeedback(payload) {
@@ -601,14 +648,64 @@ const realInputApi = {
     return realRequest("/api/v3/me/preferences")
   },
 
-  // 音乐生成：后端接口已交付，但依赖辨证处方能力（尚未接入）
+  async getMusicBasis() {
+    const state = loadFlowState()
+    const assessment = state.assessment
+    if (!assessment || assessment.status !== "confirmed") throw apiError("请先确认近期状态总结", "ASSESSMENT_NOT_CONFIRMED")
+    if (state.diagnosis && state.prescription && state.generation_spec) {
+      return musicBasisModel(assessment, state.diagnosis, state.prescription)
+    }
+    const diagnosis = await realRequest("/api/v3/diagnoses", {
+      method: "POST",
+      data: {
+        schema_version: "diagnosis_v3.1", session_id: state.session_id,
+        diagnosis_id: "diag_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10),
+        assessment_ref: {
+          assessment_id: assessment.assessment_id, revision: assessment.revision,
+          confirmation_status: "confirmed", flow_contract_version: assessment.flow_contract_version,
+          input_revision: assessment.input_revision, safety_policy: assessment.safety_policy,
+          safety_status: assessment.safety_status,
+        },
+        organ_profile: assessment.organ_profile,
+        fact_evidence: assessment.fact_evidence,
+        organ_evidence_links: assessment.organ_evidence_links,
+        conflicts: assessment.conflicts,
+        missing_information: assessment.missing_information,
+      },
+      headers: { "Idempotency-Key": idempotencyKey() },
+    })
+    if (["failed", "withheld"].includes(diagnosis.status)) throw apiError("暂时无法完成辨证分析", "DIAGNOSIS_NOT_READY")
+    const prescription = await realRequest("/api/v3/prescriptions", {
+      method: "POST",
+      data: { schema_version: "prescription_v3.1", diagnosis_id: diagnosis.diagnosis_id, preference_snapshot: null },
+      headers: { "Idempotency-Key": idempotencyKey() },
+    })
+    if (!prescription.generation_spec) throw apiError("暂时无法生成音乐方案", "PRESCRIPTION_NOT_READY")
+    saveFlowState({ diagnosis, prescription, prescription_id: prescription.prescription_id, generation_spec: prescription.generation_spec })
+    return musicBasisModel(assessment, diagnosis, prescription)
+  },
+
   async startMusicGeneration() {
-    throw agentPendingError("音乐生成")
+    const state = loadFlowState()
+    if (!state.prescription_id || !state.generation_spec) throw apiError("音乐方案尚未准备好", "PRESCRIPTION_NOT_READY")
+    const requestId = "music_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10)
+    const task = await realRequest("/api/v3/music/generations", {
+      method: "POST",
+      data: {
+        schema_version: "music_generation_v3.0", request_id: requestId,
+        prescription_id: state.prescription_id,
+        idempotency_key: "sha256:" + requestId,
+        generation_spec: state.generation_spec,
+        provider_policy: { mode: "prefer_real_generation", fallback: "none" },
+      },
+    })
+    persistMusicTask(task)
+    return task
   },
   async pollMusicGeneration(taskId) {
     const state = loadFlowState()
     const id = taskId || state.task_id
-    if (!id) throw agentPendingError("音乐生成任务")
+    if (!id) throw apiError("音乐生成任务不存在", "NOT_FOUND")
     const task = await realRequest("/api/v3/music/generations/" + encodeURIComponent(id))
     persistMusicTask(task)
     return task
@@ -616,7 +713,7 @@ const realInputApi = {
   async cancelMusicGeneration(taskId) {
     const state = loadFlowState()
     const id = taskId || state.task_id
-    if (!id) throw agentPendingError("音乐生成任务")
+    if (!id) throw apiError("音乐生成任务不存在", "NOT_FOUND")
     const task = await realRequest(
       "/api/v3/music/generations/" + encodeURIComponent(id) + "/cancel",
       { method: "POST" },
@@ -624,6 +721,45 @@ const realInputApi = {
     persistMusicTask(task)
     return task
   },
+}
+
+function assessmentPageModel(data) {
+  return Object.assign({}, data, {
+    page: "assessment_confirmation",
+    title: data.presentation.title,
+    summary: data.presentation.summary,
+    sections: [
+      { id: "body", title: "身体感受", items: data.presentation.body_summaries || [] },
+      { id: "context", title: "最近情况", items: data.presentation.recent_context ? [data.presentation.recent_context] : [] },
+    ],
+    editable_items: (data.fact_evidence || []).filter((item) => item.value && item.value.type === "severity").map((item) => ({
+      target_id: item.fact_evidence_id, label: item.display_name, value: item.value,
+      allowed_values: ["none", "mild", "moderate", "severe"], required: false,
+    })),
+  })
+}
+
+const TONE_NAMES = { jiao: "角音", zhi: "徵音", gong: "宫音", shang: "商音", yu: "羽音" }
+
+function musicBasisModel(assessment, diagnosis, prescription) {
+  const spec = prescription.generation_spec
+  const primary = spec.tone_profile.primary_tone
+  const secondary = spec.tone_profile.secondary_tone
+  return {
+    page: "five_tone_analysis", schema_version: "five_tone_analysis_read_model_v3.1",
+    confirmed_state: assessment.state_summary,
+    state_tendency: diagnosis.presentation.primary_tendency || diagnosis.presentation.title,
+    analysis_rationales: (diagnosis.presentation.basis_summaries || []).map((summary) => ({ summary, evidence_refs: [] })),
+    primary_tone: { tone: primary, display_name: TONE_NAMES[primary] || primary, explanation: prescription.presentation.tone_summary },
+    secondary_tone: secondary ? { tone: secondary, display_name: TONE_NAMES[secondary] || secondary, explanation: prescription.presentation.tone_summary } : null,
+    bpm: { value: spec.bpm, explanation: (prescription.presentation.parameter_summaries || [])[0] || "由服务端处方生成。" },
+    instruments: { values: spec.instruments, explanation: "由服务端处方生成。" },
+    ambience: { values: spec.ambient_sounds.length ? spec.ambient_sounds : ["安静环境"], explanation: "由服务端处方生成。" },
+    duration: { seconds: spec.duration_seconds, explanation: "由服务端处方生成。" },
+    generation: { status: "ready", message: "可以开始生成本次音乐。" },
+    disclaimer: diagnosis.presentation.disclaimer,
+    personalization_summary: prescription.presentation.personalization_summary,
+  }
 }
 
 // 生成任务成功后保存 asset（播放页只播放后端返回的 Music Asset）
@@ -1238,8 +1374,7 @@ export const apiV3 = {
     return mockApi.getQuestionnaireSchema()
   },
   submitQuestionnaire(answers) {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("问卷提交与综合评估"))
-    return mockApi.submitQuestionnaire(answers)
+    return AGENT_MOCK ? mockApi.submitQuestionnaire(answers) : realInputApi.submitQuestionnaire(answers)
   },
 
   // 评估：V3.1 冻结基线已交付 POST /api/v3/assessments。
@@ -1250,21 +1385,17 @@ export const apiV3 = {
     return mockApi.createAssessment()
   },
   getAssessment() {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("综合评估"))
-    return mockApi.getAssessment()
+    return AGENT_MOCK ? mockApi.getAssessment() : realInputApi.getAssessment()
   },
   // 最终确认操作的是 Assessment。真实 Assessment confirmation 路由尚未交付时
   // 明确等待，绝不借用 Understanding confirmation 伪装成功。
   confirmAssessment(payload) {
-    return AGENT_MOCK
-      ? mockApi.confirmAssessment(payload)
-      : Promise.reject(agentPendingError("近期状态确认"))
+    return AGENT_MOCK ? mockApi.confirmAssessment(payload) : realInputApi.confirmAssessment(payload)
   },
 
   // 辨证与生成依据（依赖后端辨证能力，尚未交付）
   getMusicBasis() {
-    if (!AGENT_MOCK) return Promise.reject(agentPendingError("辨证与音乐生成依据"))
-    return mockApi.getMusicBasis()
+    return AGENT_MOCK ? mockApi.getMusicBasis() : realInputApi.getMusicBasis()
   },
 
   // 音乐生成：后端接口已交付但依赖辨证处方能力（尚未接入）→ real 等待状态；
@@ -1283,7 +1414,7 @@ export const apiV3 = {
     if (!AGENT_MOCK) {
       const state = loadFlowState()
       if (state.music) return Promise.resolve(state.music)
-      return Promise.reject(agentPendingError("音乐播放"))
+      return Promise.reject(apiError("音乐尚未生成完成", "NOT_FOUND"))
     }
     return mockApi.getMusic()
   },
