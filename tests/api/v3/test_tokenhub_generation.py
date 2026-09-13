@@ -50,6 +50,7 @@ from backend.app.models.v3.understanding import (
     UnderstandingRun,
 )
 from backend.app.routers.v3.generation_router import get_music_provider
+from generation_poll import is_terminal_task, poll_until
 
 client = TestClient(app)
 
@@ -372,7 +373,9 @@ def test_tokenhub_success_persists_generated_asset_with_provider_metadata(tmp_pa
             json=_generation_body(rx_id, "sha256:th-success-1"),
         )
         assert created.status_code == 201
-        body = _v3_data(created)
+        created_task = _v3_data(created)
+        assert created_task["status"] == "queued"
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
         assert body["status"] == "succeeded"
         assert body["fallback"]["applied"] is False
         assert body["error_code"] is None
@@ -440,7 +443,9 @@ def test_tokenhub_failure_degrades_to_explicit_matched_fallback(tmp_path):
             json=_generation_body(rx_id, "sha256:th-fallback-1"),
         )
         assert response.status_code == 201
-        body = _v3_data(response)
+        created_task = _v3_data(response)
+        assert created_task["status"] == "queued"
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
         assert body["status"] == "matched_fallback"
         assert body["fallback"]["applied"] is True
         assert body["fallback"]["reason_code"] == "GENERATION_PROVIDER_UNAVAILABLE"
@@ -488,7 +493,9 @@ def test_tokenhub_failure_without_fallback_returns_failed(tmp_path):
             json=_generation_body(rx_id, "sha256:th-fail-1", fallback="none"),
         )
         assert response.status_code == 201
-        body = _v3_data(response)
+        created_task = _v3_data(response)
+        assert created_task["status"] == "queued"
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
         assert body["status"] == "failed"
         assert body["error_code"] == "GENERATION_PROVIDER_AUTH_FAILED"
         assert body["audio_asset"] is None
@@ -532,7 +539,9 @@ def test_rule_asset_chinese_instruments_normalize_for_prompt_and_keep_display(tm
             json=_generation_body(rx_id, "sha256:th-rule-assets-1", spec=spec),
         )
         assert created.status_code == 201
-        body = _v3_data(created)
+        created_task = _v3_data(created)
+        assert created_task["status"] == "queued"
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
         assert body["status"] == "succeeded"
 
         # provider prompt uses normalized tokens; no contradictory ambient text
@@ -601,7 +610,9 @@ def test_anomalous_generated_audio_never_writes_a_bogus_duration(tmp_path):
             json=_generation_body(rx_id, "sha256:th-bad-duration-1", fallback="none"),
         )
         assert response.status_code == 201
-        body = _v3_data(response)
+        created_task = _v3_data(response)
+        assert created_task["status"] == "queued"
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
         assert body["status"] == "failed"
         assert body["error_code"] == "GENERATION_PROVIDER_REJECTED"
         assert body["audio_asset"] is None
@@ -652,7 +663,9 @@ def test_anomalous_generated_audio_degrades_to_matched_not_generated(tmp_path):
             json=_generation_body(rx_id, "sha256:th-bad-duration-fb-1"),
         )
         assert response.status_code == 201
-        body = _v3_data(response)
+        created_task = _v3_data(response)
+        assert created_task["status"] == "queued"
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
         # never a fake generated success; explicit reviewed fallback instead
         assert body["status"] == "matched_fallback"
         assert body["audio_asset"]["music_ref"]["source_type"] == "matched"

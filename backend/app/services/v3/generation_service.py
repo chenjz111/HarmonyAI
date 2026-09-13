@@ -15,7 +15,7 @@ from pathlib import Path
 import os
 import uuid
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from backend.ai_engine.v3.music_provider import (
     MusicGenerationProvider,
@@ -24,6 +24,7 @@ from backend.ai_engine.v3.music_provider import (
     map_provider_task_to_music_task,
 )
 from backend.app.core.audio_duration import mp3_duration_seconds
+from backend.app.core.database import SessionLocal
 from backend.app.models.v3.music import GenerationTask, MusicAsset
 from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.models.v3.session import V3IdempotencyRecord
@@ -37,6 +38,7 @@ from backend.app.schemas.v3.music import (
     MusicGenerationV3Request,
     MusicProgress,
     MusicRef,
+    MusicProviderPolicy,
     MusicTask,
     ProviderMusicRequest,
     QueuedMusicTask,
@@ -200,13 +202,13 @@ def _find_owned_asset(
     return asset
 
 
-def _find_matched_asset(db: Session, principal: AuthPrincipal) -> MusicAsset | None:
+def _find_matched_asset_for_user(db: Session, internal_user_pk: int) -> MusicAsset | None:
     candidates = (
         db.query(MusicAsset)
         .filter(
             MusicAsset.source_type == "matched",
             MusicAsset.playable_status == "ready",
-            (MusicAsset.owner_internal_user_pk == principal.internal_user_pk)
+            (MusicAsset.owner_internal_user_pk == internal_user_pk)
             | (MusicAsset.owner_internal_user_pk.is_(None)),
         )
         .order_by(MusicAsset.created_at)
@@ -372,31 +374,6 @@ def _apply_provider_task(
     return music_task
 
 
-def _try_fallback(
-    db: Session,
-    principal: AuthPrincipal,
-    task_id: str,
-    request: MusicGenerationV3Request,
-    provider_error_code: str,
-) -> MusicTask | None:
-    fallback_allowed = (
-        request.provider_policy.fallback == "local_matching"
-        and request.generation_spec.fallback_policy.allow_local_matching
-    )
-    if not fallback_allowed:
-        return None
-    matched_row = _find_matched_asset(db, principal)
-    if matched_row is None:
-        return None
-    matched = _audio_asset_from_row(matched_row)
-    return build_matched_fallback_task(
-        task_id=task_id,
-        request=request,
-        reason_code=provider_error_code,
-        matched_asset=matched,
-    )
-
-
 def _failed_music_task(task_id: str, error_code: str) -> MusicTask:
     return FailedMusicTask(
         task_id=task_id,
@@ -558,48 +535,130 @@ def create_generation_task(
     db.add(task)
     db.flush()
 
-    provider_request = ProviderMusicRequest(
-        provider_request_id=f"pr_{task_id}",
-        generation_spec=request.generation_spec,
-        output_format="mp3",
-        callback_ref=None,
-    )
-    provider_name, _ = _provider_identity(provider)
-    try:
-        provider_task = provider.create_task(provider_request)
-        music_task = _apply_provider_task(
-            db,
-            principal.internal_user_pk,
-            task,
-            provider_task,
-            provider_name=provider_name,
-        )
-    except MusicProviderFailureV3 as error:
-        fallback_task = _try_fallback(
-            db,
-            principal,
-            task_id,
-            request,
-            error.error_code,
-        )
-        if fallback_task is not None:
-            music_task = fallback_task
-        else:
-            music_task = _failed_music_task(task_id, error.error_code)
-        _persist_task_outcome(
-            db,
-            task,
-            music_task,
-            None,
-            provider_name=provider_name,
-        )
-
+    # The Provider call is deliberately NOT made here. A real provider (e.g. Tencent Cloud
+    # TokenHub / minimax-music-v3.0) takes minutes, which exceeds browser request timeouts and
+    # loses the task id. The task is persisted as queued, committed, and returned immediately;
+    # the router schedules execute_generation_task() which runs the provider in the background
+    # with its own database session.
     record.resource_type = "generation_task"
     record.resource_id = task_id
     record.status = "succeeded"
     record.response_code = 201
     db.commit()
     return _music_task_from_db(db, task), False
+
+
+def execute_generation_task(
+    task_id: str,
+    provider: MusicGenerationProvider,
+    *,
+    fallback_mode: str = "none",
+    bind=None,
+) -> None:
+    """Run the real Provider generation outside the request lifecycle.
+
+    Owns an independent database session bound to the same engine the request used (so
+    per-app databases, including isolated test databases, are honoured). The request-scoped
+    session object itself is already closed by the time this runs and is never reused.
+    """
+
+    factory = (
+        SessionLocal
+        if bind is None
+        else sessionmaker(bind=bind, autocommit=False, autoflush=False)
+    )
+    db = factory()
+    try:
+        task = db.query(GenerationTask).filter(
+            GenerationTask.task_id == task_id
+        ).one_or_none()
+        if task is None or task.status not in {"queued", "running"}:
+            return
+        internal_user_pk = task.internal_user_pk
+        try:
+            spec = _spec_for_task(db, task)
+            provider_request = ProviderMusicRequest(
+                provider_request_id=f"pr_{task.task_id}",
+                generation_spec=spec,
+                output_format="mp3",
+                callback_ref=None,
+            )
+            provider_name, _ = _provider_identity(provider)
+            provider_task = provider.create_task(provider_request)
+            _apply_provider_task(
+                db,
+                internal_user_pk,
+                task,
+                provider_task,
+                provider_name=provider_name,
+            )
+        except MusicProviderFailureV3 as error:
+            provider_name, _ = _provider_identity(provider)
+            fallback_task = _try_fallback_for_task(
+                db,
+                internal_user_pk,
+                task,
+                fallback_mode=fallback_mode,
+                provider_error_code=error.error_code,
+            )
+            if fallback_task is not None:
+                music_task = fallback_task
+            else:
+                music_task = _failed_music_task(task.task_id, error.error_code)
+            _persist_task_outcome(
+                db,
+                task,
+                music_task,
+                None,
+                provider_name=provider_name,
+            )
+        except Exception:  # noqa: BLE001 - never leak internals; fail closed
+            _persist_task_outcome(
+                db,
+                task,
+                _failed_music_task(task.task_id, "GENERATION_PROVIDER_UNAVAILABLE"),
+                None,
+            )
+        db.commit()
+    except Exception:  # noqa: BLE001 - background worker must not raise
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _try_fallback_for_task(
+    db: Session,
+    internal_user_pk: int,
+    task: GenerationTask,
+    *,
+    fallback_mode: str,
+    provider_error_code: str,
+) -> MusicTask | None:
+    """Reviewed-catalog fallback resolved from persisted state (background path)."""
+
+    spec = _spec_for_task(db, task)
+    if fallback_mode != "local_matching" or not spec.fallback_policy.allow_local_matching:
+        return None
+    matched_row = _find_matched_asset_for_user(db, internal_user_pk)
+    if matched_row is None:
+        return None
+    matched = _audio_asset_from_row(matched_row)
+    request = MusicGenerationV3Request(
+        schema_version="music_generation_v3.0",
+        request_id=f"pr_{task.task_id}",
+        prescription_id=task.prescription_id,
+        idempotency_key=task.idempotency_key,
+        generation_spec=spec,
+        provider_policy=MusicProviderPolicy(
+            mode="prefer_real_generation", fallback="local_matching"
+        ),
+    )
+    return build_matched_fallback_task(
+        task_id=task.task_id,
+        request=request,
+        reason_code=provider_error_code,
+        matched_asset=matched,
+    )
 
 
 def get_generation_task(

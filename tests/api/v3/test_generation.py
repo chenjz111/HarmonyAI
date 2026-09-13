@@ -15,8 +15,11 @@ Security invariants asserted here:
 
 import base64
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 import json
 from hashlib import sha256
+import threading
+import time
 import uuid
 
 from fastapi.testclient import TestClient
@@ -25,6 +28,7 @@ from sqlalchemy import null
 from backend.ai_engine.v3.music_provider import (
     MockMusicGenerationProvider,
     MusicProviderCapabilities,
+    MusicProviderFailureV3,
     ProviderTask,
 )
 from backend.app.core.database import get_db
@@ -39,13 +43,16 @@ from backend.app.models.v3.assessment import (
 )
 from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.models.v3.identity import UserIdentity
-from backend.app.models.v3.music import MusicAsset
+from backend.app.models.v3.music import GenerationTask, MusicAsset
 from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.models.v3.understanding import (
     UnderstandingRevision,
     UnderstandingRun,
 )
 from backend.app.routers.v3.generation_router import get_music_provider
+from backend.app.schemas.v3.common import AuthPrincipal
+from backend.app.schemas.v3.music import MusicGenerationV3Request
+from backend.app.services.v3 import generation_service
 
 
 client = TestClient(app)
@@ -333,7 +340,11 @@ def test_unconfigured_provider_degrades_to_matched_fallback(tmp_path):
     )
 
     assert response.status_code == 201
-    body = _v3_data(response)
+    created = _v3_data(response)
+    # the POST returns the task immediately; the provider call runs in the background
+    assert created["status"] == "queued"
+    assert created["audio_asset"] is None
+    body = _poll_until(headers, created["task_id"], _is_terminal_task)
     # explicit fallback, never a fake success
     assert body["status"] == "matched_fallback"
     assert body["fallback"] == {
@@ -346,6 +357,9 @@ def test_unconfigured_provider_degrades_to_matched_fallback(tmp_path):
     assert "MUSIC_PROVIDER_API_KEY" not in response.text
     # local storage paths never leak into the response
     assert str(tmp_path) not in response.text
+    assert str(tmp_path) not in client.get(
+        f"/api/v3/music/generations/{created['task_id']}", headers=headers
+    ).text
 
     stream_url = body["audio_asset"]["stream_url"]
     stream = client.get(stream_url, headers=headers)
@@ -377,7 +391,9 @@ def test_unconfigured_provider_without_fallback_returns_failed(tmp_path):
     )
 
     assert response.status_code == 201
-    body = _v3_data(response)
+    created = _v3_data(response)
+    assert created["status"] == "queued"
+    body = _poll_until(headers, created["task_id"], _is_terminal_task)
     assert body["status"] == "failed"
     assert body["error_code"] == "GENERATION_PROVIDER_UNAVAILABLE"
     assert body["audio_asset"] is None
@@ -453,20 +469,14 @@ def test_successful_generation_poll_stream_and_terminal_cancel(tmp_path):
     assert task["audio_asset"] is None
     task_id = task["task_id"]
 
-    # first poll still queued, second poll completes
-    first_poll = client.get(
-        f"/api/v3/music/generations/{task_id}", headers=headers
-    )
-    assert _v3_data(first_poll)["status"] == "queued"
-
-    second_poll = client.get(
-        f"/api/v3/music/generations/{task_id}", headers=headers
-    )
-    completed = _v3_data(second_poll)
+    # the provider call runs in the background; poll until the task is terminal
+    completed = _poll_until(headers, task_id, _is_terminal_task)
     assert completed["status"] == "succeeded"
     assert completed["audio_asset"]["music_ref"]["source_type"] == "generated"
     assert completed["audio_asset"]["stream_url"].endswith("/stream")
-    assert str(tmp_path) not in second_poll.text
+    assert str(tmp_path) not in client.get(
+        f"/api/v3/music/generations/{task_id}", headers=headers
+    ).text
 
     stream = client.get(completed["audio_asset"]["stream_url"], headers=headers)
     assert stream.status_code == 200
@@ -487,6 +497,42 @@ def _install_provider_override(provider) -> None:
 
 def _uninstall_provider_override() -> None:
     app.dependency_overrides.pop(get_music_provider, None)
+
+
+_TERMINAL_TASK_STATUSES = {"succeeded", "matched_fallback", "failed", "cancelled"}
+
+
+def _is_terminal_task(task: dict) -> bool:
+    return task["status"] in _TERMINAL_TASK_STATUSES
+
+
+def _poll_until(headers, task_id, predicate, *, timeout: float = 10.0):
+    """Poll a generation task until `predicate` holds.
+
+    The real provider call runs in a background worker after the POST response, so tests
+    must observe progress through the documented polling endpoint.
+    """
+
+    deadline = time.time() + timeout
+    task = _v3_data(
+        client.get(f"/api/v3/music/generations/{task_id}", headers=headers)
+    )
+    while time.time() < deadline:
+        if predicate(task):
+            return task
+        time.sleep(0.05)
+        task = _v3_data(
+            client.get(f"/api/v3/music/generations/{task_id}", headers=headers)
+        )
+    return task
+
+
+def _wait_for_provider_create(provider, *, calls: int = 1, timeout: float = 10.0) -> None:
+    """Wait until the background worker has called provider.create_task `calls` times."""
+
+    deadline = time.time() + timeout
+    while provider.create_calls < calls and time.time() < deadline:
+        time.sleep(0.05)
 
 
 def test_cancel_unsupported_returns_409(tmp_path):
@@ -528,6 +574,10 @@ def test_cancel_unsupported_returns_409(tmp_path):
             "/api/v3/music/generations", headers=headers, json=body
         )
         task_id = _v3_data(created)["task_id"]
+
+        # the task must be with the provider before "cancel unsupported" applies
+        _wait_for_provider_create(provider)
+        assert provider.create_calls == 1
 
         response = client.post(
             f"/api/v3/music/generations/{task_id}/cancel", headers=headers
@@ -576,7 +626,11 @@ def test_idempotent_replay_returns_same_task(tmp_path):
         second = client.post("/api/v3/music/generations", headers=headers, json=body)
         assert second.status_code == 200
         assert _v3_data(second)["task_id"] == task_id
-        assert _v3_data(second)["status"] == "succeeded"
+        # a replay reuses the persisted task and never starts a second provider generation
+        assert provider.create_calls <= 1
+        completed = _poll_until(headers, task_id, _is_terminal_task)
+        assert completed["status"] == "succeeded"
+        assert provider.create_calls == 1
     finally:
         _uninstall_provider_override()
 
@@ -666,7 +720,9 @@ def test_cross_user_resources_are_not_found(tmp_path):
         )
         assert created.status_code == 201
         task_id = _v3_data(created)["task_id"]
-        music_id = _v3_data(created)["audio_asset"]["music_ref"]["music_id"]
+        completed = _poll_until(owner_headers, task_id, _is_terminal_task)
+        assert completed["status"] == "succeeded"
+        music_id = completed["audio_asset"]["music_ref"]["music_id"]
 
         stranger_headers = _guest_headers()
         stranger = client.get(
@@ -723,3 +779,252 @@ def test_unauthenticated_requests_are_rejected(tmp_path):
         assert anonymous.status_code == 401
     finally:
         _uninstall_provider_override()
+
+
+# ------------------------------------------------------------- async execution
+#
+# Real providers (Tencent Cloud TokenHub / minimax-music-v3.0) need minutes to generate.
+# The POST must persist the task and return immediately; the provider call runs in a
+# background worker with its own database session, so a browser request timeout can no
+# longer lose the task id (that was the P1: server succeeded, client saw NETWORK_ERROR).
+
+
+class _BlockingProvider(MockMusicGenerationProvider):
+    """Slow-provider stand-in that blocks in create_task until released."""
+
+    def __init__(self, *, tasks, capabilities, failure=None) -> None:
+        super().__init__(tasks=tasks, capabilities=capabilities, failure=failure)
+        self.release = threading.Event()
+        self.started = threading.Event()
+        self.provider_audit_label = "blocking/test-model"
+
+    def create_task(self, request):
+        self.started.set()
+        self.release.wait(timeout=15)
+        return super().create_task(request)
+
+
+class _RequestPathForbiddenProvider(MockMusicGenerationProvider):
+    """Fails loudly if the POST request path ever calls the provider."""
+
+    def create_task(self, request):  # pragma: no cover - must never run here
+        raise AssertionError("create_task must not run on the POST request path")
+
+
+def _principal_for(public_user_id: str, session) -> AuthPrincipal:
+    user = (
+        session.query(User)
+        .join(UserIdentity, UserIdentity.internal_user_pk == User.id)
+        .filter(UserIdentity.public_user_id == public_user_id)
+        .one()
+    )
+    return AuthPrincipal(
+        internal_user_pk=user.id,
+        public_user_id=public_user_id,
+        auth_type="guest",
+        guest_expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+
+
+def _seed_async_chain(headers, session_id):
+    with _seed_db() as session:
+        public_user_id = _public_user_id(headers["Authorization"].split()[1])
+        rx_id = _seed_chain(
+            session,
+            public_user_id=public_user_id,
+            session_id=session_id,
+            generation_spec=_generation_spec(),
+        )
+        principal = _principal_for(public_user_id, session)
+    return rx_id, principal
+
+
+def test_request_path_persists_queued_task_without_calling_provider():
+    """POST path returns a queued task and never waits on the provider."""
+
+    headers, session_id = _setup_guest(idempotency_key="async-path-session")
+    provider = _RequestPathForbiddenProvider(
+        tasks=[
+            ProviderTask(
+                provider_task_id="pt_1",
+                status="queued",
+                progress_value=None,
+                asset_locator=None,
+                error_code=None,
+            )
+        ],
+        capabilities=_capabilities(),
+    )
+    rx_id, principal = _seed_async_chain(headers, session_id)
+    body = MusicGenerationV3Request.model_validate(
+        _generation_body(rx_id, "sha256:async-path-1")
+    )
+
+    with _seed_db() as session:
+        task, replayed = generation_service.create_generation_task(
+            session, principal, body, provider
+        )
+        assert replayed is False
+        assert task.status == "queued"
+        assert task.audio_asset is None
+        assert provider.create_calls == 0  # the request path never touched the provider
+
+
+def test_task_is_visible_and_committed_while_slow_provider_runs(tmp_path):
+    """The task row is durably queued while the background provider call is still running."""
+
+    audio_path = tmp_path / "slow.mp3"
+    audio_path.write_bytes(_mp3_bytes(seconds=3.0))
+    headers, session_id = _setup_guest(idempotency_key="async-slow-session")
+    provider = _BlockingProvider(
+        tasks=[
+            ProviderTask(
+                provider_task_id="pt_1",
+                status="succeeded",
+                progress_value=100,
+                asset_locator=str(audio_path),
+                error_code=None,
+            )
+        ],
+        capabilities=_capabilities(),
+    )
+    rx_id, principal = _seed_async_chain(headers, session_id)
+    body = MusicGenerationV3Request.model_validate(
+        _generation_body(rx_id, "sha256:async-slow-1", fallback="none")
+    )
+
+    with _seed_db() as session:
+        bind = session.get_bind()
+        task, _ = generation_service.create_generation_task(
+            session, principal, body, provider
+        )
+        assert task.status == "queued"
+        task_id = task.task_id
+    # the request-scoped session is closed here: the worker must not need it
+
+    worker = threading.Thread(
+        target=generation_service.execute_generation_task,
+        kwargs={
+            "task_id": task_id,
+            "provider": provider,
+            "fallback_mode": "none",
+            "bind": bind,
+        },
+    )
+    worker.start()
+    try:
+        assert provider.started.wait(timeout=10), "background provider call must start"
+        # while the provider is still blocked the task is already visible and queued
+        with _seed_db() as check:
+            row = check.query(GenerationTask).filter(
+                GenerationTask.task_id == task_id
+            ).one()
+            assert row.status == "queued"
+            assert row.music_asset_id is None
+            assert row.provider_task_id is None
+    finally:
+        provider.release.set()
+        worker.join(timeout=20)
+
+    assert provider.create_calls == 1
+    with _seed_db() as check:
+        row = check.query(GenerationTask).filter(
+            GenerationTask.task_id == task_id
+        ).one()
+        assert row.status == "succeeded"
+        assert row.music_asset_id is not None
+    with _seed_db() as check:
+        asset = check.query(MusicAsset).filter(
+            MusicAsset.generation_task_id == task_id
+        ).one()
+        assert asset.source_type == "generated"
+        assert asset.playable_status == "ready"
+        assert asset.duration_seconds and asset.duration_seconds > 0
+        assert asset.checksum.startswith("sha256:")
+
+
+def test_slow_provider_failure_marks_task_failed_without_fake_success(tmp_path):
+    """A provider failure is an explicit failure: no mock fallback, no fake asset."""
+
+    headers, session_id = _setup_guest(idempotency_key="async-fail-session")
+    provider = _BlockingProvider(
+        tasks=[
+            ProviderTask(
+                provider_task_id="pt_1",
+                status="queued",
+                progress_value=None,
+                asset_locator=None,
+                error_code=None,
+            )
+        ],
+        capabilities=_capabilities(),
+        failure=MusicProviderFailureV3(
+            "GENERATION_PROVIDER_REJECTED",
+            retryable=False,
+            safe_message="provider rejected the request",
+        ),
+    )
+    provider.release.set()
+    rx_id, principal = _seed_async_chain(headers, session_id)
+    body = MusicGenerationV3Request.model_validate(
+        _generation_body(rx_id, "sha256:async-fail-1", fallback="none")
+    )
+
+    with _seed_db() as session:
+        bind = session.get_bind()
+        task, _ = generation_service.create_generation_task(
+            session, principal, body, provider
+        )
+        task_id = task.task_id
+
+    generation_service.execute_generation_task(
+        task_id, provider, fallback_mode="none", bind=bind
+    )
+
+    with _seed_db() as session:
+        row = session.query(GenerationTask).filter(
+            GenerationTask.task_id == task_id
+        ).one()
+        assert row.status == "failed"
+        assert row.error_code == "GENERATION_PROVIDER_REJECTED"
+        assert row.music_asset_id is None
+        assert row.fallback_applied == 0
+        assert (
+            session.query(MusicAsset)
+            .filter(MusicAsset.generation_task_id == task_id)
+            .count()
+            == 0
+        )
+
+
+def test_duplicate_idempotency_key_reuses_task_and_never_starts_second_generation():
+    """A replayed POST reuses the persisted task; the provider is never called twice."""
+
+    headers, session_id = _setup_guest(idempotency_key="async-idem-session")
+    provider = _RequestPathForbiddenProvider(
+        tasks=[
+            ProviderTask(
+                provider_task_id="pt_1",
+                status="queued",
+                progress_value=None,
+                asset_locator=None,
+                error_code=None,
+            )
+        ],
+        capabilities=_capabilities(),
+    )
+    rx_id, principal = _seed_async_chain(headers, session_id)
+    body_payload = _generation_body(rx_id, "sha256:async-idem-1", fallback="none")
+
+    with _seed_db() as session:
+        first, first_replayed = generation_service.create_generation_task(
+            session, principal, MusicGenerationV3Request.model_validate(body_payload), provider
+        )
+        second, second_replayed = generation_service.create_generation_task(
+            session, principal, MusicGenerationV3Request.model_validate(body_payload), provider
+        )
+
+    assert first_replayed is False
+    assert second_replayed is True
+    assert second.task_id == first.task_id
+    assert provider.create_calls == 0
