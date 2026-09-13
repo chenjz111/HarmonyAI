@@ -5,7 +5,7 @@
  *          harmonyai-v3-owner-flow-amendment-001.md §2（唯一最终确认）/ §4.3
  *
  * - 评估服务先产出评估，本页确认后最新已确认 revision 才进入后续流程
- * - 确认只有一次；可带修正（changes[]）提交，返回 revision+1
+ * - 确认只有一次；可带修正提交（本页提供全文修正 edited_summary_text），返回 revision+1
  * - 不展示 evidence_coverage、provider_metadata、内部 enum、置信度等禁止字段
  * - Safety policy/状态不显示（deferred_v3 / not_run 为内部字段）
  * - real 模式读取并确认真实 Assessment；失败显式提示且不伪造评估结果
@@ -18,10 +18,8 @@
  *   - 业务逻辑 load/confirmOk/startCorrect/saveCorrect 完全保留
  */
 import { apiV3 } from "../../common/api-v3.js"
-import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 export default {
-  components: { HanSideNav },
   data() {
     return {
       loading: true,
@@ -30,25 +28,18 @@ export default {
       confirming: false,
       agentPending: false,
       simulated: false,
-      editingMode: null, // null | "menu" | "severity" | "text"
-      draftSeverity: {},
+      editingMode: null, // null | "text"
       draftSummaryText: "",
+      summaryEditorFocused: false,
     }
-  },
-  computed: {
-    severityLabel() {
-      return {
-        none: "无",
-        mild: "轻微",
-        moderate: "中等",
-        severe: "明显",
-      }
-    },
   },
   onLoad() {
     this.load()
   },
   methods: {
+    back() {
+      uni.navigateBack()
+    },
     async load() {
       this.loading = true
       this.error = ""
@@ -83,51 +74,29 @@ export default {
       }
     },
     startCorrect() {
-      // 提供三个入口：调程度 / 编辑文本 / 直接确认
-      this.editingMode = "menu"
-      const draft = {}
-      ;(this.model.editable_items || []).forEach((item, idx) => {
-        draft[idx] = item.value.value
-      })
-      this.draftSeverity = draft
       this.draftSummaryText = this.model.summary || ""
-    },
-    pickSeverity(idx, value) {
-      this.draftSeverity[idx] = value
+      this.summaryEditorFocused = false
+      this.editingMode = "text"
+      this.$nextTick(() => {
+        this.summaryEditorFocused = true
+      })
     },
     cancelCorrect() {
       this.editingMode = null
       this.draftSummaryText = ""
-    },
-    selectSeverityMode() {
-      this.editingMode = "severity"
-    },
-    selectTextMode() {
-      this.editingMode = "text"
+      this.summaryEditorFocused = false
     },
     async saveCorrect() {
       if (this.confirming) return
       
-      const isTextEdit = this.editingMode === "text"
-      const changes = isTextEdit ? [] : (this.model.editable_items || [])
-        .map((item, idx) => ({ item, idx }))
-        .filter(({ item, idx }) => this.draftSeverity[idx] !== item.value.value)
-        .map(({ item, idx }) => ({
-          target_type: "fact_evidence",
-          target_id: item.target_id,
-          field: "severity",
-          old_value: item.value.value,
-          new_value: this.draftSeverity[idx],
-        }))
-        
       this.confirming = true
       try {
         // 最终状态总结属于 Assessment；不得回写资料 Understanding。
         await apiV3.confirmAssessment({
           expected_revision: this.model.revision,
-          decision: (changes.length || isTextEdit) ? "confirm_with_changes" : "confirm",
-          changes,
-          edited_summary_text: isTextEdit ? this.draftSummaryText : undefined,
+          decision: "confirm_with_changes",
+          changes: [],
+          edited_summary_text: this.draftSummaryText,
         })
         uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
       } catch (e) {
@@ -141,9 +110,13 @@ export default {
 </script>
 
 <template>
-  <view class="page han-page side-nav-page">
-    <han-side-nav current="confirm" />
-    <view class="han-page-content container">
+  <view class="confirm-page v31-scroll-page">
+    <view class="confirm-container">
+      <view class="brand-row">
+        <button class="back-button" role="button" aria-label="返回" @click="back"><view class="back-chevron" /></button>
+        <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
+        <view class="brand-copy"><text class="brand-name">HarmonyAI</text><text class="brand-tagline">用音乐，陪伴更好的你</text></view>
+      </view>
       <view class="header ink-fade-in">
         <view class="step-tag">
           <text class="step-tag-text">最后一步 · 确认</text>
@@ -183,103 +156,42 @@ export default {
         </view>
       </view>
 
-      <view v-else-if="editingMode === null" class="confirm-card han-card ink-fade-up">
+      <view v-else class="confirm-card han-card ink-fade-up">
         <view v-if="simulated" class="demo-banner">
           <text class="demo-banner-text">演示模式：以下评估内容为模拟数据</text>
         </view>
 
+        <view class="summary-heading">
+          <image class="summary-icon-image" src="/static/v31-goal/intent-2.png" mode="aspectFit" />
+          <text class="summary-heading-title">综合分析</text>
+        </view>
         <view class="summary-box">
           <text class="summary-title">{{ model.title }}</text>
-          <text class="summary-text">{{ model.summary }}</text>
+          <text v-if="editingMode === null" class="summary-text">{{ model.summary }}</text>
+          <textarea
+            v-else
+            class="edit-textarea inline-summary-editor"
+            v-model="draftSummaryText"
+            :maxlength="2000"
+            :focus="summaryEditorFocused"
+            :cursor="(draftSummaryText || '').length"
+          />
         </view>
 
-        <view v-for="sec in model.sections" :key="sec.id" class="section">
-          <text class="section-title">{{ sec.title }}</text>
-          <view class="section-items">
-            <view v-for="(item, idx) in sec.items" :key="idx" class="section-item">
-              <view class="item-dot"></view>
-              <text class="item-text">{{ item }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="han-divider"></view>
-
-        <view class="actions">
-          <view class="han-btn han-btn-primary btn-primary" :class="{ 'btn-disabled': confirming }" @click="confirmOk">
-            <text class="btn-text">基本符合，继续</text>
-          </view>
+        <view v-if="editingMode === null" class="actions confirm-actions">
           <view class="han-btn han-btn-ghost btn-secondary" @click="startCorrect">
             <text class="btn-text-ghost">有些地方不对，我要修改</text>
           </view>
+          <view class="han-btn han-btn-primary btn-primary" :class="{ 'btn-disabled': confirming }" @click="confirmOk">
+            <text class="btn-text">基本符合，继续</text>
+          </view>
         </view>
-      </view>
-
-      <!-- 修改入口选择 -->
-      <view v-else-if="editingMode === 'menu'" class="correct-card han-card ink-fade-up">
-        <text class="correct-title">选择修改方式</text>
-        <view class="actions">
-          <view class="han-btn han-btn-primary btn-primary" @click="selectTextMode">
-            <text class="btn-text">直接编辑文本</text>
-          </view>
-          <view class="han-btn han-btn-ghost btn-secondary" @click="selectSeverityMode">
-            <text class="btn-text-ghost">调整各项程度</text>
-          </view>
+        <view v-else class="actions confirm-actions">
           <view class="han-btn han-btn-ghost btn-secondary" @click="cancelCorrect">
             <text class="btn-text-ghost">取消修改</text>
           </view>
-        </view>
-      </view>
-
-      <!-- 直接编辑文本模式 -->
-      <view v-else-if="editingMode === 'text'" class="correct-card han-card ink-fade-up">
-        <text class="correct-title">编辑近期状态总结</text>
-        <text class="correct-hint">请根据最近 7 天的实际情况，修改摘要内容。</text>
-        <textarea
-          class="edit-textarea"
-          v-model="draftSummaryText"
-          :maxlength="2000"
-          placeholder="例如：近期睡眠不足，白天精神状态欠佳，但精神压力有所缓解。"
-        />
-        <view class="edit-count"><text class="edit-count-text">{{ (draftSummaryText || '').length }} / 2000</text></view>
-        <view class="actions">
           <view class="han-btn han-btn-primary btn-primary" :class="{ 'btn-disabled': confirming }" @click="saveCorrect">
-            <text class="btn-text">保存并继续</text>
-          </view>
-          <view class="han-btn han-btn-ghost btn-secondary" @click="cancelCorrect">
-            <text class="btn-text-ghost">取消修改</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- 调整程度模式 -->
-      <view v-else-if="editingMode === 'severity'" class="correct-card han-card ink-fade-up">
-        <text class="correct-title">调整状态程度</text>
-        <text class="correct-hint">请根据最近 7 天的实际情况，调整以下各项的准确程度。</text>
-
-        <view v-for="(item, idx) in model.editable_items" :key="idx" class="correct-item">
-          <text class="correct-label">{{ item.label }}</text>
-          <view class="severity-row">
-            <view
-              v-for="sv in item.allowed_values"
-              :key="sv"
-              class="severity-btn"
-              :class="{ 'severity-active': draftSeverity[idx] === sv }"
-              @click="pickSeverity(idx, sv)"
-            >
-              <text class="severity-btn-text" :class="{ 'severity-active-text': draftSeverity[idx] === sv }">{{ severityLabel[sv] || sv }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="han-divider"></view>
-
-        <view class="actions">
-          <view class="han-btn han-btn-primary btn-primary" :class="{ 'btn-disabled': confirming }" @click="saveCorrect">
-            <text class="btn-text">保存并继续</text>
-          </view>
-          <view class="han-btn han-btn-ghost btn-secondary" @click="cancelCorrect">
-            <text class="btn-text-ghost">取消修改</text>
+            <text class="btn-text">保存修改并继续</text>
           </view>
         </view>
       </view>
@@ -786,5 +698,60 @@ export default {
   line-height: 1.7;
   margin-bottom: 48rpx;
   text-align: center;
+}
+</style>
+
+<style scoped>
+/* Owner 2026-09-13：近期状态总结手机视觉 */
+.confirm-page {
+  width:100%;
+  max-width:430px;
+  min-height:100vh;
+  margin:0 auto;
+  color:#064c50;
+  background:#f8f8f1 url('/static/v31-questionnaire/questionnaire-background-q34.png') center top / 100% 100% no-repeat;
+  font-family:system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+}
+.confirm-container { min-height:100vh; box-sizing:border-box; padding:calc(12px + env(safe-area-inset-top)) 16px calc(26px + env(safe-area-inset-bottom)); }
+.confirm-page .brand-row { display:flex; align-items:center; min-height:46px; gap:8px; }
+.confirm-page .back-button { display:flex; align-items:center; justify-content:center; width:28px; height:40px; margin:0; padding:0; border:0; background:transparent; }
+.confirm-page .back-button::after { border:0; }
+.confirm-page .back-chevron { width:11px; height:11px; border-left:2px solid #064c50; border-bottom:2px solid #064c50; transform:rotate(45deg); }
+.confirm-page .brand-leaf { width:42px; height:42px; }
+.confirm-page .brand-copy { display:flex; flex-direction:column; gap:1px; }
+.confirm-page .brand-name { font-size:18px; font-weight:750; line-height:1.15; }
+.confirm-page .brand-tagline { font-size:10px; letter-spacing:2px; }
+.confirm-page .header { margin:28px 14px 26px; }
+.confirm-page .step-tag { display:inline-flex; margin-bottom:14px; padding:5px 10px; border:0; border-radius:7px; background:rgba(205,224,215,.68); }
+.confirm-page .step-tag-text { color:#28675f; font-size:12px; }
+.confirm-page .title-row { display:flex; align-items:center; gap:10px; }
+.confirm-page .page-title { color:#064c50; font-family:'KaiTi','STKaiti',serif; font-size:31px; font-weight:800; letter-spacing:2px; line-height:1.25; }
+.confirm-page .title-seal { display:none; }
+.confirm-page .page-subtitle { display:block; margin-top:12px; color:#18585c; font-size:14px; line-height:1.7; }
+.confirm-page .confirm-card { box-sizing:border-box; padding:18px 16px 16px; border:1px solid rgba(57,104,93,.10); border-radius:14px; background:rgba(255,255,251,.86); box-shadow:0 4px 14px rgba(31,72,62,.10); }
+.confirm-page .demo-banner { margin-bottom:10px; }
+.confirm-page .summary-heading { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.confirm-page .summary-icon-image { width:52px; height:52px; flex:0 0 52px; border-radius:50%; mix-blend-mode:multiply; }
+.confirm-page .summary-heading-title { color:#064c50; font-family:'KaiTi','STKaiti',serif; font-size:23px; font-weight:800; }
+.confirm-page .summary-box { box-sizing:border-box; margin:0; padding:15px 14px; border:1px solid rgba(63,112,96,.10); border-radius:10px; background:rgba(239,246,237,.54); }
+.confirm-page .summary-title { display:none; }
+.confirm-page .summary-text { color:#164e57; font-size:15px; line-height:1.9; }
+.confirm-page .inline-summary-editor { width:100%; min-height:150px; box-sizing:border-box; padding:0; border:0; background:transparent; color:#164e57; font-family:inherit; font-size:15px; line-height:1.9; }
+.confirm-page .inline-summary-editor :deep(textarea) { padding:0; color:#164e57; font-family:inherit; font-size:15px; line-height:1.9; }
+.confirm-page .confirm-actions { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:20px; }
+.confirm-page .confirm-actions .han-btn { display:flex; align-items:center; justify-content:center; min-width:0; min-height:48px; box-sizing:border-box; margin:0; padding:8px 9px; border-radius:26px; }
+.confirm-page .confirm-actions .btn-secondary { border:1px solid #207064; color:#15565a; background:rgba(255,255,252,.70); }
+.confirm-page .confirm-actions .btn-primary { border:0; color:#fff; background:linear-gradient(105deg,#24695e,#28776a); box-shadow:0 5px 12px rgba(27,105,89,.14); }
+.confirm-page .confirm-actions .btn-text,
+.confirm-page .confirm-actions .btn-text-ghost { color:inherit; font-family:inherit; font-size:13px; font-weight:650; text-align:center; white-space:normal; }
+.confirm-page .disclaimer { margin-top:18px; text-align:center; }
+.confirm-page .disclaimer-text { color:#607a76; font-size:10px; letter-spacing:.5px; }
+@media (max-width:350px) {
+  .confirm-container { padding-left:10px; padding-right:10px; }
+  .confirm-page .header { margin-left:8px; margin-right:8px; }
+  .confirm-page .page-title { font-size:27px; }
+  .confirm-page .confirm-card { padding-left:10px; padding-right:10px; }
+  .confirm-page .confirm-actions .btn-text,
+  .confirm-page .confirm-actions .btn-text-ghost { font-size:12px; }
 }
 </style>

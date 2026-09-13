@@ -16,12 +16,10 @@
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
 import { apiV3 } from "../../common/api-v3.js"
-import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 const PAGE_SIZE = 2 // V3.1：每页展示 2 题
 
 export default {
-  components: { HanSideNav },
   data() {
     return {
       loading: true,
@@ -73,6 +71,26 @@ export default {
     this.load()
   },
   methods: {
+    back() {
+      uni.navigateBack()
+    },
+    optionImage(q, opt, optIndex) {
+      const qid = q && q.question_id
+      const frequencyMatch = /^q0([1-5])$/.exec(qid)
+      if (frequencyMatch && this.isFrequency(q)) {
+        return `/static/v31-questionnaire/q${frequencyMatch[1]}-${optIndex}.png`
+      }
+      if (qid === "q06") {
+        return opt.is_none
+          ? "/static/v31-questionnaire/q7-4.png"
+          : `/static/v31-questionnaire/q6-${optIndex}.png`
+      }
+      const multiMatch = /^q(0[7-9]|10)$/.exec(qid)
+      if (multiMatch) {
+        return `/static/v31-questionnaire/q${Number(multiMatch[1])}-${optIndex}.png`
+      }
+      return ""
+    },
     async load() {
       this.loading = true
       this.error = ""
@@ -201,20 +219,17 @@ export default {
 </script>
 
 <template>
-  <view class="page han-page side-nav-page">
-    <han-side-nav current="question" />
-    <view class="han-page-content container">
-      <view class="header ink-fade-in">
-        <view class="header-row">
-          <view class="stage-seal">
-            <text class="stage-seal-text">问</text>
-          </view>
-          <view class="header-titles">
-            <text class="step-tag">{{ withDocument ? "有资料流程 · 第 4 步 · 必答" : "无资料流程 · 第 2 步 · 必答" }}</text>
-            <text class="page-title han-title-brush revealed">{{ schema ? schema.title : "五脏状态问卷" }}</text>
-          </view>
-        </view>
-        <text class="page-subtitle">请根据最近 7 天的实际感受作答，每页 2 题。</text>
+  <view class="questionnaire-page v31-scroll-page" :class="{ 'questionnaire-page-q34': current === 1, 'questionnaire-page-q56': current === 2, 'questionnaire-page-q78': current === 3, 'questionnaire-page-q910': current === 4 }">
+    <view class="container">
+      <view class="brand-row">
+        <button class="back-button" role="button" aria-label="返回" @click="back"><view class="back-chevron" /></button>
+        <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
+        <view class="brand-copy"><text class="brand-name">HarmonyAI</text><text class="brand-tagline">用音乐，陪伴更好的你</text></view>
+        <view class="page-progress"><text>{{ current + 1 }}/{{ totalSteps || 5 }}</text><view class="mini-track"><view class="mini-fill" :style="{ width: (((current + 1) / (totalSteps || 5)) * 100) + '%' }" /></view></view>
+      </view>
+      <view class="section-heading">
+        <view class="section-mark">◖</view>
+        <view><text class="section-title">{{ current >= 2 ? '身体状态' : '情绪感知' }}</text><text class="section-subtitle">{{ current >= 2 ? '再看看身体的感觉，有就有、没有就没有，选“都很少出现”就好。' : '先随便聊聊你最近一周的心情，选最接近的就行。' }}</text></view>
       </view>
 
       <view v-if="loading" class="loading-wrap">
@@ -257,56 +272,47 @@ export default {
           <text class="demo-banner-text">演示模式：评估与音乐部分为模拟数据</text>
         </view>
 
-        <!-- 进度（V3.1：以页为单位 1/5 ~ 5/5） -->
-        <view class="progress-row">
-          <view class="progress-bar">
-            <view
-              class="progress-fill"
-              :style="{ width: (((current + (pageAnswered ? 1 : 0)) / totalSteps) * 100) + '%' }"
-            ></view>
-          </view>
-          <text class="progress-text">第 {{ current + 1 }} / {{ totalSteps }} 页</text>
-        </view>
-
         <!-- 当前页 2 道题 -->
         <view class="page-card">
           <view
             v-for="(q, i) in pageQuestions"
             :key="q.question_id"
-            class="han-card q-card ink-fade-up"
+            class="q-card ink-fade-up"
           >
             <view class="q-card-head">
-              <text class="q-index">第 {{ pageStartIndex + i + 1 }} 题 · 共 {{ total }} 题</text>
-              <text class="q-required">必答</text>
+              <text class="q-index">Q{{ pageStartIndex + i + 1 }}</text>
+              <view class="q-prompt-line"><text class="q-prompt">{{ q.prompt }}</text><text v-if="!isFrequency(q)" class="multi-hint">（可多选）</text></view>
             </view>
-            <text class="q-prompt">{{ q.prompt }}</text>
 
             <!-- 频率题（q01-q05）：单选 0..4，选项文案内嵌于每题（V3.0.1） -->
-            <view v-if="isFrequency(q)" class="q-options">
+            <view v-if="isFrequency(q)" class="q-options frequency-options">
               <view
-                v-for="opt in q.options"
+                v-for="(opt, optIndex) in q.options"
                 :key="'f' + q.question_id + opt.score"
                 class="q-option"
                 :class="{ 'q-option-active': currentFrequencyValue(q) === opt.score }"
+                role="button"
+                :aria-pressed="currentFrequencyValue(q) === opt.score"
                 @click="selectFrequency(q, opt)"
               >
-                <view class="q-radio" :class="{ 'q-radio-active': currentFrequencyValue(q) === opt.score }">
-                  <view v-if="currentFrequencyValue(q) === opt.score" class="q-radio-dot"></view>
-                </view>
+                <image v-if="optionImage(q, opt, optIndex)" class="option-image" :src="optionImage(q, opt, optIndex)" mode="aspectFit" />
                 <text class="q-option-label">{{ opt.label }}</text>
               </view>
             </view>
 
             <!-- 多选题（q06-q10） -->
-            <view v-else class="q-options">
+            <view v-else class="q-options multi-options" :class="'multi-options-' + q.options.length">
               <view
-                v-for="opt in q.options"
+                v-for="(opt, optIndex) in q.options"
                 :key="opt.option_code"
                 class="q-option"
-                :class="{ 'q-option-active': currentAnswer(q).indexOf(opt.option_code) !== -1 }"
+                :class="{ 'q-option-active': currentAnswer(q).indexOf(opt.option_code) !== -1, 'q-option-none': opt.is_none }"
                 @click="toggleOption(q, opt)"
               >
+                <image v-if="optionImage(q, opt, optIndex)" class="option-image" :src="optionImage(q, opt, optIndex)" mode="aspectFit" />
+                <view v-else-if="opt.is_none" class="q-none-mark">✓</view>
                 <view
+                  v-else
                   class="q-radio"
                   :class="{ 'q-radio-active': currentAnswer(q).indexOf(opt.option_code) !== -1 }"
                 >
@@ -321,7 +327,7 @@ export default {
         <!-- 导航 -->
         <view class="nav-row">
           <view class="han-btn han-btn-ghost nav-btn" :class="{ 'nav-hidden': current === 0 }" @click="prev">
-            <text class="nav-btn-text">上一页</text>
+            <text class="nav-btn-text">上一题</text>
           </view>
           <view
             v-if="current < totalSteps - 1"
@@ -329,7 +335,7 @@ export default {
             :class="{ 'nav-disabled': !pageAnswered }"
             @click="next"
           >
-            <text class="nav-btn-text nav-primary-text">下一页</text>
+            <text class="nav-btn-text nav-primary-text">下一题</text>
           </view>
           <view
             v-else
@@ -337,7 +343,7 @@ export default {
             :class="{ 'nav-disabled': !canSubmit }"
             @click="submit"
           >
-            <text class="nav-btn-text nav-primary-text">提交问卷</text>
+            <text class="nav-btn-text nav-primary-text">完成问卷</text>
           </view>
         </view>
 
@@ -345,6 +351,7 @@ export default {
         <view class="must-note">
           <text class="must-note-text">需要完成全部 {{ total }} 题后才能继续 · 已答 {{ answeredCount }} / {{ total }}</text>
         </view>
+        <view class="page-motto"><text>—　五音和鸣 · 乐养身心　—</text></view>
       </view>
     </view>
   </view>
@@ -684,5 +691,99 @@ export default {
 .btn-back-text {
   color: var(--ink-700);
   font-size: 28rpx;
+}
+
+/* ===== Owner 视觉稿：手机问卷 ===== */
+.questionnaire-page {
+  width: 100%;
+  max-width: 430px;
+  min-height: 100vh;
+  margin: 0 auto;
+  color: #064c50;
+  background: #f8f8f1 url('/static/v31-questionnaire/questionnaire-background.png') center top / 100% 100% no-repeat;
+  font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+.questionnaire-page-q34 { background-image:url('/static/v31-questionnaire/questionnaire-background-q34.png'); }
+.questionnaire-page-q56 { background-image:url('/static/v31-questionnaire/questionnaire-background-q34.png'); }
+.questionnaire-page-q78 { background-image:url('/static/v31-questionnaire/questionnaire-background-q34.png'); }
+.questionnaire-page-q910 { background-image:url('/static/v31-questionnaire/questionnaire-background-q34.png'); }
+.questionnaire-page .container { min-height:100vh; padding:calc(12px + env(safe-area-inset-top)) 8px calc(24px + env(safe-area-inset-bottom)); }
+.brand-row { display:flex; align-items:center; min-height:42px; gap:7px; padding:0 5px; }
+.back-button { display:flex; align-items:center; justify-content:center; width:30px; height:40px; margin:0; padding:0; border:0; background:transparent; flex-shrink:0; }
+.back-button::after { border:0; }
+.back-chevron { width:10px; height:10px; border-left:2px solid #064c50; border-bottom:2px solid #064c50; transform:rotate(45deg); }
+.brand-leaf { width:34px; height:34px; }
+.brand-copy { display:flex; flex-direction:column; gap:1px; }
+.brand-name { font-size:15px; font-weight:700; line-height:1.2; }
+.brand-tagline { font-size:9px; letter-spacing:1px; white-space:nowrap; }
+.page-progress { margin-left:auto; width:68px; text-align:right; font-size:12px; color:#236b69; }
+.mini-track { height:4px; margin-top:6px; overflow:hidden; border-radius:4px; background:rgba(48,112,102,.18); }
+.mini-fill { height:100%; border-radius:4px; background:#3d9484; transition:width .25s ease; }
+.section-heading { display:flex; align-items:flex-start; gap:8px; margin:9px 3px 12px; }
+.section-mark { display:flex; align-items:center; justify-content:center; width:29px; height:29px; border-radius:50%; color:#286f68; background:rgba(208,229,219,.7); font-size:24px; transform:rotate(-28deg); }
+.section-title,.section-subtitle { display:block; }
+.section-title { font-family:'KaiTi','STKaiti',serif; font-size:19px; font-weight:700; line-height:1.25; }
+.section-subtitle { margin-top:3px; font-size:11px; line-height:1.45; }
+.questionnaire-page .demo-banner { margin:0 0 6px; }
+.questionnaire-page .page-card { gap:9px; }
+.questionnaire-page .q-card { box-sizing:border-box; padding:11px 8px 8px; border:1px solid rgba(57,104,93,.08); border-radius:11px; background:rgba(255,255,251,.79); box-shadow:0 2px 8px rgba(31,72,62,.08); }
+.questionnaire-page .q-card-head { display:grid; grid-template-columns:auto 1fr; align-items:start; gap:7px; margin-bottom:8px; }
+.questionnaire-page .q-index { color:#064c50; font-size:18px; font-weight:750; line-height:1.4; }
+.questionnaire-page .q-prompt-line { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px; min-width:0; }
+.questionnaire-page .q-prompt { margin:0; color:#154f59; font-family:inherit; font-size:13px; font-weight:600; line-height:1.6; }
+.questionnaire-page .multi-hint { color:#39726f; font-size:11px; line-height:1.6; white-space:nowrap; }
+.questionnaire-page .frequency-options { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:3px; }
+.questionnaire-page .frequency-options .q-option { display:flex; flex-direction:column; align-items:center; min-width:0; padding:2px 1px 3px; border:1px solid transparent; border-radius:9px; background:transparent; }
+.questionnaire-page .frequency-options .q-option-active { border-color:#2e897c; background:rgba(222,242,233,.65); box-shadow:0 2px 5px rgba(30,105,91,.12); }
+.questionnaire-page-q34 .frequency-options { gap:5px; }
+.questionnaire-page-q34 .frequency-options .q-option { padding:5px 2px 7px; border-color:rgba(37,92,83,.10); background:rgba(255,255,252,.67); }
+.questionnaire-page-q34 .frequency-options .q-option-active { border-color:#2e897c; background:rgba(222,242,233,.72); }
+.questionnaire-page-q34 .option-image { width:58px; height:55px; }
+.questionnaire-page-q56 .frequency-options { gap:5px; }
+.questionnaire-page-q56 .frequency-options .q-option { padding:5px 2px 7px; border-color:rgba(37,92,83,.10); background:rgba(255,255,252,.67); }
+.questionnaire-page-q56 .frequency-options .q-option-active { border-color:#2e897c; background:rgba(222,242,233,.72); }
+.questionnaire-page-q56 .option-image { width:58px; height:55px; }
+.option-image { width:50px; max-width:100%; height:47px; border-radius:50%; mix-blend-mode:multiply; }
+.questionnaire-page .frequency-options .q-option-label { min-height:34px; margin-top:2px; color:#174d55; font-size:10px; line-height:1.35; text-align:center; overflow-wrap:anywhere; }
+.questionnaire-page .multi-options { gap:8px; }
+.questionnaire-page .multi-options .q-option { padding:10px; }
+.questionnaire-page .multi-options-5 { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; }
+.questionnaire-page .multi-options-4 { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; }
+.questionnaire-page-q56 .multi-options .q-option,
+.questionnaire-page-q78 .multi-options .q-option,
+.questionnaire-page-q910 .multi-options .q-option { flex-direction:column; justify-content:flex-start; min-width:0; padding:6px 2px 8px; border:1px solid rgba(37,92,83,.10); background:rgba(255,255,252,.67); }
+.questionnaire-page-q56 .multi-options .q-option-active,
+.questionnaire-page-q78 .multi-options .q-option-active,
+.questionnaire-page-q910 .multi-options .q-option-active { border-color:#2e897c; background:rgba(222,242,233,.72); }
+.questionnaire-page-q56 .multi-options .q-option-label,
+.questionnaire-page-q78 .multi-options .q-option-label,
+.questionnaire-page-q910 .multi-options .q-option-label { margin-top:4px; color:#174d55; font-size:10px; line-height:1.35; text-align:center; overflow-wrap:anywhere; }
+.questionnaire-page-q56 .multi-options .option-image,
+.questionnaire-page-q78 .multi-options .option-image,
+.questionnaire-page-q910 .multi-options .option-image { width:50px; height:48px; }
+.q-none-mark { display:flex; align-items:center; justify-content:center; width:24px; height:24px; margin-right:8px; border-radius:50%; color:#fff; background:#3d897b; font-size:14px; }
+.questionnaire-page .nav-row { justify-content:center; gap:8px; margin:14px 52px 0; }
+.questionnaire-page-q34 .nav-row { margin-left:20px; margin-right:20px; }
+.questionnaire-page-q56 .nav-row { margin-left:20px; margin-right:20px; }
+.questionnaire-page-q78 .nav-row { margin-left:20px; margin-right:20px; }
+.questionnaire-page-q910 .nav-row { margin-left:20px; margin-right:20px; }
+.questionnaire-page-q34 .nav-row .han-btn-ghost,
+.questionnaire-page-q56 .nav-row .han-btn-ghost,
+.questionnaire-page-q78 .nav-row .han-btn-ghost,
+.questionnaire-page-q910 .nav-row .han-btn-ghost { display:flex; align-items:center; justify-content:center; min-height:46px; border:0; border-radius:28px; background:rgba(214,231,226,.76); }
+.questionnaire-page .nav-hidden { display:none; }
+.questionnaire-page .nav-btn { min-height:46px; border-radius:28px; }
+.questionnaire-page .nav-primary { display:flex; align-items:center; justify-content:center; width:100%; flex:1; color:#fff; background:linear-gradient(105deg,#24695e,#28776a); }
+.questionnaire-page .nav-btn-text { font-size:16px; white-space:nowrap; word-break:keep-all; }
+.questionnaire-page .must-note { display:none; }
+.page-motto { margin-top:9px; text-align:center; color:#285e5b; font-family:'KaiTi','STKaiti',serif; font-size:11px; letter-spacing:1px; }
+@media(max-width:350px) {
+  .questionnaire-page .container { padding-left:5px; padding-right:5px; }
+  .brand-tagline { font-size:8px; letter-spacing:0; }
+  .page-progress { width:55px; }
+  .questionnaire-page .q-prompt { font-size:12px; }
+  .option-image { width:43px; height:42px; }
+  .questionnaire-page .frequency-options .q-option-label { font-size:9px; }
+  .questionnaire-page .nav-row { margin-left:42px; margin-right:42px; }
 }
 </style>

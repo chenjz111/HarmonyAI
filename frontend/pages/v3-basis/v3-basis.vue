@@ -14,10 +14,8 @@
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
 import { apiV3 } from "../../common/api-v3.js"
-import HanSideNav from "../../components/sprint3/han-side-nav.vue"
 
 export default {
-  components: { HanSideNav },
   data() {
     return {
       phase: "loading", // loading | basis | generating | cancelled | pending
@@ -29,6 +27,38 @@ export default {
     }
   },
   computed: {
+    stateTags() {
+      if (!this.basis || !this.basis.confirmed_state) return []
+      return this.basis.confirmed_state
+        .split(/[，、。；;]/)
+        .map(item => item.trim().replace(/^近期/, ""))
+        .filter(Boolean)
+        .slice(0, 5)
+    },
+    rationaleRows() {
+      if (!this.basis) return []
+      return this.basis.analysis_rationales.map(item => {
+        const parts = item.summary.split(/[，。]?提示/)
+        return {
+          source: (parts[0] || item.summary).replace(/[，。]$/, ""),
+          target: (parts[1] || "作为本次调适依据").replace(/^[，。]/, "").replace(/。$/, ""),
+        }
+      })
+    },
+    toneOptions() {
+      const primary = this.basis && this.basis.primary_tone ? this.basis.primary_tone.tone : ""
+      const secondary = this.basis && this.basis.secondary_tone ? this.basis.secondary_tone.tone : ""
+      return [
+        { code: "gong", label: "宫" },
+        { code: "shang", label: "商" },
+        { code: "jue", label: "角" },
+        { code: "zhi", label: "徵" },
+        { code: "yu", label: "羽" },
+      ].map(item => ({
+        ...item,
+        role: item.code === primary ? "primary" : (item.code === secondary ? "secondary" : ""),
+      }))
+    },
     statusText() {
       const map = {
         queued: "排队中，请稍候…",
@@ -53,6 +83,9 @@ export default {
     this.stopPoll()
   },
   methods: {
+    back() {
+      uni.navigateBack()
+    },
     async load() {
       this.phase = "loading"
       this.error = ""
@@ -130,31 +163,31 @@ export default {
       this.generate()
     },
     goPlayer() {
-      // v3-player 已是 tabBar 页面（播放 tab），redirectTo 无法打开 tab 页
-      uni.switchTab({ url: "/pages/v3-player/v3-player" })
+      // Owner 2026-09-11: bottom tab is Home/Profile; Player is a normal flow page.
+      uni.redirectTo({ url: "/pages/v3-player/v3-player" })
     },
     formatDuration(sec) {
       const m = Math.floor(sec / 60)
       const s = sec % 60
-      return m + " 分" + (s ? s + " 秒" : "")
+      return m + "分钟" + (s ? s + "秒" : "")
     },
   },
 }
 </script>
 
 <template>
-  <view class="page han-page side-nav-page">
-    <han-side-nav current="confirm" />
-    <view class="han-page-content container">
-      <view class="header ink-fade-in">
-        <view class="header-row">
-          <view class="stage-seal">
-            <text class="stage-seal-text">承</text>
-          </view>
-          <view class="header-titles">
-            <text class="step-tag">五音调适</text>
-            <text class="page-title han-title-brush revealed">五音调适解析</text>
-          </view>
+  <view class="basis-page v31-scroll-page">
+    <view class="basis-container">
+      <view class="brand-row">
+        <button class="back-button" role="button" aria-label="返回" @click="back"><view class="back-chevron" /></button>
+        <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
+        <view class="brand-copy"><text class="brand-name">HarmonyAI</text><text class="brand-tagline">用音乐，陪伴更好的你</text></view>
+      </view>
+
+      <view class="basis-hero ink-fade-in">
+        <view class="hero-title-row">
+          <view class="hero-title-copy"><text class="step-tag">五音调适</text><text class="page-title">五音调适解析</text></view>
+          <view class="hero-slogan"><text>以中医为本</text><text>用音乐疗愈身心</text><text class="hero-seal">和</text></view>
         </view>
         <text class="page-subtitle">根据你的近期状态总结，生成本次调适的解析与方案。</text>
       </view>
@@ -165,7 +198,7 @@ export default {
         <text class="loading-text">正在准备生成依据…</text>
       </view>
 
-      <view v-else-if="error" class="han-card error-card ink-fade-in">
+      <view v-else-if="error" class="surface-card error-card ink-fade-in">
         <view class="error-seal">
           <text class="error-seal-text">静</text>
         </view>
@@ -177,7 +210,7 @@ export default {
       </view>
 
       <!-- real 模式：音乐服务未接入，明确等待状态，不伪造依据与生成（P1-2：稳定用户文案） -->
-      <view v-else-if="phase === 'pending'" class="han-card pending-card ink-fade-in">
+      <view v-else-if="phase === 'pending'" class="surface-card pending-card ink-fade-in">
         <view class="pending-seal">
           <text class="pending-seal-text">候</text>
         </view>
@@ -189,92 +222,119 @@ export default {
       </view>
 
       <!-- 解析页（冻结 FiveToneAnalysisReadModel，flow_v31.py） -->
-      <view v-else-if="phase === 'basis' || phase === 'generating' || phase === 'cancelled'" class="han-card basis-card ink-fade-up">
+      <view v-else-if="phase === 'basis' || phase === 'generating' || phase === 'cancelled'" class="basis-content ink-fade-up">
         <!-- hybrid 演示标识 -->
         <view v-if="simulated" class="demo-banner">
           <text class="demo-banner-text">演示模式：以下解析与生成过程为模拟数据</text>
         </view>
 
         <!-- 近期状态 -->
-        <view class="basis-section">
+        <view class="basis-section-card state-section">
           <view class="section-head">
-            <view class="section-seal"><text class="section-seal-text">近</text></view>
+            <view class="section-icon-shell leaf-shell"><image class="section-leaf-image" src="/static/v31-goal/intent-2.png" mode="aspectFit" /></view>
             <text class="section-title">近期状态</text>
           </view>
-          <view class="state-box">
-            <text class="state-text">{{ basis.confirmed_state }}</text>
+          <view class="state-tags">
+            <text v-for="tag in stateTags" :key="tag" class="state-tag">{{ tag }}</text>
           </view>
-          <text class="tendency-line">{{ basis.state_tendency }}</text>
         </view>
 
-        <!-- 分析依据 -->
-        <view class="basis-section">
+        <!-- 状态解读 -->
+        <view class="basis-section-card interpretation-section">
           <view class="section-head">
-            <view class="section-seal"><text class="section-seal-text">据</text></view>
-            <text class="section-title">分析依据</text>
+            <view class="section-icon-shell"><image class="basis-icon-image" src="/static/v31-basis/status.png" mode="aspectFit" /></view>
+            <text class="section-title">状态解读</text>
           </view>
-          <view class="basis-items">
-            <view v-for="(r, idx) in basis.analysis_rationales" :key="idx" class="basis-item">
-              <view class="item-dot"></view>
-              <text class="item-text">{{ r.summary }}</text>
+          <view class="interpretation-box">
+            <text class="interpretation-text">{{ basis.state_tendency }} 当前调适更适合从安定情绪、帮助入静、降低刺激、辅助睡眠几个方向展开。</text>
+          </view>
+        </view>
+
+        <!-- 调适依据 -->
+        <view class="basis-section-card rationale-section">
+          <view class="section-head">
+            <view class="section-icon-shell"><image class="basis-icon-image" src="/static/v31-basis/basis.png" mode="aspectFit" /></view>
+            <text class="section-title">调适依据</text>
+          </view>
+          <view class="rationale-list">
+            <view v-for="(row, idx) in rationaleRows" :key="idx" class="rationale-row">
+              <text class="rationale-index">{{ idx + 1 }}</text>
+              <text class="rationale-source">{{ row.source }}</text>
+              <text class="rationale-arrow">→</text>
+              <text class="rationale-target">{{ row.target }}</text>
             </view>
           </view>
         </view>
 
         <!-- 五音配置 -->
-        <view class="basis-section">
-          <view class="section-head">
-            <view class="section-seal"><text class="section-seal-text">音</text></view>
-            <text class="section-title">五音配置</text>
+        <view class="basis-section-card tone-section">
+          <view class="section-head section-head-spread">
+            <view class="section-heading-main">
+              <view class="section-icon-shell"><image class="basis-icon-image" src="/static/v31-basis/tone.png" mode="aspectFit" /></view>
+              <text class="section-title">本次五音配置</text>
+            </view>
+            <text class="section-kicker">五音和鸣 · 调养身心</text>
           </view>
-          <view class="tone-box">
-            <text class="tone-main">{{ basis.primary_tone.display_name }}为主</text>
-            <text class="tone-sub">{{ basis.primary_tone.explanation }}</text>
+          <view class="tone-row">
+            <view v-for="tone in toneOptions" :key="tone.code" class="tone-option">
+              <view :class="['tone-orb', tone.role ? `tone-orb--${tone.role}` : '']"><text>{{ tone.label }}</text></view>
+              <text :class="['tone-role', tone.role ? `tone-role--${tone.role}` : '']">{{ tone.role === 'primary' ? '主音' : (tone.role === 'secondary' ? '辅音' : '') }}</text>
+            </view>
           </view>
-          <view v-if="basis.secondary_tone" class="tone-box tone-box--secondary">
-            <text class="tone-secondary">{{ basis.secondary_tone.display_name }}为辅</text>
-            <text class="tone-sub">{{ basis.secondary_tone.explanation }}</text>
+          <view class="tone-details">
+            <view class="tone-detail tone-detail--primary">
+              <text class="tone-detail-title">{{ basis.primary_tone.display_name }} · 主音</text>
+              <text class="tone-detail-subtitle">沉稳 · 平和 · 安定</text>
+              <text class="tone-detail-copy">{{ basis.primary_tone.explanation }}</text>
+            </view>
+            <view v-if="basis.secondary_tone" class="tone-detail tone-detail--secondary">
+              <text class="tone-detail-title">{{ basis.secondary_tone.display_name }} · 辅音</text>
+              <text class="tone-detail-subtitle">柔和 · 收敛 · 入静</text>
+              <text class="tone-detail-copy">{{ basis.secondary_tone.explanation }}</text>
+            </view>
           </view>
         </view>
 
         <!-- 音乐设计 -->
-        <view class="basis-section">
-          <view class="section-head">
-            <view class="section-seal"><text class="section-seal-text">参</text></view>
-            <text class="section-title">音乐设计</text>
+        <view class="basis-section-card design-section">
+          <view class="section-head section-head-spread">
+            <view class="section-heading-main">
+              <view class="section-icon-shell section-icon-note"><text>♫</text></view>
+              <text class="section-title">音乐设计</text>
+            </view>
+            <text class="section-kicker">让音符回归身心的自然节奏</text>
           </view>
-          <view class="params-grid">
-            <view class="param-cell">
-              <text class="param-value">{{ basis.bpm.value }}</text>
-              <text class="param-label">节拍 (BPM)</text>
+          <view class="design-grid">
+            <view class="design-card">
+              <image class="basis-icon-image design-icon" src="/static/v31-basis/bpm.png" mode="aspectFit" />
+              <text class="param-value">{{ basis.bpm.value }} BPM</text>
+              <text class="param-label">舒缓节奏</text>
               <text class="param-reason">{{ basis.bpm.explanation }}</text>
             </view>
-            <view class="param-cell">
+            <view class="design-card">
+              <image class="basis-icon-image design-icon" src="/static/v31-basis/duration.png" mode="aspectFit" />
               <text class="param-value">{{ formatDuration(basis.duration.seconds) }}</text>
               <text class="param-label">时长</text>
               <text class="param-reason">{{ basis.duration.explanation }}</text>
             </view>
-            <view class="param-cell">
+            <view class="design-card">
+              <image class="basis-icon-image design-icon" src="/static/v31-basis/instrument.png" mode="aspectFit" />
               <text class="param-value">{{ basis.instruments.values.join('、') }}</text>
-              <text class="param-label">乐器</text>
+              <text class="param-label">主要乐器</text>
               <text class="param-reason">{{ basis.instruments.explanation }}</text>
             </view>
-            <view class="param-cell">
+            <view class="design-card">
+              <image class="basis-icon-image design-icon" src="/static/v31-basis/ambience.png" mode="aspectFit" />
               <text class="param-value">{{ basis.ambience.values.join('、') }}</text>
-              <text class="param-label">氛围</text>
+              <text class="param-label">音乐氛围</text>
               <text class="param-reason">{{ basis.ambience.explanation }}</text>
             </view>
           </view>
         </view>
 
-        <view class="tendency-box">
-          <text class="tendency-disclaimer">{{ basis.disclaimer }}</text>
-        </view>
-
-        <text class="personal-note">{{ basis.personalization_summary }}</text>
-
         <!-- 生成中 / 发起前 / 取消后 -->
         <view v-if="phase === 'generating'" class="gen-box">
+          <text class="gen-label">音乐生成中</text>
           <view class="gen-ring" :class="{ 'gen-indeterminate': progressPercent === null }">
             <text v-if="progressPercent !== null" class="gen-percent">{{ progressPercent }}%</text>
           </view>
@@ -286,11 +346,13 @@ export default {
           <view v-if="phase === 'cancelled'" class="cancel-note">
             <text class="cancel-note-text">已取消，可重新发起生成。</text>
           </view>
-          <view class="han-btn han-btn-primary btn-primary" @click="generate">
-            <text class="btn-primary-text">{{ phase === 'cancelled' ? "重新生成" : "生成本次音乐" }}</text>
+          <view class="generate-button" @click="generate">
+            <text>{{ phase === 'cancelled' ? "重新生成" : "生成我的音乐" }}</text><text class="button-arrow">→</text>
           </view>
         </view>
+        <text class="basis-disclaimer">{{ basis.disclaimer }}</text>
       </view>
+      <view class="page-motto"><text>—　五音和鸣 · 乐养身心　—</text></view>
     </view>
   </view>
 </template>
@@ -701,5 +763,113 @@ export default {
 .btn-back-text {
   color: var(--ink-700);
   font-size: 28rpx;
+}
+
+/* ===== Owner V3.1 五音调适解析视觉稿 ===== */
+.basis-page {
+  min-height: 100vh;
+  color: #0b4f51;
+  background: #edf7f3;
+}
+.basis-container {
+  width: 100%;
+  max-width: 430px;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 14px 14px 34px;
+  box-sizing: border-box;
+  background-color: #fbfcf7;
+  background-image: linear-gradient(rgba(255,255,252,.12),rgba(255,255,252,.12)), url('/static/v31-questionnaire/questionnaire-background-q34.png');
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: 100% 100%;
+}
+.basis-page .brand-row { display:flex; align-items:center; min-height:46px; gap:8px; }
+.basis-page .back-button { display:flex; align-items:center; justify-content:center; width:28px; height:40px; margin:0; padding:0; border:0; background:transparent; }
+.basis-page .back-button::after { border:0; }
+.basis-page .back-chevron { width:11px; height:11px; border-left:2px solid #064c50; border-bottom:2px solid #064c50; transform:rotate(45deg); }
+.basis-page .brand-leaf { width:42px; height:42px; }
+.basis-page .brand-copy { display:flex; flex-direction:column; gap:1px; }
+.basis-page .brand-name { font-size:18px; font-weight:750; line-height:1.15; }
+.basis-page .brand-tagline { font-size:10px; letter-spacing:2px; }
+.basis-hero { margin:16px 16px 20px; }
+.hero-title-row { display:flex; align-items:flex-end; justify-content:space-between; gap:8px; }
+.hero-title-copy { display:flex; flex-direction:column; align-items:flex-start; min-width:0; }
+.hero-slogan { position:relative; display:flex; flex:0 0 auto; flex-direction:column; align-items:flex-end; padding:0 17px 3px 0; color:#15575a; font-family:'KaiTi','STKaiti',serif; font-size:9px; font-weight:700; line-height:1.35; transform:rotate(-4deg); }
+.hero-seal { position:absolute; right:0; bottom:2px; display:flex; align-items:center; justify-content:center; width:13px; height:23px; border-radius:3px; color:#fff; background:#a92e27; font-size:8px; }
+.basis-page .step-tag { display:inline-block; margin-bottom:7px; padding:4px 10px; border:0; border-radius:7px; color:#28675f; background:rgba(205,224,215,.72); font-size:12px; }
+.basis-page .page-title { display:block; white-space:nowrap; color:#064c50; font-family:'KaiTi','STKaiti',serif; font-size:31px; font-weight:800; letter-spacing:2px; line-height:1.2; }
+.basis-page .page-subtitle { display:block; margin-top:11px; color:#18585c; font-size:15px; line-height:1.65; }
+.basis-content { display:flex; flex-direction:column; gap:12px; }
+.basis-section-card,
+.surface-card { box-sizing:border-box; padding:16px 14px; border:1px solid rgba(55,102,92,.10); border-radius:14px; background:rgba(255,255,252,.86); box-shadow:0 3px 10px rgba(31,72,62,.09); }
+.basis-page .section-head { display:flex; align-items:center; gap:10px; margin:0 0 12px; }
+.section-head-spread { justify-content:space-between; }
+.section-heading-main { display:flex; align-items:center; gap:9px; min-width:0; }
+.section-icon-shell { display:flex; align-items:center; justify-content:center; width:37px; min-width:37px; height:37px; border-radius:50%; background:rgba(216,234,226,.8); overflow:hidden; }
+.basis-icon-image { width:23px; height:23px; mix-blend-mode:multiply; }
+.leaf-shell { overflow:hidden; }
+.section-leaf-image { width:43px; height:43px; border-radius:50%; mix-blend-mode:multiply; }
+.basis-page .section-title { color:#0b4f51; font-family:'KaiTi','STKaiti',serif; font-size:20px; font-weight:800; letter-spacing:1px; }
+.section-kicker { color:#448078; font-family:'KaiTi','STKaiti',serif; font-size:12px; letter-spacing:1px; text-align:right; }
+.state-tags { display:flex; flex-wrap:wrap; gap:8px; }
+.state-tag { padding:8px 12px; border-radius:18px; color:#225b5c; background:rgba(230,237,233,.78); font-size:13px; line-height:1.15; }
+.interpretation-box { padding:13px 14px; border:1px solid rgba(60,101,93,.07); border-radius:8px; background:rgba(245,247,241,.72); }
+.interpretation-text { color:#174f54; font-size:15px; line-height:1.75; }
+.rationale-list { border-top:1px solid rgba(49,91,84,.08); }
+.rationale-row { display:grid; grid-template-columns:30px minmax(0,.95fr) 18px minmax(0,1.2fr); align-items:center; min-height:58px; padding:5px 0; border-bottom:1px solid rgba(49,91,84,.08); }
+.rationale-row:last-child { border-bottom:0; }
+.rationale-index { display:flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; color:#fff; background:#bcd3cb; font-size:13px; }
+.rationale-source,.rationale-target { color:#285a5d; font-size:13px; line-height:1.55; }
+.rationale-arrow { color:#8ca7a2; font-size:15px; text-align:center; }
+.tone-row { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; margin:2px 3px 9px; }
+.tone-option { display:flex; flex-direction:column; align-items:center; min-width:0; }
+.tone-orb { display:flex; align-items:center; justify-content:center; width:42px; max-width:100%; height:42px; border:1px solid rgba(76,111,102,.12); border-radius:50%; color:#527b72; background:rgba(235,241,235,.82); font-family:'KaiTi','STKaiti',serif; font-size:22px; box-shadow:0 2px 8px rgba(44,80,72,.05); }
+.tone-orb--primary { color:#b52d25; border-color:rgba(209,76,57,.2); background:#fff1e9; box-shadow:0 3px 10px rgba(204,75,52,.15); }
+.tone-orb--secondary { color:#2672a0; border-color:rgba(61,139,188,.18); background:#eaf7ff; box-shadow:0 3px 10px rgba(61,139,188,.12); }
+.tone-role { min-height:16px; margin-top:4px; color:#597d77; font-size:11px; }
+.tone-role--primary { color:#bd3028; }
+.tone-role--secondary { color:#2672a0; }
+.tone-details { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.tone-detail { padding:12px; border:1px solid rgba(61,101,92,.10); border-radius:9px; background:rgba(250,250,245,.65); }
+.tone-detail--primary { border-color:rgba(201,91,70,.16); background:rgba(255,246,240,.68); }
+.tone-detail--secondary { border-color:rgba(72,141,181,.16); background:rgba(242,250,254,.7); }
+.tone-detail-title,.tone-detail-subtitle,.tone-detail-copy { display:block; }
+.tone-detail-title { color:#19565a; font-size:15px; font-weight:750; }
+.tone-detail--primary .tone-detail-title { color:#b43b31; }
+.tone-detail--secondary .tone-detail-title { color:#27739a; }
+.tone-detail-subtitle { margin-top:5px; color:#52716e; font-size:12px; }
+.tone-detail-copy { margin-top:7px; color:#315b5d; font-size:13px; line-height:1.6; }
+.section-icon-note { color:#145d58; font-size:22px; font-weight:700; }
+.design-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.design-card { display:flex; flex-direction:column; align-items:center; min-width:0; min-height:148px; padding:13px 9px; box-sizing:border-box; border:1px solid rgba(56,96,89,.10); border-radius:10px; background:rgba(255,255,252,.62); text-align:center; }
+.design-icon { width:34px; height:34px; flex-shrink:0; }
+.basis-page .param-value { max-width:100%; margin:7px 0 3px; color:#104f54; font-size:15px; font-weight:750; line-height:1.3; overflow-wrap:anywhere; }
+.basis-page .param-label { margin:0 0 5px; color:#55746f; font-size:12px; }
+.basis-page .param-reason { color:#54706d; font-size:12px; line-height:1.5; text-align:center; overflow-wrap:anywhere; }
+.basis-page .demo-banner { margin:0 0 2px; }
+.basis-page .demo-banner-text { padding:4px 9px; font-size:9px; }
+.basis-page .actions { margin-top:5px; }
+.generate-button { display:flex; align-items:center; justify-content:center; gap:14px; min-height:52px; margin:0 64px; border-radius:28px; color:#fff; background:linear-gradient(105deg,#24695e,#28776a); box-shadow:0 5px 12px rgba(27,105,89,.16); font-size:17px; font-weight:650; }
+.button-arrow { font-size:22px; font-weight:400; }
+.basis-disclaimer { display:block; margin:10px 18px 0; color:#677d79; font-size:12px; line-height:1.55; text-align:center; }
+.basis-page .page-motto { margin-top:17px; color:#285e5b; text-align:center; font-family:'KaiTi','STKaiti',serif; font-size:13px; letter-spacing:1px; }
+.basis-page .gen-box { margin-top:6px; padding:20px 0 10px; }
+.basis-page .gen-ring { width:76px; height:76px; border-width:5px; margin-bottom:12px; }
+.basis-page .gen-label,.basis-page .gen-status { font-size:13px; }
+.basis-page .gen-status { margin-bottom:12px; }
+.basis-page .loading-wrap { padding:80px 0; }
+.basis-page .error-card,.basis-page .pending-card { padding:42px 22px; }
+@media (max-width:350px) {
+  .basis-container { padding-left:9px; padding-right:9px; }
+  .basis-hero { margin-left:10px; margin-right:10px; }
+  .hero-slogan { display:none; }
+  .basis-page .page-title { font-size:29px; }
+  .basis-section-card { padding-left:11px; padding-right:11px; }
+  .tone-orb { width:37px; font-size:20px; }
+  .rationale-row { grid-template-columns:28px minmax(0,.95fr) 16px minmax(0,1.1fr); }
+  .design-grid { gap:8px; }
+  .design-card { min-height:148px; padding-left:6px; padding-right:6px; }
+  .generate-button { margin-left:42px; margin-right:42px; }
 }
 </style>
