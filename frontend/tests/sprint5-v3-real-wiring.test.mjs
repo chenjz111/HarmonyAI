@@ -34,6 +34,7 @@ globalThis.uni = {
     if (path === "/api/v3/auth/guest") data = { access_token: "token", public_user_id: "user" }
     else if (path === "/api/v3/sessions") data = { session_id: "sess_real" }
     else if (path.endsWith("/input-transitions")) data = { input_mode: "without_document", input_revision: 2, active_document_id: null, understanding_ref: null, questionnaire_ref: null }
+    else if (path === "/api/v3/sessions/sess_real") data = { page: "entry", session_id: "sess_real", title: "开始了解你最近的状态", description: "请选择入口。", choices: [], flow_contract_version: "v3-owner-flow-1", input_mode: "without_document", input_revision: 2 }
     else if (path.endsWith("/questionnaire")) data = { questionnaire_submission_id: "qsub_real", schema_id: "questionnaire_v3", schema_version: "3.0.1", manifest_version: "medical_v3.0.1", content_checksum: options.data.content_checksum, input_revision: 3, status: "submitted" }
     else if (path === "/api/v3/assessments" && options.method === "POST") data = assessment
     else if (path === "/api/v3/assessments/asmt_real") data = assessment
@@ -82,4 +83,33 @@ test("real questionnaire through player and feedback uses server resources in or
 test("basis page sends an immediately successful generation directly to Player", () => {
   const page = readFileSync(resolve(import.meta.dirname, "../pages/v3-basis/v3-basis.vue"), "utf8")
   assert.match(page, /this\.task\.status === "succeeded"[\s\S]*this\.goPlayer\(\)/)
+})
+
+// P0 regression: Frozen Contract §3 requires the session read model to carry the server-owned
+// flow_contract_version / input_mode / input_revision. Before the backend fix those keys were
+// absent, getSession() merged `undefined` and deleted them from the cached flow state, and the
+// questionnaire submit fell back to expected_input_revision = 1 -> 409 INPUT_REVISION_CONFLICT.
+test("session read model keeps the server revision in client state and submit reuses it", async () => {
+  await apiV3.guestAuth()
+  await apiV3.createSession()
+  await apiV3.selectMode("without_document")
+
+  const session = await apiV3.getSession()
+  assert.equal(session.input_revision, 2)
+  assert.equal(session.input_mode, "without_document")
+
+  const cached = JSON.parse(storage.get("v3_flow_state"))
+  assert.equal(cached.input_mode, "without_document", "getSession must not drop input_mode")
+  assert.equal(cached.input_revision, 2, "getSession must not drop input_revision")
+
+  calls.length = 0
+  const schema = await apiV3.getQuestionnaireSchema()
+  await apiV3.submitQuestionnaire(fullAnswers(schema))
+  const submit = calls.find((c) => new URL(c.url).pathname.endsWith("/questionnaire"))
+  assert.ok(submit, "questionnaire submit must be sent")
+  assert.equal(
+    submit.data.expected_input_revision,
+    2,
+    "submit must use the current server revision, never the 1 fallback",
+  )
 })

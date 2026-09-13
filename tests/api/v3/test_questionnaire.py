@@ -216,3 +216,98 @@ def test_submit_is_idempotent_and_isolated():
     stranger = _guest_headers()
     denied = _post(stranger, session_id, "q-2", _body(session_id, 3))
     assert denied.status_code == 404
+
+
+# ===== P0 regression: session read model must carry the common flow fields =====
+# Frozen Contract §3 requires every flow read model to carry the server-owned
+# flow_contract_version / input_mode / input_revision values. Without them the client
+# cached state lost input_revision (\u2192 fallback 1) and questionnaire submit failed with
+# INPUT_REVISION_CONFLICT even though the server session was already at revision 2.
+
+
+def _create_flow_session(headers, key):
+    return client.post(
+        "/api/v3/sessions",
+        headers={**headers, "Idempotency-Key": key},
+        json={"flow_contract_version": "v3-owner-flow-1"},
+    )
+
+
+def test_session_read_model_returns_common_flow_fields_on_create():
+    headers = _guest_headers()
+    created = _create_flow_session(headers, f"rm-{uuid.uuid4().hex}")
+    assert created.status_code == 201, created.text
+    data = _v3_data(created)
+    assert data["flow_contract_version"] == "v3-owner-flow-1"
+    assert data["input_mode"] is None
+    assert data["input_revision"] == 1
+
+
+def test_session_read_model_tracks_latest_revision_after_transitions():
+    headers = _guest_headers()
+    session_id = _v3_data(_create_flow_session(headers, f"rm-{uuid.uuid4().hex}"))["session_id"]
+
+    first = _transition(
+        headers, session_id, "rm-sel-1",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+    )
+    assert first.status_code == 201, first.text
+    assert _v3_data(first)["input_revision"] == 2
+
+    after_first = _v3_data(client.get(f"/api/v3/sessions/{session_id}", headers=headers))
+    assert after_first["flow_contract_version"] == "v3-owner-flow-1"
+    assert after_first["input_mode"] == "without_document"
+    assert after_first["input_revision"] == 2
+
+    second = _transition(
+        headers, session_id, "rm-sel-2",
+        {"expected_input_revision": 2, "action": "discard_document"},
+    )
+    assert second.status_code == 201, second.text
+    assert _v3_data(second)["input_revision"] == 3
+
+    latest = _v3_data(client.get(f"/api/v3/sessions/{session_id}", headers=headers))
+    assert latest["input_mode"] == "without_document"
+    assert latest["input_revision"] == 3
+
+
+def test_questionnaire_submit_uses_session_read_model_revision():
+    """Original P0 chain: select_mode -> GET session -> submit must not conflict."""
+
+    headers = _guest_headers()
+    session_id = _v3_data(_create_flow_session(headers, f"rm-{uuid.uuid4().hex}"))["session_id"]
+    selected = _transition(
+        headers, session_id, "p0-sel",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+    )
+    assert selected.status_code == 201, selected.text
+    server_revision = _v3_data(selected)["input_revision"]
+    assert server_revision == 2
+
+    # This is the value the client now reads back instead of defaulting to 1.
+    read_model = _v3_data(client.get(f"/api/v3/sessions/{session_id}", headers=headers))
+    assert read_model["input_revision"] == server_revision
+
+    response = _post(
+        headers, session_id, "p0-submit", _body(session_id, read_model["input_revision"])
+    )
+    assert response.status_code == 201, response.text
+    payload = _v3_data(response)
+    assert payload["input_revision"] == server_revision + 1
+
+
+def test_questionnaire_submit_rejects_stale_revision_from_the_p0_chain():
+    """Guards the regression: the pre-fix stale revision 1 must still be refused."""
+
+    headers = _guest_headers()
+    session_id = _v3_data(_create_flow_session(headers, f"rm-{uuid.uuid4().hex}"))["session_id"]
+    _transition(
+        headers, session_id, "p0b-sel",
+        {"expected_input_revision": 1, "action": "select_mode", "input_mode": "without_document"},
+    )
+    read_model = _v3_data(client.get(f"/api/v3/sessions/{session_id}", headers=headers))
+    assert read_model["input_revision"] == 2
+
+    stale = _post(headers, session_id, "p0b-submit", _body(session_id, 1))
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "INPUT_REVISION_CONFLICT"

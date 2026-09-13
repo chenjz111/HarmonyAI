@@ -25,11 +25,23 @@ class EntryChoice(V3BaseModel):
 
 
 class EntryReadModel(V3BaseModel):
+    """Entry page read model.
+
+    Frozen Contract §3 requires every flow read model to carry the server-owned
+    common fields ``flow_contract_version``, ``input_mode`` and ``input_revision``
+    (NOT_USER_VISIBLE; the contract page examples omit them). They are optional
+    because legacy V3 sessions outside ``v3-owner-flow-1`` have no bound flow
+    contract and no active-input revision persisted.
+    """
+
     page: Literal["entry"]
     session_id: NonEmptyString
     title: NonEmptyString
     description: NonEmptyString
     choices: list[EntryChoice]
+    flow_contract_version: Literal["v3-owner-flow-1"] | None = None
+    input_mode: Literal["with_document", "without_document"] | None = None
+    input_revision: Annotated[int, Field(ge=1)] | None = None
 
 
 class SessionActivityReadModel(V3BaseModel):
