@@ -19,8 +19,11 @@ from sqlalchemy.orm import Session
 from backend.app.core.database import get_db
 from backend.app.models.document import Document
 from backend.app.models.session import Session as SessionModel
+from backend.app.routers.v3.transport import V3APIError
 from backend.app.schemas.v2 import DocumentConfirmationRequest
 from backend.app.schemas.v2 import v2_ok, v2_err
+from backend.app.schemas.v3.common import AuthPrincipal
+from backend.app.services.v3.auth_service import get_optional_v3_principal
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -35,14 +38,43 @@ ALLOWED_SIGNATURES = {
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 MAX_PDF_PAGES = 3
 UPLOAD_DIR = "uploads"
+# Legacy V2 callers (no Authorization header) keep the historical default owner.
+LEGACY_USER_ID = 1
 
 
-def _ensure_session(session_id: str, db: Session):
+def _ensure_session(session_id: str, db: Session, owner_user_id: int = LEGACY_USER_ID):
     existing = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
     if not existing:
-        db.add(SessionModel(user_id=1, session_id=session_id, status="active",
+        db.add(SessionModel(user_id=owner_user_id, session_id=session_id, status="active",
                            current_agent="document_upload"))
         db.commit()
+
+
+def _authorize_upload_session(
+    session_id: str,
+    db: Session,
+    principal: AuthPrincipal | None,
+) -> int:
+    """Return the user id that owns the document this upload is about to write.
+
+    - No V3 principal (no Authorization header at all): legacy V2 behaviour, the
+      historical default owner is used and a missing session is created for it.
+    - Valid V3 principal: the session must already exist and belong to that
+      principal. This route never creates a parallel session for an
+      authenticated caller and never re-owns an existing one; a session that is
+      missing or owned by somebody else is rejected with the project's existing
+      ownership semantics (404 RESOURCE_NOT_FOUND, no existence disclosure).
+    """
+    if principal is None:
+        return LEGACY_USER_ID
+    existing = (
+        db.query(SessionModel)
+        .filter(SessionModel.session_id == session_id)
+        .one_or_none()
+    )
+    if existing is None or existing.user_id != principal.internal_user_pk:
+        raise V3APIError(404, "RESOURCE_NOT_FOUND", "未找到对应会话。")
+    return principal.internal_user_pk
 
 
 def _check_file_signature(content: bytes, ext: str) -> bool:
@@ -70,9 +102,16 @@ async def upload_document(
     file: UploadFile = File(...),
     document_type: str = Form(default="other"),
     consent_confirmed: bool = Form(default=False),
+    principal: AuthPrincipal | None = Depends(get_optional_v3_principal),
     db: Session = Depends(get_db),
 ):
     req_id = f"req_{datetime.now(timezone.utc).strftime('%H%M%S')}_{uuid.uuid4().hex[:4]}"
+
+    # Owner binding: the uploaded document must belong to the authenticated V3
+    # principal when one is presented; unresolved session → reject before any
+    # byte is written or any OCR is spent. No Authorization header keeps the
+    # legacy V2 default owner.
+    owner_user_id = _authorize_upload_session(session_id, db, principal)
 
     if not consent_confirmed:
         return v2_err("CONSENT_REQUIRED", "请先确认隐私授权后再上传", req_id, retryable=False,
@@ -130,7 +169,7 @@ async def upload_document(
         f.write(content)
 
     try:
-        _ensure_session(session_id, db)
+        _ensure_session(session_id, db, owner_user_id)
 
         # Real OCR (Sprint 4)
         from backend.app.core.ocr import OCRProvider
@@ -149,7 +188,7 @@ async def upload_document(
             )
 
         doc = Document(
-            user_id=1, session_id=session_id, document_id=doc_id,
+            user_id=owner_user_id, session_id=session_id, document_id=doc_id,
             original_filename=file.filename or "unknown",
             file_type=ext, file_size_bytes=file_size,
             page_count=page_count,
