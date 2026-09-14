@@ -575,6 +575,65 @@ def test_diagnosis_provider_requires_exact_fact_evidence_id_copying_in_prompt():
     assert backend.payload["allowed_fact_ids"] == ["fact_1"]
 
 
+def test_diagnosis_provider_prompt_requires_simplified_chinese_prose_and_exact_ids():
+    import json
+
+    from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
+
+    class Backend:
+        def __init__(self):
+            self.system_prompt = None
+
+        async def acomplete_json(self, system_prompt, user_prompt):
+            self.system_prompt = system_prompt
+            del user_prompt
+            return _provider_response().model_dump(mode="json")
+
+    backend = Backend()
+    provider = DiagnosisProvider(
+        backend=backend,
+        allowed_syndrome_codes={"syndrome_1"},
+        allowed_fact_ids={"fact_1"},
+        allowed_chunk_ids={"chunk_1"},
+    )
+
+    result = __import__("asyncio").run(
+        provider.acomplete_json(
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[
+                {
+                    "fact_evidence_id": "fact_1",
+                    "claim_code": "approved_claim",
+                    "direction": "supporting",
+                }
+            ],
+            rag_chunk_ids=["chunk_1"],
+        )
+    )
+
+    prompt = backend.system_prompt
+    assert result.status == "success"
+    # User-facing prose must be Simplified Chinese.
+    assert "Simplified Chinese" in prompt
+    assert "简体中文" in prompt
+    assert "reasoning_summary" in prompt
+    # Machine identifiers and the JSON contract must stay untranslated.
+    assert "syndrome_code" in prompt
+    assert "knowledge_chunk_ids" in prompt
+    assert "must never be translated" in prompt
+    assert '"candidate_tendencies"' in prompt
+    # Wording must stay an advisory tendency, never a diagnosis.
+    assert "倾向" in prompt
+    assert "never present it as a medical diagnosis" in prompt
+    assert json.loads(_json_schema_from_prompt(prompt))["type"] == "object"
+
+
+def _json_schema_from_prompt(prompt: str) -> str:
+    marker = "Required JSON Schema: "
+    start = prompt.index(marker) + len(marker)
+    return prompt[start:].strip()
+
+
 def test_diagnosis_execution_propagates_safe_fact_reference_diagnostics_only():
     import asyncio
     import json

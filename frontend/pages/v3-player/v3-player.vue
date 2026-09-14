@@ -18,7 +18,9 @@
  *   - 业务逻辑 togglePlay/toggleFavorite/goFeedback/exitSession 完全保留
  */
 import { apiV3 } from "../../common/api-v3.js"
-import { formatPlaybackTime, toneThemeFor } from "../../common/v31-tone-theme.js"
+import { toneThemeFor } from "../../common/v31-tone-theme.js"
+// 纯函数：MM:SS（≥1 小时才 HH:MM:SS），未知时长显示 "--:--"
+import { formatDuration } from "../../common/v31-player-time.js"
 
 export default {
   data() {
@@ -31,8 +33,8 @@ export default {
       audioCtx: null,
       resolvedAudioSrc: "",
       resolvedAudioStreamUrl: "",
-      currentTime: 0, // 当前播放时间（秒）
-      duration: 0, // 总时长（秒）
+      currentTime: 0, // 当前播放时间（秒），唯一来源：InnerAudioContext.onTimeUpdate
+      duration: 0, // 真实音频时长（秒），来源：InnerAudioContext（onCanplay/onTimeUpdate）
       favorite: false,
       favBusy: false,
       simulated: false,
@@ -43,12 +45,17 @@ export default {
       if (!this.music || !this.music.stream_url) return ""
       return apiV3.musicStreamUrl(this.music.stream_url)
     },
-    // 总时长：优先真实音频元数据，降级后端声明时长（不伪造）
+    // 总时长（秒）：优先后端 read model 持久化的 duration_seconds，
+    // 其次 InnerAudioContext 加载后上报的真实音频时长；都没有则返回 null（显示 --:--）。
+    // 不伪造时长，也不使用任何固定常量。
     totalSeconds() {
-      if (this.duration > 0) return this.duration
-      return this.music && this.music.duration_seconds ? this.music.duration_seconds : 0
+      const persisted = Number(this.music && this.music.duration_seconds)
+      if (Number.isFinite(persisted) && persisted > 0) return persisted
+      const fromAudio = Number(this.duration)
+      if (Number.isFinite(fromAudio) && fromAudio > 0) return fromAudio
+      return null
     },
-    // 进度百分比（仅由真实 onTimeUpdate 驱动）
+    // 进度百分比：currentTime / totalSeconds 同一真实时间基，总时长未知时为 0
     progressPercent() {
       if (!this.totalSeconds) return 0
       const p = (this.currentTime / this.totalSeconds) * 100
@@ -144,17 +151,23 @@ export default {
         if (!this.audioCtx) {
           this.audioCtx = uni.createInnerAudioContext()
           
-          // 元数据加载成功：获取真实音频时长
+          // 元数据加载成功：获取真实音频时长（totalSeconds 的兜底来源）
           this.audioCtx.onCanplay(() => {
-            if (this.audioCtx && this.audioCtx.duration > 0) {
-              this.duration = this.audioCtx.duration
+            if (!this.audioCtx) return
+            const realDuration = Number(this.audioCtx.duration)
+            if (Number.isFinite(realDuration) && realDuration > 0) {
+              this.duration = realDuration
             }
           })
           
-          // 真实播放进度更新（唯一驱动 currentTime 的事件）
+          // 真实播放进度更新（唯一驱动 currentTime 的事件）；
+          // 部分平台 onCanplay 时 duration 仍为 0，这里用同一音频时间基补齐真实总时长。
           this.audioCtx.onTimeUpdate(() => {
-            if (this.audioCtx) {
-              this.currentTime = this.audioCtx.currentTime || 0
+            if (!this.audioCtx) return
+            this.currentTime = this.audioCtx.currentTime || 0
+            const realDuration = Number(this.audioCtx.duration)
+            if (Number.isFinite(realDuration) && realDuration > 0) {
+              this.duration = realDuration
             }
           })
           
@@ -165,7 +178,8 @@ export default {
           
           this.audioCtx.onEnded(() => {
             this.playing = false
-            this.currentTime = 0
+            // 播放结束后进度停在总时长上，不清零：总时长与完整进度保持可见
+            if (this.totalSeconds) this.currentTime = this.totalSeconds
           })
         }
         // 仅在 src 不同时才设置（换曲或首次）
@@ -216,9 +230,8 @@ export default {
         this.favBusy = false
       }
     },
-    formatDuration(sec) {
-      return formatPlaybackTime(sec)
-    },
+    // 时间格式化：复用 common/v31-player-time.js 的纯函数，模板与测试同源
+    formatDuration,
     goFeedback() {
       this.stopAudio()
       uni.navigateTo({ url: "/pages/v3-feedback/v3-feedback" })
@@ -280,14 +293,13 @@ export default {
         <text class="music-instruments">—　{{ displayInstruments }} · {{ displayAmbience }}　—</text>
         <text class="music-caption">让音乐回归身心的自然节奏，在静谧中遇见更好的自己。</text>
 
-        <!-- 控制区：时间和进度均来自真实播放器事件 -->
+        <!-- 控制区：current / total 与进度条共用同一条真实音频时间基（onTimeUpdate） -->
         <view class="progress-wrap">
-          <view class="progress-track">
+          <view class="progress-track" role="progressbar" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100">
             <view class="progress-value" :style="{ width: progressPercent + '%' }"><view class="progress-thumb" /></view>
           </view>
           <view class="progress-times">
-            <text class="progress-time">{{ formatDuration(currentTime) }}</text>
-            <text class="progress-time">{{ formatDuration(totalSeconds) }}</text>
+            <text class="progress-time">{{ formatDuration(currentTime) }} / {{ formatDuration(totalSeconds) }}</text>
           </view>
         </view>
         <view class="controls">
@@ -883,8 +895,8 @@ export default {
 .tone-player-page .progress-track { width:100%; height:4px; margin:0; overflow:visible; border-radius:3px; background:rgba(73,85,80,.28); }
 .tone-player-page .progress-value { position:relative; height:100%; border-radius:3px; background:var(--tone-accent); }
 .progress-thumb { position:absolute; top:50%; right:-5px; width:10px; height:10px; border-radius:50%; background:var(--tone-accent); transform:translateY(-50%); }
-.tone-player-page .progress-times { display:flex; justify-content:space-between; margin-top:7px; }
-.tone-player-page .progress-time { color:#3f5551; font-size:10px; letter-spacing:0; }
+.tone-player-page .progress-times { display:flex; justify-content:center; margin-top:7px; }
+.tone-player-page .progress-time { color:#3f5551; font-size:10px; letter-spacing:0; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .tone-player-page .controls { display:flex; justify-content:center; margin:3px 0 15px; }
 .tone-player-page .ctrl-play { display:flex; align-items:center; justify-content:center; width:78px; height:78px; border-radius:50%; background:var(--tone-accent); box-shadow:0 0 0 12px color-mix(in srgb,var(--tone-accent) 10%,transparent),0 8px 22px rgba(47,64,57,.22); }
 .tone-player-page .play-shape { border-top-width:13px; border-bottom-width:13px; border-left-width:21px; margin-left:5px; }

@@ -453,9 +453,9 @@ test("V3.1: full-text correction guards empty input before calling the real conf
   assert.ok(block.includes("expected_revision: this.model.revision"), "revision semantics unchanged")
 })
 
-test("V3.1: final confirm is titled 完成近期状态总结 and sits after optional goal page", () => {
+test("V3.1: final confirm is titled 确认近期状态总结 and sits after optional goal page", () => {
   const confirm = readPage("v3-confirm/v3-confirm.vue")
-  assert.ok(confirm.includes("完成近期状态总结"), "Issue #100: confirm page title")
+  assert.ok(confirm.includes("确认近期状态总结"), "Issue #100: confirm page title")
   // 问卷页评估创建完成后（答完 10 题路径）先进入疗愈诉求（选填），再到最终确认
   const questionnaire = readPage("v3-questionnaire/v3-questionnaire.vue")
   assert.ok(questionnaire.includes('"/pages/v3-goal/v3-goal"'), "questionnaire must route to goal page")
@@ -800,6 +800,22 @@ test("feedback page: approved four visual adjustments map to valid backend prefe
   assert.ok(feedback.includes("adjustment_preferences"), "must submit adjustment_preferences")
   assert.ok(feedback.includes("continue_use"), "must submit continue_use")
   assert.ok(feedback.includes("liked_features"), "must submit liked_features")
+})
+
+test("feedback success state is an immersive branded completion page", () => {
+  const feedback = readPage("v3-feedback/v3-feedback.vue")
+  const successBlock = (feedback.match(/<view v-if="submitted"[\s\S]*?<view v-else>/) || [""])[0]
+
+  assert.ok(successBlock.includes("feedback-success"), "success state needs its own immersive layout")
+  assert.ok(successBlock.includes("feedback-success-ring"), "success state needs the central ink ring")
+  assert.ok(successBlock.includes("feedback-success-leaf"), "success state needs the leaf mark")
+  assert.ok(successBlock.includes("\u611f\u8c22\u4f60\u7684\u53cd\u9988\uff0c"), "success copy must use the approved first line")
+  assert.ok(successBlock.includes("\u4f60\u4f1a\u8d8a\u6765\u8d8a\u597d\u7684\u3002"), "success copy must use the approved second line")
+  assert.ok(successBlock.includes("feedback-success-arrow"), "home button needs the right arrow")
+  assert.ok(feedback.includes("feedback-success-background.png"), "success state needs the dedicated full-page artwork")
+  assert.ok(feedback.includes("<text>\u548c</text><text>\u8c10</text>"), "brand seal must show both approved characters")
+  assert.ok(feedback.includes('uni.reLaunch({ url: "/pages/entry/entry" })'), "home action must preserve the existing route")
+  assert.ok(!successBlock.includes("surface-card"), "success state must not remain inside the ordinary white card")
 })
 
 // ===== 问卷题型（权威清单） =====

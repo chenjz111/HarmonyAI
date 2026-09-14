@@ -94,6 +94,14 @@ class DiagnosisProvider:
             "fact ID with a claim code, Chinese name, display name, array "
             "position, or user text. If no exact fact ID supports or contradicts "
             "a candidate, use an empty list; never fabricate a reference. "
+            "Write every user-facing prose field in Simplified Chinese (简体中文), "
+            "including each candidate_tendencies[].reasoning_summary (the basis "
+            "summaries shown in the Chinese UI). JSON field names, the JSON "
+            "structure, and all code identifiers (syndrome_code, fact ids, "
+            "knowledge_chunk_ids, organ codes, tones) must stay exactly as "
+            "specified here and must never be translated, renamed, or replaced. "
+            "Phrase every summary as a tendency (倾向) that is advisory only: "
+            "never present it as a medical diagnosis and never assert certainty. "
             f"Required JSON Schema: {response_schema}"
         )
         payload = {

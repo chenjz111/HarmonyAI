@@ -120,30 +120,48 @@ export default {
 </script>
 
 <template>
-  <view class="feedback-page v31-scroll-page">
-    <view class="feedback-container">
+  <view class="feedback-page v31-scroll-page" :class="{ 'feedback-page--success': submitted }">
+    <view class="feedback-container" :class="{ 'feedback-container--success': submitted }">
       <view class="brand-row">
         <button class="back-button" role="button" aria-label="返回" @click="back"><view class="back-chevron" /></button>
         <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
         <view class="brand-copy"><text class="brand-name">HarmonyAI</text><text class="brand-tagline">用音乐，陪伴更好的你</text></view>
-        <view class="hero-slogan"><text>五音和鸣</text><text>心自安宁</text><text class="hero-seal">和</text></view>
+        <view class="hero-slogan"><text>五音和鸣</text><text>心自安宁</text><view class="hero-seal"><text>和</text><text>谐</text></view></view>
       </view>
 
-      <view class="feedback-hero ink-fade-in">
+      <view v-if="!submitted" class="feedback-hero ink-fade-in">
         <text class="page-title">聆听反馈</text>
         <text class="page-subtitle">花一点时间告诉我们的感受，</text>
         <text class="page-subtitle">你的反馈会帮助 HarmonyAI 更懂你。</text>
       </view>
 
       <!-- 提交成功 -->
-      <view v-if="submitted" class="surface-card done-card ink-fade-up">
-        <view class="done-seal">
-          <text class="done-seal-text">谢</text>
+      <view v-if="submitted" class="feedback-success ink-fade-up">
+        <view class="feedback-success-ring" aria-hidden="true">
+          <view class="feedback-success-ring-inner">
+            <image class="feedback-success-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
+            <view class="feedback-success-ripples">
+              <view class="feedback-success-ripple feedback-success-ripple--one" />
+              <view class="feedback-success-ripple feedback-success-ripple--two" />
+              <view class="feedback-success-ripple feedback-success-ripple--three" />
+            </view>
+          </view>
         </view>
         <text class="done-title">反馈已提交</text>
-        <text class="done-sub">感谢你的反馈，我们会让它越来越适合你。</text>
-        <view class="han-btn han-btn-primary btn-primary" @click="goHome">
+        <view class="feedback-success-divider" aria-hidden="true">
+          <view class="feedback-success-divider-line" />
+          <view class="feedback-success-divider-dot" />
+          <image class="feedback-success-divider-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
+          <view class="feedback-success-divider-dot" />
+          <view class="feedback-success-divider-line" />
+        </view>
+        <view class="done-sub">
+          <text>感谢你的反馈，</text>
+          <text>你会越来越好的。</text>
+        </view>
+        <view class="feedback-success-button" role="button" aria-label="返回首页" @click="goHome">
           <text class="btn-primary-text">返回首页</text>
+          <text class="feedback-success-arrow">→</text>
         </view>
       </view>
 
@@ -526,46 +544,191 @@ export default {
 }
 
 /* ===== 提交成功 ===== */
-.done-card {
-  border-radius: var(--radius-lg);
-  padding: 80rpx 40rpx;
+.feedback-page.feedback-page--success {
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow-x: hidden;
+  background: #f7f4ea;
+}
+.feedback-container.feedback-container--success {
+  position: relative;
   display: flex;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #f7f4ea;
+  background-image:
+    linear-gradient(rgba(255, 252, 243, .05), rgba(255, 252, 243, .05)),
+    url('/static/v31-feedback/feedback-success-background.png');
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+}
+.feedback-success {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  min-height: 650px;
+  padding: clamp(72px, 10vh, 112px) 22px 32px;
+  box-sizing: border-box;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.feedback-success-ring {
+  position: absolute;
+  z-index: -1;
+  top: clamp(24px, 4.5vh, 48px);
+  left: 50%;
+  width: clamp(276px, 82vw, 350px);
+  height: clamp(276px, 82vw, 350px);
+  border: 1px solid rgba(43, 91, 83, .13);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  box-shadow:
+    0 0 0 5px rgba(43, 91, 83, .025),
+    0 0 0 11px rgba(43, 91, 83, .035),
+    inset 0 0 45px rgba(255, 252, 242, .58);
+}
+.feedback-success-ring::before,
+.feedback-success-ring::after {
+  position: absolute;
+  content: "";
+  border-radius: 50%;
+  border: 1px solid rgba(43, 91, 83, .075);
+}
+.feedback-success-ring::before { inset: 8px -4px -6px 5px; }
+.feedback-success-ring::after { inset: -5px 9px 7px -7px; }
+.feedback-success-ring-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  padding-top: 68px;
+  box-sizing: border-box;
   flex-direction: column;
   align-items: center;
 }
-.done-seal {
-  width: 120rpx;
-  height: 120rpx;
-  background: var(--ink-seal);
-  border-radius: var(--radius-seal);
-  transform: rotate(-4deg);
+.feedback-success-leaf {
+  width: 88px;
+  height: 76px;
+  opacity: .9;
+  filter: saturate(.72) brightness(.83);
+}
+.feedback-success-ripples {
+  position: relative;
+  width: 132px;
+  height: 34px;
+  margin-top: -7px;
+}
+.feedback-success-ripple {
+  position: absolute;
+  left: 50%;
+  border: 2px solid rgba(193, 144, 67, .58);
+  border-top-color: transparent;
+  border-left-color: transparent;
+  border-radius: 50%;
+  transform: translateX(-50%) scaleY(.34) rotate(45deg);
+}
+.feedback-success-ripple--one { top: 0; width: 64px; height: 34px; }
+.feedback-success-ripple--two { top: 6px; width: 104px; height: 38px; opacity: .78; }
+.feedback-success-ripple--three { top: 12px; width: 132px; height: 40px; opacity: .55; }
+.feedback-page--success .done-title {
+  display: block;
+  margin: 157px 0 0;
+  color: #154f4b;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: clamp(39px, 11.2vw, 48px);
+  font-weight: 500;
+  letter-spacing: .14em;
+  line-height: 1.2;
+  text-shadow: 0 1px 0 rgba(255,255,255,.65);
+}
+.feedback-success-divider {
   display: flex;
+  width: min(254px, 72vw);
+  height: 24px;
+  margin-top: 17px;
   align-items: center;
   justify-content: center;
-  margin-bottom: 32rpx;
-  box-shadow: var(--shadow-seal);
+  gap: 7px;
 }
-.done-seal-text {
-  font-size: 56rpx;
-  color: var(--text-inverse);
+.feedback-success-divider-line {
+  width: 72px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(79, 100, 88, .55));
+}
+.feedback-success-divider-line:last-child {
+  background: linear-gradient(90deg, rgba(79, 100, 88, .55), transparent);
+}
+.feedback-success-divider-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(86, 103, 90, .65);
+}
+.feedback-success-divider-leaf {
+  width: 27px;
+  height: 27px;
+  opacity: .78;
+  filter: saturate(.6) brightness(.85);
+}
+.feedback-page--success .done-sub {
+  display: flex;
+  margin-top: 26px;
+  flex-direction: column;
+  color: #68706a;
   font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
-  font-weight: 700;
+  font-size: clamp(20px, 5.5vw, 24px);
+  letter-spacing: .06em;
+  line-height: 1.65;
+  text-shadow: 0 1px 0 rgba(255,255,255,.8);
 }
-.done-title {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: var(--ink-700);
-  margin-bottom: 14rpx;
+.feedback-success-button {
+  position: relative;
+  display: flex;
+  width: min(310px, 86vw);
+  min-height: 58px;
+  margin-top: 42px;
+  padding: 0 58px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(13, 71, 65, .62);
+  border-radius: 999px;
+  background:
+    linear-gradient(104deg, rgba(17, 73, 67, .97), rgba(40, 100, 90, .96)),
+    radial-gradient(circle at 15% 20%, rgba(255,255,255,.16), transparent 38%);
+  box-shadow:
+    0 11px 20px rgba(31, 72, 62, .18),
+    inset 0 1px 0 rgba(255,255,255,.24),
+    inset 0 -2px 0 rgba(0, 42, 37, .16);
+}
+.feedback-success-button::before {
+  position: absolute;
+  inset: 4px;
+  content: "";
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: inherit;
+}
+.feedback-page--success .btn-primary-text {
+  color: #fffdf6;
   font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: .12em;
 }
-.done-sub {
-  font-size: 26rpx;
-  color: var(--text-muted);
-  margin-bottom: 56rpx;
-}
-.done-card .btn-primary {
-  width: 100%;
-  margin-top: 0;
+.feedback-success-arrow {
+  position: absolute;
+  right: 28px;
+  color: #fffdf6;
+  font-size: 28px;
+  font-weight: 300;
+  line-height: 1;
 }
 
 /* ===== Owner V3.1 聆听反馈视觉稿 ===== */
@@ -585,7 +748,8 @@ export default {
 .feedback-page .brand-name { font-size:18px; font-weight:750; line-height:1.15; }
 .feedback-page .brand-tagline { font-size:10px; letter-spacing:2px; white-space:nowrap; }
 .feedback-page .hero-slogan { position:relative; display:flex; flex:0 0 auto; flex-direction:column; align-items:flex-end; margin-left:auto; padding:0 17px 3px 0; color:#15575a; font-family:'KaiTi','STKaiti',serif; font-size:10px; font-weight:700; line-height:1.35; transform:rotate(-4deg); }
-.feedback-page .hero-seal { position:absolute; right:0; bottom:2px; display:flex; align-items:center; justify-content:center; width:13px; height:23px; border-radius:3px; color:#fff; background:#a92e27; font-size:8px; }
+.feedback-page .hero-seal { position:absolute; right:0; bottom:-2px; display:flex; width:15px; height:29px; padding:2px 0; box-sizing:border-box; flex-direction:column; align-items:center; justify-content:center; border-radius:3px; background:#a92e27; line-height:1.05; }
+.feedback-page .hero-seal text { color:#fff; font-size:8px; }
 .feedback-hero { margin:18px 18px 20px; }
 .feedback-page .page-title { display:block; margin-bottom:8px; color:#064c50; font-family:'KaiTi','STKaiti',serif; font-size:34px; font-weight:800; letter-spacing:4px; line-height:1.2; }
 .feedback-page .page-subtitle { display:block; color:#18585c; font-size:15px; line-height:1.65; }
@@ -616,9 +780,15 @@ export default {
 .feedback-page .btn-link-text { color:#315f60; font-size:14px; text-decoration:none; }
 .feedback-page .page-motto { margin-top:12px; color:#285e5b; text-align:center; font-family:'KaiTi','STKaiti',serif; font-size:13px; letter-spacing:1px; }
 .feedback-page .done-card { margin-top:18px; padding:52px 24px; }
+.feedback-page--success .brand-row {
+  position: relative;
+  z-index: 2;
+  padding-top: max(0px, env(safe-area-inset-top));
+}
 @media (max-width:350px) {
   .feedback-container { padding-left:8px; padding-right:8px; }
   .feedback-page .hero-slogan { display:none; }
+  .feedback-page--success .hero-slogan { display:flex; font-size:9px; }
   .feedback-hero { margin-left:12px; margin-right:12px; }
   .feedback-section-card { padding-left:6px; padding-right:6px; }
   .feedback-options { gap:4px; }
@@ -628,5 +798,34 @@ export default {
   .feedback-option-label,.feedback-options--5 .feedback-option-label { font-size:13px; }
   .feedback-option-subtitle,.feedback-options--5 .feedback-option-subtitle { font-size:11px; }
   .submit-button { margin-left:36px; margin-right:36px; }
+}
+@media (max-height:650px) {
+  .feedback-success {
+    min-height: 470px;
+    padding: 28px 12px 18px;
+  }
+  .feedback-success-ring {
+    top: 5px;
+    width: 236px;
+    height: 236px;
+  }
+  .feedback-success-ring-inner { padding-top: 42px; }
+  .feedback-success-leaf { width: 68px; height: 58px; }
+  .feedback-success-ripples { transform: scale(.82); }
+  .feedback-page--success .done-title {
+    margin-top: 123px;
+    font-size: 34px;
+  }
+  .feedback-success-divider { margin-top: 8px; }
+  .feedback-page--success .done-sub {
+    margin-top: 10px;
+    font-size: 18px;
+    line-height: 1.48;
+  }
+  .feedback-success-button {
+    min-height: 52px;
+    margin-top: 15px;
+  }
+  .feedback-page--success .btn-primary-text { font-size: 20px; }
 }
 </style>

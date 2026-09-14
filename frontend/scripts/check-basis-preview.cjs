@@ -16,7 +16,7 @@ async function reachBasis(page) {
   }
   await page.getByText('疗愈诉求', { exact: true }).waitFor({ timeout: 10000 })
   await page.getByText('暂时跳过', { exact: true }).click()
-  await page.getByText('完成近期状态总结', { exact: true }).waitFor({ timeout: 10000 })
+  await page.getByText('确认近期状态总结', { exact: true }).waitFor({ timeout: 10000 })
   await page.getByText('基本符合，继续', { exact: true }).click()
   await page.getByText('五音调适解析', { exact: true }).waitFor({ timeout: 10000 })
 }
@@ -60,8 +60,7 @@ async function main() {
           interpretation: size('.interpretation-text'),
           rationale: size('.rationale-source'),
           detailCopy: size('.tone-detail-copy'),
-          paramValue: size('.param-value'),
-          paramReason: size('.param-reason')
+          paramValue: size('.param-value')
         }
       })
       assert.ok(readableType.subtitle >= 14)
@@ -70,7 +69,6 @@ async function main() {
       assert.ok(readableType.rationale >= 13)
       assert.ok(readableType.detailCopy >= 12)
       assert.ok(readableType.paramValue >= 14)
-      assert.ok(readableType.paramReason >= 11)
       const toneBottoms = await page.locator('.tone-orb').evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().bottom)))
       assert.equal(new Set(toneBottoms).size, 1)
       const designTops = await page.locator('.design-card').evaluateAll(nodes => nodes.map(node => Math.round(node.getBoundingClientRect().top)))

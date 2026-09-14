@@ -33,6 +33,36 @@ export default {
       summaryEditorFocused: false,
     }
   },
+  computed: {
+    // 真实“近期状态总结”正文：一律取后端 read model 已返回的文本
+    // （presentation.summary → state_summary/summary）。前端不生成、不改写任何医学结论，
+    // 也不再用固定文案冒充个性化总结。
+    summaryText() {
+      const model = this.model
+      if (!model) return ""
+      const presentation = model.presentation || {}
+      return presentation.summary || model.summary || model.state_summary || ""
+    },
+    // 本次评估真实形成的条目：后端 fact_evidence 的 canonical 中文 display_name
+    // （mock/hybrid 下为 mock sections 的条目）。此处只做去重与截断展示，
+    // 不在前端推导证型、脏腑或调式。
+    summaryItems() {
+      const model = this.model
+      if (!model) return []
+      const fromFacts = Array.isArray(model.fact_evidence)
+        ? model.fact_evidence.map((item) => (item && item.display_name) || "")
+        : []
+      const fromSections = Array.isArray(model.sections)
+        ? model.sections.flatMap((section) =>
+            section && Array.isArray(section.items) ? section.items : [],
+          )
+        : []
+      const items = [...fromFacts, ...fromSections]
+        .map((item) => String(item == null ? "" : item).trim())
+        .filter(Boolean)
+      return [...new Set(items)].slice(0, 8)
+    },
+  },
   onLoad() {
     this.load()
   },
@@ -74,7 +104,7 @@ export default {
       }
     },
     startCorrect() {
-      this.draftSummaryText = this.model.summary || ""
+      this.draftSummaryText = this.summaryText || ""
       this.summaryEditorFocused = false
       this.editingMode = "text"
       this.$nextTick(() => {
@@ -129,10 +159,10 @@ export default {
           <text class="step-tag-text">最后一步 · 确认</text>
         </view>
         <view class="title-row">
-          <text class="page-title">完成近期状态总结</text>
+          <text class="page-title">确认近期状态总结</text>
           <text class="title-seal">审</text>
         </view>
-        <text class="page-subtitle">确认通过后，将以此为基础生成本次音乐调养方案。</text>
+        <text class="page-subtitle">请确认下面的内容是否基本符合你最近的状态。确认后，我们会以此作为本次五音调适分析的基础。</text>
       </view>
 
       <view v-if="loading" class="loading-wrap">
@@ -170,11 +200,11 @@ export default {
 
         <view class="summary-heading">
           <image class="summary-icon-image" src="/static/v31-goal/intent-2.png" mode="aspectFit" />
-          <text class="summary-heading-title">综合分析</text>
+          <text class="summary-heading-title">近期状态总结</text>
         </view>
         <view class="summary-box">
           <text class="summary-title">{{ model.title }}</text>
-          <text v-if="editingMode === null" class="summary-text">{{ model.summary }}</text>
+          <text v-if="editingMode === null" class="summary-text">{{ summaryText }}</text>
           <textarea
             v-else
             class="edit-textarea inline-summary-editor"
@@ -183,6 +213,13 @@ export default {
             :focus="summaryEditorFocused"
             :cursor="(draftSummaryText || '').length"
           />
+          <!-- 本次问卷真实形成的条目（后端 canonical 中文名称），不是固定文案 -->
+          <view v-if="editingMode === null && summaryItems.length" class="summary-facts">
+            <text class="summary-facts-label">本次问卷中你确认的近期状态</text>
+            <view class="summary-facts-list">
+              <text v-for="(item, index) in summaryItems" :key="index" class="summary-fact">{{ item }}</text>
+            </view>
+          </view>
         </view>
 
         <view v-if="editingMode === null" class="actions confirm-actions">
@@ -743,6 +780,10 @@ export default {
 .confirm-page .summary-box { box-sizing:border-box; margin:0; padding:15px 14px; border:1px solid rgba(63,112,96,.10); border-radius:10px; background:rgba(239,246,237,.54); }
 .confirm-page .summary-title { display:none; }
 .confirm-page .summary-text { color:#164e57; font-size:15px; line-height:1.9; }
+.confirm-page .summary-facts { margin-top:16px; }
+.confirm-page .summary-facts-label { display:block; margin-bottom:9px; color:#55746f; font-size:12px; letter-spacing:.5px; }
+.confirm-page .summary-facts-list { display:flex; flex-wrap:wrap; gap:6px; }
+.confirm-page .summary-fact { max-width:100%; padding:4px 10px; border-radius:12px; background:rgba(36,105,94,.08); color:#15565a; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
 .confirm-page .inline-summary-editor { width:100%; min-height:150px; box-sizing:border-box; padding:0; border:0; background:transparent; color:#164e57; font-family:inherit; font-size:15px; line-height:1.9; }
 .confirm-page .inline-summary-editor :deep(textarea) { padding:0; color:#164e57; font-family:inherit; font-size:15px; line-height:1.9; }
 .confirm-page .confirm-actions { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:20px; }

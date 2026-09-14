@@ -110,6 +110,7 @@ export default {
       try {
         this.task = await apiV3.startMusicGeneration()
         if (this.task.status === "succeeded" || this.task.status === "matched_fallback") {
+          // 幂等重放/已即时完成时直接进播放器，不空转轮询
           this.goPlayer()
         } else {
           this.schedulePoll()
@@ -309,25 +310,21 @@ export default {
               <image class="basis-icon-image design-icon" src="/static/v31-basis/bpm.png" mode="aspectFit" />
               <text class="param-value">{{ basis.bpm.value }} BPM</text>
               <text class="param-label">舒缓节奏</text>
-              <text class="param-reason">{{ basis.bpm.explanation }}</text>
             </view>
             <view class="design-card">
               <image class="basis-icon-image design-icon" src="/static/v31-basis/duration.png" mode="aspectFit" />
               <text class="param-value">{{ formatDuration(basis.duration.seconds) }}</text>
               <text class="param-label">时长</text>
-              <text class="param-reason">{{ basis.duration.explanation }}</text>
             </view>
             <view class="design-card">
               <image class="basis-icon-image design-icon" src="/static/v31-basis/instrument.png" mode="aspectFit" />
               <text class="param-value">{{ basis.instruments.values.join('、') }}</text>
               <text class="param-label">主要乐器</text>
-              <text class="param-reason">{{ basis.instruments.explanation }}</text>
             </view>
             <view class="design-card">
               <image class="basis-icon-image design-icon" src="/static/v31-basis/ambience.png" mode="aspectFit" />
               <text class="param-value">{{ basis.ambience.values.join('、') }}</text>
               <text class="param-label">音乐氛围</text>
-              <text class="param-reason">{{ basis.ambience.explanation }}</text>
             </view>
           </view>
         </view>
@@ -548,6 +545,7 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
 }
 .param-value {
   font-size: 28rpx;
@@ -558,13 +556,7 @@ export default {
 .param-label {
   font-size: 22rpx;
   color: var(--text-muted);
-  margin-bottom: 12rpx;
-}
-.param-reason {
-  font-size: 22rpx;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  text-align: center;
+  margin-bottom: 0;
 }
 .personal-note {
   display: block;
@@ -842,11 +834,10 @@ export default {
 .tone-detail-copy { margin-top:7px; color:#315b5d; font-size:13px; line-height:1.6; }
 .section-icon-note { color:#145d58; font-size:22px; font-weight:700; }
 .design-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-.design-card { display:flex; flex-direction:column; align-items:center; min-width:0; min-height:148px; padding:13px 9px; box-sizing:border-box; border:1px solid rgba(56,96,89,.10); border-radius:10px; background:rgba(255,255,252,.62); text-align:center; }
+.design-card { display:flex; flex-direction:column; align-items:center; justify-content:center; min-width:0; min-height:108px; padding:13px 9px; box-sizing:border-box; border:1px solid rgba(56,96,89,.10); border-radius:10px; background:rgba(255,255,252,.62); text-align:center; }
 .design-icon { width:34px; height:34px; flex-shrink:0; }
-.basis-page .param-value { max-width:100%; margin:7px 0 3px; color:#104f54; font-size:15px; font-weight:750; line-height:1.3; overflow-wrap:anywhere; }
-.basis-page .param-label { margin:0 0 5px; color:#55746f; font-size:12px; }
-.basis-page .param-reason { color:#54706d; font-size:12px; line-height:1.5; text-align:center; overflow-wrap:anywhere; }
+.basis-page .param-value { max-width:100%; margin:9px 0 4px; color:#104f54; font-size:15px; font-weight:750; line-height:1.3; overflow-wrap:anywhere; }
+.basis-page .param-label { margin:0; color:#55746f; font-size:12px; }
 .basis-page .demo-banner { margin:0 0 2px; }
 .basis-page .demo-banner-text { padding:4px 9px; font-size:9px; }
 .basis-page .actions { margin-top:5px; }
@@ -869,7 +860,7 @@ export default {
   .tone-orb { width:37px; font-size:20px; }
   .rationale-row { grid-template-columns:28px minmax(0,.95fr) 16px minmax(0,1.1fr); }
   .design-grid { gap:8px; }
-  .design-card { min-height:148px; padding-left:6px; padding-right:6px; }
+  .design-card { min-height:104px; padding-left:6px; padding-right:6px; }
   .generate-button { margin-left:42px; margin-right:42px; }
 }
 </style>

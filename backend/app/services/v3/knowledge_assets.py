@@ -264,6 +264,56 @@ def load_five_tone_mapping() -> dict:
     return _load_checked("five-tone-mapping-v3.0.json")
 
 
+_APPROVED_SYNDROME_DISPLAY_NAMES: Mapping[str, str] | None = None
+
+
+def load_approved_syndrome_display_names() -> Mapping[str, str]:
+    """Load the review-gated canonical Chinese syndrome labels.
+
+    ``knowledge/v3/agent2-syndrome-whitelist-v3.1.json`` is the medically
+    approved source of the 证型倾向 wording.  The provider only ever returns a
+    controlled ``syndrome_code``; the user-facing Chinese name is resolved from
+    this asset instead of from the provider's prose, so the public read model
+    cannot leak English labels into the Chinese UI.
+
+    The loader never raises: a missing, unreadable, unapproved, or malformed
+    asset yields an empty mapping so callers fall back to their existing value.
+    """
+
+    global _APPROVED_SYNDROME_DISPLAY_NAMES
+    if _APPROVED_SYNDROME_DISPLAY_NAMES is not None:
+        return _APPROVED_SYNDROME_DISPLAY_NAMES
+    names: dict[str, str] = {}
+    try:
+        payload = json.loads(
+            (_asset_root() / "agent2-syndrome-whitelist-v3.1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        _APPROVED_SYNDROME_DISPLAY_NAMES = names
+        return names
+    if isinstance(payload, Mapping) and payload.get("review_status") == (
+        "MEDICALLY_APPROVED"
+    ):
+        entries = payload.get("allowed_syndromes")
+        if isinstance(entries, list):
+            for entry in entries:
+                if not isinstance(entry, Mapping):
+                    continue
+                code = entry.get("stable_code")
+                display_name = entry.get("display_name")
+                if (
+                    isinstance(code, str)
+                    and code.strip()
+                    and isinstance(display_name, str)
+                    and display_name.strip()
+                ):
+                    names[code] = display_name
+    _APPROVED_SYNDROME_DISPLAY_NAMES = names
+    return names
+
+
 def load_medical_rule_asset(
     path: str | Path,
     *,

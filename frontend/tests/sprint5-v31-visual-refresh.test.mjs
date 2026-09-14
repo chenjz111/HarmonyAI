@@ -71,6 +71,27 @@ test("material flow keeps explicit 1-3 upload interaction and standalone error b
   assert.match(error, /discardDocument/)
 })
 
+test("material error page uses the approved immersive failure artwork without changing routing", () => {
+  const error = read("pages/v3-material-error/v3-material-error.vue")
+  const template = error.match(/<template>[\s\S]*?<\/template>/)?.[0] || ""
+
+  assert.match(template, /material-error-brand/)
+  assert.match(template, /upload-failed-illustration\.png/)
+  assert.match(error, /material-error-background\.png/)
+  assert.match(template, /material-error-card/)
+  assert.match(template, /material-error-primary/)
+  assert.match(template, /material-error-secondary/)
+  assert.match(template, /material-error-note-line/)
+  assert.match(error, /max-width:\s*430px/)
+  assert.match(error, /env\(safe-area-inset-top\)/)
+  assert.match(error, /env\(safe-area-inset-bottom\)/)
+  assert.ok(existsSync(resolve(root, "static/v31-material/material-error-background.png")))
+  assert.ok(existsSync(resolve(root, "static/v31-material/upload-failed-illustration.png")))
+  assert.match(error, /uni\.redirectTo\(\{ url: "\/pages\/v3-material\/v3-material" \}\)/)
+  assert.match(error, /apiV3\.discardDocument\(\)/)
+  assert.doesNotMatch(error, /DOCUMENT_SET_NOT_ACTIVE/)
+})
+
 test("questionnaire is five scrollable pages with two approved questions per page", () => {
   const questionnaire = read("pages/v3-questionnaire/v3-questionnaire.vue")
   assert.match(questionnaire, /PAGE_SIZE\s*=\s*2/)

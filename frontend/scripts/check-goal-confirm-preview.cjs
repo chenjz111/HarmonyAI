@@ -45,7 +45,7 @@ async function main() {
     }
 
     await page.getByText('暂时跳过', { exact: true }).click()
-    await page.getByText('完成近期状态总结', { exact: true }).waitFor({ timeout: 10000 })
+    await page.getByText('确认近期状态总结', { exact: true }).waitFor({ timeout: 10000 })
     assert.equal(await page.locator('.summary-icon-image img').getAttribute('src'), '/static/v31-goal/intent-2.png')
     const summaryIconBox = await page.locator('.summary-icon-image').boundingBox()
     assert.ok(summaryIconBox && summaryIconBox.width <= 64 && summaryIconBox.height <= 64)

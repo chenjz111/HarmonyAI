@@ -72,6 +72,9 @@ from backend.app.services.v3.agent3_preference_policy import (
     synchronize_generation_spec,
 )
 from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
+from backend.app.services.v3.knowledge_assets import (
+    load_approved_syndrome_display_names,
+)
 from backend.app.services.v3.idempotency import (
     IdempotencyConflict,
     IdempotencyFailureReplay,
@@ -549,13 +552,24 @@ def _diagnosis_from_v31_pipeline(
         return DiagnosisV3(root=root)
     if response is None or response.status not in {"success", "degraded"}:
         raise V31PipelineFailure("DIAGNOSIS_RESPONSE_INVALID")
-    candidates = [
-        DiagnosisCandidate(
-            candidate_id=f"{diagnosis_id}_c{index}",
-            **candidate.model_dump(mode="json"),
+    # The provider is free to phrase ``display_name`` itself; the user-facing
+    # 证型倾向 wording is always resolved from the medically approved Chinese
+    # whitelist by stable syndrome code.  The provider's raw value stays in the
+    # provenance payloads (provider response/audit) and is only used as a
+    # fallback when the code is absent from the approved asset.
+    approved_display_names = load_approved_syndrome_display_names()
+    candidates = []
+    for index, candidate in enumerate(response.candidate_tendencies, start=1):
+        dumped = candidate.model_dump(mode="json")
+        dumped["display_name"] = approved_display_names.get(
+            candidate.syndrome_code, candidate.display_name
         )
-        for index, candidate in enumerate(response.candidate_tendencies, start=1)
-    ]
+        candidates.append(
+            DiagnosisCandidate(
+                candidate_id=f"{diagnosis_id}_c{index}",
+                **dumped,
+            )
+        )
     if not candidates:
         raise V31PipelineFailure("DIAGNOSIS_RESPONSE_INVALID")
     root = {
