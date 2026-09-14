@@ -48,6 +48,9 @@ export default {
       const remain = MAX_FILES - this.files.length
       uni.chooseImage({
         count: remain,
+        // Android 真机：仅允许相册选择。默认值含 camera 会让打包体弹出“拍摄”入口，
+        // 并在未集成 camera 模块的 App 包上触发“打包时未添加camera模块”提示。
+        sourceType: ["album"],
         success: (res) => {
           const paths = res.tempFilePaths || []
           const temp = res.tempFiles || []
