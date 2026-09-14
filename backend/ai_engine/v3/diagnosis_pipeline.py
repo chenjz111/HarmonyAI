@@ -171,6 +171,7 @@ async def execute_diagnosis_provider(
     rag_result: RagResult,
     medical_rule_version: str | None = None,
     rag_chunk_checksums: Mapping[str, str] | None = None,
+    confirmed_state_text: str | None = None,
 ) -> DiagnosisProviderExecution:
     """Run Agent2 only when the approved RAG gate provides grounded hits.
 
@@ -185,7 +186,9 @@ async def execute_diagnosis_provider(
     provider_backend = getattr(provider, "backend", None)
     provider_model = getattr(provider_backend, "model", None)
     medical_release = getattr(provider, "medical_rule_version", None)
-    request_hash = _request_hash(request)
+    request_hash = _request_hash(request) if confirmed_state_text is None else _request_hash({
+        "request_hash": _request_hash(request), "confirmed_state_text": confirmed_state_text,
+    })
 
     def execution(
         status: Literal["success", "degraded", "abstained", "failed"],
@@ -269,6 +272,14 @@ async def execute_diagnosis_provider(
             "rag_chunk_ids": [hit.chunk_id for hit in rag_result.hits],
         }
         metadata_call = getattr(provider, "acomplete_json_with_metadata", None)
+        call = metadata_call if callable(metadata_call) else provider.acomplete_json
+        parameters = inspect.signature(call).parameters
+        if confirmed_state_text is not None and (
+            "confirmed_state_text" in parameters or any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+            )
+        ):
+            provider_kwargs["confirmed_state_text"] = confirmed_state_text
         if callable(metadata_call):
             response, attempts = await metadata_call(**provider_kwargs, rag_context=rag_context)
         else:

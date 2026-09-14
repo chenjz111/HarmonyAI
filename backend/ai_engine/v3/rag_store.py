@@ -256,7 +256,7 @@ class VersionedRagStore:
         except Exception:
             return False
 
-    def query(self, query: RagQuery) -> RagResult:
+    def query(self, query: RagQuery, *, confirmed_state_text: str | None = None) -> RagResult:
         manifest = self._manifest
         if manifest is None or self._collection is None:
             raise RagStoreFailure("RAG_NOT_READY", "RAG 索引尚未准备就绪。")
@@ -266,8 +266,11 @@ class VersionedRagStore:
             raise RagStoreFailure("RAG_MANIFEST_MISMATCH", "RAG 清单版本不一致。")
         self._assert_cosine_collection(self._collection)
         try:
+            query_text = self._query_text(query)
+            if confirmed_state_text:
+                query_text += "\n用户确认的近期状态：" + confirmed_state_text
             query_vector = self.embedding_provider.embed(
-                self._query_text(query),
+                query_text,
                 input_type="query",
             )
             count = int(self._collection.count())

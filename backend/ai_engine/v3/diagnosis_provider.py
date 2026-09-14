@@ -60,12 +60,14 @@ class DiagnosisProvider:
         facts: Sequence[object],
         rag_chunk_ids: Sequence[str],
         rag_context: Sequence[Mapping[str, object]] | None = None,
+        confirmed_state_text: str | None = None,
     ) -> DiagnosisProviderResponse:
         response, _attempts = await self.acomplete_json_with_metadata(
             request=request,
             facts=facts,
             rag_chunk_ids=rag_chunk_ids,
             rag_context=rag_context,
+            confirmed_state_text=confirmed_state_text,
         )
         return response
 
@@ -76,6 +78,7 @@ class DiagnosisProvider:
         facts: Sequence[object],
         rag_chunk_ids: Sequence[str],
         rag_context: Sequence[Mapping[str, object]] | None = None,
+        confirmed_state_text: str | None = None,
     ) -> tuple[DiagnosisProviderResponse, int]:
         response_schema = json.dumps(
             DiagnosisProviderResponse.model_json_schema(),
@@ -113,6 +116,8 @@ class DiagnosisProvider:
             "allowed_chunk_ids": sorted(self.allowed_chunk_ids),
             "rag_hits": [dict(item) for item in (rag_context or ())],
         }
+        if confirmed_state_text is not None:
+            payload["confirmed_state_text"] = confirmed_state_text
         for item in rag_context or ():
             chunk_id = item.get("chunk_id") if isinstance(item, Mapping) else None
             if not isinstance(chunk_id, str) or chunk_id not in self.allowed_chunk_ids:

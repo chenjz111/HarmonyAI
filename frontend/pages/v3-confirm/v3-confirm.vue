@@ -41,7 +41,7 @@ export default {
       const model = this.model
       if (!model) return ""
       const presentation = model.presentation || {}
-      return presentation.summary || model.summary || model.state_summary || ""
+      return presentation.summary || model.state_summary || model.summary || ""
     },
     // 本次评估真实形成的条目：后端 fact_evidence 的 canonical 中文 display_name
     // （mock/hybrid 下为 mock sections 的条目）。此处只做去重与截断展示，
@@ -530,9 +530,10 @@ export default {
 }
 
 .edit-textarea {
+  min-width: 0;
   width: 100%;
   min-height: 280rpx;
-  padding: 24rpx;
+  padding: 0;
   box-sizing: border-box;
   background: rgba(251, 249, 244, 0.6);
   border: 1rpx solid var(--border-soft);

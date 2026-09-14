@@ -352,9 +352,8 @@ def test_edited_summary_text_confirms_new_revision():
         )
     )["understanding_id"]
 
-    # Full-text edit requires fact re-extraction, which is unavailable without
-    # a configured Understanding provider — it must fail with a stable error
-    # and leave the old revision intact (never publish empty facts as confirmed).
+    # Full-text edit is authoritative and must not depend on an Understanding
+    # provider. The original extraction remains in the immutable old revision.
     response = client.post(
         f"/api/v3/understandings/{understanding_id}/confirmations",
         headers={**headers, "Idempotency-Key": "confirm-1"},
@@ -367,32 +366,31 @@ def test_edited_summary_text_confirms_new_revision():
             "reprocess_requested": True,
         },
     )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "FACT_EXTRACTION_UNAVAILABLE"
+    assert response.status_code == 201, response.text
 
     read = _v3_data(
         client.get(f"/api/v3/understandings/{understanding_id}", headers=headers)
     )
-    assert read["revision"] == 1
-    assert read["status"] == "needs_confirmation"
-    assert read["case_summary"]["summary"].startswith("材料提到睡眠恢复不足")
+    assert read["revision"] == 2
+    assert read["status"] == "confirmed"
+    assert read["case_summary"]["summary"] == "资料提到近期入睡较慢，白天有些疲惫。"
+    assert read["normalized_facts"] == []
     assert read["safety_status"] is None
 
-    # The failed edit must leave every piece of state untouched: no new
-    # revision, no input_revision bump, no active-understanding bind, no facts,
-    # no half-written database rows.
+    # Confirmation advances the input revision and binds the new active
+    # understanding revision while preserving the original extraction.
     row = _session_row(session_id)
-    assert row.input_revision == 3
-    assert row.active_understanding_id is None
-    assert row.active_understanding_revision is None
+    assert row.input_revision == 4
+    assert row.active_understanding_id == understanding_id
+    assert row.active_understanding_revision == 2
     with _seed_db() as session:
         assert (
             session.query(UnderstandingRevision)
             .filter(UnderstandingRevision.understanding_id == understanding_id)
             .count()
-            == 1
+            == 2
         )
-        assert session.query(SessionInputRevision).count() == 3
+        assert session.query(SessionInputRevision).count() == 4
         assert session.query(NormalizedFact).count() == 0
 
 

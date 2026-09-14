@@ -31,6 +31,14 @@ export default {
       submitting: false,
     }
   },
+  computed: {
+    summaryText() {
+      const model = this.summaryModel
+      if (!model) return ""
+      const presentation = model.presentation || {}
+      return presentation.summary || model.state_summary || model.summary || ""
+    },
+  },
   onLoad() {
     this.load()
   },
@@ -67,7 +75,7 @@ export default {
     // 操作2：修改资料摘要（进入编辑状态）
     startEdit() {
       this.editing = true
-      this.editText = this.summaryModel.summary
+      this.editText = this.summaryText || ""
     },
     // 编辑态：保存修改并继续（= 提交修正并确认）
     async saveEdit() {
@@ -88,22 +96,14 @@ export default {
           decision: "confirm_with_changes",
           changes: [],
           edited_summary_text: text,
+          // Frozen V3.1 request shape; backend treats the confirmed text as
+          // authoritative and performs no OCR or Provider re-processing.
           reprocess_requested: true,
         })
         // 保存成功直接进入补充近况页，不再增加二次确认（Amendment §3.3）
         uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (e) {
-        // 失败保留编辑输入、停留本页，旧摘要不变
-        if (e.code === "FACT_EXTRACTION_UNAVAILABLE") {
-          // 后端不支持编辑后重提取：提示可返回按原摘要继续，不丢弃用户输入
-          uni.showToast({
-            title: e.message || "当前暂不支持修改摘要后重新解析，你可以按原摘要继续。",
-            icon: "none",
-            duration: 3000,
-          })
-        } else {
-          uni.showToast({ title: e.message || "保存失败，请重试", icon: "none" })
-        }
+        uni.showToast({ title: e.message || "保存失败，请重试", icon: "none" })
       } finally {
         this.submitting = false
       }
@@ -135,7 +135,7 @@ export default {
         <view class="summary-body" :class="{ 'summary-body--editing': editing }">
           <view class="summary-leaf"><image src="/static/v31-document/leaf.svg" mode="aspectFit" /></view>
           <textarea v-if="editing" class="edit-textarea inline-summary-editor" v-model="editText" :focus="editing" :auto-height="true" :maxlength="2000" aria-label="资料摘要" placeholder="请填写准确的近期情况" />
-          <text v-else class="summary-text">{{ summaryModel.summary }}</text>
+          <text v-else class="summary-text">{{ summaryText }}</text>
         </view>
         <view v-if="editing" class="edit-notice"><text>请直接修改上方摘要，保存后继续。</text><text>{{ (editText || '').length }} / 2000</text></view>
         <view v-if="!editing" class="actions">

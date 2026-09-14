@@ -183,11 +183,10 @@ test("summary page exposes the three frozen actions (freeze §4.3)", () => {
   assert.ok(summary.includes("保存修改并继续"), "editor save")
   assert.ok(summary.includes("取消修改"), "editor cancel")
   assert.ok(summary.includes("edited_summary_text"), "editor must submit edited_summary_text")
-  assert.ok(summary.includes("reprocess_requested"), "editor must set reprocess_requested")
+  assert.ok(summary.includes("reprocess_requested"), "editor must preserve the frozen full-edit request shape")
   // 冻结流程图 §11：摘要页没有"暂不使用资料"出口
   assert.ok(!summary.includes("暂不使用这份资料"), "discard action must not appear on the summary page")
-  // FACT_EXTRACTION_UNAVAILABLE 友好处理
-  assert.ok(summary.includes("FACT_EXTRACTION_UNAVAILABLE"), "must handle FACT_EXTRACTION_UNAVAILABLE")
+  assert.ok(!summary.includes("FACT_EXTRACTION_UNAVAILABLE"), "editor must not expose obsolete re-parse failure copy")
   // 确认后进入轻量选择页（想再补充一些近况吗？）
   assert.ok(
     summary.includes('"/pages/v3-supplement/v3-supplement"'),

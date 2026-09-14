@@ -140,7 +140,7 @@ def _replace_document_input(headers, session_id, document_id):
     return _v3_data(response)["input_revision"]
 
 
-def _confirmed_understanding(headers, session_id, db_session, facts):
+def _confirmed_understanding(headers, session_id, db_session, facts, edited_summary_text=None):
     """Create + confirm an understanding carrying the given provider facts."""
     user_pk = _user_pk(db_session, headers)
     document_id = _seed_document(
@@ -169,7 +169,8 @@ def _confirmed_understanding(headers, session_id, db_session, facts):
             "schema_version": "understanding_v3.1",
             "expected_revision": 1,
             "expected_input_revision": input_revision,
-            "decision": "confirm",
+            "decision": "confirm_with_changes" if edited_summary_text is not None else "confirm",
+            **({"edited_summary_text": edited_summary_text, "reprocess_requested": True} if edited_summary_text is not None else {}),
         },
     )
     assert confirm.status_code == 201, confirm.text
@@ -556,7 +557,8 @@ def test_assessment_consumes_complete_questionnaire_without_document(
     assert response.status_code == 201, response.text
     assessment = _v3_data(response)
     assert assessment["understanding_ref"] is None
-    assert assessment["state_summary"] == "已根据你本次提供并确认的信息完成状态评估。"
+    assert "烦躁易怒倾向" in assessment["state_summary"]
+    assert "胁肋胀闷不适" in assessment["state_summary"]
     assert len(assessment["fact_evidence"]) == 2
     assert {item["claim_code"] for item in assessment["fact_evidence"]} == {
         "anger_tendency",

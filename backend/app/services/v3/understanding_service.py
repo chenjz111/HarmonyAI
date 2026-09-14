@@ -62,7 +62,6 @@ from backend.app.services.v3.understanding_extraction import (
     build_provider_chain,
     extract_facts_for_sources,
     persist_normalized_facts,
-    re_extract_facts,
 )
 from backend.app.services.v3.document_relevance_gate import (
     DocumentRelevanceGateError,
@@ -72,7 +71,7 @@ from backend.app.services.v3.document_relevance_evaluator import (
     DocumentRelevanceEvaluationError,
     ensure_document_set_relevance,
 )
-from backend.ai_engine.v3.understanding_provider import ProviderFailureV3
+from backend.app.services.v3.document_summary import summarize_documents
 
 _OPERATION_CREATE = "create_v3_understanding"
 _OPERATION_CONFIRM_PREFIX = "confirm_v3_understanding"
@@ -87,7 +86,6 @@ _DOCUMENT_SOURCE_TYPES = frozenset({"document", "case_summary"})
 _WITH_DOCUMENT_TYPES = frozenset(
     {"document", "case_summary", "voice_transcript"}
 )
-_SUMMARY_MAX_CHARS = 140
 _REVISION_RECORD_PREFIX = "rev:"
 
 
@@ -290,10 +288,7 @@ def _build_case_summary(
     ]
     if not documents:
         return None
-    summary_text = (documents[0].text or "").strip()
-    truncated = summary_text[:_SUMMARY_MAX_CHARS]
-    if len(summary_text) > _SUMMARY_MAX_CHARS:
-        truncated = f"{truncated}…"
+    summary_text = summarize_documents([item.text or "" for item in documents])
     return CaseSummary(
         case_summary_id=f"summary_{uuid.uuid4().hex}",
         source_document_ids=[
@@ -302,7 +297,7 @@ def _build_case_summary(
         revision=revision,
         status="needs_confirmation",
         title="材料内容摘要",
-        summary=truncated or "已成功识别材料内容。",
+        summary=summary_text,
         editable_fields=[],
         warnings=[],
     ).model_dump(mode="json")
@@ -817,41 +812,13 @@ def _apply_full_text_edit(
     case_summary = json.loads(json.dumps(base))
     case_summary["summary"] = request.edited_summary_text
     case_summary["status"] = "confirmed"
-    # A full-text edit must re-derive facts from the edited summary, not copy
-    # the old Evidence. When the Understanding provider is unavailable the
-    # edit cannot be confirmed: publishing empty facts as a confirmed
-    # revision would fabricate a clean result.
-    fact_dicts, affected_fact_ids = _re_extract_facts(request.edited_summary_text)
+    # Full-text confirmation is authoritative. Retained canonical facts keep
+    # their original source references; earlier revisions remain provenance.
+    previous_facts = (current.presentation_json or {}).get("normalized_facts") or []
+    fact_dicts = [dict(fact) for fact in previous_facts
+                  if fact.get("display_name") and fact["display_name"] in request.edited_summary_text]
+    affected_fact_ids = [fact["fact_id"] for fact in previous_facts]
     return case_summary, ["chg_summary_edit"], affected_fact_ids, fact_dicts
-
-
-def _re_extract_facts(edited_text: str) -> tuple[list[dict], list[str]]:
-    """Controlled fact re-extraction over the edited summary text.
-
-    Re-runs the Understanding provider against the approved claim dictionary
-    and returns (new fact dicts, affected fact ids). When the provider is
-    unavailable the edit cannot be confirmed: a stable error is raised and
-    the old revision is kept instead of publishing empty facts.
-    """
-    chain = build_provider_chain()
-    if chain is None:
-        raise InvalidChange(
-            "FACT_EXTRACTION_UNAVAILABLE",
-            "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
-        )
-    try:
-        fact_dicts, affected_ids = re_extract_facts(chain, edited_text)
-    except ProviderFailureV3:
-        raise InvalidChange(
-            "FACT_EXTRACTION_UNAVAILABLE",
-            "事实提取服务暂不可用，无法确认修改后的摘要，请稍后重试。",
-        ) from None
-    if not fact_dicts:
-        raise InvalidChange(
-            "FACT_EXTRACTION_UNAVAILABLE",
-            "暂无法从修改后的摘要中提取有效事实，请稍后重试。",
-        )
-    return fact_dicts, affected_ids
 
 
 def _apply_changes(

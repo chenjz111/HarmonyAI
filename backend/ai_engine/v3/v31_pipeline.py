@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+import inspect
 import uuid
 
 from backend.app.schemas.v3.common import Degradation
@@ -132,6 +133,7 @@ async def execute_v31_ai_pipeline(
             else None
         ),
         rag_chunk_checksums=dict(getattr(rag_store, "chunk_checksums", {})),
+        confirmed_state_text=assessment_snapshot.get("confirmed_state_text"),
     )
     audit_context = V31PipelineAuditContext(
         query=query,
@@ -235,7 +237,14 @@ def _validate_confirmed_state(
 
 def _query_rag(rag_store, query: RagQuery, snapshot: Mapping[str, object]) -> RagResult:
     try:
-        result = rag_store.query(query)
+        parameters = inspect.signature(rag_store.query).parameters
+        text = snapshot.get("confirmed_state_text")
+        if text is not None and ("confirmed_state_text" in parameters or any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+        )):
+            result = rag_store.query(query, confirmed_state_text=text)
+        else:
+            result = rag_store.query(query)
     except Exception as error:
         from .rag_store import RagStoreFailure
 

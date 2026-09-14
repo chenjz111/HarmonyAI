@@ -209,8 +209,48 @@ def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str
     next_revision = run.current_revision + 1
     presentation = dict(current.presentation_json or {})
     summary = request.edited_summary_text or current.state_summary
+    organ_profile_json = current.organ_profile_json
+    evidence_coverage = current.evidence_coverage
+    source_diversity = current.source_diversity
+    conflicts_json = current.conflicts_json
+    degradation_json = current.degradation_json
     if request.edited_summary_text is not None:
         presentation["summary"] = request.edited_summary_text
+        current_model = _assessment_read_model(db, run)
+        active_evidence = [
+            item
+            for item in current_model.fact_evidence
+            if item.display_name and item.display_name in summary
+        ]
+        active_ids = {item.fact_evidence_id for item in active_evidence}
+        active_links = [
+            item
+            for item in current_model.organ_evidence_links
+            if item.fact_evidence_id in active_ids
+        ]
+        mapping = load_organ_mapping()
+        weights = _organ_weights(active_evidence, active_links, mapping)
+        organ_profile_json = OrganProfile(
+            status="available" if weights is not None else "insufficient",
+            weights=weights,
+            score_semantics="relative_evidence_distribution",
+        ).model_dump(mode="json")
+        evidence_coverage = round(min(1.0, len(active_evidence) / 8.0), 3)
+        source_diversity = len(
+            {
+                (ref.source_type, ref.source_id)
+                for item in active_evidence
+                for ref in item.source_refs
+            }
+        )
+        conflicts_json = [
+            item.model_dump(mode="json")
+            for item in _build_conflicts(active_evidence, mapping)
+        ]
+        degradation_json = Degradation(
+            active=weights is None,
+            reason_codes=["INSUFFICIENT_EVIDENCE"] if weights is None else [],
+        ).model_dump(mode="json")
     new_revision = AssessmentRevisionV3(
         assessment_id=assessment_id, revision=next_revision,
         previous_revision=current.revision,
@@ -218,12 +258,12 @@ def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str
         input_revision=current.input_revision, status="confirmed",
         confirmation_status="confirmed", state_summary=summary,
         recent_context_summary=current.recent_context_summary,
-        organ_profile_json=current.organ_profile_json,
-        evidence_coverage=current.evidence_coverage,
-        source_diversity=current.source_diversity,
-        conflicts_json=current.conflicts_json,
+        organ_profile_json=organ_profile_json,
+        evidence_coverage=evidence_coverage,
+        source_diversity=source_diversity,
+        conflicts_json=conflicts_json,
         missing_information_json=current.missing_information_json,
-        degradation_json=current.degradation_json,
+        degradation_json=degradation_json,
         presentation_json=presentation,
         confirmed_at=datetime.now(timezone.utc),
     )
@@ -248,6 +288,10 @@ def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str
             raise AssessmentRevisionConflict
     new_rows = {}
     for old in old_rows:
+        if request.edited_summary_text is not None and (
+            not old.display_name or old.display_name not in summary
+        ):
+            continue
         value = dict(old.value_json)
         change = changes.get(old.fact_evidence_id)
         if change is not None:
@@ -329,7 +373,7 @@ def load_confirmed_facts(
         if parsed.confirmation_status != "confirmed":
             continue
         facts.append(item)
-    if not facts:
+    if not facts and "chg_summary_edit" not in ((row.presentation_json or {}).get("applied_changes") or []):
         raise AssessmentInputNotReady
     return facts
 
@@ -778,11 +822,19 @@ def create_assessment(
         )
 
     degraded = weights is None
-    state_summary = (
-        "已根据你本次提供并确认的信息完成状态评估。"
-        if not degraded
-        else "现有证据不足，暂不能形成五脏状态判断。"
-    )
+    summary_parts = []
+    if request.understanding_ref is not None:
+        confirmed_revision = db.query(UnderstandingRevision).filter_by(
+            understanding_id=request.understanding_ref.understanding_id,
+            revision=request.understanding_ref.revision,
+        ).one()
+        text = (confirmed_revision.case_summary_json or {}).get("summary", "").strip()
+        if text:
+            summary_parts.append(text)
+    if questionnaire_submission is not None:
+        names = list(dict.fromkeys(item.display_name for item in evidence if _is_questionnaire_evidence(item)))
+        summary_parts.append("近7天问卷记录：" + "、".join(names) + "。" if names else "近7天问卷未记录到可用的状态事实。")
+    state_summary = "\n".join(summary_parts) or "当前没有可用的状态摘要，请补充或编辑。"
     response = AssessmentV31Response(
         schema_version="assessment_v3.1",
         agent_id="assessment_agent",
@@ -888,7 +940,10 @@ def create_assessment(
                     NormalizedFactRow.fact_id == ev.fact_id,
                     NormalizedFactRow.understanding_id
                     == request.understanding_ref.understanding_id,
+                    NormalizedFactRow.understanding_revision <= request.understanding_ref.revision,
                 )
+                .order_by(NormalizedFactRow.understanding_revision.desc())
+                .limit(1)
                 .scalar()
             )
         row = FactEvidenceRow(

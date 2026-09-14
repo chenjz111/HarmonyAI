@@ -2,8 +2,8 @@
 
 Wires the Issue #89 approved claim dictionary + provider into ingestion:
 OCR/Narrative text -> NormalizedFacts; confirmation propagates to inner
-state; full-text edits re-extract facts; an unavailable provider never
-fabricates facts or a fake revision.
+state; full-text edits project canonical facts without a provider and keep
+earlier facts as provenance.
 """
 
 import uuid
@@ -260,7 +260,7 @@ def test_provider_unavailable_never_fabricates_facts(monkeypatch, db_session_fac
     assert _v3_data(response)["normalized_facts"] == []
 
 
-def test_full_text_edit_re_extracts_facts_via_provider(monkeypatch, db_session_factory):
+def test_full_text_edit_removes_facts_absent_from_confirmed_text(monkeypatch, db_session_factory):
     monkeypatch.setattr(
         understanding_service, "build_provider_chain", lambda: _mock_chain()
     )
@@ -295,9 +295,7 @@ def test_full_text_edit_re_extracts_facts_via_provider(monkeypatch, db_session_f
             headers=headers,
         )
     )
-    fact = read["normalized_facts"][0]
-    assert fact["source_refs"][0]["source_type"] == "user_correction"
-    assert fact["confirmation_status"] == "confirmed"
+    assert read["normalized_facts"] == []
     assert read["case_summary"]["summary"] == "资料中提到最近入睡较慢，白天有些疲惫。"
 
 
@@ -346,10 +344,10 @@ def test_successful_full_text_edit_keeps_previous_revision_immutable(
     assert previous["case_summary"]["summary"] == "近期入睡困难，白天精神不足。"
     assert previous["normalized_facts"][0]["source_refs"][0]["source_type"] == "document"
     assert latest["case_summary"]["summary"] == "资料中提到最近入睡较慢，白天有些疲惫。"
-    assert latest["normalized_facts"][0]["source_refs"][0]["source_type"] == "user_correction"
+    assert latest["normalized_facts"] == []
 
 
-def test_full_text_edit_without_provider_keeps_old_revision(monkeypatch, db_session_factory):
+def test_full_text_edit_without_provider_confirms_new_revision(monkeypatch, db_session_factory):
     monkeypatch.setattr(
         understanding_service, "build_provider_chain", lambda: None
     )
@@ -373,8 +371,7 @@ def test_full_text_edit_without_provider_keeps_old_revision(monkeypatch, db_sess
         edited_summary_text="资料中提到最近入睡较慢。",
         reprocess_requested=True,
     )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "FACT_EXTRACTION_UNAVAILABLE"
+    assert response.status_code == 201, response.text
 
     read = _v3_data(
         client.get(
@@ -382,5 +379,6 @@ def test_full_text_edit_without_provider_keeps_old_revision(monkeypatch, db_sess
             headers=headers,
         )
     )
-    assert read["revision"] == 1  # old snapshot preserved
-    assert read["status"] == "needs_confirmation"
+    assert read["revision"] == 2
+    assert read["status"] == "confirmed"
+    assert read["normalized_facts"] == []

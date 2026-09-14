@@ -408,6 +408,7 @@ def _build_v31_assessment_snapshot(
     return {
         "assessment_id": assessment.assessment_id,
         "assessment_revision": assessment_revision.revision,
+        "confirmed_state_text": assessment_revision.state_summary,
         "diagnosis_id": request.diagnosis_id,
         "request_id": f"diag_req_{request.diagnosis_id}",
         "prompt_version": "diagnosis_prompt_v3.1",
