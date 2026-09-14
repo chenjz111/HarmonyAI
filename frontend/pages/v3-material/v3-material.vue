@@ -81,6 +81,7 @@ export default {
       if (this.state !== "pick" || this.files.length === 0) return
       this.state = "uploading"
       this.error = ""
+      const documentIds = []
       for (let i = 0; i < this.files.length; i++) {
         const f = this.files[i]
         try {
@@ -91,11 +92,21 @@ export default {
             return
           }
           f.document_id = doc.document_id
+          documentIds.push(doc.document_id)
         } catch (e) {
           // 网络/服务错误（含真实环境归属缺口）：跳独立异常页（?type=network）
           uni.redirectTo({ url: "/pages/v3-material-error/v3-material-error?type=network" })
           return
         }
+      }
+      // V3.1 有资料 canonical 激活：1~3 份资料作为「同一次输入」进入一个 DocumentSet。
+      // 不逐份 replace_document（那会只剩最后一份）；资料可用性 relevance 随后由后端
+      // 在资料摘要/理解消费时按 canonical 流程判定，前端不参与判定。
+      try {
+        await apiV3.createDocumentSet(documentIds)
+      } catch (e) {
+        uni.redirectTo({ url: "/pages/v3-material-error/v3-material-error?type=network" })
+        return
       }
       // 全部识别成功 → 资料摘要确认页
       this.state = "uploaded"

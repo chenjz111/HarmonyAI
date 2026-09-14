@@ -335,7 +335,9 @@ const realInputApi = {
     return realInputApi.inputTransition("discard_document")
   },
 
-  // 上传 = V2 文件上传 + OCR；成功后必须经 replace_document 绑定为活跃资料
+  // 上传 = V2 文件上传 + OCR（只做上传与识别，不再单独绑定活跃资料）
+  // V3.1 有资料流程：1~3 份资料全部上传/识别完成后，由 createDocumentSet() 作为
+  // 同一次输入激活一个 DocumentSet（canonical 路径），不在这里逐份 replace_document。
   async uploadDocument(filePath) {
     const up = await realUploadDocument(filePath)
     // ocr_status：confirmed | needs_confirmation → 可用；degraded | failed → OCR 失败分流
@@ -343,35 +345,87 @@ const realInputApi = {
     if (!usable) {
       return { document_id: up.document_id, state: "failed" }
     }
-    await realInputApi.replaceDocument(up.document_id)
-    saveFlowState({ active_document_id: up.document_id })
     return { document_id: up.document_id, state: "ready" }
   },
 
+  // V3.1 有资料流程的 canonical 激活（复用既有 POST /sessions/{id}/document-sets）
+  // - 1~3 份已识别资料作为「同一次输入」进入一个 DocumentSet，顺序即入参顺序
+  // - 后端做 owner / session / 数量 / 重复校验，并以 input_revision CAS 绑定
+  //   active_document_set_id + active_document_id（首份）+ input_revision+1
+  // - 资料可用性（relevance）由后端在摘要/理解消费时按 canonical 流程判定，前端不参与
+  async createDocumentSet(documentIds) {
+    const state = loadFlowState()
+    if (!state.session_id) throw apiError("会话未创建", "SESSION_NOT_FOUND")
+    const ids = (documentIds || []).filter(Boolean)
+    if (ids.length < 1 || ids.length > 3) {
+      throw apiError("需要 1~3 份资料", "DOCUMENT_SET_SIZE")
+    }
+    const data = await realRequest(
+      "/api/v3/sessions/" + encodeURIComponent(state.session_id) + "/document-sets",
+      {
+        method: "POST",
+        data: {
+          session_id: state.session_id,
+          expected_input_revision: state.input_revision || 1,
+          document_ids: ids,
+        },
+        headers: { "Idempotency-Key": idempotencyKey() },
+      },
+    )
+    // 以服务端返回的集合顺序为准（gate 会按该顺序校验 understanding inputs）
+    const ordered = (data.documents || []).map((doc) => doc.document_id).filter(Boolean)
+    const activeIds = ordered.length ? ordered : ids
+    saveFlowState({
+      input_revision: data.input_revision || state.input_revision,
+      active_document_set_id: data.document_set_id,
+      active_document_id: activeIds[0],
+      active_document_ids: activeIds,
+      // 新资料集使旧的资料摘要/理解失效（后端同样清空 active understanding）
+      understanding_id: null,
+      understanding_revision: null,
+      understanding_status: null,
+    })
+    return {
+      document_set_id: data.document_set_id,
+      revision: data.revision,
+      document_ids: activeIds,
+      input_revision: data.input_revision,
+    }
+  },
+
   // 理解创建（资料来源）；后端幂等，同一 Idempotency-Key 重放返回同一结果
+  // 有资料流程必须按活动 DocumentSet 的完整有序资料列表提交：
+  // 后端 gate 会校验 inputs 的 text_ref 顺序与活动集合完全一致（1~3 份）。
   async ensureUnderstanding() {
     const state = loadFlowState()
     if (!state.session_id) throw apiError("会话未创建", "SESSION_NOT_FOUND")
     if (state.understanding_id && state.understanding_revision) {
       return realInputApi.readUnderstanding(state.understanding_id)
     }
-    if (!state.active_document_id) {
+    const activeIds =
+      Array.isArray(state.active_document_ids) && state.active_document_ids.length
+        ? state.active_document_ids
+        : state.active_document_id
+          ? [state.active_document_id]
+          : []
+    if (!activeIds.length) {
       throw apiError("资料尚未上传成功，不能进入摘要确认", "SOURCE_NOT_READY")
     }
+    const capturedAt = new Date().toISOString()
     const data = await realRequest("/api/v3/understandings", {
       method: "POST",
       data: {
         schema_version: "understanding_v3.1",
         session_id: state.session_id,
-        inputs: [
-          {
-            source_id: state.active_document_id,
-            source_type: "document",
-            processing_status: "ready",
-            text_ref: state.active_document_id,
-            captured_at: new Date().toISOString(),
-          },
-        ],
+        // V3.1 契约要求：understanding 创建必须携带 expected_input_revision（CAS）
+        expected_input_revision: state.input_revision || 1,
+        inputs: activeIds.map((documentId) => ({
+          source_id: documentId,
+          source_type: "document",
+          processing_status: "ready",
+          text_ref: documentId,
+          captured_at: capturedAt,
+        })),
       },
       headers: { "Idempotency-Key": idempotencyKey() },
     })
@@ -1090,6 +1144,31 @@ const mockApi = {
     return clone(record)
   },
 
+  // mock 的 canonical 激活：把本次上传的 1~3 份资料组装成一个活动资料集
+  // （演示形态；真实模式由后端 /document-sets 端点完成同样的语义）
+  async createDocumentSet(documentIds) {
+    await delay(300)
+    const ids = (documentIds || []).filter(Boolean)
+    if (ids.length < 1 || ids.length > 3) {
+      throw apiError("需要 1~3 份资料", "DOCUMENT_SET_SIZE", { status: 422 })
+    }
+    const s = MOCK.session
+    if (!s) throw apiError("会话未创建", "SESSION_NOT_FOUND")
+    const setId = "dset_mock_" + Date.now()
+    s.active_document_set_id = setId
+    s.active_document_id = ids[0]
+    s.active_document_ids = ids.slice()
+    s.input_revision += 1 // replace_document_set
+    s.understanding_ref = null
+    MOCK.understanding = null
+    return clone({
+      document_set_id: setId,
+      revision: 1,
+      document_ids: ids.slice(),
+      input_revision: s.input_revision,
+    })
+  },
+
   getCaseSummary() {
     // 多资料：只要至少一份文档达 ready 即可生成摘要（mock 演示）
     const anyReady = (MOCK.documents || []).some((d) => d.state === "ready")
@@ -1362,6 +1441,10 @@ export const apiV3 = {
   },
   uploadDocument(filePath, fileName) {
     return INPUT_REAL ? realInputApi.uploadDocument(filePath) : mockApi.uploadDocument(filePath, fileName)
+  },
+  // V3.1 有资料：1~3 份资料作为同一次输入激活一个 DocumentSet（canonical 路径）
+  createDocumentSet(documentIds) {
+    return INPUT_REAL ? realInputApi.createDocumentSet(documentIds) : mockApi.createDocumentSet(documentIds)
   },
   getCaseSummary() {
     return INPUT_REAL ? realInputApi.getCaseSummary() : mockApi.getCaseSummary()
