@@ -39,3 +39,7 @@ tests/ocr_samples/
 .chroma-v31/
 *.v31-index-receipt.local.json
 .pytest-tmp-*/
+
+# Runtime uploads / generated media (contain real medical records; never commit)
+/uploads/
+/media/
