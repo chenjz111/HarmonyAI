@@ -61,24 +61,49 @@ export default {
       const p = (this.currentTime / this.totalSeconds) * 100
       return Math.max(0, Math.min(100, p))
     },
+    // 主音的权威来源优先级（均为服务端数据，前端不重算、不猜）：
+    //   1. 本次 music asset 的 tone_profile.primary_tone（persistMusicTask 已固化为 tone_code）
+    //   2. 本次 music asset 的展示文案（tone_label，由同一个 tone_profile 派生）
+    //   3. 本次音乐方案 / 五音分析 read model 明确存在的 primary_tone.tone
+    // 都缺失时返回空字符串 → toneThemeFor 给出空状态 "--"，绝不回退成"宫"。
+    toneSource() {
+      const music = this.music || {}
+      if (music.tone_code) return music.tone_code
+      if (music.tone_label) return music.tone_label
+      if (this.basis && this.basis.primary_tone) return this.basis.primary_tone.tone
+      return ""
+    },
     toneTheme() {
-      return toneThemeFor((this.music && (this.music.tone_code || this.music.tone_label)) || "gong")
+      return toneThemeFor(this.toneSource)
     },
     playerStyle() {
-      return {
+      const style = {
         "--tone-accent": this.toneTheme.accent,
         "--tone-soft": this.toneTheme.soft,
-        backgroundImage: `linear-gradient(rgba(255,255,252,.08),rgba(255,255,252,.08)), url('/static/v31-player/${this.toneTheme.code}-1.png')`,
       }
+      if (this.toneTheme.imageCode) {
+        style.backgroundImage = `linear-gradient(rgba(255,255,252,.08),rgba(255,255,252,.08)), url('/static/v31-player/${this.toneTheme.imageCode}-1.png')`
+      }
+      return style
     },
     toneHeroSrc() {
-      return `/static/v31-player/${this.toneTheme.code}-2.png`
+      if (!this.toneTheme.imageCode) return ""
+      return `/static/v31-player/${this.toneTheme.imageCode}-2.png`
     },
     basisMatchesTone() {
       return !!(this.basis && this.basis.primary_tone && this.basis.primary_tone.tone === this.toneTheme.code)
     },
     displayTitle() {
-      return (this.music && this.music.title) || this.toneTheme.title
+      return (this.music && this.music.title) || this.toneTheme.title || "—"
+    },
+    // 主音未解析出来时显示占位符，而不是任何具体的五音
+    tonePairText() {
+      if (!this.toneTheme.code) return "—"
+      return `${this.toneTheme.glyph}音`
+    },
+    toneSummaryValue() {
+      if (!this.toneTheme.code) return "—"
+      return `${this.toneTheme.glyph}音主调`
     },
     displayBpm() {
       return this.basis && this.basis.bpm ? `${this.basis.bpm.value} BPM` : "—"
@@ -86,10 +111,11 @@ export default {
     displayInstruments() {
       if (this.basisMatchesTone && this.basis.instruments) return this.basis.instruments.values.join(" · ")
       if (this.music && this.music.instrument_labels && this.music.instrument_labels.length) return this.music.instrument_labels.join(" · ")
-      return this.toneTheme.instruments
+      return this.toneTheme.instruments || "—"
     },
     displayAmbience() {
-      return this.basis && this.basis.ambience ? this.basis.ambience.values.join(" · ") : this.toneTheme.ambience
+      if (this.basis && this.basis.ambience) return this.basis.ambience.values.join(" · ")
+      return this.toneTheme.ambience || "—"
     },
     summaryDuration() {
       if (!this.totalSeconds) return "—"
@@ -279,7 +305,7 @@ export default {
         <view class="hero-wrap">
           <view class="wave-ring" :class="{ 'wave-ring--playing': playing }">
             <view class="tone-hero-frame">
-              <image class="tone-hero-image" :src="toneHeroSrc" mode="aspectFill" />
+              <image v-if="toneHeroSrc" class="tone-hero-image" :src="toneHeroSrc" mode="aspectFill" />
               <view class="tone-copy">
                 <view class="tone-glyph-row"><text class="tone-glyph">{{ toneTheme.glyph }}</text><text class="tone-seal">主音</text></view>
                 <text class="tone-traits">{{ toneTheme.traits }}</text>
@@ -289,7 +315,7 @@ export default {
         </view>
 
         <text class="music-title">{{ displayTitle }}</text>
-        <text class="tone-pair">{{ toneTheme.glyph }}音 · {{ toneTheme.partner }}</text>
+        <text class="tone-pair">{{ tonePairText }}</text>
         <text class="music-instruments">—　{{ displayInstruments }} · {{ displayAmbience }}　—</text>
         <text class="music-caption">让音乐回归身心的自然节奏，在静谧中遇见更好的自己。</text>
 
@@ -315,7 +341,7 @@ export default {
         <view class="music-summary-card">
           <view class="summary-heading"><view class="summary-note">♫</view><text>本次音乐</text></view>
           <view class="music-summary-grid">
-            <view class="music-summary-cell"><text class="summary-value">{{ toneTheme.glyph }}音主调</text><text class="summary-label">{{ toneTheme.traits }}</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ toneSummaryValue }}</text><text class="summary-label">{{ toneTheme.traits }}</text></view>
             <view class="music-summary-cell"><text class="summary-value">{{ displayBpm }}</text><text class="summary-label">舒缓节奏</text></view>
             <view class="music-summary-cell"><text class="summary-value">{{ summaryDuration }}</text><text class="summary-label">聆听时长</text></view>
             <view class="music-summary-cell"><text class="summary-value">{{ displayInstruments }}</text><text class="summary-label">主要乐器</text></view>

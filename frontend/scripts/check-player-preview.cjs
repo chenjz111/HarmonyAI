@@ -3,12 +3,14 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { chromium } = require('playwright')
 
+// code 为后端权威五音 code；image 为 /static/v31-player/<image>-*.png 静态插画名
+// （角的历史文件名为 jue-*.png）
 const THEMES = [
-  { code: 'gong', glyph: '宫', title: '静水流深' },
-  { code: 'shang', glyph: '商', title: '清风和鸣' },
-  { code: 'jue', glyph: '角', title: '春山新绿' },
-  { code: 'zhi', glyph: '徵', title: '秋山红叶' },
-  { code: 'yu', glyph: '羽', title: '寒江映月' },
+  { code: 'gong', image: 'gong', glyph: '宫', title: '静水流深' },
+  { code: 'shang', image: 'shang', glyph: '商', title: '清风和鸣' },
+  { code: 'jiao', image: 'jue', glyph: '角', title: '春山新绿' },
+  { code: 'zhi', image: 'zhi', glyph: '徵', title: '秋山红叶' },
+  { code: 'yu', image: 'yu', glyph: '羽', title: '寒江映月' },
 ]
 
 async function reachPlayer(page) {
@@ -40,7 +42,7 @@ async function setTheme(page, theme) {
   await page.waitForFunction(expected => {
     const image = document.querySelector('.tone-hero-image img')
     return image && image.getAttribute('src') === expected
-  }, `/static/v31-player/${theme.code}-2.png`)
+  }, `/static/v31-player/${theme.image}-2.png`)
 }
 
 async function main() {
@@ -67,9 +69,9 @@ async function main() {
     for (const theme of THEMES) {
       await setTheme(page, theme)
       assert.equal(await page.locator('.tone-glyph').innerText(), theme.glyph)
-      assert.equal(await page.locator('.tone-hero-image img').getAttribute('src'), `/static/v31-player/${theme.code}-2.png`)
+      assert.equal(await page.locator('.tone-hero-image img').getAttribute('src'), `/static/v31-player/${theme.image}-2.png`)
       const background = await page.locator('.tone-player-page').evaluate(element => getComputedStyle(element).backgroundImage)
-      assert.match(background, new RegExp(`${theme.code}-1\\.png`))
+      assert.match(background, new RegExp(`${theme.image}-1\\.png`))
       await page.screenshot({ path: path.join(output, `${theme.code}-390.png`), fullPage: true })
     }
 

@@ -132,7 +132,8 @@ test("Five-Tone analysis generates on-page and transitions directly to Player", 
 test("one player uses five data-driven themes and real duration", () => {
   const player = read("pages/v3-player/v3-player.vue")
   const theme = read("common/v31-tone-theme.js")
-  for (const tone of ["gong", "shang", "jue", "zhi", "yu"]) {
+  // 权威五音 code（backend ToneCode / five-tone mapping）：角是 jiao，不是 jue
+  for (const tone of ["gong", "shang", "jiao", "zhi", "yu"]) {
     assert.match(theme, new RegExp(`\\b${tone}\\b`))
   }
   assert.match(player, /toneThemeFor/)

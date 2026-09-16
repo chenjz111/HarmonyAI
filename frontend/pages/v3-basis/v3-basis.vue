@@ -14,6 +14,7 @@
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
 import { apiV3 } from "../../common/api-v3.js"
+import { toneThemeFor } from "../../common/v31-tone-theme.js"
 
 export default {
   data() {
@@ -48,16 +49,24 @@ export default {
     toneOptions() {
       const primary = this.basis && this.basis.primary_tone ? this.basis.primary_tone.tone : ""
       const secondary = this.basis && this.basis.secondary_tone ? this.basis.secondary_tone.tone : ""
+      // code 必须是后端权威拼写（gong/shang/jiao/zhi/yu），否则主音无法被标记出来
       return [
         { code: "gong", label: "宫" },
         { code: "shang", label: "商" },
-        { code: "jue", label: "角" },
+        { code: "jiao", label: "角" },
         { code: "zhi", label: "徵" },
         { code: "yu", label: "羽" },
       ].map(item => ({
         ...item,
         role: item.code === primary ? "primary" : (item.code === secondary ? "secondary" : ""),
       }))
+    },
+    // 主音/辅音的性格文案取自五音主题表，避免写死某个音（例如"宫"）的旧文案
+    primaryToneTheme() {
+      return toneThemeFor(this.basis && this.basis.primary_tone ? this.basis.primary_tone.tone : "")
+    },
+    secondaryToneTheme() {
+      return toneThemeFor(this.basis && this.basis.secondary_tone ? this.basis.secondary_tone.tone : "")
     },
     statusText() {
       const map = {
@@ -285,12 +294,12 @@ export default {
           <view class="tone-details">
             <view class="tone-detail tone-detail--primary">
               <text class="tone-detail-title">{{ basis.primary_tone.display_name }} · 主音</text>
-              <text class="tone-detail-subtitle">沉稳 · 平和 · 安定</text>
+              <text class="tone-detail-subtitle">{{ primaryToneTheme.traits }}</text>
               <text class="tone-detail-copy">{{ basis.primary_tone.explanation }}</text>
             </view>
             <view v-if="basis.secondary_tone" class="tone-detail tone-detail--secondary">
               <text class="tone-detail-title">{{ basis.secondary_tone.display_name }} · 辅音</text>
-              <text class="tone-detail-subtitle">柔和 · 收敛 · 入静</text>
+              <text class="tone-detail-subtitle">{{ secondaryToneTheme.traits }}</text>
               <text class="tone-detail-copy">{{ basis.secondary_tone.explanation }}</text>
             </view>
           </view>
