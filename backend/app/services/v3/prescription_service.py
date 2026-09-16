@@ -102,11 +102,49 @@ def _request_hash(payload: dict[str, object]) -> str:
     return f"sha256:{sha256(encoded).hexdigest()}"
 
 
+def _structure_for(duration_seconds: int) -> GenerationStructure:
+    """Split a duration into segments that always sum back to it.
+
+    Mirrors the approved Agent3 transport split so a preserved duration stays
+    internally consistent instead of failing the spec's segment check.
+    """
+
+    intro = min(60, max(1, duration_seconds // 6))
+    outro = min(60, max(1, duration_seconds // 6))
+    main = duration_seconds - intro - outro
+    if main < 0:
+        intro = duration_seconds // 2
+        outro = duration_seconds - intro
+        main = 0
+    return GenerationStructure(
+        intro_seconds=intro, main_seconds=main, outro_seconds=outro
+    )
+
+
+def _preserved_abstained_spec(diagnosis: DiagnosisRun) -> GenerationSpec | None:
+    """Return the diagnosis-time spec when an abstained run still produced one.
+
+    A V3.1 abstention can be a retrieval abstention (``RAG_EMPTY``): the
+    pipeline still builds an approved, goal-selected GenerationSpec before
+    abstaining on the syndrome decision. Those deterministic music parameters
+    are not syndrome claims, so the wellness fallback keeps them instead of
+    discarding them and pinning every user to the same placeholder.
+    """
+
+    if diagnosis.generation_spec_json is None:
+        return None
+    try:
+        return GenerationSpec.model_validate(diagnosis.generation_spec_json)
+    except (TypeError, ValueError):
+        return None
+
+
 def _conservative_wellness_spec(
     diagnosis_id: str,
     diagnosis_revision: int,
     preference,
     user_goal: UserGoalV31 | None,
+    preserved: GenerationSpec | None = None,
 ) -> GenerationSpec:
     tone_profile = ToneProfileV31(
         schema_version="tone_profile_v3.1",
@@ -145,6 +183,12 @@ def _conservative_wellness_spec(
             instruments = [
                 item.code for item in preference.preferred_instruments[:3]
             ] or instruments
+    if preserved is not None:
+        # An abstained diagnosis can still carry the approved goal-selected
+        # parameters; only the tone stays conservative.
+        bpm = preserved.bpm
+        duration = preserved.duration_seconds
+        instruments = list(preserved.instruments)
     return GenerationSpec(
         schema_version="generation_spec_v3.0",
         tone_profile=tone_profile,
@@ -152,9 +196,7 @@ def _conservative_wellness_spec(
         duration_seconds=duration,
         instruments=instruments,
         ambient_sounds=[],
-        structure=GenerationStructure(
-            intro_seconds=30, main_seconds=120, outro_seconds=30
-        ),
+        structure=_structure_for(duration),
         energy_curve=energy_curve,
         forbidden_constraints=[],
         fallback_policy=GenerationFallbackPolicy(allow_local_matching=True),
@@ -276,12 +318,14 @@ def create_prescription(
     if abstained:
         # Abstained diagnosis (safe user, no syndrome identified): the backend
         # must not fake a syndrome-based spec. Fall back to conservative
-        # wellness without inventing syndrome-based evidence.
+        # wellness without inventing syndrome-based evidence, but keep the
+        # deterministic parameters the diagnosis already produced.
         spec = _conservative_wellness_spec(
             request.diagnosis_id,
             diagnosis.assessment_revision,
             None,
             user_goal,
+            preserved=_preserved_abstained_spec(diagnosis),
         )
         status = "degraded"
         mode = "wellness"

@@ -140,7 +140,13 @@ def _new_flow_session(headers) -> str:
 
 
 def _seed_diagnosis(
-    headers, session_id, *, status="success", abstained=0, abstain_reason=None
+    headers,
+    session_id,
+    *,
+    status="success",
+    abstained=0,
+    abstain_reason=None,
+    generation_spec_json=None,
 ):
     with _seed_db() as session:
         user = (
@@ -232,6 +238,7 @@ def _seed_diagnosis(
             abstain_reason=abstain_reason,
             degradation_json={},
             presentation_json={},
+            generation_spec_json=generation_spec_json,
         )
         session.add(diagnosis)
         sess.active_understanding_id = understanding_id
@@ -779,3 +786,163 @@ def test_user_goal_snapshot_is_persisted():
         )
         assert row.user_goal_json == goal
         assert row.user_goal_revision == 1
+
+
+def _preserved_abstained_spec(*, bpm, duration_seconds, instruments, tone="jiao"):
+    """A diagnosis-time GenerationSpec as the V3.1 pipeline persists it.
+
+    The tone is deliberately NOT gong so the assertions can prove the wellness
+    fallback keeps its own conservative tone while preserving parameters.
+    """
+
+    from backend.app.schemas.v3.flow_v31 import ToneProfileBasisV31, ToneProfileV31
+    from backend.app.schemas.v3.prescription import (
+        GenerationFallbackPolicy,
+        GenerationSpec,
+        GenerationStructure,
+    )
+
+    intro = min(60, max(1, duration_seconds // 6))
+    outro = min(60, max(1, duration_seconds // 6))
+    weights = {code: 0.0 for code in ("jiao", "zhi", "gong", "shang", "yu")}
+    weights[tone] = 1.0
+    return GenerationSpec(
+        schema_version="generation_spec_v3.0",
+        tone_profile=ToneProfileV31(
+            schema_version="tone_profile_v3.1",
+            weights=weights,
+            primary_tone=tone,
+            secondary_tone=None,
+            score_semantics="relative_tone_distribution",
+            mapping_version="five_tone_mapping_v3@3.0.0",
+            basis=ToneProfileBasisV31(
+                diagnosis_id="diag_seeded",
+                diagnosis_revision=1,
+                supporting_evidence_refs=["fev_seeded"],
+            ),
+        ),
+        bpm=bpm,
+        duration_seconds=duration_seconds,
+        instruments=list(instruments),
+        ambient_sounds=["细雨"],
+        structure=GenerationStructure(
+            intro_seconds=intro,
+            main_seconds=duration_seconds - intro - outro,
+            outro_seconds=outro,
+        ),
+        energy_curve="平稳舒缓",
+        forbidden_constraints=[],
+        fallback_policy=GenerationFallbackPolicy(allow_local_matching=True),
+    ).model_dump(mode="json")
+
+
+def test_abstained_prescription_keeps_goal_selected_parameters():
+    """A RAG_EMPTY abstention must not discard the goal-selected parameters.
+
+    The pipeline builds an approved goal-selected spec before abstaining on the
+    syndrome decision; the wellness fallback keeps its bpm, duration and
+    instruments instead of pinning every user to 62/180/guqin.
+    """
+
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _submit_questionnaire(headers, session_id)
+    diagnosis_id = _seed_diagnosis(
+        headers,
+        session_id,
+        status="abstained",
+        abstained=1,
+        abstain_reason="RAG_EMPTY",
+        generation_spec_json=_preserved_abstained_spec(
+            bpm=50, duration_seconds=240, instruments=["古琴"]
+        ),
+    )
+
+    created = _v3_data(
+        client.post(
+            "/api/v3/prescriptions",
+            headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+            json={
+                "schema_version": "prescription_v3.1",
+                "diagnosis_id": diagnosis_id,
+                "preference_snapshot": None,
+            },
+        )
+    )
+
+    spec = created["generation_spec"]
+    assert created["prescription_mode"] == "wellness"
+    assert created["status"] == "degraded"
+    # preserved from the abstained diagnosis
+    assert spec["bpm"] == 50
+    assert spec["duration_seconds"] == 240
+    assert spec["instruments"] == ["古琴"]
+    # tone stays conservative
+    assert spec["tone_profile"]["primary_tone"] == "gong"
+    assert spec["tone_profile"]["weights"]["gong"] == 0.6
+    # the segment split must still sum to the preserved duration
+    structure = spec["structure"]
+    assert (
+        structure["intro_seconds"]
+        + structure["main_seconds"]
+        + structure["outro_seconds"]
+        == 240
+    )
+
+
+def test_abstained_prescription_without_a_spec_keeps_the_placeholder():
+    """An abstention that produced no spec (insufficient element evidence)."""
+
+    headers = _guest_headers()
+    session_id = _new_flow_session(headers)
+    _submit_questionnaire(headers, session_id)
+    diagnosis_id = _seed_diagnosis(
+        headers,
+        session_id,
+        status="abstained",
+        abstained=1,
+        abstain_reason="ELEMENT_EVIDENCE_INSUFFICIENT",
+    )
+
+    created = _v3_data(
+        client.post(
+            "/api/v3/prescriptions",
+            headers={**headers, "Idempotency-Key": f"rx-{uuid.uuid4().hex}"},
+            json={
+                "schema_version": "prescription_v3.1",
+                "diagnosis_id": diagnosis_id,
+                "preference_snapshot": None,
+            },
+        )
+    )
+
+    spec = created["generation_spec"]
+    assert created["prescription_mode"] == "wellness"
+    assert spec["bpm"] == 62
+    assert spec["duration_seconds"] == 180
+    assert spec["instruments"] == ["guqin"]
+    assert spec["tone_profile"]["primary_tone"] == "gong"
+
+
+def test_preserved_duration_drives_a_valid_segment_split():
+    from backend.app.services.v3.prescription_service import _structure_for
+
+    for duration in (180, 240, 300, 1, 2):
+        structure = _structure_for(duration)
+        assert (
+            structure.intro_seconds
+            + structure.main_seconds
+            + structure.outro_seconds
+            == duration
+        )
+        assert min(
+            structure.intro_seconds,
+            structure.main_seconds,
+            structure.outro_seconds,
+        ) >= 0
+    # the placeholder layout for the default 180s spec is unchanged
+    assert _structure_for(180).model_dump() == {
+        "intro_seconds": 30,
+        "main_seconds": 120,
+        "outro_seconds": 30,
+    }

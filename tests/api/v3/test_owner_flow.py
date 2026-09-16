@@ -37,6 +37,25 @@ from backend.app.services.v3.activity_service import (
 client = TestClient(app)
 
 
+@pytest.fixture
+def sqlite_foreign_keys(db_session_factory):
+    """Exercise production SQLite FK ordering for revision binding."""
+
+    session = db_session_factory()
+    engine = session.get_bind()
+    session.close()
+
+    def enable():
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+    try:
+        yield enable
+    finally:
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+
+
 def _v3_data(response):
     payload = response.json()
     if "data" not in payload:
@@ -726,7 +745,9 @@ def test_readiness_rejects_wrong_checksum_and_schema_identity():
         validate_assessment_input_readiness(session, row)
 
 
-def test_confirmation_returns_read_model_and_input_revision():
+def test_confirmation_returns_read_model_and_input_revision(
+    sqlite_foreign_keys,
+):
     headers = _guest_headers()
     session_id = _new_flow_session(headers)
     _transition(
@@ -763,6 +784,8 @@ def test_confirmation_returns_read_model_and_input_revision():
         )
     )["understanding_id"]
 
+    sqlite_foreign_keys()
+
     result = _v3_data(
         client.post(
             f"/api/v3/understandings/{understanding_id}/confirmations",
@@ -781,6 +804,35 @@ def test_confirmation_returns_read_model_and_input_revision():
     assert result["understanding"]["understanding_id"] == understanding_id
     assert result["understanding"]["revision"] == 2
     assert result["understanding"]["status"] == "confirmed"
+    with _seed_db() as session:
+        run = (
+            session.query(SessionModel)
+            .filter(SessionModel.session_id == session_id)
+            .one()
+        )
+        assert run.input_revision == 4
+        assert run.active_understanding_id == understanding_id
+        assert run.active_understanding_revision == 2
+        assert (
+            session.query(UnderstandingRevision)
+            .filter(
+                UnderstandingRevision.understanding_id == understanding_id,
+                UnderstandingRevision.revision == 2,
+            )
+            .one()
+            .status
+            == "confirmed"
+        )
+        assert (
+            session.query(SessionInputRevision)
+            .filter(
+                SessionInputRevision.session_row_id == run.id,
+                SessionInputRevision.input_revision == 4,
+            )
+            .one()
+            .active_understanding_revision
+            == 2
+        )
 
 
 def test_confirmation_replay_returns_first_success_state():

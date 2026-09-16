@@ -470,7 +470,13 @@ def _run_v31_pipeline(
                 diagnosis_provider=deps.diagnosis_provider,
                 tone_mapping=deps.tone_mapping,
                 generation_parameter_rules=deps.generation_parameter_rules,
-                user_goal=assessment.user_goal_json,
+                # The optional UserGoal is an Agent 3 personalization input owned
+                # by the session (user_goal_service), never Agent 1 output: the
+                # frozen 0003_v3_owner_flow migration constrains
+                # assessment_v3.user_goal_json to NULL for v3-owner-flow-1, so
+                # the session is the only approved source for goal rule
+                # selection. goal never changes the medical tone profile.
+                user_goal=session_row.user_goal_json,
             )
         )
     except V31ReadinessFailure as error:

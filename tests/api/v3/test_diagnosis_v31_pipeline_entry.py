@@ -12,6 +12,7 @@ import uuid
 
 from backend.app.core import agent_config
 from backend.app.schemas.v3.common import Degradation
+from backend.app.models.v3.assessment import AssessmentV3
 from backend.app.models.v3.diagnosis import (
     AiProviderRun,
     DiagnosisRun,
@@ -613,5 +614,118 @@ def test_formal_router_replays_failed_idempotency_result_without_rerunning_provi
         ).one()
         assert record.status == "failed"
         assert record.response_json is not None
+    finally:
+        audit_db.close()
+
+
+SESSION_GOAL = {
+    "primary_goal": "sleep",
+    "secondary_goal": None,
+    "custom_goal_text": None,
+}
+
+
+def _run_diagnosis_with_session_goal(db_session_factory, monkeypatch, *, session_goal):
+    """One fake-transport V3.1 diagnosis; no stored preference is applied."""
+
+    headers = _guest_headers()
+    db = db_session_factory()
+    session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    # UserGoal is a session attribute (user_goal_service); the assessment row
+    # must keep it NULL under the frozen 0003_v3_owner_flow constraint.
+    session_row.user_goal_json = session_goal
+    db.commit()
+    assessment_id = _seed_confirmed_assessment(
+        db,
+        user_pk=user_pk,
+        session_row=session_row,
+        organ_profile_json={
+            "status": "available",
+            "weights": {
+                "liver": 0.0,
+                "heart": 1.0,
+                "spleen": 0.0,
+                "lung": 0.0,
+                "kidney": 0.0,
+            },
+            "score_semantics": "relative_evidence_distribution",
+        },
+    )
+    db.close()
+
+    calls: list[str] = []
+    dependencies = _dependencies(calls)
+    monkeypatch.setattr(diagnosis_service, "_v31_real_mode", lambda: True)
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_ai_pipeline_dependencies",
+        lambda: (calls.append("factory") or dependencies),
+    )
+    monkeypatch.setattr(
+        diagnosis_service,
+        "_load_confirmed_user_state",
+        lambda *args, **kwargs: _confirmed_state_for(session_id),
+    )
+    # No stored preference, so nothing rewrites the goal-selected parameters.
+    monkeypatch.setattr(
+        diagnosis_service,
+        "get_latest_preference_snapshot",
+        lambda *args, **kwargs: None,
+    )
+
+    response = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": f"goal-{uuid.uuid4().hex}"},
+        json=_diagnosis_body(session_id, assessment_id, 1),
+    )
+    return response, assessment_id
+
+
+def test_session_user_goal_selects_the_approved_goal_rule(
+    db_session_factory, monkeypatch
+):
+    """Agent 3 must read the goal from the session, not the assessment.
+
+    ``assessment_v3.user_goal_json`` is constrained to NULL for
+    ``v3-owner-flow-1`` by the frozen migration, so it can never carry the
+    goal; reading it silently pinned every run to the rule-asset default row.
+    """
+
+    response, assessment_id = _run_diagnosis_with_session_goal(
+        db_session_factory, monkeypatch, session_goal=SESSION_GOAL
+    )
+
+    assert response.status_code == 201, response.text
+    audit_db = db_session_factory()
+    try:
+        diagnosis = audit_db.query(DiagnosisRun).one()
+        # Fixture rules: goal sleep -> bpm 50 / duration 240 / ["古琴", "箫"].
+        assert diagnosis.generation_spec_json["bpm"] == 50
+        assert diagnosis.generation_spec_json["duration_seconds"] == 240
+        assert diagnosis.generation_spec_json["instruments"] == ["古琴", "箫"]
+        assessment = (
+            audit_db.query(AssessmentV3)
+            .filter(AssessmentV3.assessment_id == assessment_id)
+            .one()
+        )
+        assert assessment.user_goal_json is None
+    finally:
+        audit_db.close()
+
+
+def test_missing_session_goal_uses_the_default_rule_row(
+    db_session_factory, monkeypatch
+):
+    response, _assessment_id = _run_diagnosis_with_session_goal(
+        db_session_factory, monkeypatch, session_goal=None
+    )
+
+    assert response.status_code == 201, response.text
+    audit_db = db_session_factory()
+    try:
+        diagnosis = audit_db.query(DiagnosisRun).one()
+        assert diagnosis.generation_spec_json["bpm"] == 60
+        assert diagnosis.generation_spec_json["duration_seconds"] == 180
+        assert diagnosis.generation_spec_json["instruments"] == ["古琴"]
     finally:
         audit_db.close()
