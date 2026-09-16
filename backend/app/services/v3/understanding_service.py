@@ -71,7 +71,10 @@ from backend.app.services.v3.document_relevance_evaluator import (
     DocumentRelevanceEvaluationError,
     ensure_document_set_relevance,
 )
-from backend.app.services.v3.document_summary import summarize_documents
+from backend.app.services.v3.document_summary import (
+    summarize_documents,
+    summarize_facts,
+)
 
 _OPERATION_CREATE = "create_v3_understanding"
 _OPERATION_CONFIRM_PREFIX = "confirm_v3_understanding"
@@ -384,6 +387,11 @@ def _persist_run(
         confirmed_at=None,
     )
     db.add(revision)
+    # normalized_facts has a composite FK to this exact Understanding revision
+    # and no relationship() to order the writes. Persist the run/source/revision
+    # parents before create_understanding adds any fact row; otherwise SQLite may
+    # flush a child first at commit and fail with FOREIGN KEY constraint failed.
+    db.flush()
     return run, source_rows, revision
 
 
@@ -505,12 +513,33 @@ def create_understanding(
     # AI fact extraction: OCR/Narrative text through the Understanding
     # Provider against the approved claim dictionary. An unavailable provider
     # or an empty result leaves normalized_facts empty — never fabricated.
-    fact_dicts, _extraction_reasons = extract_facts_for_sources(
+    fact_dicts, extraction_reasons = extract_facts_for_sources(
         build_provider_chain(),
         resolved,
     )
+    if extraction_reasons:
+        existing_degradation = dict(run.degradation_json or {})
+        existing_reasons = list(existing_degradation.get("reason_codes") or [])
+        run.degradation_json = {
+            "active": True,
+            "reason_codes": list(
+                dict.fromkeys([*existing_reasons, *extraction_reasons])
+            ),
+        }
     presentation = dict(revision.presentation_json or {})
     presentation["normalized_facts"] = fact_dicts
+    # The case summary is built from OCR before extraction runs. Once approved
+    # facts exist they are the better user-facing "recent state" summary: the
+    # confirmed text is what Agent 1 later adopts as its state_summary, so it
+    # must not stay a raw OCR excerpt. Without facts the deterministic OCR
+    # excerpt remains the fallback (never an invented summary). Narrative-only
+    # runs have no material CaseSummary at all and must not gain one.
+    fact_summary = summarize_facts(fact_dicts)
+    if fact_summary and isinstance(revision.case_summary_json, dict):
+        case_summary = dict(revision.case_summary_json)
+        case_summary["summary"] = fact_summary
+        revision.case_summary_json = case_summary
+        presentation["case_summary"] = case_summary
     revision.presentation_json = presentation
     persist_normalized_facts(
         db,
@@ -706,6 +735,10 @@ def confirm_understanding(
         confirmed_at=_utc_now() if new_status == "confirmed" else None,
     )
     db.add(revision_row)
+    # SessionInputRevision has a composite FK to this exact Understanding
+    # revision. Persist the parent before _cas_bind_understanding adds the
+    # child snapshot; otherwise SQLite may flush the child first at commit.
+    db.flush()
     if new_fact_dicts is not None:
         persist_normalized_facts(
             db,

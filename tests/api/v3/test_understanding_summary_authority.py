@@ -67,3 +67,32 @@ def test_full_text_edit_keeps_canonical_fact_and_source_reference(monkeypatch, d
     assert latest["normalized_facts"][0]["fact_id"] == original["normalized_facts"][0]["fact_id"]
     assert latest["normalized_facts"][0]["source_refs"] == original["normalized_facts"][0]["source_refs"]
     assert latest["normalized_facts"][0]["confirmation_status"] == "confirmed"
+
+
+def test_fact_summary_is_source_grounded_and_excludes_care_instructions():
+    """Only approved display names survive; no OCR wording, diagnosis or advice."""
+
+    from backend.app.services.v3.document_summary import summarize_facts
+
+    facts = [
+        {"display_name": "睡眠恢复不足", "negated": False},
+        {"display_name": "睡眠恢复不足", "negated": False},          # duplicate
+        {"display_name": "腰膝酸软", "negated": False},
+        {"display_name": "发热", "negated": True},                   # explicitly absent
+        {"display_name": "中医诊断：肝郁气滞", "negated": False},      # forbidden term
+        {"display_name": "处理意见", "negated": False},               # forbidden term
+        {"display_name": "服用医嘱用药", "negated": False},            # forbidden term
+        {},                                                          # malformed
+        "not-a-dict",
+    ]
+
+    summary = summarize_facts(facts)
+
+    assert summary == "资料中记录的近期状态：睡眠恢复不足、腰膝酸软。"
+    for forbidden in ("诊断", "处理意见", "医嘱", "肝郁气滞", "发热"):
+        assert forbidden not in summary
+    # nothing to summarise -> callers keep the OCR fallback
+    assert summarize_facts([]) == ""
+    assert summarize_facts(None) == ""
+    assert summarize_facts([{"display_name": "   "}]) == ""
+    assert summarize_facts([{"display_name": "发热", "negated": True}]) == ""

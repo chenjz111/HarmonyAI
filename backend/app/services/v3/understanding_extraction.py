@@ -11,6 +11,7 @@ logged or persisted in plaintext.
 from __future__ import annotations
 
 import os
+import re
 import uuid
 
 from sqlalchemy.orm import Session
@@ -54,6 +55,25 @@ def build_provider_chain() -> UnderstandingProviderChain | None:
         return None
 
 
+def _claim_dictionary_version(chain: UnderstandingProviderChain) -> str:
+    """Return the approved claim dictionary version the chain enforces.
+
+    ``QwenUnderstandingProvider`` rejects any request whose
+    ``allowed_claim_dictionary_version`` differs from the dictionary version it
+    was built with, and it does so before any network call. The request must
+    therefore mirror the chain instead of a hardcoded literal: the approved
+    asset declares ``schema_version=3.0.0`` while ``manifest_version`` is
+    ``medical_v3.0``, and the literal pinned every extraction to a version the
+    provider never had — silently disabling AI extraction.
+    """
+
+    for provider in getattr(chain, "providers", ()):
+        version = getattr(provider, "claim_dictionary_version", None)
+        if isinstance(version, str) and version.strip():
+            return version.strip()
+    return load_claim_dictionary()[0]
+
+
 def _run_provider(
     chain: UnderstandingProviderChain,
     *,
@@ -72,7 +92,7 @@ def _run_provider(
             "time_window": "past_7_days",
             "text": text,
         },
-        allowed_claim_dictionary_version="medical_v3.0",
+        allowed_claim_dictionary_version=_claim_dictionary_version(chain),
         max_facts=30,
     )
     response = chain.complete_json(request)
@@ -126,8 +146,8 @@ def extract_facts_for_sources(
     server-resolved authoritative text; client-supplied text is never used.
     Provider failure or an empty result yields no facts (no fake success).
     """
-    if chain is None:
-        return [], ["FACT_EXTRACTION_UNAVAILABLE"]
+    if chain is None or not getattr(chain, "providers", None):
+        return [], ["FACT_EXTRACTION_PROVIDER_NOT_CALLED"]
     fact_dicts: list[dict] = []
     reasons: list[str] = []
     for item in resolved:
@@ -147,23 +167,42 @@ def extract_facts_for_sources(
                 source_type=item.source.source_type.value,
                 text=item.text,
             )
+            if not provider_facts:
+                reasons.append("FACT_EXTRACTION_EMPTY_CLAIMS")
+                continue
             method = (
                 "qwen"
                 if (chain.last_provider_kind or "rule") == "cloud"
                 else "rule"
             )
-            fact_dicts.extend(
-                _fact_dicts(
-                    "und",
-                    source_id=item.source.source_id,
-                    source_type=item.source.source_type.value,
-                    provider_facts=provider_facts,
-                    method=method,
-                )
+            normalized = _fact_dicts(
+                "und",
+                source_id=item.source.source_id,
+                source_type=item.source.source_type.value,
+                provider_facts=provider_facts,
+                method=method,
             )
-        except ProviderFailureV3:
-            reasons.append("FACT_EXTRACTION_FAILED")
-    return fact_dicts, reasons
+            if normalized:
+                fact_dicts.extend(normalized)
+            else:
+                reasons.append("FACT_EXTRACTION_NORMALIZATION_FILTERED_ALL")
+        except ProviderFailureV3 as error:
+            failures = list(getattr(chain, "last_failure_codes", None) or [])
+            failures.append(error.error_code)
+            if error.error_code == "MEDICAL_ASSET_UNAVAILABLE":
+                reasons.append("FACT_EXTRACTION_CLAIM_DICTIONARY_MISMATCH")
+            elif "MODEL_SCHEMA_INVALID" in failures:
+                reasons.append("FACT_EXTRACTION_SCHEMA_INVALID")
+            else:
+                specific = next(
+                    (code for code in failures if code != "PROVIDER_UNAVAILABLE"),
+                    error.error_code,
+                )
+                safe_code = re.sub(r"[^A-Z0-9_]+", "_", specific.upper()).strip("_")
+                reasons.append(f"FACT_EXTRACTION_PROVIDER_ERROR_{safe_code}")
+        except (AttributeError, TypeError, ValueError):
+            reasons.append("FACT_EXTRACTION_NORMALIZATION_FILTERED_ALL")
+    return fact_dicts, list(dict.fromkeys(reasons))
 
 
 def re_extract_facts(
@@ -208,8 +247,23 @@ def persist_normalized_facts(
     fact_dicts: list[dict],
     source_rows: list[UnderstandingSource],
 ) -> None:
-    """Write NormalizedFact + FactSourceRef audit rows for an understanding."""
-    for index, fact in enumerate(fact_dicts):
+    """Write NormalizedFact + FactSourceRef audit rows for an understanding.
+
+    ``fact_source_refs.fact_row_id`` is a foreign key to
+    ``normalized_facts.fact_row_id`` and the two mappers declare no
+    ``relationship()``, so the ORM UnitOfWork has no dependency edge for them
+    and cannot order the INSERTs: with ``PRAGMA foreign_keys=ON`` (the
+    production SQLite engine) a single implicit flush may write the child refs
+    before their parent facts, and the whole ingestion fails with
+    ``sqlite3.IntegrityError: FOREIGN KEY constraint failed``. The parent facts
+    are therefore flushed explicitly before any ref is added — the same
+    discipline ``ensure_questionnaire_fact_rows`` already follows. The caller
+    still owns the transaction; this only fixes the write order.
+    """
+
+    del source_rows  # refs carry their own source provenance; signature stable
+    pending_refs: list[tuple[str, list[dict]]] = []
+    for fact in fact_dicts:
         fact_row_id = f"factrow_{uuid.uuid4().hex}"
         db.add(
             NormalizedFactRow(
@@ -232,7 +286,13 @@ def persist_normalized_facts(
                 supersedes_fact_row_id=None,
             )
         )
-        for ref in fact["source_refs"]:
+        pending_refs.append((fact_row_id, list(fact["source_refs"])))
+    if not pending_refs:
+        return
+    # Parents first: every ref below references a fact row already in the DB.
+    db.flush()
+    for fact_row_id, refs in pending_refs:
+        for ref in refs:
             db.add(
                 FactSourceRef(
                     fact_row_id=fact_row_id,
@@ -241,5 +301,3 @@ def persist_normalized_facts(
                     span_ref=ref.get("span_ref"),
                 )
             )
-        if index == 0:
-            del source_rows  # keep signature stable

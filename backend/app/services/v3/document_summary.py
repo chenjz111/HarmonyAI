@@ -1,7 +1,18 @@
 """Deterministic excerpts from clinical OCR, without inference or provider calls."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 import re
+
+
+_SUMMARY_PREFIX = "资料中记录的近期状态："
+
+# A user-facing state summary must never present a diagnosis or a treatment
+# instruction. Approved claim display names are state vocabulary only; this
+# guard keeps that invariant enforced if the approved dictionary changes.
+_FORBIDDEN_SUMMARY_TERMS = (
+    "诊断", "证型", "治疗", "处理意见", "医嘱", "处方", "用药", "建议",
+)
 
 
 _SECTIONS = (
@@ -58,3 +69,34 @@ def summarize_documents(texts: list[str]) -> str:
         if excerpts:
             summaries.append("\n".join(dict.fromkeys(excerpts)))
     return "\n".join(summaries) or "材料中未识别到可整理的临床内容，请补充或编辑摘要。"
+
+
+def summarize_facts(fact_dicts) -> str:
+    """Compose a source-grounded recent-state summary from approved facts.
+
+    Only the ``display_name`` of normalized facts is used, so the result cannot
+    contain OCR wording, a diagnosis, a treatment instruction or any fact the
+    approved claim dictionary does not define. Negated facts are skipped —
+    listing an explicitly absent signal as present would misstate the source.
+    Returns "" when nothing can be summarised, so callers keep the
+    deterministic OCR excerpt as their fallback.
+    """
+
+    names: list[str] = []
+    for fact in fact_dicts or ():
+        if not isinstance(fact, Mapping):
+            continue
+        if fact.get("negated"):
+            continue
+        name = fact.get("display_name")
+        if not isinstance(name, str):
+            continue
+        name = name.strip()
+        if not name or name in names:
+            continue
+        if any(term in name for term in _FORBIDDEN_SUMMARY_TERMS):
+            continue
+        names.append(name)
+    if not names:
+        return ""
+    return _SUMMARY_PREFIX + "、".join(names) + "。"
