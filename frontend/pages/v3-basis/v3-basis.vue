@@ -14,7 +14,11 @@
  * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
  */
 import { apiV3 } from "../../common/api-v3.js"
-import { toneThemeFor } from "../../common/v31-tone-theme.js"
+import {
+  modeLabelFor,
+  normalizeRegulationMode,
+  personalizedToneTheme,
+} from "../../common/v31-tone-theme.js"
 
 export default {
   data() {
@@ -47,8 +51,10 @@ export default {
       })
     },
     toneOptions() {
-      const primary = this.basis && this.basis.primary_tone ? this.basis.primary_tone.tone : ""
-      const secondary = this.basis && this.basis.secondary_tone ? this.basis.secondary_tone.tone : ""
+      // Sprint 6：主音/辅音角色只在后端明确 personalized_five_tone 时标注；
+      // integrated / basic / 未知 mode 绝不标记任何音为主音。
+      const primary = this.hasPrimaryTone && this.basis.primary_tone ? this.basis.primary_tone.tone : ""
+      const secondary = this.isPersonalized && this.basis && this.basis.secondary_tone ? this.basis.secondary_tone.tone : ""
       // code 必须是后端权威拼写（gong/shang/jiao/zhi/yu），否则主音无法被标记出来
       return [
         { code: "gong", label: "宫" },
@@ -61,12 +67,36 @@ export default {
         role: item.code === primary ? "primary" : (item.code === secondary ? "secondary" : ""),
       }))
     },
-    // 主音/辅音的性格文案取自五音主题表，避免写死某个音（例如"宫"）的旧文案
+    // 后端权威 mode：缺失/未知一律为 ""（前端绝不从主音或权重推断 mode）
+    regulationMode() {
+      return normalizeRegulationMode(this.basis && this.basis.regulation_mode)
+    },
+    isPersonalized() {
+      return this.regulationMode === "personalized_five_tone"
+    },
+    modeLabel() {
+      return modeLabelFor(this.regulationMode)
+    },
+    hasPrimaryTone() {
+      return this.isPersonalized && !!(this.basis && this.basis.primary_tone && this.basis.primary_tone.tone)
+    },
+    // 非个性化模式的中性说明：不主张五音主音，也不使用"主音未定"这类技术兜底措辞
+    modeCopy() {
+      if (this.regulationMode === "integrated_regulation") {
+        return { title: "综合调适", body: "本次未形成单一五音主音，按综合调适方向配置音乐参数。" }
+      }
+      if (this.regulationMode === "basic_wellness") {
+        return { title: "基础舒缓", body: "当前依据尚不充分，未主张五音主音，按基础舒缓方向配置音乐参数。" }
+      }
+      return { title: "本次五音解析暂不可用", body: "未能读取到可用的音乐设计模式，暂不展示五音主音结论。" }
+    },
+    // 主音/辅音的性格文案取自五音主题表，避免写死某个音（例如"宫"）的旧文案；
+    // 且只在 personalized + 真实主音时生效，其余一律中性空状态。
     primaryToneTheme() {
-      return toneThemeFor(this.basis && this.basis.primary_tone ? this.basis.primary_tone.tone : "")
+      return personalizedToneTheme(this.regulationMode, this.basis && this.basis.primary_tone ? this.basis.primary_tone.tone : "")
     },
     secondaryToneTheme() {
-      return toneThemeFor(this.basis && this.basis.secondary_tone ? this.basis.secondary_tone.tone : "")
+      return personalizedToneTheme(this.regulationMode, this.basis && this.basis.secondary_tone ? this.basis.secondary_tone.tone : "")
     },
     statusText() {
       const map = {
@@ -292,12 +322,16 @@ export default {
             </view>
           </view>
           <view class="tone-details">
-            <view class="tone-detail tone-detail--primary">
+            <view v-if="hasPrimaryTone" class="tone-detail tone-detail--primary">
               <text class="tone-detail-title">{{ basis.primary_tone.display_name }} · 主音</text>
               <text class="tone-detail-subtitle">{{ primaryToneTheme.traits }}</text>
               <text class="tone-detail-copy">{{ basis.primary_tone.explanation }}</text>
             </view>
-            <view v-if="basis.secondary_tone" class="tone-detail tone-detail--secondary">
+            <view v-else class="tone-detail tone-detail--neutral">
+              <text class="tone-detail-title">{{ modeCopy.title }}</text>
+              <text class="tone-detail-copy">{{ modeCopy.body }}</text>
+            </view>
+            <view v-if="hasPrimaryTone && basis.secondary_tone" class="tone-detail tone-detail--secondary">
               <text class="tone-detail-title">{{ basis.secondary_tone.display_name }} · 辅音</text>
               <text class="tone-detail-subtitle">{{ secondaryToneTheme.traits }}</text>
               <text class="tone-detail-copy">{{ basis.secondary_tone.explanation }}</text>
@@ -835,6 +869,8 @@ export default {
 .tone-detail { padding:12px; border:1px solid rgba(61,101,92,.10); border-radius:9px; background:rgba(250,250,245,.65); }
 .tone-detail--primary { border-color:rgba(201,91,70,.16); background:rgba(255,246,240,.68); }
 .tone-detail--secondary { border-color:rgba(72,141,181,.16); background:rgba(242,250,254,.7); }
+/* Sprint 6：integrated / basic / 未知 mode 的中性态（不暗示任何五音） */
+.tone-detail--neutral { grid-column:1 / -1; border-color:rgba(61,101,92,.14); background:rgba(244,247,244,.75); }
 .tone-detail-title,.tone-detail-subtitle,.tone-detail-copy { display:block; }
 .tone-detail-title { color:#19565a; font-size:15px; font-weight:750; }
 .tone-detail--primary .tone-detail-title { color:#b43b31; }

@@ -54,6 +54,11 @@
  */
 
 import { QUESTIONNAIRE_MANIFEST } from "./questionnaire-v3-manifest.js"
+import {
+  isPersonalizedMode,
+  modeLabelFor,
+  normalizeRegulationMode,
+} from "./v31-tone-theme.js"
 
 // ===== 配置 =====
 
@@ -797,14 +802,25 @@ const TONE_NAMES = { jiao: "角音", zhi: "徵音", gong: "宫音", shang: "商�
 
 function musicBasisModel(assessment, diagnosis, prescription) {
   const spec = prescription.generation_spec
-  const primary = spec.tone_profile.primary_tone
-  const secondary = spec.tone_profile.secondary_tone
+  const toneProfile = spec.tone_profile || {}
+  // Sprint 6：mode 是后端权威；前端只读，绝不从主音/权重/argmax 推断。
+  // 未知或缺失 mode 一律保留为 null，交由页面走中性不可用态，绝不在前端发明 mode。
+  const regulationMode = normalizeRegulationMode(toneProfile.regulation_mode) || null
+  const toneWeights = toneProfile.weights || toneProfile.tone_weights || null
+  // 主音只在后端明确给出 personalized_five_tone 且存在真实主音时才对外暴露；
+  // integrated / basic / 未知 mode 的 primary_tone 保持 null（不合成、不猜、不回退 Gong）。
+  const personalized = isPersonalizedMode(regulationMode)
+  const primary = personalized ? toneProfile.primary_tone || null : null
+  const secondary = personalized ? toneProfile.secondary_tone || null : null
   return {
-    page: "five_tone_analysis", schema_version: "five_tone_analysis_read_model_v3.1",
+    page: "five_tone_analysis", schema_version: "five_tone_analysis_read_model_v3.2",
+    regulation_mode: regulationMode,
+    regulation_mode_label: modeLabelFor(regulationMode),
+    tone_weights: toneWeights,
     confirmed_state: assessment.state_summary,
     state_tendency: diagnosis.presentation.primary_tendency || diagnosis.presentation.title,
     analysis_rationales: (diagnosis.presentation.basis_summaries || []).map((summary) => ({ summary, evidence_refs: [] })),
-    primary_tone: { tone: primary, display_name: TONE_NAMES[primary] || primary, explanation: prescription.presentation.tone_summary },
+    primary_tone: primary ? { tone: primary, display_name: TONE_NAMES[primary] || primary, explanation: prescription.presentation.tone_summary } : null,
     secondary_tone: secondary ? { tone: secondary, display_name: TONE_NAMES[secondary] || secondary, explanation: prescription.presentation.tone_summary } : null,
     bpm: { value: spec.bpm, explanation: (prescription.presentation.parameter_summaries || [])[0] || "由服务端处方生成。" },
     instruments: { values: spec.instruments, explanation: "由服务端处方生成。" },
@@ -819,6 +835,7 @@ function musicBasisModel(assessment, diagnosis, prescription) {
 // 生成任务成功后保存 asset（播放页只播放后端返回的 Music Asset）
 function persistMusicTask(task) {
   if (task && (task.status === "succeeded" || task.status === "matched_fallback") && task.audio_asset) {
+    const assetToneProfile = task.audio_asset.tone_profile || {}
     saveFlowState({
       task_id: task.task_id,
       music: {
@@ -828,8 +845,11 @@ function persistMusicTask(task) {
         stream_url: task.audio_asset.stream_url,
         duration_seconds: task.audio_asset.duration_seconds,
         source_label: task.status === "matched_fallback" ? "审核曲库匹配音乐" : "AI生成音乐",
-        tone_label: toneLabel(task.audio_asset.tone_profile),
-        tone_code: toneCode(task.audio_asset.tone_profile),
+        // Sprint 6：mode 逐字保留后端值；tone_label / tone_code 只在 personalized 时非空。
+        regulation_mode: normalizeRegulationMode(assetToneProfile.regulation_mode) || null,
+        regulation_mode_label: modeLabelFor(assetToneProfile.regulation_mode),
+        tone_label: toneLabel(assetToneProfile),
+        tone_code: toneCode(assetToneProfile),
         instrument_labels: task.audio_asset.instruments || [],
         disclaimer: "音乐调养不能替代专业医疗或心理帮助。",
       },
@@ -844,16 +864,20 @@ const TONE_LABELS = { jiao: "角音", zhi: "徵音", gong: "宫音", shang: "商
 function toneLabel(toneProfile) {
   if (!toneProfile) return ""
   const key = toneCode(toneProfile)
-  return (TONE_LABELS[key] || "") + "为主"
+  // 没有真实主音时绝不产出"…为主"这类主音主张（integrated / basic / 未知一律为空串）
+  return key ? (TONE_LABELS[key] || "") + "为主" : ""
 }
 
 // 视觉主题需要稳定的五音 code：V3.1 ToneProfile 的主音可能是对象或字符串，
 // 这里做展示层适配，不改变任何 real wiring 语义。
+// Sprint 6：只有后端明确给出 personalized_five_tone 且存在真实主音时才返回 code；
+// integrated / basic / 未知 mode 一律返回 ""（绝不回退成"宫"，也不由权重 argmax 合成主音）。
 function toneCode(toneProfile) {
   if (!toneProfile) return ""
+  if (!isPersonalizedMode(toneProfile.regulation_mode)) return ""
   const primary = toneProfile.primary_tone
   if (primary && typeof primary === "object") return primary.code || primary.tone || primary.value || ""
-  return primary || toneProfile.dominant_tone || ""
+  return primary || ""
 }
 
 // ===== Mock 状态机（虚构 fixture；仅供显式 mock/hybrid 模式与自动测试） =====
@@ -959,7 +983,10 @@ function mockAssessment() {
 function mockBasis() {
   return {
     page: "five_tone_analysis",
-    schema_version: "five_tone_analysis_read_model_v3.1",
+    schema_version: "five_tone_analysis_read_model_v3.2",
+    regulation_mode: "personalized_five_tone",
+    regulation_mode_label: "",
+    tone_weights: { jiao: 0.15, zhi: 0.15, gong: 0.3, shang: 0.2, yu: 0.2 },
     confirmed_state: "近期入睡偏慢、睡眠恢复不足，白天精神状态一般，思虑偏多。",
     state_tendency: "近期状态呈现思虑偏多、心神不易安定与精力恢复不足的倾向。",
     analysis_rationales: [
@@ -999,6 +1026,8 @@ function mockMusic(sourceType) {
     stream_url: "/static/music/jiao-demo.wav", // mock：本地示例音频（仅显式 mock/hybrid 模式）
     duration_seconds: 300,
     instrument_labels: ["古琴", "洞箫"],
+    // mock 为明确 personalized 资产（真实模式由后端 tone_profile.regulation_mode 决定）
+    regulation_mode: "personalized_five_tone",
     tone_code: "gong",
     favorite: false,
     disclaimer: "音乐调养不能替代专业医疗或心理帮助。",

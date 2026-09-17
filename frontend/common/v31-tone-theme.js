@@ -60,6 +60,47 @@ export function toneThemeFor(value) {
   return code ? THEMES[code] : UNKNOWN_TONE_THEME
 }
 
+/**
+ * Sprint 6 三模式（后端权威字段 regulation_mode）。
+ *
+ * 前端只读该字段：绝不从 primary_tone 是否存在、tone_weights、argmax 或默认音推断 mode。
+ * 缺失 / 未知 mode 一律规范化为 ""（未知即未知，不在前端发明第三态之外的结论）。
+ */
+export const REGULATION_MODES = Object.freeze({
+  personalized: "personalized_five_tone",
+  integrated: "integrated_regulation",
+  basic: "basic_wellness",
+})
+
+export const REGULATION_MODE_LABELS = Object.freeze({
+  integrated_regulation: "综合调适",
+  basic_wellness: "基础舒缓",
+})
+
+const KNOWN_REGULATION_MODES = Object.freeze(Object.values(REGULATION_MODES))
+
+export function normalizeRegulationMode(value) {
+  const raw = String(value === null || value === undefined ? "" : value).trim().toLowerCase()
+  return KNOWN_REGULATION_MODES.includes(raw) ? raw : ""
+}
+
+export function isPersonalizedMode(value) {
+  return normalizeRegulationMode(value) === REGULATION_MODES.personalized
+}
+
+/** 综合调适 / 基础舒缓 的中文展示名；personalized 与未知 mode 返回 ""。 */
+export function modeLabelFor(value) {
+  return REGULATION_MODE_LABELS[normalizeRegulationMode(value)] || ""
+}
+
+/**
+ * 主音专属视觉主题只允许在「后端明确给出 personalized_five_tone 且存在真实主音」时生效。
+ * 其余情况（integrated / basic / 未知 mode / 未知音）一律返回中性空状态，绝不回退成"宫"。
+ */
+export function personalizedToneTheme(mode, tone) {
+  return isPersonalizedMode(mode) ? toneThemeFor(tone) : UNKNOWN_TONE_THEME
+}
+
 export function formatPlaybackTime(value) {
   const seconds = Math.max(0, Math.floor(Number(value) || 0))
   const minutes = Math.floor(seconds / 60)

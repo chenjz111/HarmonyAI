@@ -92,9 +92,10 @@ test("五音解析页受控证型名称使用 canonical 中文（含“倾向”
     assert.match(name, /倾向$/, `canonical 名称必须保持“倾向”语义: ${name}`)
     assert.match(name, /[\u4e00-\u9fa5]/, `canonical 名称必须为中文: ${name}`)
   }
-  // 页面渲染受控名称必须来自 read model 字段，而不是前端字典
-  assert.match(basisMarkup, /\{\{\s*basis\.primary_tone\.display_name\s*\}\}/)
-  assert.match(basisMarkup, /\{\{\s*basis\.secondary_tone\.display_name\s*\}\}/)
+  // 页面渲染受控名称必须来自 read model 字段，而不是前端字典；
+  // Sprint 6：主音/辅音区块只能在 personalized + 真实主音时渲染（null 安全的 mode-aware guard）
+  assert.match(basisMarkup, /v-if="hasPrimaryTone"[\s\S]*?\{\{\s*basis\.primary_tone\.display_name\s*\}\}/)
+  assert.match(basisMarkup, /v-if="hasPrimaryTone && basis\.secondary_tone"[\s\S]*?\{\{\s*basis\.secondary_tone\.display_name\s*\}\}/)
 })
 
 test("五音解析页用户可见解释不含已知英文 fixture，且不做逐句字典翻译", () => {

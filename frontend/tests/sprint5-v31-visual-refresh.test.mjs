@@ -136,7 +136,8 @@ test("one player uses five data-driven themes and real duration", () => {
   for (const tone of ["gong", "shang", "jiao", "zhi", "yu"]) {
     assert.match(theme, new RegExp(`\\b${tone}\\b`))
   }
-  assert.match(player, /toneThemeFor/)
+  // Sprint 6：主音主题统一走 mode-aware 入口（personalized + 真实主音才生效）
+  assert.match(player, /personalizedToneTheme/)
   assert.match(player, /duration_seconds/)
   assert.match(player, /toggleFavorite/)
   assert.match(player, /反馈本次体验/)

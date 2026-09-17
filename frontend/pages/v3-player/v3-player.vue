@@ -18,7 +18,11 @@
  *   - 业务逻辑 togglePlay/toggleFavorite/goFeedback/exitSession 完全保留
  */
 import { apiV3 } from "../../common/api-v3.js"
-import { toneThemeFor } from "../../common/v31-tone-theme.js"
+import {
+  modeLabelFor,
+  normalizeRegulationMode,
+  personalizedToneTheme,
+} from "../../common/v31-tone-theme.js"
 // 纯函数：MM:SS（≥1 小时才 HH:MM:SS），未知时长显示 "--:--"
 import { formatDuration } from "../../common/v31-player-time.js"
 
@@ -62,19 +66,40 @@ export default {
       return Math.max(0, Math.min(100, p))
     },
     // 主音的权威来源优先级（均为服务端数据，前端不重算、不猜）：
-    //   1. 本次 music asset 的 tone_profile.primary_tone（persistMusicTask 已固化为 tone_code）
-    //   2. 本次 music asset 的展示文案（tone_label，由同一个 tone_profile 派生）
-    //   3. 本次音乐方案 / 五音分析 read model 明确存在的 primary_tone.tone
-    // 都缺失时返回空字符串 → toneThemeFor 给出空状态 "--"，绝不回退成"宫"。
+    //   1. 本次 music asset 的 tone_profile.primary_tone（persistMusicTask 已固化为 tone_code，
+    //      且只在后端明确 personalized_five_tone 时才非空）
+    //   2. 本次音乐方案 / 五音分析 read model 明确存在的 primary_tone.tone（同样要求 personalized）
+    // Sprint 6：integrated / basic / 未知 mode 一律返回空字符串 → 中性空状态，
+    // 绝不回退成"宫"，也不在前端推断 mode。
     toneSource() {
       const music = this.music || {}
       if (music.tone_code) return music.tone_code
-      if (music.tone_label) return music.tone_label
+      if (!this.isPersonalized) return ""
       if (this.basis && this.basis.primary_tone) return this.basis.primary_tone.tone
       return ""
     },
+    // 后端权威 mode：优先本次 asset，其次本次 basis；缺失/未知一律为 ""
+    regulationMode() {
+      const fromMusic = normalizeRegulationMode(this.music && this.music.regulation_mode)
+      if (fromMusic) return fromMusic
+      return normalizeRegulationMode(this.basis && this.basis.regulation_mode)
+    },
+    isPersonalized() {
+      return this.regulationMode === "personalized_five_tone"
+    },
+    modeLabel() {
+      return modeLabelFor(this.regulationMode)
+    },
     toneTheme() {
-      return toneThemeFor(this.toneSource)
+      // 主音主题只在 personalized + 真实主音时生效；其余为中性空状态主题
+      return personalizedToneTheme(this.regulationMode, this.toneSource)
+    },
+    // 主音印章：非 personalized 不显示"主音"字样，改为本次调适方向（未知 mode 则为空）
+    toneSealText() {
+      return this.isPersonalized ? "主音" : this.modeLabel
+    },
+    toneSummaryLabel() {
+      return this.toneTheme.traits || this.modeLabel || ""
     },
     playerStyle() {
       const style = {
@@ -96,13 +121,13 @@ export default {
     displayTitle() {
       return (this.music && this.music.title) || this.toneTheme.title || "—"
     },
-    // 主音未解析出来时显示占位符，而不是任何具体的五音
+    // 主音未解析出来时显示占位符或本次调适方向，而不是任何具体的五音
     tonePairText() {
-      if (!this.toneTheme.code) return "—"
+      if (!this.toneTheme.code) return this.modeLabel || "—"
       return `${this.toneTheme.glyph}音`
     },
     toneSummaryValue() {
-      if (!this.toneTheme.code) return "—"
+      if (!this.toneTheme.code) return this.modeLabel || "—"
       return `${this.toneTheme.glyph}音主调`
     },
     displayBpm() {
@@ -307,7 +332,7 @@ export default {
             <view class="tone-hero-frame">
               <image v-if="toneHeroSrc" class="tone-hero-image" :src="toneHeroSrc" mode="aspectFill" />
               <view class="tone-copy">
-                <view class="tone-glyph-row"><text class="tone-glyph">{{ toneTheme.glyph }}</text><text class="tone-seal">主音</text></view>
+                <view class="tone-glyph-row"><text class="tone-glyph">{{ toneTheme.glyph }}</text><text class="tone-seal">{{ toneSealText }}</text></view>
                 <text class="tone-traits">{{ toneTheme.traits }}</text>
               </view>
             </view>
@@ -341,7 +366,7 @@ export default {
         <view class="music-summary-card">
           <view class="summary-heading"><view class="summary-note">♫</view><text>本次音乐</text></view>
           <view class="music-summary-grid">
-            <view class="music-summary-cell"><text class="summary-value">{{ toneSummaryValue }}</text><text class="summary-label">{{ toneTheme.traits }}</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ toneSummaryValue }}</text><text class="summary-label">{{ toneSummaryLabel }}</text></view>
             <view class="music-summary-cell"><text class="summary-value">{{ displayBpm }}</text><text class="summary-label">舒缓节奏</text></view>
             <view class="music-summary-cell"><text class="summary-value">{{ summaryDuration }}</text><text class="summary-label">聆听时长</text></view>
             <view class="music-summary-cell"><text class="summary-value">{{ displayInstruments }}</text><text class="summary-label">主要乐器</text></view>
