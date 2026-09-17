@@ -20,7 +20,7 @@ const assessment = {
   degradation: { active: false, reason_codes: [] },
   presentation: { title: "近期状态评估", summary: "近期思虑偏多。", body_summaries: ["思虑偏多"], recent_context: "" },
 }
-const toneProfile = { schema_version: "tone_profile_v3.1", primary_tone: "gong", secondary_tone: null, mapping_version: "five_tone_mapping_v3.0" }
+const toneProfile = { schema_version: "tone_profile_v3.2", regulation_mode: "personalized_five_tone", primary_tone: "gong", secondary_tone: null, mapping_version: "five_tone_mapping_v3.0" }
 const spec = { schema_version: "generation_spec_v3.0", tone_profile: toneProfile, bpm: 58, duration_seconds: 300, instruments: ["古琴"], ambient_sounds: ["流水"], structure: { intro_seconds: 30, main_seconds: 240, outro_seconds: 30 }, energy_curve: "calm", forbidden_constraints: [], fallback_policy: { allow_local_matching: false } }
 
 globalThis.uni = {

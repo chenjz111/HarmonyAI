@@ -102,10 +102,13 @@ test("播放器主音来源优先级：本次 asset tone_profile → 本次 pres
   assert.match(playerMarkup, /\{\{\s*toneTheme\.glyph\s*\}\}/)
   assert.match(playerMarkup, /\{\{\s*tonePairText\s*\}\}/)
   assert.match(playerMarkup, /\{\{\s*toneSummaryValue\s*\}\}/)
-  // 空状态：主音未知时显示占位符
-  assert.match(player, /if \(!this\.toneTheme\.code\) return "—"/)
+  // 空状态：主音未知时显示占位符（或本次调适方向），绝不显示具体五音
+  assert.match(player, /if \(!this\.toneTheme\.code\) return this\.modeLabel \|\| "—"/)
   assert.match(player, /return `\$\{this\.toneTheme\.glyph\}音`/)
   assert.match(player, /return `\$\{this\.toneTheme\.glyph\}音主调`/)
+  // Sprint 6：主音主题只在后端明确 personalized_five_tone 时生效（mode 权威，前端不推断）
+  assert.match(player, /personalizedToneTheme\(this\.regulationMode, this\.toneSource\)/)
+  assert.match(player, /normalizeRegulationMode/)
 })
 
 test("五音解析页五音条使用权威 code，主音角色能被标记出来", () => {
@@ -130,7 +133,8 @@ const storage = new Map()
 const calls = []
 
 const JIAO_TONE_PROFILE = {
-  schema_version: "tone_profile_v3.1",
+  schema_version: "tone_profile_v3.2",
+  regulation_mode: "personalized_five_tone",
   weights: { jiao: 0.7, zhi: 0.15, gong: 0, shang: 0.15, yu: 0 },
   primary_tone: "jiao",
   secondary_tone: null,

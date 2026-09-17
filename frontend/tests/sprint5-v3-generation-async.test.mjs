@@ -15,7 +15,8 @@ let scenario = "poll"
 let pollCount = 0
 
 const toneProfile = {
-  schema_version: "tone_profile_v3.1",
+  schema_version: "tone_profile_v3.2",
+  regulation_mode: "personalized_five_tone",
   primary_tone: "gong",
   secondary_tone: null,
   mapping_version: "five_tone_mapping_v3@3.0.0",
