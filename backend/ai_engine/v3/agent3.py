@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from backend.app.schemas.v3.common import (
     NonEmptyString,
@@ -28,6 +28,8 @@ from backend.app.schemas.v3.flow_v31 import (
     ListParameterExplanation,
     PublicRationale,
     PublicToneExplanation,
+    RegulationMode,
+    ToneProfileBasisV31,
     ToneProfileV31,
 )
 
@@ -63,12 +65,18 @@ class GenerationSpecV31(V3BaseModel):
     This is intentionally separate from the existing V3.0 music transport
     schema.  The V3.1 public page consumes the frozen read model; this object
     is produced from approved rule data and is never chosen by an LLM.
+
+    Sprint 6: ``regulation_mode`` is the backend authority. A primary tone is
+    only present for ``personalized_five_tone``; ``integrated_regulation`` keeps
+    the balanced weights with no primary tone, and ``basic_wellness`` carries no
+    tone conclusion at all (weights are absent or neutral).
     """
 
     schema_version: Literal["generation_spec_v3.1"]
-    primary_tone: ToneCode
-    secondary_tone: ToneCode | None
-    tone_weights: dict[ToneCode, Score01]
+    regulation_mode: RegulationMode
+    primary_tone: ToneCode | None = None
+    secondary_tone: ToneCode | None = None
+    tone_weights: dict[ToneCode, Score01] | None = None
     bpm: int = Field(ge=40, le=120)
     instruments: list[NonEmptyString]
     ambience: list[NonEmptyString]
@@ -77,6 +85,22 @@ class GenerationSpecV31(V3BaseModel):
     readiness: Literal["ready", "not_ready"]
     blocking_reasons: list[NonEmptyString]
     secondary_tone_blocked: bool
+
+    @model_validator(mode="after")
+    def validate_mode_consistency(self) -> "GenerationSpecV31":
+        if self.tone_weights is not None:
+            if set(self.tone_weights) != set(ToneCode):
+                raise ValueError("tone weights require all five tones")
+        mode = self.regulation_mode
+        if mode == "personalized_five_tone":
+            if self.primary_tone is None or self.tone_weights is None:
+                raise ValueError("personalized_five_tone requires a primary tone")
+            return self
+        if self.primary_tone is not None or self.secondary_tone is not None:
+            raise ValueError(f"{mode} must not carry a tone")
+        if mode == "integrated_regulation" and self.tone_weights is None:
+            raise ValueError("integrated_regulation must retain tone weights")
+        return self
 
 
 def build_generation_spec_v31(
@@ -183,9 +207,13 @@ def build_generation_spec_v31(
 
     # Secondary tone is optional in the frozen flow. Keep its absence
     # observable, but do not block the approved primary tone and parameters.
+    # Sprint 6: the regulation mode and the (possibly absent) primary tone come
+    # straight from the backend-authoritative profile; music parameters are
+    # still produced from the approved rule asset for every mode.
     blocking_reasons: list[str] = []
     spec = GenerationSpecV31(
         schema_version="generation_spec_v3.1",
+        regulation_mode=profile.regulation_mode,
         primary_tone=profile.primary_tone,
         secondary_tone=profile.secondary_tone,
         tone_weights=profile.weights,
@@ -343,6 +371,18 @@ def build_tone_profile_v31(
 ) -> ToneProfileV31:
     """Build the deterministic V3.1 tone profile from approved evidence.
 
+    Sprint 6 mode semantics (Phase 1A — contract + fallback semantics; no
+    dominance *thresholds* are introduced here, those remain Phase 1B):
+
+    * ``abstained`` diagnosis (evidence insufficient / legal abstain) →
+      ``basic_wellness`` with no primary tone and no fabricated weights.
+    * a genuine unique maximum organ→tone weight → ``personalized_five_tone``
+      with that single primary tone.
+    * a tie for the maximum (no genuine dominant direction) →
+      ``integrated_regulation`` retaining the full weights and **no** primary
+      tone. A near-but-not-equal maximum (margin calibration) is deliberately
+      NOT decided here; that is Phase 1B.
+
     ``user_goal`` is intentionally accepted only at this boundary for callers
     migrating from older orchestration code; it is never read or persisted in
     the profile and cannot change any score.
@@ -359,8 +399,42 @@ def build_tone_profile_v31(
     if secondary_threshold is not None and not 0 < secondary_threshold <= 1:
         raise Agent3Blocked("INVALID_SECONDARY_THRESHOLD")
 
+    basis = ToneProfileBasisV31(
+        diagnosis_id=diagnosis_id,
+        diagnosis_revision=diagnosis_revision,
+        supporting_evidence_refs=evidence_refs,
+    )
+    if diagnosis_status == "abstained":
+        # Legal abstain: never fabricate a tone (abstain ≠ 宫).
+        return ToneProfileV31(
+            schema_version="tone_profile_v3.1",
+            regulation_mode="basic_wellness",
+            weights=None,
+            primary_tone=None,
+            secondary_tone=None,
+            score_semantics="relative_tone_distribution",
+            mapping_version=_mapping_version(mapping),
+            basis=basis,
+        )
+
     weights = _calculate_weights(organ_weights, mapping)
-    primary = max(_TONE_CODES, key=lambda tone: (weights[tone], -_TONE_CODES.index(tone)))
+    maximum = max(weights.values())
+    leaders = [tone for tone in _TONE_CODES if abs(weights[tone] - maximum) <= 0.001]
+    if len(leaders) != 1:
+        # Balanced / tied profile: retain the weights, claim no primary tone.
+        # (The tuple-order argmax fallback that used to pick gong here is gone.)
+        return ToneProfileV31(
+            schema_version="tone_profile_v3.1",
+            regulation_mode="integrated_regulation",
+            weights=weights,
+            primary_tone=None,
+            secondary_tone=None,
+            score_semantics="relative_tone_distribution",
+            mapping_version=_mapping_version(mapping),
+            basis=basis,
+        )
+
+    primary = leaders[0]
     secondary = None
     if secondary_threshold is not None:
         candidates = [tone for tone in _TONE_CODES if tone != primary]
@@ -370,16 +444,13 @@ def build_tone_profile_v31(
 
     return ToneProfileV31(
         schema_version="tone_profile_v3.1",
+        regulation_mode="personalized_five_tone",
         weights=weights,
         primary_tone=primary,
         secondary_tone=secondary,
         score_semantics="relative_tone_distribution",
         mapping_version=_mapping_version(mapping),
-        basis={
-            "diagnosis_id": diagnosis_id,
-            "diagnosis_revision": diagnosis_revision,
-            "supporting_evidence_refs": evidence_refs,
-        },
+        basis=basis,
     )
 
 
@@ -453,33 +524,53 @@ def build_five_tone_analysis_v31(
         spec = GenerationSpecV31.model_validate(generation_spec)
     except (TypeError, ValueError) as error:
         raise Agent3Blocked("INVALID_GENERATION_SPEC") from error
-    if spec.primary_tone != profile.primary_tone or spec.tone_weights != profile.weights:
+    if (
+        spec.regulation_mode != profile.regulation_mode
+        or spec.primary_tone != profile.primary_tone
+        or spec.tone_weights != profile.weights
+    ):
         raise Agent3Blocked("GENERATION_SPEC_TONE_MISMATCH")
 
     table = _tone_table(mapping)
-    primary = _tone_explanation(spec.primary_tone.value, table, secondary=False)
+    primary = (
+        _tone_explanation(spec.primary_tone.value, table, secondary=False)
+        if spec.primary_tone is not None
+        else None
+    )
     secondary = (
         _tone_explanation(spec.secondary_tone.value, table, secondary=True)
         if spec.secondary_tone is not None
         else None
     )
-    if spec.readiness == "ready" and spec.secondary_tone_blocked:
+    if spec.readiness == "ready" and spec.regulation_mode == "basic_wellness":
+        # basic_wellness must never imply a five-tone conclusion.
+        message = "已按基础舒缓方向准备音乐参数；本次未形成单一五音主音结论。"
+    elif spec.readiness == "ready" and spec.regulation_mode == "integrated_regulation":
+        message = "已按综合调适方向准备音乐参数；本次未形成单一五音主音。"
+    elif spec.readiness == "ready" and spec.secondary_tone_blocked:
         message = "音乐参数已准备；次要音调规则尚未获批准，当前使用主要音调参考。"
     elif spec.readiness == "ready":
         message = "音乐参数已准备，可以进入后续生成流程。"
     else:
         message = "音乐参数已整理，后续生成能力尚未就绪。"
+    rationales = [
+        PublicRationale(
+            summary=validate_public_text(
+                "已根据本次确认信息整理音乐调适方向。"
+                if spec.primary_tone is not None
+                else "已根据本次确认信息整理综合调适方向，未主张单一五音主音。"
+            ),
+            evidence_refs=refs,
+        )
+    ]
     return FiveToneAnalysisReadModel(
         schema_version="five_tone_analysis_read_model_v3.1",
         confirmed_user_state_ref=confirmed_user_state_ref,
         confirmed_state=_required_text(confirmed_state, field="confirmed_state"),
         state_tendency=tendency,
-        analysis_rationales=[
-            PublicRationale(
-                summary=validate_public_text("已根据本次确认信息整理音乐调适方向。"),
-                evidence_refs=refs,
-            )
-        ],
+        analysis_rationales=rationales,
+        regulation_mode=spec.regulation_mode,
+        tone_weights=spec.tone_weights,
         primary_tone=primary,
         secondary_tone=secondary,
         bpm=BpmExplanation(

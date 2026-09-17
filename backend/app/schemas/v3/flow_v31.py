@@ -6,6 +6,7 @@ revision binding. They do not prescribe ORM/table names or provider details.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import Enum
 from typing import Annotated, Literal
 
@@ -24,6 +25,22 @@ from .common import (
 Checksum = Annotated[str, Field(pattern=r"^sha256:.+")]
 PositiveRevision = Annotated[int, Field(ge=1)]
 PublicText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+# Sprint 6 frozen music-design modes (backend authority).
+#
+#   personalized_five_tone : evidence sufficient + a genuine dominant direction
+#   integrated_regulation  : evidence sufficient, no single dominant direction
+#   basic_wellness         : evidence insufficient / legal abstain
+#
+# ``integrated_regulation`` and ``basic_wellness`` never carry a primary tone
+# (均衡 ≠ 宫 / 证据不足 ≠ 宫 / abstain ≠ 宫). Technical failures are NOT modes.
+RegulationMode = Literal[
+    "personalized_five_tone",
+    "integrated_regulation",
+    "basic_wellness",
+]
+
+_WEIGHTS_TOLERANCE = 0.001
 
 QUESTIONNAIRE_SCHEMA_ID = "questionnaire_v3"
 QUESTIONNAIRE_SCHEMA_VERSION = "3.0.1"
@@ -294,25 +311,75 @@ class ToneProfileBasisV31(V3BaseModel):
 
 
 class ToneProfileV31(V3BaseModel):
+    """Backend-authoritative tone profile for the frozen three-mode contract.
+
+    ``regulation_mode`` is the authority: clients must never infer the mode from
+    ``primary_tone == null``. Mode-scoped rules:
+
+    * ``personalized_five_tone``: a primary tone is required and must carry the
+      maximum weight; full five-tone weights are retained.
+    * ``integrated_regulation``: ``primary_tone`` is null while the full
+      five-tone weights are retained (balanced distribution, no dominant tone).
+    * ``basic_wellness``: ``primary_tone`` is null; weights are absent or a
+      neutral (uniform) distribution — no tone conclusion is fabricated.
+
+    Sprint 5 rows persisted without ``regulation_mode`` are read as
+    ``personalized_five_tone`` (they always carried a primary tone); this is a
+    legacy read-compatibility inference only and never fabricates a tone.
+    """
+
     schema_version: Literal["tone_profile_v3.1"]
-    weights: dict[ToneCode, Score01]
-    primary_tone: ToneCode
+    regulation_mode: RegulationMode
+    weights: dict[ToneCode, Score01] | None = None
+    primary_tone: ToneCode | None = None
     secondary_tone: ToneCode | None = None
     score_semantics: Literal["relative_tone_distribution"]
     mapping_version: NonEmptyString
     basis: ToneProfileBasisV31
 
+    @model_validator(mode="before")
+    @classmethod
+    def infer_legacy_regulation_mode(cls, data: object) -> object:
+        if isinstance(data, Mapping) and "regulation_mode" not in data:
+            payload = dict(data)
+            payload["regulation_mode"] = (
+                "personalized_five_tone"
+                if payload.get("primary_tone")
+                else "integrated_regulation"
+            )
+            return payload
+        return data
+
     @model_validator(mode="after")
     def validate_tone_profile(self) -> "ToneProfileV31":
-        if set(self.weights) != set(ToneCode):
-            raise ValueError("tone profile requires all five tone weights")
-        if abs(sum(self.weights.values()) - 1.0) > 0.001:
-            raise ValueError("tone weights must sum to 1 ± 0.001")
-        maximum = max(self.weights.values())
-        if abs(self.weights[self.primary_tone] - maximum) > 0.001:
-            raise ValueError("primary_tone must have a maximum weight")
-        if self.secondary_tone == self.primary_tone:
-            raise ValueError("secondary_tone must differ from primary_tone")
+        if self.weights is not None:
+            if set(self.weights) != set(ToneCode):
+                raise ValueError("tone profile requires all five tone weights")
+            if abs(sum(self.weights.values()) - 1.0) > _WEIGHTS_TOLERANCE:
+                raise ValueError("tone weights must sum to 1 ± 0.001")
+        mode = self.regulation_mode
+        if mode == "personalized_five_tone":
+            if self.weights is None:
+                raise ValueError("personalized_five_tone requires tone weights")
+            if self.primary_tone is None:
+                raise ValueError("personalized_five_tone requires a primary tone")
+            maximum = max(self.weights.values())
+            if abs(self.weights[self.primary_tone] - maximum) > _WEIGHTS_TOLERANCE:
+                raise ValueError("primary_tone must have a maximum weight")
+            if self.secondary_tone == self.primary_tone:
+                raise ValueError("secondary_tone must differ from primary_tone")
+            return self
+        # integrated_regulation / basic_wellness: no primary tone may be claimed
+        if self.primary_tone is not None:
+            raise ValueError(f"{mode} must not carry a primary tone")
+        if self.secondary_tone is not None:
+            raise ValueError(f"{mode} must not carry a secondary tone")
+        if mode == "integrated_regulation" and self.weights is None:
+            raise ValueError("integrated_regulation must retain tone weights")
+        if mode == "basic_wellness" and self.weights is not None:
+            values = list(self.weights.values())
+            if max(values) - min(values) > _WEIGHTS_TOLERANCE:
+                raise ValueError("basic_wellness weights must be neutral when present")
         return self
 
 
@@ -348,14 +415,22 @@ class GenerationReadiness(V3BaseModel):
 
 
 class FiveToneAnalysisReadModel(V3BaseModel):
-    """PUBLIC-only read model for the Five-Tone Analysis page."""
+    """PUBLIC-only read model for the Five-Tone Analysis / Player basis panel.
+
+    ``regulation_mode`` is the backend authority for the three music-design
+    modes; clients must not infer the mode from ``primary_tone == null``.
+    ``primary_tone`` is null for ``integrated_regulation`` (balanced weights are
+    still present) and for ``basic_wellness`` (no tone conclusion is fabricated).
+    """
 
     schema_version: Literal["five_tone_analysis_read_model_v3.1"]
     confirmed_user_state_ref: ConfirmedUserStateRef
     confirmed_state: PublicText
     state_tendency: PublicText
     analysis_rationales: Annotated[list[PublicRationale], Field(min_length=1)]
-    primary_tone: PublicToneExplanation
+    regulation_mode: RegulationMode
+    tone_weights: dict[ToneCode, Score01] | None = None
+    primary_tone: PublicToneExplanation | None = None
     secondary_tone: PublicToneExplanation | None = None
     bpm: BpmExplanation
     instruments: ListParameterExplanation
@@ -364,11 +439,47 @@ class FiveToneAnalysisReadModel(V3BaseModel):
     generation: GenerationReadiness
     disclaimer: PublicText
 
+    @model_validator(mode="before")
+    @classmethod
+    def infer_legacy_regulation_mode(cls, data: object) -> object:
+        if isinstance(data, Mapping) and "regulation_mode" not in data:
+            payload = dict(data)
+            payload["regulation_mode"] = (
+                "personalized_five_tone"
+                if payload.get("primary_tone")
+                else "integrated_regulation"
+            )
+            return payload
+        return data
+
     @model_validator(mode="after")
-    def validate_distinct_tones(self) -> "FiveToneAnalysisReadModel":
+    def validate_mode_consistency(self) -> "FiveToneAnalysisReadModel":
+        if self.tone_weights is not None:
+            if set(self.tone_weights) != set(ToneCode):
+                raise ValueError("tone weights require all five tones")
+            if abs(sum(self.tone_weights.values()) - 1.0) > _WEIGHTS_TOLERANCE:
+                raise ValueError("tone weights must sum to 1 ± 0.001")
         if (
             self.secondary_tone is not None
+            and self.primary_tone is not None
             and self.secondary_tone.tone == self.primary_tone.tone
         ):
             raise ValueError("secondary tone must differ from primary tone")
+        mode = self.regulation_mode
+        if mode == "personalized_five_tone":
+            if self.primary_tone is None:
+                raise ValueError("personalized_five_tone requires a primary tone")
+            if self.tone_weights is None:
+                raise ValueError("personalized_five_tone requires tone weights")
+            return self
+        if self.primary_tone is not None:
+            raise ValueError(f"{mode} must not present a primary tone")
+        if self.secondary_tone is not None:
+            raise ValueError(f"{mode} must not present a secondary tone")
+        if mode == "integrated_regulation" and self.tone_weights is None:
+            raise ValueError("integrated_regulation must retain tone weights")
+        if mode == "basic_wellness" and self.tone_weights is not None:
+            values = list(self.tone_weights.values())
+            if max(values) - min(values) > _WEIGHTS_TOLERANCE:
+                raise ValueError("basic_wellness weights must be neutral when present")
         return self

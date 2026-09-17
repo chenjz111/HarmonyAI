@@ -146,16 +146,19 @@ def _conservative_wellness_spec(
     user_goal: UserGoalV31 | None,
     preserved: GenerationSpec | None = None,
 ) -> GenerationSpec:
+    """Sprint 6 ``basic_wellness`` fallback.
+
+    Evidence-insufficient / legal-abstain results must never claim a five-tone
+    primary tone (abstain ≠ 宫, 证据不足 ≠ 宫). Only the approved deterministic
+    non-tone music parameters (bpm / instruments / duration) are carried over;
+    no tone weights are fabricated. Technical failures never reach this path.
+    """
+
     tone_profile = ToneProfileV31(
         schema_version="tone_profile_v3.1",
-        weights={
-            ToneCode.jiao: 0.1,
-            ToneCode.zhi: 0.1,
-            ToneCode.gong: 0.6,
-            ToneCode.shang: 0.1,
-            ToneCode.yu: 0.1,
-        },
-        primary_tone=ToneCode.gong,
+        regulation_mode="basic_wellness",
+        weights=None,
+        primary_tone=None,
         secondary_tone=None,
         score_semantics="relative_tone_distribution",
         mapping_version="tone_mapping_v3.0",
@@ -363,11 +366,19 @@ def create_prescription(
         )
         profile_id = preference.profile_id if preference is not None else None
 
-    primary_tone_display = _TONE_DISPLAY[spec.tone_profile.primary_tone]
-    tone_summary = f"{primary_tone_display}为主"
-    if spec.tone_profile.secondary_tone is not None:
-        tone_summary += f"，{_TONE_DISPLAY[spec.tone_profile.secondary_tone]}为辅"
-    tone_summary += f"，{spec.energy_curve}。"
+    # Sprint 6: presentation must not claim a tone when the mode carries none.
+    tone = spec.tone_profile
+    if tone.primary_tone is not None:
+        tone_summary = f"{_TONE_DISPLAY[tone.primary_tone]}为主"
+        if tone.secondary_tone is not None:
+            tone_summary += f"，{_TONE_DISPLAY[tone.secondary_tone]}为辅"
+        tone_summary += f"，{spec.energy_curve}。"
+    elif tone.regulation_mode == "integrated_regulation":
+        tone_summary = f"综合调适，未主张单一五音主音，{spec.energy_curve}。"
+    else:
+        # basic_wellness wording is pending Medical sign-off (rule-freeze Q2);
+        # keep it neutral and free of any tone claim.
+        tone_summary = f"基础舒缓，未主张五音主音，{spec.energy_curve}。"
     instruments = "、".join(spec.instruments)
 
     presentation = PrescriptionPresentation(
