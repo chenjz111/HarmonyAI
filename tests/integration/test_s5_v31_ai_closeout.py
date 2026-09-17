@@ -142,11 +142,19 @@ def test_closeout_runs_grounded_agent2_then_public_agent3_without_internal_field
     assert execution.status == "success"
     assert execution.response is not None
 
+    from tests.sprint6_phase1b_fixtures import synthetic_decision
+
+    decision = synthetic_decision(
+        regulation_mode="personalized_five_tone",
+        dominant_organ="heart",
+        primary_tone="zhi",
+    )
     profile = build_tone_profile_v31(
         diagnosis_id="diag_1",
         organ_weights={"heart": 1.0},
         supporting_evidence_refs=["fact_1", "chunk_1"],
         mapping=_mapping(),
+        dominance_decision=decision,
     )
     generation_spec = build_generation_spec_v31(
         profile=profile,
@@ -191,6 +199,7 @@ def test_closeout_runs_grounded_agent2_then_public_agent3_without_internal_field
         evidence_refs=["fact_1", "chunk_1"],
         mapping=_mapping(),
         generation_spec=generation_spec,
+        dominance_decision=decision,
     )
 
     assert read_model.primary_tone.tone.value == "zhi"

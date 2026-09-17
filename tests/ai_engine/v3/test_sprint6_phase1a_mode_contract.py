@@ -33,6 +33,12 @@ from backend.ai_engine.v3.agent3 import (
 )
 from backend.ai_engine.v3.v31_pipeline import V31PipelineBlocked, execute_v31_ai_pipeline
 from backend.app.schemas.v3.common import ToneCode
+from tests.sprint6_phase1b_fixtures import (
+    decision_from_organ_support,
+    decision_from_organ_weights,
+    synthetic_decision,
+    synthetic_decision_for_profile,
+)
 from backend.app.schemas.v3.flow_v31 import (
     FiveToneAnalysisReadModel,
     ToneProfileBasisV31,
@@ -102,12 +108,29 @@ def _profile(
     *,
     diagnosis_status: str = "success",
 ) -> ToneProfileV31:
+    """Build a profile from the authoritative Phase 1B decision.
+
+    Sprint 6 Phase 1B moved mode/primary-tone authority out of Agent3, so these
+    tests route their organ weights through the real dominance service (which
+    scales the normalized fixture weights into legal raw support, preserving
+    every ratio) and Agent3 only constructs the profile from that decision.
+    """
+
+    decision = (
+        decision_from_organ_support(
+            {},
+            upstream_abstain_reason="ELEMENT_EVIDENCE_INSUFFICIENT",
+        )
+        if diagnosis_status == "abstained"
+        else decision_from_organ_weights(organ_weights)
+    )
     return build_tone_profile_v31(
         diagnosis_id="diag_phase1a",
         diagnosis_status=diagnosis_status,
         organ_weights=organ_weights,
         supporting_evidence_refs=["fact_1"],
         mapping=_mapping(),
+        dominance_decision=decision,
     )
 
 
@@ -422,17 +445,29 @@ def test_abstained_diagnosis_is_basic_wellness_without_any_tone():
 
 
 def test_zero_organ_evidence_is_an_explicit_gate_not_gong():
-    with pytest.raises(Agent3Blocked, match="INSUFFICIENT_ORGAN_EVIDENCE"):
-        _profile({name: 0.0 for name in ("liver", "heart", "spleen", "lung", "kidney")})
+    """No legal candidate is a basic_wellness stop, never a fabricated tone."""
+
+    profile = _profile({name: 0.0 for name in ("liver", "heart", "spleen", "lung", "kidney")})
+    assert profile.regulation_mode == "basic_wellness"
+    assert profile.primary_tone is None
+    assert profile.secondary_tone is None
+    assert profile.weights is None
+    assert profile.primary_tone != ToneCode.gong
 
 
 def test_unknown_organ_or_malformed_mapping_never_falls_back_to_gong():
+    personalized = synthetic_decision(
+        regulation_mode="personalized_five_tone",
+        dominant_organ="spleen",
+        primary_tone="gong",
+    )
     with pytest.raises(Agent3Blocked, match="INVALID_MAPPING"):
         build_tone_profile_v31(
             diagnosis_id="diag_phase1a",
             organ_weights={"unknown_organ": 1.0},
             supporting_evidence_refs=["fact_1"],
             mapping=_mapping(),
+            dominance_decision=personalized,
         )
     broken = _mapping()
     broken["organ_tone_weights"] = {"primary": {"spleen": {"not_a_tone": 1.0}}}  # type: ignore[index]
@@ -442,6 +477,7 @@ def test_unknown_organ_or_malformed_mapping_never_falls_back_to_gong():
             organ_weights={"spleen": 1.0},
             supporting_evidence_refs=["fact_1"],
             mapping=broken,
+            dominance_decision=personalized,
         )
 
 
@@ -452,6 +488,7 @@ def test_missing_evidence_references_are_explicitly_blocked():
             organ_weights={"spleen": 1.0},
             supporting_evidence_refs=[],
             mapping=_mapping(),
+            dominance_decision=synthetic_decision(),
         )
 
 
@@ -475,6 +512,7 @@ def _read_model_for(profile: ToneProfileV31) -> FiveToneAnalysisReadModel:
         evidence_refs=["fact_1"],
         mapping=_mapping(),
         generation_spec=spec,
+        dominance_decision=synthetic_decision_for_profile(profile),
     )
 
 

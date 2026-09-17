@@ -1,0 +1,150 @@
+{
+  "asset_version": "dominance-rule-v1.0-r1",
+  "candidate_policies": {
+    "one_legal_candidate": {
+      "reason_code": "PERSONALIZED_SINGLE_LEGAL_CANDIDATE",
+      "regulation_mode": "personalized_five_tone"
+    },
+    "two_or_more_legal_candidates": {
+      "reason_code": "PERSONALIZED_DOMINANCE_THRESHOLDS_MET",
+      "regulation_mode": "personalized_five_tone"
+    },
+    "zero_legal_candidates": {
+      "dominant_organ": null,
+      "primary_tone": null,
+      "reason_code": "BASIC_NO_LEGAL_ORGAN_CANDIDATE",
+      "regulation_mode": "basic_wellness"
+    }
+  },
+  "conflict_policy": {
+    "dominance_affecting_definition": "unresolved minor conflict involving the only legal candidate OR effective evidence/claim used by the top1 or top2 legal candidates",
+    "dominance_affecting_unresolved_minor": {
+      "primary_tone": null,
+      "reason_code": "INTEGRATED_DOMINANCE_CONFLICT",
+      "regulation_mode": "integrated_regulation"
+    },
+    "linkage": "conflict.fact_ids -> persisted fact evidence (fact_id) -> claim_code -> organ contribution recorded by the canonical aggregation snapshot",
+    "otherwise": "audit_only",
+    "unresolved_major": {
+      "primary_tone": null,
+      "reason_code": "BASIC_UNRESOLVED_MAJOR_CONFLICT",
+      "regulation_mode": "basic_wellness"
+    }
+  },
+  "content_checksum": "sha256:7be01a93cd55118d496c08d234302b2d7cc8d601aa0152c62789a2ed31d9e019",
+  "decision_snapshot_schema_id": "organ_dominance_decision_v1",
+  "dominance_gate": {
+    "comparison_population": "legal_candidates_only",
+    "entropy_or_spread_gate": null,
+    "epsilon": null,
+    "exact_tie_basis": "canonical_raw_support_equality",
+    "normalized_margin_comparison": ">=",
+    "normalized_margin_threshold": 0.08,
+    "normalized_precision": 4,
+    "raw_ratio_comparison": ">=",
+    "raw_ratio_threshold": 1.2,
+    "top1_hard_gate": null,
+    "top_ordering_authority": "canonical_raw_support"
+  },
+  "evidence_gate": {
+    "comparison": ">=",
+    "counted_directions": [
+      "supporting",
+      "contradicting"
+    ],
+    "coverage_formula": "min(1.0, effective_confirmed_fact_count / 8)",
+    "coverage_formula_version": "s6_evidence_coverage_v1",
+    "denominator": 8,
+    "effective_evidence_population": "effective_confirmed_evidence_after_source_priority_dedupe",
+    "minimum_coverage": 0.5,
+    "upstream_abstain_mappings": [
+      {
+        "reason_code": "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT",
+        "upstream_reason_code": "ELEMENT_EVIDENCE_INSUFFICIENT"
+      },
+      {
+        "reason_code": "BASIC_RAG_EMPTY",
+        "upstream_reason_code": "RAG_EMPTY"
+      }
+    ]
+  },
+  "failure_policy": {
+    "mapping_identity_mismatch": "readiness_failure",
+    "safety_blocked": "withheld",
+    "silent_mock_fallback": false,
+    "technical_failure_reasons_preserved": [
+      "MODEL_SCHEMA_INVALID",
+      "RAG_UNAVAILABLE",
+      "INGESTION_NOT_APPROVED",
+      "PROVIDER_AUTH_FAILED",
+      "PROVIDER_TIMEOUT",
+      "PROVIDER_RATE_LIMITED",
+      "NETWORK_ERROR",
+      "MUSIC_PARAMETER_ASSET_NOT_READY",
+      "GENERATION_SPEC_NOT_READY"
+    ],
+    "technical_failures_are_not_modes": true
+  },
+  "legal_candidate_gate": {
+    "authority": "approved_organ_mapping",
+    "comparison": ">=",
+    "minimum_effective_evidence_count": 2,
+    "minimum_raw_support": 0.75,
+    "note": "organ qualification thresholds are read from the approved organ mapping at runtime; this asset references that identity and is never a second threshold authority",
+    "reference": "organ_mapping_v3@3.0.0"
+  },
+  "medical_review": {
+    "review_version": "s6-p1b-medical-review-v1",
+    "status": "approved"
+  },
+  "owner_approval": {
+    "approval_version": "s6-p1b-owner-approval-v1",
+    "approved_phase": "Sprint 6 Phase 1B",
+    "status": "approved"
+  },
+  "read_model_schema_version": "five_tone_analysis_read_model_v3.3",
+  "reason_codes": {
+    "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT": "evidence legally insufficient upstream (element evidence)",
+    "BASIC_EVIDENCE_COVERAGE_BELOW_THRESHOLD": "effective confirmation coverage below 0.50",
+    "BASIC_NO_LEGAL_ORGAN_CANDIDATE": "no organ qualifies as a legal candidate",
+    "BASIC_RAG_EMPTY": "no approved retrieval context upstream",
+    "BASIC_UNRESOLVED_MAJOR_CONFLICT": "an unresolved major conflict fails the evidence gate",
+    "INTEGRATED_DOMINANCE_CONFLICT": "dominance-affecting unresolved minor conflict",
+    "INTEGRATED_EXACT_TOP_TIE": "canonical raw support equality between the top two legal candidates",
+    "INTEGRATED_MARGIN_BELOW_THRESHOLD": "normalized margin below 0.08",
+    "INTEGRATED_RATIO_BELOW_THRESHOLD": "raw ratio below 1.20",
+    "PERSONALIZED_DOMINANCE_THRESHOLDS_MET": "margin and raw ratio both pass with no dominance-affecting conflict",
+    "PERSONALIZED_SINGLE_LEGAL_CANDIDATE": "exactly one legal organ candidate after earlier gates pass"
+  },
+  "reason_precedence": {
+    "evidence_and_candidate_gates": [
+      "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT",
+      "BASIC_RAG_EMPTY",
+      "BASIC_EVIDENCE_COVERAGE_BELOW_THRESHOLD",
+      "BASIC_NO_LEGAL_ORGAN_CANDIDATE",
+      "BASIC_UNRESOLVED_MAJOR_CONFLICT"
+    ],
+    "two_or_more_legal_candidates": [
+      "INTEGRATED_EXACT_TOP_TIE",
+      "INTEGRATED_DOMINANCE_CONFLICT",
+      "INTEGRATED_MARGIN_BELOW_THRESHOLD",
+      "INTEGRATED_RATIO_BELOW_THRESHOLD"
+    ]
+  },
+  "references": {
+    "five_tone_mapping": {
+      "content_checksum": "sha256:8f6bd8b91a5989201bc5605d6ddc55ac76162ad566f932bd89a901f19c4fe36e",
+      "schema_id": "five_tone_mapping_v3",
+      "schema_version": "3.0.0"
+    },
+    "organ_mapping": {
+      "content_checksum": "sha256:771ca8d799a2df6fedd789beabe90e840432862fb72500d52cb15cf90b5ea495",
+      "schema_id": "organ_mapping_v3",
+      "schema_version": "3.0.0"
+    }
+  },
+  "review_status": "approved",
+  "schema_id": "dominance_rule_contract",
+  "schema_version": "1.0",
+  "scope": "Sprint 6 Phase 1B dominance and ambiguity routing for music-design mode selection"
+}

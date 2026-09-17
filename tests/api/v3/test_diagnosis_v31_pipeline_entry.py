@@ -24,6 +24,7 @@ from backend.app.schemas.v3.prescription import PreferenceSnapshot
 from backend.app.schemas.v3.flow_v31 import (
     ConfirmedUserState,
     FiveToneAnalysisReadModel,
+    FiveToneAnalysisReadModelV33,
 )
 from backend.app.services.v3 import diagnosis_service
 
@@ -210,9 +211,13 @@ def test_formal_router_reaches_v31_pipeline_factory_and_mock_chain(
         diagnosis = audit_db.query(DiagnosisRun).one()
         assert diagnosis.rag_run_id == "rag_formal_entry"
         assert diagnosis.provider_run_id
-        restored = FiveToneAnalysisReadModel.model_validate(
+        # Sprint 6 Phase 1B: newly written rows carry the v3.3 read model with
+        # the checksum-protected authoritative dominance audit.
+        restored = FiveToneAnalysisReadModelV33.model_validate(
             diagnosis.five_tone_read_model_json
         )
+        assert restored.dominance_decision is not None
+        assert restored.decision_reason_code is not None
         canonical = json.dumps(
             restored.model_dump(mode="json"),
             ensure_ascii=False,
@@ -221,7 +226,7 @@ def test_formal_router_reaches_v31_pipeline_factory_and_mock_chain(
         )
         assert (
             diagnosis.five_tone_read_model_schema_version
-            == "five_tone_analysis_read_model_v3.2"
+            == "five_tone_analysis_read_model_v3.3"
         )
         assert diagnosis.five_tone_read_model_checksum == (
             f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"

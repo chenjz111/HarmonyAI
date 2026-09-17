@@ -41,19 +41,16 @@ def _confirmed_state():
 
 
 def _mapping():
-    return {
-        "schema_id": "five-tone_mapping_v3",
-        "schema_version": "3.0.0",
-        "organ_tone_weights": {
-            "primary": {
-                "heart": {"zhi": 1.0},
-            }
-        },
-        "organ_tone_table": [
-            {"tone": tone, "tone_cn": tone}
-            for tone in ("jiao", "zhi", "gong", "shang", "yu")
-        ],
-    }
+    """The approved five-tone mapping asset.
+
+    Sprint 6 Phase 1B verifies the dominance rule's mapping identity against the
+    real approved assets, so the pipeline tests use them directly instead of a
+    hand-rolled double.
+    """
+
+    from backend.app.services.v3.knowledge_assets import load_five_tone_mapping
+
+    return load_five_tone_mapping()
 
 
 def _rules():
@@ -125,9 +122,21 @@ def _rag_result():
 
 
 def _snapshot():
+    from tests.sprint6_phase1b_fixtures import aggregation_from_organ_support
+
     return {
         "assessment_id": "asmt_1",
         "assessment_revision": 1,
+        "input_revision": 1,
+        # Sprint 6 Phase 1B: the canonical aggregation snapshot produced by the
+        # assessment layer is the only raw-support authority the dominance
+        # service consumes. Four effective confirmed facts clear the frozen
+        # Evidence Gate (4/8 = 0.50); liver's 0.1 stays below the approved
+        # raw-support threshold, so heart remains the single legal candidate.
+        "organ_aggregation": aggregation_from_organ_support(
+            {"heart": 1.0, "liver": 0.1}
+        ),
+        "conflicts": [],
         "organ_codes": ["heart"],
         "approved_organ_codes": ["heart"],
         "claim_codes": ["unrefreshing_sleep"],

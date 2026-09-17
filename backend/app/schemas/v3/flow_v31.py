@@ -13,6 +13,7 @@ from pydantic import BeforeValidator, Field, StringConstraints, model_validator
 
 from .common import (
     NonEmptyString,
+    OrganCode,
     QuestionnaireAnswer,
     Score01,
     Timestamp,
@@ -371,9 +372,13 @@ class ToneProfileV31(V3BaseModel):
                 raise ValueError("personalized_five_tone requires tone weights")
             if self.primary_tone is None:
                 raise ValueError("personalized_five_tone requires a primary tone")
-            maximum = max(self.weights.values())
-            if abs(self.weights[self.primary_tone] - maximum) > MODE_WEIGHTS_TOLERANCE:
-                raise ValueError("primary_tone must have a maximum weight")
+            # Sprint 6 Phase 1B: the primary tone is the mapped tone of the
+            # authoritative dominant ORGAN decided once by the dominance
+            # service. ``weights`` are the smoothed five-tone distribution
+            # (0.7 primary / 0.15 secondary per organ, approved mapping), whose
+            # argmax is deliberately NOT the routing authority any more, so the
+            # Phase 1A "primary_tone must have a maximum weight" rule no longer
+            # holds. Mode scoping and weight integrity are still enforced.
             if self.secondary_tone == self.primary_tone:
                 raise ValueError("secondary_tone must differ from primary_tone")
             return self
@@ -476,6 +481,178 @@ class FiveToneAnalysisReadModel(V3BaseModel):
             raise ValueError(f"{mode} must not present a primary tone")
         if self.secondary_tone is not None:
             raise ValueError(f"{mode} must not present a secondary tone")
+        if mode == "integrated_regulation" and self.tone_weights is None:
+            raise ValueError("integrated_regulation must retain tone weights")
+        if mode == "basic_wellness" and self.tone_weights is not None:
+            values = list(self.tone_weights.values())
+            if max(values) - min(values) > MODE_WEIGHTS_TOLERANCE:
+                raise ValueError("basic_wellness weights must be neutral when present")
+        return self
+
+
+# --------------------------------------------------------------------------- #
+# Sprint 6 Phase 1B — authoritative dominance decision snapshot
+# --------------------------------------------------------------------------- #
+
+# Phase 1B materially extends the read-model shape with the authoritative
+# dominance decision/audit, which is why the public read model moves to v3.3.
+# ``tone_profile_v3.2`` / ``generation_spec_v3.2`` keep their version: their
+# serialized shapes do not change in Phase 1B.
+FIVE_TONE_ANALYSIS_SCHEMA_VERSION_V33 = "five_tone_analysis_read_model_v3.3"
+ORGAN_DOMINANCE_DECISION_SCHEMA_ID = "organ_dominance_decision_v1"
+ORGAN_DOMINANCE_DECISION_SCHEMA_VERSION = "1.0"
+
+DominanceGateState = Literal[
+    "passed",
+    "failed",
+    "not_applicable_single_candidate",
+    "not_evaluated",
+]
+
+
+class OrganDominanceCoverageAudit(V3BaseModel):
+    """Evidence-gate audit (canonical effective confirmed population)."""
+
+    confirmed_fact_count: Annotated[int, Field(ge=0)]
+    coverage_denominator: Literal[8]
+    evidence_coverage: Score01
+    coverage_formula_version: NonEmptyString
+    coverage_gate_passed: bool
+
+
+class OrganDominanceOrganAudit(V3BaseModel):
+    """Canonical organ aggregation snapshot (one scoring pass)."""
+
+    raw_organ_support_by_organ: dict[OrganCode, float]
+    effective_evidence_count_by_organ: dict[OrganCode, int]
+    legal_candidate_by_organ: dict[OrganCode, bool]
+    legal_candidate_organs: list[OrganCode]
+    legal_candidate_count: Annotated[int, Field(ge=0, le=5)]
+    normalized_weights_by_organ: dict[OrganCode, Score01]
+
+
+class OrganDominanceGateAudit(V3BaseModel):
+    """Dominance-gate audit; single-candidate values are null, never 0/Infinity."""
+
+    top1_organ: OrganCode | None = None
+    top2_organ: OrganCode | None = None
+    normalized_top1_weight: Score01 | None = None
+    normalized_top2_weight: Score01 | None = None
+    normalized_margin: float | None = None
+    raw_top1_support: float | None = None
+    raw_top2_support: float | None = None
+    raw_ratio: float | None = None
+    margin_gate_state: DominanceGateState
+    ratio_gate_state: DominanceGateState
+    dominance_gate_passed: bool
+
+
+class OrganDominanceConflictAudit(V3BaseModel):
+    unresolved_major_conflict_ids: list[NonEmptyString]
+    dominance_affecting_minor_conflict_ids: list[NonEmptyString]
+    conflict_gate_passed: bool
+
+
+class OrganDominanceAssetIdentity(V3BaseModel):
+    organ_mapping_version: NonEmptyString
+    organ_mapping_checksum: NonEmptyString
+    five_tone_mapping_version: NonEmptyString
+    five_tone_mapping_checksum: NonEmptyString
+    dominance_rule_version: NonEmptyString
+    dominance_rule_checksum: NonEmptyString
+
+
+class OrganDominanceDecisionV1(V3BaseModel):
+    """Validated immutable Phase 1B dominance/routing decision snapshot.
+
+    This is the single normal-path authority for ``regulation_mode``,
+    ``dominant_organ``, ``primary_tone`` and ``decision_reason_code``. Agent3,
+    prescription and the frontend consume it and never recompute dominance.
+    """
+
+    schema_id: Literal["organ_dominance_decision_v1"]
+    schema_version: Literal["1.0"]
+    assessment_id: NonEmptyString
+    assessment_revision: Annotated[int, Field(ge=1)]
+    input_revision: Annotated[int, Field(ge=1)]
+    confirmed_user_state_id: NonEmptyString | None = None
+    confirmed_user_state_revision: Annotated[int, Field(ge=1)] | None = None
+    coverage: OrganDominanceCoverageAudit
+    organ: OrganDominanceOrganAudit
+    dominance: OrganDominanceGateAudit
+    conflict: OrganDominanceConflictAudit
+    regulation_mode: RegulationMode
+    dominant_organ: OrganCode | None = None
+    primary_tone: ToneCode | None = None
+    decision_reason_code: NonEmptyString
+    assets: OrganDominanceAssetIdentity
+    decision_snapshot_checksum: NonEmptyString
+
+    @model_validator(mode="after")
+    def validate_mode_authority(self) -> "OrganDominanceDecisionV1":
+        mode = self.regulation_mode
+        if mode == "personalized_five_tone":
+            if self.primary_tone is None or self.dominant_organ is None:
+                raise ValueError(
+                    "personalized_five_tone requires a dominant organ and primary tone"
+                )
+            if self.dominant_organ not in self.organ.legal_candidate_organs:
+                raise ValueError("dominant organ must be a legal candidate")
+            return self
+        if self.primary_tone is not None or self.dominant_organ is not None:
+            raise ValueError(f"{mode} must not carry a dominant organ or primary tone")
+        return self
+
+
+class FiveToneAnalysisReadModelV33(V3BaseModel):
+    """PUBLIC-only Phase 1B read model: v3.2 shape + checksum-protected audit.
+
+    ``dominance_decision`` is present only for rows written by Phase 1B. A
+    Phase 1A ``v3.2``/``v3.1`` row stays readable and keeps a null audit: the
+    audit is never synthesized from ``primary_tone``/``tone_weights``/argmax.
+    """
+
+    schema_version: Literal["five_tone_analysis_read_model_v3.3"]
+    confirmed_user_state_ref: ConfirmedUserStateRef
+    confirmed_state: PublicText
+    state_tendency: PublicText
+    analysis_rationales: Annotated[list[PublicRationale], Field(min_length=1)]
+    regulation_mode: RegulationMode
+    dominant_organ: OrganCode | None = None
+    tone_weights: dict[ToneCode, Score01] | None = None
+    primary_tone: PublicToneExplanation | None = None
+    secondary_tone: PublicToneExplanation | None = None
+    bpm: BpmExplanation
+    instruments: ListParameterExplanation
+    ambience: ListParameterExplanation
+    duration: DurationExplanation
+    generation: GenerationReadiness
+    disclaimer: PublicText
+    decision_reason_code: NonEmptyString | None = None
+    dominance_decision: OrganDominanceDecisionV1 | None = None
+
+    @model_validator(mode="after")
+    def validate_mode_consistency(self) -> "FiveToneAnalysisReadModelV33":
+        if self.tone_weights is not None:
+            if set(self.tone_weights) != set(ToneCode):
+                raise ValueError("tone weights require all five tones")
+            if abs(sum(self.tone_weights.values()) - 1.0) > MODE_WEIGHTS_TOLERANCE:
+                raise ValueError("tone weights must sum to 1 ± 0.001")
+        if (
+            self.secondary_tone is not None
+            and self.primary_tone is not None
+            and self.secondary_tone.tone == self.primary_tone.tone
+        ):
+            raise ValueError("secondary tone must differ from primary tone")
+        mode = self.regulation_mode
+        if mode == "personalized_five_tone":
+            if self.primary_tone is None or self.tone_weights is None:
+                raise ValueError("personalized_five_tone requires a primary tone")
+            return self
+        if self.primary_tone is not None or self.secondary_tone is not None:
+            raise ValueError(f"{mode} must not present a tone")
+        if self.dominant_organ is not None:
+            raise ValueError(f"{mode} must not present a dominant organ")
         if mode == "integrated_regulation" and self.tone_weights is None:
             raise ValueError("integrated_regulation must retain tone weights")
         if mode == "basic_wellness" and self.tone_weights is not None:

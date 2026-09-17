@@ -248,13 +248,22 @@ def _seed_diagnosis(
             from backend.app.services.v3.internal_agent3_service import (
                 build_prescription_spec,
             )
+            from tests.sprint6_phase1b_fixtures import decision_from_organ_weights
 
             user_goal = (
                 UserGoalV31.model_validate(sess.user_goal_json)
                 if sess.user_goal_json is not None
                 else None
             )
-            spec = build_prescription_spec(session, diagnosis, user_goal)
+            # Sprint 6 Phase 1B: the Agent3 adapter consumes the authoritative
+            # dominance decision (it no longer re-derives a mode from weights).
+            # This row's fixture organ profile is liver-dominant (0.7).
+            decision = decision_from_organ_weights(
+                {"liver": 0.7, "heart": 0.1, "spleen": 0.1, "lung": 0.05, "kidney": 0.05}
+            )
+            spec = build_prescription_spec(
+                session, diagnosis, user_goal, dominance_decision=decision
+            )
             read_model = {
                 "schema_version": "five_tone_analysis_read_model_v3.2",
                 "confirmed_user_state_ref": {

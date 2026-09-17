@@ -295,7 +295,18 @@ def build_prescription_spec(
     db: Session,
     diagnosis: DiagnosisRun,
     user_goal: UserGoalV31 | None,
+    *,
+    dominance_decision: object | None = None,
 ) -> GenerationSpec:
+    """Build the transport spec from the persisted authoritative decision.
+
+    Sprint 6 Phase 1B: this adapter is no longer a decision authority. It
+    consumes the decision the diagnosis run already persisted
+    (``five_tone_analysis_read_model_v3.3`` audit) or an explicitly supplied
+    authoritative decision, and fails closed when neither exists — it never
+    re-derives a mode from organ weights, a primary tone or an argmax.
+    """
+
     revision = (
         db.query(AssessmentRevisionV3)
         .filter(
@@ -308,7 +319,25 @@ def build_prescription_spec(
     if revision is None:
         raise Agent3NotReady("ASSESSMENT_NOT_CONFIRMED", "评估结果尚未确认。")
     organ_profile = revision.organ_profile_json or {}
-    if organ_profile.get("status") != "available" or not organ_profile.get("weights"):
+    if dominance_decision is None:
+        session_row = db.get(SessionModel, diagnosis.session_row_id)
+        if session_row is None:
+            raise Agent3NotReady("ASSESSMENT_NOT_CONFIRMED", "评估结果尚未确认。")
+        read_model = load_current_five_tone_read_model(db, diagnosis, session_row)
+        dominance_decision = getattr(read_model, "dominance_decision", None)
+    if dominance_decision is None:
+        raise Agent3NotReady(
+            "DOMINANCE_DECISION_NOT_PERSISTED",
+            "该记录没有后端权威主导度决策，已停止重新推断音乐模式。",
+        )
+    mode = getattr(dominance_decision, "regulation_mode", None) or (
+        dominance_decision.get("regulation_mode")
+        if isinstance(dominance_decision, Mapping)
+        else None
+    )
+    if mode in {"personalized_five_tone", "integrated_regulation"} and (
+        organ_profile.get("status") != "available" or not organ_profile.get("weights")
+    ):
         raise Agent3NotReady(
             "INSUFFICIENT_ORGAN_EVIDENCE",
             "当前证据不足以生成五音处方。",
@@ -334,9 +363,10 @@ def build_prescription_spec(
             diagnosis_id=diagnosis.diagnosis_id,
             diagnosis_revision=diagnosis.assessment_revision,
             diagnosis_status=diagnosis.status,
-            organ_weights=organ_profile["weights"],
+            organ_weights=organ_profile.get("weights") or {},
             supporting_evidence_refs=evidence_refs,
             mapping=mapping,
+            dominance_decision=dominance_decision,
         )
         internal = build_generation_spec_v31(
             profile=profile,
@@ -344,6 +374,6 @@ def build_prescription_spec(
             user_goal=user_goal,
         )
     except Agent3Blocked as error:
-        code = str(error) or "AGENT3_NOT_READY"
+        code = error.error_code or "AGENT3_NOT_READY"
         raise Agent3NotReady(code, "五音处方规则尚未准备完成。") from error
     return to_transport_spec(internal, tone_profile=profile)

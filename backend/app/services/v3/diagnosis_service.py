@@ -66,6 +66,10 @@ from backend.ai_engine.v3.v31_pipeline import (
 )
 from backend.ai_engine.v3.agent3 import Agent3Blocked
 from backend.app.schemas.v3.flow_v31 import FiveToneAnalysisReadModel
+from backend.app.schemas.v3.flow_v31 import (
+    FIVE_TONE_ANALYSIS_SCHEMA_VERSION_V33,
+    FiveToneAnalysisReadModelV33,
+)
 from backend.app.services.v3.internal_agent3_service import to_transport_spec
 from backend.app.services.v3.agent3_preference_policy import (
     apply_preference_policy,
@@ -74,6 +78,11 @@ from backend.app.services.v3.agent3_preference_policy import (
 from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
 from backend.app.services.v3.knowledge_assets import (
     load_approved_syndrome_display_names,
+    load_organ_mapping,
+)
+from backend.app.services.v3.assessment_service import load_revision_evidence
+from backend.app.services.v3.organ_dominance_service import (
+    build_organ_aggregation_snapshot,
 )
 from backend.app.services.v3.idempotency import (
     IdempotencyConflict,
@@ -390,6 +399,22 @@ def _build_v31_assessment_snapshot(
     }
     organ_profile = assessment_revision.organ_profile_json or {}
     organ_codes.update(str(key) for key in (organ_profile.get("weights") or {}))
+    # Sprint 6 Phase 1B: one canonical aggregation pass over this revision's
+    # confirmed evidence, handed to the dominance service. Nothing downstream
+    # recomputes raw support or re-qualifies candidates.
+    revision_evidence, revision_links = load_revision_evidence(
+        db,
+        assessment_id=assessment.assessment_id,
+        revision=assessment_revision.revision,
+        confirmed_only=True,
+    )
+    try:
+        organ_mapping = load_organ_mapping()
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise V31ReadinessError("ORGAN_MAPPING_ASSET_NOT_READY") from error
+    organ_aggregation = build_organ_aggregation_snapshot(
+        revision_evidence, revision_links, organ_mapping
+    )
     try:
         from backend.app.services.v3.knowledge_assets import load_claim_dictionary
 
@@ -408,6 +433,9 @@ def _build_v31_assessment_snapshot(
     return {
         "assessment_id": assessment.assessment_id,
         "assessment_revision": assessment_revision.revision,
+        "input_revision": int(assessment_revision.input_revision or 1),
+        "organ_aggregation": organ_aggregation,
+        "organ_mapping": organ_mapping,
         "confirmed_state_text": assessment_revision.state_summary,
         "diagnosis_id": request.diagnosis_id,
         "request_id": f"diag_req_{request.diagnosis_id}",
@@ -470,6 +498,7 @@ def _run_v31_pipeline(
                 diagnosis_provider=deps.diagnosis_provider,
                 tone_mapping=deps.tone_mapping,
                 generation_parameter_rules=deps.generation_parameter_rules,
+                organ_mapping=snapshot.get("organ_mapping"),
                 # The optional UserGoal is an Agent 3 personalization input owned
                 # by the session (user_goal_service), never Agent 1 output: the
                 # frozen 0003_v3_owner_flow migration constrains
@@ -650,7 +679,17 @@ def _persist_diagnosis(
     run.degradation_json = root.degradation.model_dump(mode="json")
     run.presentation_json = root.presentation.model_dump(mode="json")
     if pipeline is not None:
-        read_model = FiveToneAnalysisReadModel.model_validate(pipeline.read_model)
+        # Sprint 6 Phase 1B: the pipeline emits the v3.3 read model (with the
+        # checksum-protected dominance audit); a Phase 1A v3.2 payload stays
+        # valid for callers that did not pass a decision.
+        raw_read_model = pipeline.read_model
+        read_model_model = (
+            FiveToneAnalysisReadModelV33
+            if getattr(raw_read_model, "schema_version", None)
+            == FIVE_TONE_ANALYSIS_SCHEMA_VERSION_V33
+            else FiveToneAnalysisReadModel
+        )
+        read_model = read_model_model.model_validate(raw_read_model)
         preference = get_latest_preference_snapshot(db, principal)
         applications = []
         if preference is not None:

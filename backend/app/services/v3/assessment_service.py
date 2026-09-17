@@ -56,6 +56,13 @@ from backend.app.schemas.v3.common import (
 )
 from backend.app.schemas.v3.understanding import NormalizedFact as NormalizedFactSchema
 from backend.app.services.v3.knowledge_assets import load_organ_mapping
+from backend.app.services.v3.organ_dominance_service import (
+    build_organ_aggregation_snapshot,
+    conflict_rules_of,
+    is_questionnaire_evidence,
+    select_effective_evidence,
+    shares_source,
+)
 from backend.app.services.v3.questionnaire_evidence import (
     QuestionnaireEvidenceInvalid,
     build_questionnaire_facts,
@@ -91,52 +98,98 @@ class AssessmentRevisionConflict(RuntimeError):
 _OPERATION = "create_v3_assessment"
 
 
+def load_revision_evidence(
+    db: Session,
+    *,
+    assessment_id: str,
+    revision: int,
+    confirmed_only: bool = True,
+) -> tuple[list[FactEvidence], list[OrganEvidenceLink]]:
+    """One revision's evidence + organ links (single read-only implementation).
+
+    Sprint 6 Phase 1B: the diagnosis/dominance boundary consumes exactly this
+    population so the canonical aggregation snapshot is scored from the same
+    rows Agent 1 persisted.
+    """
+
+    query = db.query(FactEvidenceRow).filter(
+        FactEvidenceRow.assessment_id == assessment_id,
+        FactEvidenceRow.assessment_revision == revision,
+    )
+    if confirmed_only:
+        query = query.filter(FactEvidenceRow.confirmation_status == "confirmed")
+    evidence_rows = query.order_by(FactEvidenceRow.fact_evidence_id).all()
+    evidence: list[FactEvidence] = []
+    row_by_pk: dict[str, str] = {}
+    for row in evidence_rows:
+        fact = db.get(NormalizedFact, row.normalized_fact_row_id)
+        source_rows = (
+            db.query(FactSourceRef)
+            .filter(FactSourceRef.fact_row_id == row.normalized_fact_row_id)
+            .order_by(FactSourceRef.source_type, FactSourceRef.source_id)
+            .all()
+        )
+        evidence.append(
+            FactEvidence(
+                fact_evidence_id=row.fact_evidence_id,
+                assessment_id=row.assessment_id,
+                assessment_revision=row.assessment_revision,
+                fact_id=fact.fact_id,
+                claim_code=row.claim_code,
+                display_name=row.display_name,
+                category=row.category,
+                value=row.value_json,
+                time_window=row.time_window,
+                direction=row.direction,
+                reliability=row.reliability,
+                source_refs=[
+                    {
+                        "source_type": src.source_type,
+                        "source_id": src.source_id,
+                        "span_ref": src.span_ref,
+                    }
+                    for src in source_rows
+                ],
+                confirmation_status=row.confirmation_status,
+            )
+        )
+        row_by_pk[row.fact_evidence_row_id] = row.fact_evidence_id
+    link_rows = (
+        db.query(OrganEvidenceRow)
+        .filter(OrganEvidenceRow.fact_evidence_row_id.in_(list(row_by_pk)))
+        .order_by(OrganEvidenceRow.organ_evidence_link_id)
+        .all()
+        if row_by_pk
+        else []
+    )
+    links = [
+        OrganEvidenceLink(
+            organ_evidence_link_id=row.organ_evidence_link_id,
+            fact_evidence_id=row_by_pk[row.fact_evidence_row_id],
+            organ=row.organ,
+            element=row.element,
+            direction=row.direction,
+            link_strength=row.link_strength,
+            mapping_rule_id=row.mapping_rule_id,
+            mapping_version=row.mapping_version,
+            explanation_summary=row.explanation_summary,
+        )
+        for row in link_rows
+    ]
+    return evidence, links
+
+
 def _assessment_read_model(db: Session, run: AssessmentV3) -> AssessmentV31Response:
     revision = db.query(AssessmentRevisionV3).filter(
         AssessmentRevisionV3.assessment_id == run.assessment_id,
         AssessmentRevisionV3.revision == run.current_revision,
     ).one()
-    evidence_rows = db.query(FactEvidenceRow).filter(
-        FactEvidenceRow.assessment_id == run.assessment_id,
-        FactEvidenceRow.assessment_revision == run.current_revision,
-    ).order_by(FactEvidenceRow.fact_evidence_id).all()
-    evidence = []
-    row_by_pk = {}
-    for row in evidence_rows:
-        fact = db.get(NormalizedFact, row.normalized_fact_row_id)
-        source_rows = db.query(FactSourceRef).filter(
-            FactSourceRef.fact_row_id == row.normalized_fact_row_id
-        ).order_by(FactSourceRef.source_type, FactSourceRef.source_id).all()
-        evidence.append(FactEvidence(
-            fact_evidence_id=row.fact_evidence_id,
-            assessment_id=row.assessment_id,
-            assessment_revision=row.assessment_revision,
-            fact_id=fact.fact_id,
-            claim_code=row.claim_code,
-            display_name=row.display_name,
-            category=row.category,
-            value=row.value_json,
-            time_window=row.time_window,
-            direction=row.direction,
-            reliability=row.reliability,
-            source_refs=[{"source_type": src.source_type, "source_id": src.source_id, "span_ref": src.span_ref} for src in source_rows],
-            confirmation_status=row.confirmation_status,
-        ))
-        row_by_pk[row.fact_evidence_row_id] = row.fact_evidence_id
-    link_rows = db.query(OrganEvidenceRow).filter(
-        OrganEvidenceRow.fact_evidence_row_id.in_(list(row_by_pk))
-    ).order_by(OrganEvidenceRow.organ_evidence_link_id).all() if row_by_pk else []
-    links = [OrganEvidenceLink(
-        organ_evidence_link_id=row.organ_evidence_link_id,
-        fact_evidence_id=row_by_pk[row.fact_evidence_row_id],
-        organ=row.organ,
-        element=row.element,
-        direction=row.direction,
-        link_strength=row.link_strength,
-        mapping_rule_id=row.mapping_rule_id,
-        mapping_version=row.mapping_version,
-        explanation_summary=row.explanation_summary,
-    ) for row in link_rows]
+    evidence, links = load_revision_evidence(
+        db,
+        assessment_id=run.assessment_id,
+        revision=run.current_revision,
+        confirmed_only=False,
+    )
     return AssessmentV31Response(
         schema_version="assessment_v3.1", agent_id="assessment_agent",
         assessment_id=run.assessment_id, revision=revision.revision,
@@ -478,52 +531,35 @@ def _organ_links(
 
 
 def _shares_source(left: FactEvidence, right: FactEvidence) -> bool:
-    left_sources = {(ref.source_type, ref.source_id) for ref in left.source_refs}
-    right_sources = {(ref.source_type, ref.source_id) for ref in right.source_refs}
-    return bool(left_sources & right_sources)
+    """Compatibility wrapper over the canonical shared-source check."""
+
+    return shares_source(left, right)
 
 
 def _is_questionnaire_evidence(item: FactEvidence) -> bool:
-    return any(ref.source_type == "questionnaire" for ref in item.source_refs)
+    """Compatibility wrapper over the canonical questionnaire-source check."""
+
+    return is_questionnaire_evidence(item)
 
 
 def _select_effective_evidence(
     evidence: list[FactEvidence],
     mapping: dict,
 ) -> list[FactEvidence]:
-    """One effective FactEvidence per claim_code.
+    """Compatibility wrapper over the canonical Phase 1B effective selection.
 
-    conflict_rules.questionnaire_priority: the questionnaire's deterministic
-    score wins and is never overridden by provider-extracted facts — without
-    this selection a multi-organ claim present from both the questionnaire and
-    a document would be scored twice (once per source). Within one priority
-    class the highest-reliability item wins; ties are broken deterministically
-    by fact_id.
+    The one-effective-evidence-per-claim rule (and the approved source-priority
+    dedupe it implements) is owned by ``organ_dominance_service`` so Phase 1B
+    dominance consumes exactly the population Agent 1 scores.
     """
-    if "questionnaire_priority" not in _conflict_rules(mapping):
-        return evidence
-    by_claim: dict[str, list[FactEvidence]] = {}
-    for item in evidence:
-        by_claim.setdefault(item.claim_code, []).append(item)
-    return [
-        max(
-            items,
-            key=lambda item: (
-                _is_questionnaire_evidence(item),
-                item.reliability,
-                item.fact_id,
-            ),
-        )
-        for items in by_claim.values()
-    ]
+
+    return select_effective_evidence(evidence, mapping)
 
 
 def _conflict_rules(mapping: dict) -> set[str]:
-    return {
-        item["rule"]
-        for item in mapping.get("conflict_rules", [])
-        if item.get("rule")
-    }
+    """Compatibility wrapper over the canonical conflict-rule reader."""
+
+    return conflict_rules_of(mapping)
 
 
 def _build_conflicts(
@@ -594,113 +630,22 @@ def _organ_weights(
     links: list[OrganEvidenceLink],
     mapping: dict,
 ) -> dict[OrganCode, float] | None:
-    """Compute available organ weights from the approved combination rules."""
-    evidence = _select_effective_evidence(evidence, mapping)
-    effective_ids = {item.fact_evidence_id for item in evidence}
-    links = [link for link in links if link.fact_evidence_id in effective_ids]
-    links_by_evidence: dict[str, list[OrganEvidenceLink]] = {}
-    for link in links:
-        links_by_evidence.setdefault(link.fact_evidence_id, []).append(link)
-    reliability_by_evidence = {ev.fact_evidence_id: ev.reliability for ev in evidence}
-    support: dict[OrganCode, float] = {organ: 0.0 for organ in OrganCode}
-    base_link_keys: set[tuple[str, OrganCode]] = set()
-    conflict_rules = _conflict_rules(mapping)
-    for rule in mapping.get("combination_rules", []):
-        organ = OrganCode(rule["organ"])
-        claims = set(rule.get("claims") or [])
-        present_by_claim: dict[str, tuple[FactEvidence, OrganEvidenceLink]] = {}
-        for ev in evidence:
-            if ev.claim_code not in claims:
-                continue
-            if (
-                "worry_control_vs_overthinking" in conflict_rules
-                and ev.claim_code == "worry_control"
-                and any(
-                    other.claim_code == "overthinking_tendency"
-                    and _shares_source(ev, other)
-                    for other in evidence
-                )
-            ):
-                continue
-            organ_links = [
-                link
-                for link in links_by_evidence.get(ev.fact_evidence_id, [])
-                if link.organ == organ
-            ]
-            if not organ_links:
-                continue
-            link = max(organ_links, key=lambda item: item.link_strength)
-            current = present_by_claim.get(ev.claim_code)
-            ev_priority = (_is_questionnaire_evidence(ev), ev.reliability)
-            current_priority = (
-                (_is_questionnaire_evidence(current[0]), current[0].reliability)
-                if current is not None
-                else None
-            )
-            if current is None or ev_priority > current_priority:
-                present_by_claim[ev.claim_code] = (ev, link)
-        if len(present_by_claim) < int(rule.get("min_count", 2)):
-            continue
-        signed = 0.0
-        for ev, link in present_by_claim.values():
-            base_link_keys.add((ev.fact_evidence_id, organ))
-            direction_signed = 1.0 if link.direction == "supporting" else -1.0
-            signed += (
-                float(link.link_strength)
-                * reliability_by_evidence[ev.fact_evidence_id]
-                * direction_signed
-            )
-        minimum_total_support = float(
-            (mapping.get("thresholds") or {}).get("minimum_total_support", 0.0)
-        )
-        if signed >= minimum_total_support:
-            support[organ] = signed
-    available = {organ: value for organ, value in support.items() if value > 0}
-    if not available:
-        return None
+    """Compatibility wrapper over the canonical Phase 1B aggregation snapshot.
 
-    multi_rule_ids = {
-        link["mapping_rule_id"]
-        for rule in mapping.get("multi_organ_rules", [])
-        for link in rule.get("links", [])
+    The single scoring pass now lives in ``organ_dominance_service``: it emits
+    raw support, effective evidence counts, legal candidates, contributing
+    claims and normalized weights together, so Phase 1B dominance consumes
+    exactly what Agent 1 scored. Returns ``None`` when no organ qualifies (the
+    frozen "insufficient" outcome), otherwise the normalized five-organ weights.
+    """
+
+    snapshot = build_organ_aggregation_snapshot(evidence, links, mapping)
+    if not snapshot.is_available:
+        return None
+    return {
+        OrganCode(organ): value
+        for organ, value in snapshot.normalized_weights_by_organ.items()
     }
-    sleep_claims = {"sleep_disturbance", "unrefreshing_sleep"}
-    sleep_max: dict[tuple[str, OrganCode], float] = {}
-    additional_multi: dict[OrganCode, float] = {organ: 0.0 for organ in available}
-    for ev in evidence:
-        for link in links_by_evidence.get(ev.fact_evidence_id, []):
-            if (
-                link.mapping_rule_id not in multi_rule_ids
-                or link.organ not in available
-                or (ev.fact_evidence_id, link.organ) in base_link_keys
-            ):
-                continue
-            signed = (
-                float(link.link_strength)
-                * ev.reliability
-                * (1.0 if link.direction == EvidenceDirection.supporting else -1.0)
-            )
-            if (
-                "sleep_multi_organ_no_double_count" in conflict_rules
-                and ev.claim_code in sleep_claims
-            ):
-                for source in ev.source_refs:
-                    key = (source.source_id, link.organ)
-                    sleep_max[key] = max(sleep_max.get(key, 0.0), signed)
-            else:
-                additional_multi[link.organ] += signed
-    for (_source_id, organ), value in sleep_max.items():
-        additional_multi[organ] += value
-    available = {
-        organ: value + additional_multi.get(organ, 0.0)
-        for organ, value in available.items()
-        if value + additional_multi.get(organ, 0.0) > 0
-    }
-    total = sum(available.values())
-    weights: dict[OrganCode, float] = {organ: 0.0 for organ in OrganCode}
-    for organ, value in available.items():
-        weights[organ] = round(value / total, 4)
-    return weights
 
 
 def create_assessment(

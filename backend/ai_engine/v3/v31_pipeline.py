@@ -38,6 +38,15 @@ from .diagnosis_pipeline import (
     build_diagnosis_query,
     execute_diagnosis_provider,
 )
+from backend.app.schemas.v3.flow_v31 import OrganDominanceDecisionV1
+from backend.app.services.v3.knowledge_assets import load_organ_mapping
+from backend.app.services.v3.organ_dominance_service import (
+    DominanceReadinessError,
+    OrganAggregationSnapshot,
+    load_configured_dominance_rule,
+    resolve_organ_dominance,
+    verify_mapping_identity,
+)
 
 
 class V31PipelineBlocked(ValueError):
@@ -87,6 +96,7 @@ class V31AiPipelineResult:
     rag_manifest: object | None
     rag_chunk_checksums: Mapping[str, str]
     audit_context: V31PipelineAuditContext | None = None
+    dominance_decision: OrganDominanceDecisionV1 | None = None
 
 
 async def execute_v31_ai_pipeline(
@@ -99,13 +109,21 @@ async def execute_v31_ai_pipeline(
     generation_parameter_rules: Mapping[str, object] | None,
     user_goal: Mapping[str, object] | object | None = None,
     secondary_threshold: float | None = None,
+    dominance_rule: Mapping[str, object] | None = None,
+    organ_mapping: Mapping[str, object] | None = None,
+    organ_aggregation: OrganAggregationSnapshot | None = None,
 ) -> V31AiPipelineResult:
-    """Execute Query Builder -> Embedding/Chroma -> Qwen -> Agent 3.
+    """Execute Query Builder -> Embedding/Chroma -> Qwen -> dominance -> Agent 3.
 
     The query and provider request are built only from the confirmed state
     projection and approved assessment fields. In particular, UserGoal is
     never copied into Agent 2; Agent 3 receives it only through its bounded
     deterministic parameter-rule selector in a later call boundary.
+
+    Sprint 6 Phase 1B: the music-design decision is produced once by the
+    authoritative dominance service (from the canonical aggregation snapshot
+    evaluated by Agent 1) and Agent3 only constructs the tone profile from it.
+    Provider/RAG/asset failures stay failures and never become a mode.
     """
 
     state = _validate_confirmed_state(confirmed_user_state, assessment_snapshot)
@@ -168,6 +186,16 @@ async def execute_v31_ai_pipeline(
     ] + [hit.chunk_id for hit in rag_result.hits]
     if not evidence_refs:
         evidence_refs = [f"confirmed_state:{state.confirmed_user_state_id}"]
+    decision = _resolve_dominance_decision(
+        assessment_snapshot=assessment_snapshot,
+        state=state,
+        execution=execution,
+        tone_mapping=tone_mapping,
+        dominance_rule=dominance_rule,
+        organ_mapping=organ_mapping,
+        organ_aggregation=organ_aggregation,
+        audit_context=audit_context,
+    )
     profile = build_tone_profile_v31(
         diagnosis_id=diagnosis_id,
         diagnosis_revision=int(assessment_snapshot.get("diagnosis_revision", 1)),
@@ -176,6 +204,7 @@ async def execute_v31_ai_pipeline(
         supporting_evidence_refs=evidence_refs,
         mapping=tone_mapping,
         secondary_threshold=secondary_threshold,
+        dominance_decision=decision,
     )
     generation_spec = build_generation_spec_v31(
         profile=profile,
@@ -197,6 +226,7 @@ async def execute_v31_ai_pipeline(
         evidence_refs=evidence_refs,
         mapping=tone_mapping,
         generation_spec=generation_spec,
+        dominance_decision=decision,
     )
     return V31AiPipelineResult(
         confirmed_user_state=state,
@@ -211,7 +241,82 @@ async def execute_v31_ai_pipeline(
         rag_manifest=getattr(rag_store, "manifest", None),
         rag_chunk_checksums=dict(getattr(rag_store, "chunk_checksums", {})),
         audit_context=audit_context,
+        dominance_decision=decision,
     )
+
+
+def _resolve_dominance_decision(
+    *,
+    assessment_snapshot: Mapping[str, object],
+    state: ConfirmedUserState,
+    execution: DiagnosisProviderExecution,
+    tone_mapping: Mapping[str, object],
+    dominance_rule: Mapping[str, object] | None,
+    organ_mapping: Mapping[str, object] | None,
+    organ_aggregation: OrganAggregationSnapshot | None,
+    audit_context: V31PipelineAuditContext,
+) -> OrganDominanceDecisionV1:
+    """Produce the single authoritative Phase 1B decision for this run.
+
+    Asset problems (missing/unapproved/tampered rule, mapping identity
+    mismatch) are readiness failures: they are raised as pipeline blocks and
+    never resolved into ``basic_wellness`` or any other music mode.
+    """
+
+    try:
+        rule = (
+            dominance_rule
+            if dominance_rule is not None
+            else load_configured_dominance_rule()
+        )
+        mapping_asset = (
+            organ_mapping if organ_mapping is not None else load_organ_mapping()
+        )
+    except (ValueError, OSError, TypeError) as error:
+        raise V31PipelineBlocked(
+            getattr(error, "error_code", "DOMINANCE_RULE_ASSET_INVALID"),
+            getattr(error, "safe_message", "主导度规则资产无效。"),
+            audit_context=audit_context,
+        ) from None
+    aggregation = organ_aggregation
+    if aggregation is None:
+        aggregation = assessment_snapshot.get("organ_aggregation")
+    if not isinstance(aggregation, OrganAggregationSnapshot):
+        raise V31PipelineBlocked(
+            "ASSESSMENT_AGGREGATION_NOT_READY",
+            "主导度判定所需的脏腑聚合快照尚未准备完成。",
+            audit_context=audit_context,
+        )
+    try:
+        assets = verify_mapping_identity(
+            rule, organ_mapping=mapping_asset, five_tone_mapping=tone_mapping
+        )
+        return resolve_organ_dominance(
+            assessment_id=str(
+                assessment_snapshot.get("assessment_id")
+                or assessment_snapshot.get("diagnosis_id")
+                or "assessment"
+            ),
+            assessment_revision=int(assessment_snapshot.get("assessment_revision", 1)),
+            input_revision=int(assessment_snapshot.get("input_revision", 1)),
+            aggregation=aggregation,
+            conflicts=assessment_snapshot.get("conflicts") or [],
+            fact_claims=aggregation.fact_claims_by_fact_id,
+            dominance_rule=rule,
+            five_tone_mapping=tone_mapping,
+            assets=assets,
+            confirmed_user_state_id=state.confirmed_user_state_id,
+            confirmed_user_state_revision=state.revision,
+            upstream_abstain_reason=(
+                execution.reason_code if execution.status == "abstained" else None
+            ),
+        )
+    except DominanceReadinessError as error:
+        raise V31PipelineBlocked(
+            error.error_code,
+            error.safe_message,
+            audit_context=audit_context,
+        ) from None
 
 
 def _validate_confirmed_state(

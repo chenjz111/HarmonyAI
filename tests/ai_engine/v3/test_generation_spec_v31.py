@@ -3,11 +3,19 @@ import pytest
 
 def _profile():
     from backend.ai_engine.v3.agent3 import build_tone_profile_v31
+    from tests.sprint6_phase1b_fixtures import synthetic_decision
 
     return build_tone_profile_v31(
         diagnosis_id="diag_1",
         organ_weights={"heart": 1.0},
         supporting_evidence_refs=["fact_1"],
+        # Sprint 6 Phase 1B: Agent3 only constructs the profile from the
+        # authoritative dominance decision (heart -> zhi here).
+        dominance_decision=synthetic_decision(
+            regulation_mode="personalized_five_tone",
+            dominant_organ="heart",
+            primary_tone="zhi",
+        ),
         mapping={
             "schema_id": "five-tone_mapping_v3",
             "schema_version": "3.0.0",
