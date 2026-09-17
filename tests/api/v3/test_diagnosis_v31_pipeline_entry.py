@@ -221,7 +221,7 @@ def test_formal_router_reaches_v31_pipeline_factory_and_mock_chain(
         )
         assert (
             diagnosis.five_tone_read_model_schema_version
-            == "five_tone_analysis_read_model_v3.1"
+            == "five_tone_analysis_read_model_v3.2"
         )
         assert diagnosis.five_tone_read_model_checksum == (
             f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"

@@ -135,7 +135,8 @@ def _confirmed_state(mode: str) -> dict:
 
 def _tone_profile(secondary: str | None = None) -> dict:
     return {
-        "schema_version": "tone_profile_v3.1",
+        "schema_version": "tone_profile_v3.2",
+        "regulation_mode": "personalized_five_tone",
         "weights": {
             "jiao": 0.15,
             "zhi": 0.10,
@@ -157,7 +158,15 @@ def _tone_profile(secondary: str | None = None) -> dict:
 
 def _read_model(secondary: bool = False) -> dict:
     return {
-        "schema_version": "five_tone_analysis_read_model_v3.1",
+        "schema_version": "five_tone_analysis_read_model_v3.2",
+        "regulation_mode": "personalized_five_tone",
+        "tone_weights": {
+            "jiao": 0.15,
+            "zhi": 0.15,
+            "gong": 0.3,
+            "shang": 0.2,
+            "yu": 0.2,
+        },
         "confirmed_user_state_ref": {
             "confirmed_user_state_id": "cus_1",
             "revision": 2,

@@ -251,7 +251,17 @@ def test_v31_pipeline_runs_agent3_fallback_for_medical_abstain():
 
     assert result.diagnosis is None
     assert result.diagnosis_execution.status == "abstained"
-    assert result.tone_profile.primary_tone.value == "zhi"
+    # Sprint 6 Phase 1A: a legal abstain is basic_wellness and must never
+    # fabricate a five-tone primary tone (abstain ≠ 宫).
+    assert result.tone_profile.regulation_mode == "basic_wellness"
+    assert result.tone_profile.primary_tone is None
+    assert result.tone_profile.weights is None
+    assert result.generation_spec.regulation_mode == "basic_wellness"
+    assert result.generation_spec.primary_tone is None
+    assert result.read_model.regulation_mode == "basic_wellness"
+    assert result.read_model.primary_tone is None
+    assert result.read_model.tone_weights is None
+    # approved deterministic music parameters are still prepared
     assert result.generation_spec.readiness == "ready"
     assert result.read_model.generation.status == "ready"
 

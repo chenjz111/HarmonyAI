@@ -256,7 +256,7 @@ def _seed_diagnosis(
             )
             spec = build_prescription_spec(session, diagnosis, user_goal)
             read_model = {
-                "schema_version": "five_tone_analysis_read_model_v3.1",
+                "schema_version": "five_tone_analysis_read_model_v3.2",
                 "confirmed_user_state_ref": {
                     "confirmed_user_state_id": f"cus_{assessment_id}_1",
                     "revision": 1,
@@ -268,11 +268,17 @@ def _seed_diagnosis(
                     "summary": "based on confirmed assessment",
                     "evidence_refs": [f"assessment:{assessment_id}:r1"],
                 }],
-                "primary_tone": {
-                    "tone": spec.tone_profile.primary_tone.value,
-                    "display_name": "角调",
-                    "explanation": "primary tone",
-                },
+                "regulation_mode": spec.tone_profile.regulation_mode,
+                "tone_weights": spec.tone_profile.weights,
+                "primary_tone": (
+                    {
+                        "tone": spec.tone_profile.primary_tone.value,
+                        "display_name": "角调",
+                        "explanation": "primary tone",
+                    }
+                    if spec.tone_profile.primary_tone is not None
+                    else None
+                ),
                 "secondary_tone": None,
                 "bpm": {"value": spec.bpm, "explanation": "approved bpm"},
                 "instruments": {
@@ -297,7 +303,7 @@ def _seed_diagnosis(
                 separators=(",", ":"),
             )
             diagnosis.five_tone_read_model_schema_version = (
-                "five_tone_analysis_read_model_v3.1"
+                "five_tone_analysis_read_model_v3.2"
             )
             diagnosis.five_tone_read_model_json = read_model
             diagnosis.five_tone_read_model_checksum = (
@@ -501,7 +507,8 @@ def _generation_spec(diagnosis_id, *, revision=1, primary_tone="zhi", instrument
     return {
         "schema_version": "generation_spec_v3.0",
         "tone_profile": {
-            "schema_version": "tone_profile_v3.1",
+            "schema_version": "tone_profile_v3.2",
+            "regulation_mode": "personalized_five_tone",
             "weights": weights,
             "primary_tone": primary_tone,
             "secondary_tone": None,
@@ -663,7 +670,14 @@ def test_abstained_diagnosis_falls_back_to_wellness():
     data = _v3_data(created)
     assert data["status"] == "degraded"
     assert data["prescription_mode"] == "wellness"
-    assert data["generation_spec"]["tone_profile"]["primary_tone"] == "gong"
+    # Sprint 6 Phase 1A: abstain ≠ 宫 — basic_wellness claims no tone at all
+    profile = data["generation_spec"]["tone_profile"]
+    assert profile["regulation_mode"] == "basic_wellness"
+    assert profile["primary_tone"] is None
+    assert profile["secondary_tone"] is None
+    assert profile["weights"] is None
+    # the user-facing wording must not assert a tone either
+    assert "为主" not in data["presentation"]["tone_summary"]
 
 
 def test_abstained_diagnosis_also_rejects_client_generation_spec():
@@ -809,7 +823,8 @@ def _preserved_abstained_spec(*, bpm, duration_seconds, instruments, tone="jiao"
     return GenerationSpec(
         schema_version="generation_spec_v3.0",
         tone_profile=ToneProfileV31(
-            schema_version="tone_profile_v3.1",
+            schema_version="tone_profile_v3.2",
+            regulation_mode="personalized_five_tone",
             weights=weights,
             primary_tone=tone,
             secondary_tone=None,
@@ -877,9 +892,11 @@ def test_abstained_prescription_keeps_goal_selected_parameters():
     assert spec["bpm"] == 50
     assert spec["duration_seconds"] == 240
     assert spec["instruments"] == ["古琴"]
-    # tone stays conservative
-    assert spec["tone_profile"]["primary_tone"] == "gong"
-    assert spec["tone_profile"]["weights"]["gong"] == 0.6
+    # tone claim removed: basic_wellness must not fabricate a primary tone
+    assert spec["tone_profile"]["regulation_mode"] == "basic_wellness"
+    assert spec["tone_profile"]["primary_tone"] is None
+    assert spec["tone_profile"]["weights"] is None
+    assert spec["tone_profile"]["secondary_tone"] is None
     # the segment split must still sum to the preserved duration
     structure = spec["structure"]
     assert (
@@ -921,7 +938,10 @@ def test_abstained_prescription_without_a_spec_keeps_the_placeholder():
     assert spec["bpm"] == 62
     assert spec["duration_seconds"] == 180
     assert spec["instruments"] == ["guqin"]
-    assert spec["tone_profile"]["primary_tone"] == "gong"
+    # abstain ≠ 宫: no tone conclusion may be fabricated
+    assert spec["tone_profile"]["regulation_mode"] == "basic_wellness"
+    assert spec["tone_profile"]["primary_tone"] is None
+    assert spec["tone_profile"]["weights"] is None
 
 
 def test_preserved_duration_drives_a_valid_segment_split():

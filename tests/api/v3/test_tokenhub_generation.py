@@ -139,7 +139,8 @@ def _create_session(headers: dict[str, str]) -> str:
 def _tone_profile(source_type: str = "available") -> dict[str, object]:
     del source_type  # V3.1 ToneProfile has no status variant
     return {
-        "schema_version": "tone_profile_v3.1",
+        "schema_version": "tone_profile_v3.2",
+        "regulation_mode": "personalized_five_tone",
         "weights": {
             "jiao": 0.2,
             "zhi": 0.2,

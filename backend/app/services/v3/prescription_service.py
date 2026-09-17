@@ -22,6 +22,7 @@ from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.schemas.v3.common import AuthPrincipal, ToneCode
 from backend.app.schemas.v3.flow_v31 import (
+    TONE_PROFILE_SCHEMA_VERSION,
     ToneProfileBasisV31,
     ToneProfileV31,
     UserGoalV31,
@@ -38,6 +39,8 @@ from backend.app.schemas.v3.prescription import (
     PreferenceProfileRef,
     PreferenceSnapshot,
 )
+from backend.app.services.v3 import legacy_mode_compat
+from backend.app.services.v3.legacy_mode_compat import LegacyProvenance
 from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
 from backend.app.services.v3.idempotency import (
     reserve_v3_idempotency,
@@ -134,7 +137,17 @@ def _preserved_abstained_spec(diagnosis: DiagnosisRun) -> GenerationSpec | None:
     if diagnosis.generation_spec_json is None:
         return None
     try:
-        return GenerationSpec.model_validate(diagnosis.generation_spec_json)
+        # Version-aware: a pre-Phase-1A diagnosis spec is verified/resolved under
+        # its own schema form by the legacy compatibility resolver.
+        spec, _compatibility = legacy_mode_compat.resolve_generation_spec_payload(
+            diagnosis.generation_spec_json,
+            LegacyProvenance(
+                source="diagnosis",
+                diagnosis_status=diagnosis.status,
+                abstain_reason=diagnosis.abstain_reason,
+            ),
+        )
+        return spec
     except (TypeError, ValueError):
         return None
 
@@ -146,16 +159,19 @@ def _conservative_wellness_spec(
     user_goal: UserGoalV31 | None,
     preserved: GenerationSpec | None = None,
 ) -> GenerationSpec:
+    """Sprint 6 ``basic_wellness`` fallback.
+
+    Evidence-insufficient / legal-abstain results must never claim a five-tone
+    primary tone (abstain ≠ 宫, 证据不足 ≠ 宫). Only the approved deterministic
+    non-tone music parameters (bpm / instruments / duration) are carried over;
+    no tone weights are fabricated. Technical failures never reach this path.
+    """
+
     tone_profile = ToneProfileV31(
-        schema_version="tone_profile_v3.1",
-        weights={
-            ToneCode.jiao: 0.1,
-            ToneCode.zhi: 0.1,
-            ToneCode.gong: 0.6,
-            ToneCode.shang: 0.1,
-            ToneCode.yu: 0.1,
-        },
-        primary_tone=ToneCode.gong,
+        schema_version=TONE_PROFILE_SCHEMA_VERSION,
+        regulation_mode="basic_wellness",
+        weights=None,
+        primary_tone=None,
         secondary_tone=None,
         score_semantics="relative_tone_distribution",
         mapping_version="tone_mapping_v3.0",
@@ -204,7 +220,13 @@ def _conservative_wellness_spec(
 
 
 def _to_schema(row: PrescriptionV3) -> PrescriptionV3Schema:
-    spec = GenerationSpec.model_validate(row.generation_spec_json)
+    spec, _compatibility = legacy_mode_compat.resolve_generation_spec_payload(
+        row.generation_spec_json,
+        LegacyProvenance(
+            source="prescription",
+            prescription_mode=row.prescription_mode,
+        ),
+    )
     personalization = PrescriptionPersonalization.model_validate(
         row.personalization_json
     )
@@ -363,11 +385,19 @@ def create_prescription(
         )
         profile_id = preference.profile_id if preference is not None else None
 
-    primary_tone_display = _TONE_DISPLAY[spec.tone_profile.primary_tone]
-    tone_summary = f"{primary_tone_display}为主"
-    if spec.tone_profile.secondary_tone is not None:
-        tone_summary += f"，{_TONE_DISPLAY[spec.tone_profile.secondary_tone]}为辅"
-    tone_summary += f"，{spec.energy_curve}。"
+    # Sprint 6: presentation must not claim a tone when the mode carries none.
+    tone = spec.tone_profile
+    if tone.primary_tone is not None:
+        tone_summary = f"{_TONE_DISPLAY[tone.primary_tone]}为主"
+        if tone.secondary_tone is not None:
+            tone_summary += f"，{_TONE_DISPLAY[tone.secondary_tone]}为辅"
+        tone_summary += f"，{spec.energy_curve}。"
+    elif tone.regulation_mode == "integrated_regulation":
+        tone_summary = f"综合调适，未主张单一五音主音，{spec.energy_curve}。"
+    else:
+        # basic_wellness wording is pending Medical sign-off (rule-freeze Q2);
+        # keep it neutral and free of any tone claim.
+        tone_summary = f"基础舒缓，未主张五音主音，{spec.energy_curve}。"
     instruments = "、".join(spec.instruments)
 
     presentation = PrescriptionPresentation(

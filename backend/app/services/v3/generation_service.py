@@ -46,6 +46,8 @@ from backend.app.schemas.v3.music import (
     SucceededMusicTask,
 )
 from backend.app.schemas.v3.prescription import GenerationSpec
+from backend.app.services.v3 import legacy_mode_compat
+from backend.app.services.v3.legacy_mode_compat import LegacyProvenance
 
 _OPERATION = "create_music_generation"
 _POLL_AFTER_MS = 2000
@@ -147,6 +149,13 @@ def _message_for_status(status: str) -> str:
 
 
 def _audio_asset_from_row(row: MusicAsset) -> AudioAsset:
+    # A pre-Phase-1A asset tone profile is resolved by the row-aware legacy
+    # compatibility resolver: known wellness / abstained / fabricated-Gong
+    # history never reads back as a personalized tone claim.
+    tone_profile, _compatibility = legacy_mode_compat.resolve_tone_profile_payload(
+        row.tone_profile_json,
+        LegacyProvenance(source="asset"),
+    )
     return AudioAsset(
         music_ref=MusicRef(
             music_id=row.music_asset_id,
@@ -157,7 +166,7 @@ def _audio_asset_from_row(row: MusicAsset) -> AudioAsset:
         duration_seconds=row.duration_seconds,
         format=row.format,
         checksum=row.checksum,
-        tone_profile=row.tone_profile_json,
+        tone_profile=tone_profile,
         bpm=row.bpm,
         instruments=row.instruments_json,
     )
@@ -226,7 +235,14 @@ def _spec_for_task(db: Session, task: GenerationTask) -> GenerationSpec:
     ).one_or_none()
     if prescription is None or prescription.generation_spec_json is None:
         raise RuntimeError("prescription generation_spec unavailable")
-    return GenerationSpec.model_validate(prescription.generation_spec_json)
+    spec, _compatibility = legacy_mode_compat.resolve_generation_spec_payload(
+        prescription.generation_spec_json,
+        LegacyProvenance(
+            source="prescription",
+            prescription_mode=prescription.prescription_mode,
+        ),
+    )
+    return spec
 
 
 def _persist_generated_asset(

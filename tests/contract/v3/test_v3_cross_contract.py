@@ -6,7 +6,8 @@ import pytest
 
 def _tone_profile() -> dict:
     return {
-        "schema_version": "tone_profile_v3.1",
+        "schema_version": "tone_profile_v3.2",
+        "regulation_mode": "personalized_five_tone",
         "weights": {
             "jiao": 0.16,
             "zhi": 0.24,

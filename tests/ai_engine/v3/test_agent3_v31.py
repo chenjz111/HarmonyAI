@@ -109,7 +109,13 @@ def test_agent3_only_emits_secondary_tone_when_an_explicit_threshold_is_supplied
     assert with_threshold.secondary_tone != with_threshold.primary_tone
 
 
-def test_agent3_uses_safe_tone_fallback_for_medical_abstain():
+def test_agent3_medical_abstain_never_fabricates_a_tone():
+    """Sprint 6 Phase 1A: legal abstain → basic_wellness with no primary tone.
+
+    Sprint 5 fabricated a primary tone from the (already abstained) organ
+    weights; abstain ≠ 宫 and no tone claim may be produced at all.
+    """
+
     from backend.ai_engine.v3.agent3 import build_tone_profile_v31
 
     profile = build_tone_profile_v31(
@@ -120,7 +126,34 @@ def test_agent3_uses_safe_tone_fallback_for_medical_abstain():
         mapping=_mapping(),
     )
 
-    assert profile.primary_tone.value == "zhi"
+    assert profile.regulation_mode == "basic_wellness"
+    assert profile.primary_tone is None
+    assert profile.secondary_tone is None
+    assert profile.weights is None
+
+
+def test_agent3_exact_tie_is_integrated_regulation_without_primary_tone():
+    """均衡 ≠ 宫: a tied maximum must not be resolved by tuple/argmax order."""
+
+    from backend.ai_engine.v3.agent3 import build_tone_profile_v31
+
+    profile = build_tone_profile_v31(
+        diagnosis_id="diag_tie",
+        diagnosis_status="success",
+        organ_weights={
+            "liver": 0.2,
+            "heart": 0.2,
+            "spleen": 0.2,
+            "lung": 0.2,
+            "kidney": 0.2,
+        },
+        supporting_evidence_refs=["fact_1"],
+        mapping=_mapping(),
+    )
+
+    assert profile.regulation_mode == "integrated_regulation"
+    assert profile.primary_tone is None
+    assert profile.weights is not None and len(profile.weights) == 5
 
 
 def test_agent3_can_render_a_grounded_degraded_result_without_claiming_abstention():
