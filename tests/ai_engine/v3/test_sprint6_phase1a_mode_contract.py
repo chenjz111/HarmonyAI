@@ -121,7 +121,8 @@ def _basis() -> ToneProfileBasisV31:
 
 def _profile_payload(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
-        "schema_version": "tone_profile_v3.1",
+        "schema_version": "tone_profile_v3.2",
+        "regulation_mode": "personalized_five_tone",
         "regulation_mode": "personalized_five_tone",
         "weights": {
             "jiao": 0.1,
@@ -146,7 +147,7 @@ def _profile_payload(**overrides: object) -> dict[str, object]:
 
 def _read_model_payload(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
-        "schema_version": "five_tone_analysis_read_model_v3.1",
+        "schema_version": "five_tone_analysis_read_model_v3.2",
         "confirmed_user_state_ref": {
             "confirmed_user_state_id": "cus_1",
             "revision": 1,
@@ -290,20 +291,82 @@ def test_read_model_exposes_mode_and_nullable_primary_tone():
         )
 
 
-def test_legacy_profile_without_regulation_mode_is_read_compatibly():
-    legacy = _profile_payload()
-    legacy.pop("regulation_mode")
-    assert (
-        ToneProfileV31.model_validate(legacy).regulation_mode
-        == "personalized_five_tone"
+def test_generation_spec_v31_enforces_mode_scoped_consistency():
+    """F4: the internal spec must not contradict its mode either."""
+
+    from backend.ai_engine.v3.agent3 import GenerationSpecV31
+
+    def spec(**overrides):
+        payload = {
+            "schema_version": "generation_spec_v3.2",
+            "regulation_mode": "personalized_five_tone",
+            "primary_tone": "gong",
+            "secondary_tone": None,
+            "tone_weights": {
+                "jiao": 0.1,
+                "zhi": 0.1,
+                "gong": 0.6,
+                "shang": 0.1,
+                "yu": 0.1,
+            },
+            "bpm": 60,
+            "instruments": ["guqin"],
+            "ambience": ["water"],
+            "duration_seconds": 180,
+            "explanations": {"bpm": "b", "instruments": "i", "ambience": "a", "duration": "d"},
+            "readiness": "ready",
+            "blocking_reasons": [],
+            "secondary_tone_blocked": False,
+        }
+        payload.update(overrides)
+        return GenerationSpecV31.model_validate(payload)
+
+    spec()  # personalized is valid
+
+    with pytest.raises(ValidationError, match="requires a primary tone"):
+        spec(primary_tone=None)
+
+    with pytest.raises(ValidationError, match="must not carry a tone"):
+        spec(regulation_mode="integrated_regulation")
+
+    with pytest.raises(ValidationError, match="must retain tone weights"):
+        spec(regulation_mode="integrated_regulation", primary_tone=None, tone_weights=None)
+
+    # basic_wellness must not carry a tone-shaped distribution
+    with pytest.raises(ValidationError, match="must be neutral"):
+        spec(regulation_mode="basic_wellness", primary_tone=None)
+
+    with pytest.raises(ValidationError, match="must not carry a tone"):
+        spec(regulation_mode="basic_wellness")
+
+    # neutral weights are tolerated for basic_wellness
+    neutral = spec(
+        regulation_mode="basic_wellness",
+        primary_tone=None,
+        tone_weights={tone: 0.2 for tone in TONE_CODES},
     )
+    assert neutral.regulation_mode == "basic_wellness"
+
+
+def test_schema_validators_never_invent_a_mode_for_a_legacy_payload():
+    """Phase 1A fix: a non-null tone is never evidence of personalized mode.
+
+    Schema validators only validate an already-resolved mode; pre-Phase-1A rows
+    are resolved by the row-aware compatibility layer (see
+    ``test_sprint6_phase1a_legacy_compat.py``), never by the schema.
+    """
+
+    legacy = _profile_payload()
+    legacy["schema_version"] = "tone_profile_v3.1"
+    legacy.pop("regulation_mode")
+    with pytest.raises(ValidationError):
+        ToneProfileV31.model_validate(legacy)
 
     legacy_read_model = _read_model_payload()
+    legacy_read_model["schema_version"] = "five_tone_analysis_read_model_v3.1"
     legacy_read_model.pop("regulation_mode")
-    assert (
-        FiveToneAnalysisReadModel.model_validate(legacy_read_model).regulation_mode
-        == "personalized_five_tone"
-    )
+    with pytest.raises(ValidationError):
+        FiveToneAnalysisReadModel.model_validate(legacy_read_model)
 
 
 # --------------------------------------------------------------------------- #

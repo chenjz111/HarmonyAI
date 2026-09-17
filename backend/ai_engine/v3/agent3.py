@@ -23,12 +23,15 @@ from backend.app.schemas.v3.flow_v31 import (
     BpmExplanation,
     ConfirmedUserStateRef,
     DurationExplanation,
+    FIVE_TONE_ANALYSIS_SCHEMA_VERSION,
     FiveToneAnalysisReadModel,
     GenerationReadiness,
     ListParameterExplanation,
+    MODE_WEIGHTS_TOLERANCE,
     PublicRationale,
     PublicToneExplanation,
     RegulationMode,
+    TONE_PROFILE_SCHEMA_VERSION,
     ToneProfileBasisV31,
     ToneProfileV31,
 )
@@ -72,7 +75,7 @@ class GenerationSpecV31(V3BaseModel):
     tone conclusion at all (weights are absent or neutral).
     """
 
-    schema_version: Literal["generation_spec_v3.1"]
+    schema_version: Literal["generation_spec_v3.2"]
     regulation_mode: RegulationMode
     primary_tone: ToneCode | None = None
     secondary_tone: ToneCode | None = None
@@ -100,6 +103,10 @@ class GenerationSpecV31(V3BaseModel):
             raise ValueError(f"{mode} must not carry a tone")
         if mode == "integrated_regulation" and self.tone_weights is None:
             raise ValueError("integrated_regulation must retain tone weights")
+        if mode == "basic_wellness" and self.tone_weights is not None:
+            values = list(self.tone_weights.values())
+            if max(values) - min(values) > MODE_WEIGHTS_TOLERANCE:
+                raise ValueError("basic_wellness weights must be neutral when present")
         return self
 
 
@@ -212,7 +219,7 @@ def build_generation_spec_v31(
     # still produced from the approved rule asset for every mode.
     blocking_reasons: list[str] = []
     spec = GenerationSpecV31(
-        schema_version="generation_spec_v3.1",
+        schema_version="generation_spec_v3.2",
         regulation_mode=profile.regulation_mode,
         primary_tone=profile.primary_tone,
         secondary_tone=profile.secondary_tone,
@@ -407,7 +414,7 @@ def build_tone_profile_v31(
     if diagnosis_status == "abstained":
         # Legal abstain: never fabricate a tone (abstain ≠ 宫).
         return ToneProfileV31(
-            schema_version="tone_profile_v3.1",
+            schema_version=TONE_PROFILE_SCHEMA_VERSION,
             regulation_mode="basic_wellness",
             weights=None,
             primary_tone=None,
@@ -419,12 +426,15 @@ def build_tone_profile_v31(
 
     weights = _calculate_weights(organ_weights, mapping)
     maximum = max(weights.values())
-    leaders = [tone for tone in _TONE_CODES if abs(weights[tone] - maximum) <= 0.001]
+    # Canonical exact tie only. Phase 1A does not introduce an ambiguity
+    # epsilon: a strict equality at the canonical normalised precision is the
+    # rule, and any margin-based rule belongs to Phase 1B.
+    leaders = [tone for tone in _TONE_CODES if weights[tone] == maximum]
     if len(leaders) != 1:
         # Balanced / tied profile: retain the weights, claim no primary tone.
         # (The tuple-order argmax fallback that used to pick gong here is gone.)
         return ToneProfileV31(
-            schema_version="tone_profile_v3.1",
+            schema_version=TONE_PROFILE_SCHEMA_VERSION,
             regulation_mode="integrated_regulation",
             weights=weights,
             primary_tone=None,
@@ -443,7 +453,7 @@ def build_tone_profile_v31(
             secondary = candidates[0]
 
     return ToneProfileV31(
-        schema_version="tone_profile_v3.1",
+        schema_version=TONE_PROFILE_SCHEMA_VERSION,
         regulation_mode="personalized_five_tone",
         weights=weights,
         primary_tone=primary,
@@ -564,7 +574,7 @@ def build_five_tone_analysis_v31(
         )
     ]
     return FiveToneAnalysisReadModel(
-        schema_version="five_tone_analysis_read_model_v3.1",
+        schema_version=FIVE_TONE_ANALYSIS_SCHEMA_VERSION,
         confirmed_user_state_ref=confirmed_user_state_ref,
         confirmed_state=_required_text(confirmed_state, field="confirmed_state"),
         state_tendency=tendency,

@@ -14,7 +14,8 @@ def _spec() -> dict[str, object]:
     return {
         "schema_version": "generation_spec_v3.0",
         "tone_profile": {
-            "schema_version": "tone_profile_v3.1",
+            "schema_version": "tone_profile_v3.2",
+            "regulation_mode": "personalized_five_tone",
             "weights": {
                 "jiao": 0.2,
                 "zhi": 0.2,

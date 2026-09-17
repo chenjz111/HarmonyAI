@@ -23,7 +23,8 @@ from backend.app.schemas.v3.music import (
 
 def _tone_profile(source_type: str = "available") -> dict[str, object]:
     return {
-        "schema_version": "tone_profile_v3.1",
+        "schema_version": "tone_profile_v3.2",
+        "regulation_mode": "personalized_five_tone",
         "weights": {
             "jiao": 0.2,
             "zhi": 0.2,

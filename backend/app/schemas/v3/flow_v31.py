@@ -6,7 +6,6 @@ revision binding. They do not prescribe ORM/table names or provider details.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from enum import Enum
 from typing import Annotated, Literal
 
@@ -40,7 +39,25 @@ RegulationMode = Literal[
     "basic_wellness",
 ]
 
-_WEIGHTS_TOLERANCE = 0.001
+# Phase 1A mode-contract version signal.
+#
+# Phase 1A changed the mode-bearing payload shape (added ``regulation_mode``,
+# made ``primary_tone``/``weights`` mode-scoped). The schema version therefore
+# distinguishes new mode-bearing payloads from pre-Phase-1A rows **without
+# inspecting ``primary_tone``**. Pre-1A rows keep their historical version and
+# are handled only by the row-aware compatibility resolver
+# (``backend.app.services.v3.legacy_mode_compat``); schema validators never
+# invent a mode.
+TONE_PROFILE_SCHEMA_VERSION = "tone_profile_v3.2"
+FIVE_TONE_ANALYSIS_SCHEMA_VERSION = "five_tone_analysis_read_model_v3.2"
+LEGACY_TONE_PROFILE_SCHEMA_VERSION = "tone_profile_v3.1"
+LEGACY_FIVE_TONE_ANALYSIS_SCHEMA_VERSION = "five_tone_analysis_read_model_v3.1"
+
+# Shared tolerance for weight *validation* only (weights sum to 1; a
+# ``basic_wellness`` distribution must be neutral). It is deliberately NOT used
+# for mode routing: the Phase 1A tie rule compares canonical normalised weights
+# with exact equality, and any margin-based ambiguity rule belongs to Phase 1B.
+MODE_WEIGHTS_TOLERANCE = 0.001
 
 QUESTIONNAIRE_SCHEMA_ID = "questionnaire_v3"
 QUESTIONNAIRE_SCHEMA_VERSION = "3.0.1"
@@ -323,12 +340,16 @@ class ToneProfileV31(V3BaseModel):
     * ``basic_wellness``: ``primary_tone`` is null; weights are absent or a
       neutral (uniform) distribution — no tone conclusion is fabricated.
 
-    Sprint 5 rows persisted without ``regulation_mode`` are read as
-    ``personalized_five_tone`` (they always carried a primary tone); this is a
-    legacy read-compatibility inference only and never fabricates a tone.
+    Sprint 5 rows persisted under ``tone_profile_v3.1`` have no
+    ``regulation_mode`` and must never be reinterpreted here: this model only
+    validates an explicit, already-resolved mode. Legacy classification belongs
+    to the row-aware compatibility resolver, which has the diagnosis /
+    prescription / checksum context needed to decide between
+    ``personalized_five_tone``, ``basic_wellness`` and an explicit
+    ``legacy-unclassified`` compatibility state.
     """
 
-    schema_version: Literal["tone_profile_v3.1"]
+    schema_version: Literal["tone_profile_v3.2"]
     regulation_mode: RegulationMode
     weights: dict[ToneCode, Score01] | None = None
     primary_tone: ToneCode | None = None
@@ -337,25 +358,12 @@ class ToneProfileV31(V3BaseModel):
     mapping_version: NonEmptyString
     basis: ToneProfileBasisV31
 
-    @model_validator(mode="before")
-    @classmethod
-    def infer_legacy_regulation_mode(cls, data: object) -> object:
-        if isinstance(data, Mapping) and "regulation_mode" not in data:
-            payload = dict(data)
-            payload["regulation_mode"] = (
-                "personalized_five_tone"
-                if payload.get("primary_tone")
-                else "integrated_regulation"
-            )
-            return payload
-        return data
-
     @model_validator(mode="after")
     def validate_tone_profile(self) -> "ToneProfileV31":
         if self.weights is not None:
             if set(self.weights) != set(ToneCode):
                 raise ValueError("tone profile requires all five tone weights")
-            if abs(sum(self.weights.values()) - 1.0) > _WEIGHTS_TOLERANCE:
+            if abs(sum(self.weights.values()) - 1.0) > MODE_WEIGHTS_TOLERANCE:
                 raise ValueError("tone weights must sum to 1 ± 0.001")
         mode = self.regulation_mode
         if mode == "personalized_five_tone":
@@ -364,7 +372,7 @@ class ToneProfileV31(V3BaseModel):
             if self.primary_tone is None:
                 raise ValueError("personalized_five_tone requires a primary tone")
             maximum = max(self.weights.values())
-            if abs(self.weights[self.primary_tone] - maximum) > _WEIGHTS_TOLERANCE:
+            if abs(self.weights[self.primary_tone] - maximum) > MODE_WEIGHTS_TOLERANCE:
                 raise ValueError("primary_tone must have a maximum weight")
             if self.secondary_tone == self.primary_tone:
                 raise ValueError("secondary_tone must differ from primary_tone")
@@ -378,7 +386,7 @@ class ToneProfileV31(V3BaseModel):
             raise ValueError("integrated_regulation must retain tone weights")
         if mode == "basic_wellness" and self.weights is not None:
             values = list(self.weights.values())
-            if max(values) - min(values) > _WEIGHTS_TOLERANCE:
+            if max(values) - min(values) > MODE_WEIGHTS_TOLERANCE:
                 raise ValueError("basic_wellness weights must be neutral when present")
         return self
 
@@ -421,9 +429,14 @@ class FiveToneAnalysisReadModel(V3BaseModel):
     modes; clients must not infer the mode from ``primary_tone == null``.
     ``primary_tone`` is null for ``integrated_regulation`` (balanced weights are
     still present) and for ``basic_wellness`` (no tone conclusion is fabricated).
+
+    Pre-Phase-1A rows (``five_tone_analysis_read_model_v3.1``) are never
+    reinterpreted by this model; they are resolved by the legacy compatibility
+    resolver, which verifies the stored payload under its own schema/checksum
+    semantics first and then derives a modern view.
     """
 
-    schema_version: Literal["five_tone_analysis_read_model_v3.1"]
+    schema_version: Literal["five_tone_analysis_read_model_v3.2"]
     confirmed_user_state_ref: ConfirmedUserStateRef
     confirmed_state: PublicText
     state_tendency: PublicText
@@ -439,25 +452,12 @@ class FiveToneAnalysisReadModel(V3BaseModel):
     generation: GenerationReadiness
     disclaimer: PublicText
 
-    @model_validator(mode="before")
-    @classmethod
-    def infer_legacy_regulation_mode(cls, data: object) -> object:
-        if isinstance(data, Mapping) and "regulation_mode" not in data:
-            payload = dict(data)
-            payload["regulation_mode"] = (
-                "personalized_five_tone"
-                if payload.get("primary_tone")
-                else "integrated_regulation"
-            )
-            return payload
-        return data
-
     @model_validator(mode="after")
     def validate_mode_consistency(self) -> "FiveToneAnalysisReadModel":
         if self.tone_weights is not None:
             if set(self.tone_weights) != set(ToneCode):
                 raise ValueError("tone weights require all five tones")
-            if abs(sum(self.tone_weights.values()) - 1.0) > _WEIGHTS_TOLERANCE:
+            if abs(sum(self.tone_weights.values()) - 1.0) > MODE_WEIGHTS_TOLERANCE:
                 raise ValueError("tone weights must sum to 1 ± 0.001")
         if (
             self.secondary_tone is not None
@@ -480,6 +480,6 @@ class FiveToneAnalysisReadModel(V3BaseModel):
             raise ValueError("integrated_regulation must retain tone weights")
         if mode == "basic_wellness" and self.tone_weights is not None:
             values = list(self.tone_weights.values())
-            if max(values) - min(values) > _WEIGHTS_TOLERANCE:
+            if max(values) - min(values) > MODE_WEIGHTS_TOLERANCE:
                 raise ValueError("basic_wellness weights must be neutral when present")
         return self

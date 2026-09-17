@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import os
 from typing import Mapping
@@ -28,6 +27,8 @@ from backend.app.schemas.v3.prescription import (
     GenerationSpec,
     GenerationStructure,
 )
+from backend.app.services.v3 import legacy_mode_compat
+from backend.app.services.v3.legacy_mode_compat import LegacyProvenance
 from backend.app.services.v3.knowledge_assets import (
     MusicGenerationRuleAssetNotReady,
     load_five_tone_mapping,
@@ -118,6 +119,25 @@ def to_transport_spec(
     )
 
 
+def _persisted_tone_weights(diagnosis: DiagnosisRun) -> Mapping[str, float] | None:
+    """Tone weights from this row's own persisted tone authority, if any."""
+
+    if diagnosis.generation_spec_json is None:
+        return None
+    try:
+        spec, _compatibility = legacy_mode_compat.resolve_generation_spec_payload(
+            diagnosis.generation_spec_json,
+            LegacyProvenance(
+                source="diagnosis",
+                diagnosis_status=diagnosis.status,
+                abstain_reason=diagnosis.abstain_reason,
+            ),
+        )
+    except (TypeError, ValueError, legacy_mode_compat.LegacyModeUnclassifiedError):
+        return None
+    return spec.tone_profile.weights
+
+
 def load_current_five_tone_read_model(
     db: Session,
     diagnosis: DiagnosisRun,
@@ -201,27 +221,40 @@ def load_current_five_tone_read_model(
             "FIVE_TONE_SNAPSHOT_NOT_READY",
             "五音调适解析尚未准备完成。",
         )
+    # Canonical sequence: verify the stored payload **as stored** (its own
+    # schema form and checksum) before any compatibility augmentation, then
+    # parse/resolve. The derived view never rewrites the stored payload.
+    if not legacy_mode_compat.stored_checksum_matches(
+        diagnosis.five_tone_read_model_json,
+        diagnosis.five_tone_read_model_checksum,
+    ):
+        raise Agent3NotReady(
+            "FIVE_TONE_SNAPSHOT_INVALID",
+            "五音调适解析数据校验失败。",
+        )
     try:
-        read_model = FiveToneAnalysisReadModel.model_validate(
-            diagnosis.five_tone_read_model_json
+        # Version-aware: a pre-Phase-1A snapshot is resolved by the row-aware
+        # compatibility resolver; a personalized legacy read model takes its
+        # weights from this row's own persisted tone authority, never a guess.
+        read_model, _compatibility = legacy_mode_compat.resolve_read_model_payload(
+            diagnosis.five_tone_read_model_json,
+            LegacyProvenance(
+                source="diagnosis",
+                diagnosis_status=diagnosis.status,
+                abstain_reason=diagnosis.abstain_reason,
+            ),
+            tone_weights=_persisted_tone_weights(diagnosis),
         )
-        canonical = json.dumps(
-            read_model.model_dump(mode="json"),
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+    except legacy_mode_compat.LegacyModeUnclassifiedError as error:
+        raise Agent3NotReady(
+            error.error_code,
+            error.safe_message,
+        ) from error
     except (TypeError, ValueError) as error:
         raise Agent3NotReady(
             "FIVE_TONE_SNAPSHOT_INVALID",
             "五音调适解析数据无效。",
         ) from error
-    checksum = f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
-    if checksum != diagnosis.five_tone_read_model_checksum:
-        raise Agent3NotReady(
-            "FIVE_TONE_SNAPSHOT_INVALID",
-            "五音调适解析数据校验失败。",
-        )
     return read_model
 
 
@@ -237,7 +270,20 @@ def load_current_generation_spec(
             "音乐生成参数尚未准备完成。",
         )
     try:
-        return GenerationSpec.model_validate(diagnosis.generation_spec_json)
+        spec, _compatibility = legacy_mode_compat.resolve_generation_spec_payload(
+            diagnosis.generation_spec_json,
+            LegacyProvenance(
+                source="diagnosis",
+                diagnosis_status=diagnosis.status,
+                abstain_reason=diagnosis.abstain_reason,
+            ),
+        )
+        return spec
+    except legacy_mode_compat.LegacyModeUnclassifiedError as error:
+        raise Agent3NotReady(
+            error.error_code,
+            error.safe_message,
+        ) from error
     except (TypeError, ValueError) as error:
         raise Agent3NotReady(
             "GENERATION_SPEC_INVALID",

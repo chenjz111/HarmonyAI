@@ -22,6 +22,7 @@ from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.models.v3.prescription import PrescriptionV3
 from backend.app.schemas.v3.common import AuthPrincipal, ToneCode
 from backend.app.schemas.v3.flow_v31 import (
+    TONE_PROFILE_SCHEMA_VERSION,
     ToneProfileBasisV31,
     ToneProfileV31,
     UserGoalV31,
@@ -38,6 +39,8 @@ from backend.app.schemas.v3.prescription import (
     PreferenceProfileRef,
     PreferenceSnapshot,
 )
+from backend.app.services.v3 import legacy_mode_compat
+from backend.app.services.v3.legacy_mode_compat import LegacyProvenance
 from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
 from backend.app.services.v3.idempotency import (
     reserve_v3_idempotency,
@@ -134,7 +137,17 @@ def _preserved_abstained_spec(diagnosis: DiagnosisRun) -> GenerationSpec | None:
     if diagnosis.generation_spec_json is None:
         return None
     try:
-        return GenerationSpec.model_validate(diagnosis.generation_spec_json)
+        # Version-aware: a pre-Phase-1A diagnosis spec is verified/resolved under
+        # its own schema form by the legacy compatibility resolver.
+        spec, _compatibility = legacy_mode_compat.resolve_generation_spec_payload(
+            diagnosis.generation_spec_json,
+            LegacyProvenance(
+                source="diagnosis",
+                diagnosis_status=diagnosis.status,
+                abstain_reason=diagnosis.abstain_reason,
+            ),
+        )
+        return spec
     except (TypeError, ValueError):
         return None
 
@@ -155,7 +168,7 @@ def _conservative_wellness_spec(
     """
 
     tone_profile = ToneProfileV31(
-        schema_version="tone_profile_v3.1",
+        schema_version=TONE_PROFILE_SCHEMA_VERSION,
         regulation_mode="basic_wellness",
         weights=None,
         primary_tone=None,
@@ -207,7 +220,13 @@ def _conservative_wellness_spec(
 
 
 def _to_schema(row: PrescriptionV3) -> PrescriptionV3Schema:
-    spec = GenerationSpec.model_validate(row.generation_spec_json)
+    spec, _compatibility = legacy_mode_compat.resolve_generation_spec_payload(
+        row.generation_spec_json,
+        LegacyProvenance(
+            source="prescription",
+            prescription_mode=row.prescription_mode,
+        ),
+    )
     personalization = PrescriptionPersonalization.model_validate(
         row.personalization_json
     )

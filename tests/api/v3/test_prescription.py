@@ -256,7 +256,7 @@ def _seed_diagnosis(
             )
             spec = build_prescription_spec(session, diagnosis, user_goal)
             read_model = {
-                "schema_version": "five_tone_analysis_read_model_v3.1",
+                "schema_version": "five_tone_analysis_read_model_v3.2",
                 "confirmed_user_state_ref": {
                     "confirmed_user_state_id": f"cus_{assessment_id}_1",
                     "revision": 1,
@@ -303,7 +303,7 @@ def _seed_diagnosis(
                 separators=(",", ":"),
             )
             diagnosis.five_tone_read_model_schema_version = (
-                "five_tone_analysis_read_model_v3.1"
+                "five_tone_analysis_read_model_v3.2"
             )
             diagnosis.five_tone_read_model_json = read_model
             diagnosis.five_tone_read_model_checksum = (
@@ -507,7 +507,8 @@ def _generation_spec(diagnosis_id, *, revision=1, primary_tone="zhi", instrument
     return {
         "schema_version": "generation_spec_v3.0",
         "tone_profile": {
-            "schema_version": "tone_profile_v3.1",
+            "schema_version": "tone_profile_v3.2",
+            "regulation_mode": "personalized_five_tone",
             "weights": weights,
             "primary_tone": primary_tone,
             "secondary_tone": None,
@@ -822,7 +823,8 @@ def _preserved_abstained_spec(*, bpm, duration_seconds, instruments, tone="jiao"
     return GenerationSpec(
         schema_version="generation_spec_v3.0",
         tone_profile=ToneProfileV31(
-            schema_version="tone_profile_v3.1",
+            schema_version="tone_profile_v3.2",
+            regulation_mode="personalized_five_tone",
             weights=weights,
             primary_tone=tone,
             secondary_tone=None,

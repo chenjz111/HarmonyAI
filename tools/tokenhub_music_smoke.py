@@ -56,7 +56,8 @@ from backend.app.core.audio_duration import mp3_duration_seconds_from_file
 from backend.app.schemas.v3.music import ProviderMusicRequest
 
 SMOKE_TONE_PROFILE = {
-    "schema_version": "tone_profile_v3.1",
+    "schema_version": "tone_profile_v3.2",
+    "regulation_mode": "personalized_five_tone",
     "weights": {
         "jiao": 0.2,
         "zhi": 0.2,
