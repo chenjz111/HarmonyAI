@@ -15,11 +15,11 @@ def _mapping():
             }
         },
         "organ_tone_table": [
-            {"tone": "jiao", "tone_cn": "角调", "note": "舒展条达"},
-            {"tone": "zhi", "tone_cn": "徵调", "note": "欢快升发"},
-            {"tone": "gong", "tone_cn": "宫调", "note": "沉稳中和"},
-            {"tone": "shang", "tone_cn": "商调", "note": "清越肃降"},
-            {"tone": "yu", "tone_cn": "羽调", "note": "柔润静谧"},
+            {"organ": "liver", "tone": "jiao", "tone_cn": "角调", "note": "舒展条达"},
+            {"organ": "heart", "tone": "zhi", "tone_cn": "徵调", "note": "欢快升发"},
+            {"organ": "spleen", "tone": "gong", "tone_cn": "宫调", "note": "沉稳中和"},
+            {"organ": "lung", "tone": "shang", "tone_cn": "商调", "note": "清越肃降"},
+            {"organ": "kidney", "tone": "yu", "tone_cn": "羽调", "note": "柔润静谧"},
         ],
     }
 

@@ -15,6 +15,7 @@ rows, and assert that:
 from __future__ import annotations
 
 from hashlib import sha256
+from pathlib import Path
 import json
 import uuid
 
@@ -114,8 +115,12 @@ def _seed_evidence(
     db.commit()
 
 
-def _pipeline_dependencies(calls: list[str]):
-    """Fake approved provider chain that accepts a real fact population."""
+def _pipeline_dependencies(calls: list[str], *, abstain_reason: str | None = None):
+    """Fake approved provider chain that accepts a real fact population.
+
+    When ``abstain_reason`` is set the provider returns a *legal abstain* with
+    that literal, mirroring what the unconstrained provider may return.
+    """
 
     from types import SimpleNamespace
 
@@ -141,6 +146,15 @@ def _pipeline_dependencies(calls: list[str]):
 
         async def acomplete_json(self, *, request, facts, rag_chunk_ids):
             calls.append("qwen")
+            if abstain_reason is not None:
+                return DiagnosisProviderResponse.model_validate(
+                    {
+                        "status": "abstained",
+                        "candidate_tendencies": [],
+                        "abstained": True,
+                        "abstain_reason": abstain_reason,
+                    }
+                )
             return DiagnosisProviderResponse.model_validate(
                 {
                     "status": "success",
@@ -168,6 +182,65 @@ def _pipeline_dependencies(calls: list[str]):
         allowed_syndrome_codes=frozenset({"syndrome_1"}),
         medical_rule_version="medical-rules-v3.1-r1",
     )
+
+
+def _frozen_case_answers(case_id: str) -> list[dict]:
+    fixture = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "tests"
+            / "fixtures"
+            / "sprint6_acceptance_cases.json"
+        ).read_text(encoding="utf-8")
+    )
+    case = next(item for item in fixture["cases"] if item["case_id"] == case_id)
+    return case["synthetic_input"]["answers"]
+
+
+def _seed_questionnaire_state(db, headers, *, session_id, session_row, answers):
+    """The real product source of a ConfirmedUserState (questionnaire only)."""
+
+    from tests.api.v3.test_assessment_v3 import _seed_questionnaire
+
+    questionnaire_id, manifest = _seed_questionnaire(
+        db, headers=headers, session_id=session_id, answers=answers
+    )
+    session_row.input_mode = "without_document"
+    session_row.input_revision = 2
+    session_row.active_questionnaire_submission_id = questionnaire_id
+    db.commit()
+    return questionnaire_id, manifest
+
+
+def _create_questionnaire_assessment(headers, session_id, questionnaire_id, manifest) -> str:
+    response = client.post(
+        "/api/v3/assessments",
+        headers={**headers, "Idempotency-Key": f"p1b-asmt-{uuid.uuid4().hex}"},
+        json={
+            "schema_version": "assessment_v3.1",
+            "session_id": session_id,
+            "expected_input_revision": 2,
+            "understanding_ref": None,
+            "questionnaire_ref": {
+                "questionnaire_submission_id": questionnaire_id,
+                "schema_id": manifest["schema_id"],
+                "schema_version": manifest["schema_version"],
+                "manifest_version": manifest["manifest_version"],
+                "content_checksum": manifest["content_checksum"],
+            },
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["data"]["assessment_id"]
+
+
+def _confirm_assessment(headers, assessment_id) -> None:
+    response = client.post(
+        f"/api/v3/assessments/{assessment_id}/confirmations",
+        headers={**headers, "Idempotency-Key": f"p1b-cfm-{uuid.uuid4().hex}"},
+        json={"decision": "confirm", "expected_revision": 1, "expected_input_revision": 2},
+    )
+    assert response.status_code in (200, 201), response.text
 
 
 def _organ_profile(organ_support: dict) -> dict:
@@ -584,3 +657,284 @@ def test_mapping_identity_mismatch_is_a_readiness_failure(
     )
     assert response.status_code == 502, response.text
     assert response.json()["error"]["code"] == "DOMINANCE_MAPPING_IDENTITY_MISMATCH"
+
+# --------------------------------------------------------------------------- #
+# B1 — early legal abstain persists the authoritative v3.3 basic decision
+# --------------------------------------------------------------------------- #
+
+
+def test_early_element_insufficient_persists_v33_basic_decision(
+    db_session_factory, monkeypatch
+):
+    """Frozen contract: ELEMENT_EVIDENCE_INSUFFICIENT -> basic_wellness.
+
+    The early element-insufficient abstain must persist the same authoritative
+    decision + checksum-protected v3.3 read model as the pipeline path, with no
+    SQL migration and no provider/RAG call.
+    """
+
+    headers = _guest_headers()
+    db = db_session_factory()
+    session_id, _user_pk, session_row = _setup_flow_session(db, headers)
+    questionnaire_id, manifest = _seed_questionnaire_state(
+        db,
+        headers,
+        session_id=session_id,
+        session_row=session_row,
+        answers=_frozen_case_answers("E"),
+    )
+    db.close()
+    assessment_id = _create_questionnaire_assessment(
+        headers, session_id, questionnaire_id, manifest
+    )
+    _confirm_assessment(headers, assessment_id)
+
+    calls: list[str] = []
+    monkeypatch.setattr(diagnosis_service, "_v31_real_mode", lambda: True)
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_ai_pipeline_dependencies",
+        lambda: _pipeline_dependencies(calls),
+    )
+    response = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": f"p1b-abstain-{uuid.uuid4().hex}"},
+        json=_diagnosis_body(session_id, assessment_id, 2),
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()["data"]
+    assert body["status"] == "abstained"
+    assert body["abstain_reason"] == "ELEMENT_EVIDENCE_INSUFFICIENT"
+    assert calls == []  # provider-free: the abstain is decided before the chain
+
+    stored = _persisted_read_model(db_session_factory)
+    assert stored["schema_version"] == "five_tone_analysis_read_model_v3.3"
+    payload = stored["payload"]
+    assert payload["regulation_mode"] == "basic_wellness"
+    assert payload["primary_tone"] is None
+    assert payload["tone_weights"] is None
+    assert payload["decision_reason_code"] == "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT"
+    decision = payload["dominance_decision"]
+    assert decision["coverage"]["coverage_gate_passed"] is False
+    assert decision["regulation_mode"] == "basic_wellness"
+    assert decision["decision_reason_code"] == "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT"
+    canonical = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    assert stored["checksum"] == f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
+    assert stored["generation_spec"]["tone_profile"]["regulation_mode"] == "basic_wellness"
+    assert "宫" not in json.dumps(payload, ensure_ascii=False)
+
+
+# --------------------------------------------------------------------------- #
+# B2 — legal-abstain normalization at the pipeline boundary
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("provider_reason", "expected_reason"),
+    [
+        ("evidence_insufficient", "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT"),
+        ("INSUFFICIENT_EVIDENCE", "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT"),
+        ("ELEMENT_EVIDENCE_INSUFFICIENT", "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT"),
+        ("RAG_EMPTY", "BASIC_RAG_EMPTY"),
+        ("UNRESOLVED_MAJOR_CONFLICT", "BASIC_UNRESOLVED_MAJOR_CONFLICT"),
+    ],
+)
+def test_provider_legal_abstain_aliases_route_to_basic_wellness(
+    db_session_factory, monkeypatch, provider_reason, expected_reason
+):
+    """A legal abstain must never become personalized (502) or integrated."""
+
+    headers = _guest_headers()
+    db = db_session_factory()
+    session_id, _user_pk, session_row = _setup_flow_session(db, headers)
+    questionnaire_id, manifest = _seed_questionnaire_state(
+        db,
+        headers,
+        session_id=session_id,
+        session_row=session_row,
+        answers=_frozen_case_answers("A"),  # clear liver dominance would be personalized
+    )
+    db.close()
+    assessment_id = _create_questionnaire_assessment(
+        headers, session_id, questionnaire_id, manifest
+    )
+    _confirm_assessment(headers, assessment_id)
+
+    calls: list[str] = []
+    monkeypatch.setattr(diagnosis_service, "_v31_real_mode", lambda: True)
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_ai_pipeline_dependencies",
+        lambda: _pipeline_dependencies(calls, abstain_reason=provider_reason),
+    )
+    response = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": f"p1b-alias-{uuid.uuid4().hex}"},
+        json=_diagnosis_body(session_id, assessment_id, 2),
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["data"]["status"] == "abstained"
+    payload = _persisted_read_model(db_session_factory)["payload"]
+    assert payload["regulation_mode"] == "basic_wellness"
+    assert payload["primary_tone"] is None
+    assert payload["decision_reason_code"] == expected_reason
+
+
+def test_provider_technical_abstain_never_becomes_a_mode(
+    db_session_factory, monkeypatch
+):
+    """A technical/readiness reason stays a failure even on an abstain status."""
+
+    headers = _guest_headers()
+    db = db_session_factory()
+    session_id, _user_pk, session_row = _setup_flow_session(db, headers)
+    questionnaire_id, manifest = _seed_questionnaire_state(
+        db,
+        headers,
+        session_id=session_id,
+        session_row=session_row,
+        answers=_frozen_case_answers("A"),
+    )
+    db.close()
+    assessment_id = _create_questionnaire_assessment(
+        headers, session_id, questionnaire_id, manifest
+    )
+    _confirm_assessment(headers, assessment_id)
+
+    calls: list[str] = []
+    monkeypatch.setattr(diagnosis_service, "_v31_real_mode", lambda: True)
+    monkeypatch.setattr(
+        agent_config,
+        "get_v31_ai_pipeline_dependencies",
+        lambda: _pipeline_dependencies(calls, abstain_reason="RAG_UNAVAILABLE"),
+    )
+    response = client.post(
+        "/api/v3/diagnoses",
+        headers={**headers, "Idempotency-Key": f"p1b-tech-{uuid.uuid4().hex}"},
+        json=_diagnosis_body(session_id, assessment_id, 2),
+    )
+    assert response.status_code == 502, response.text
+    assert response.json()["error"]["code"] == "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE"
+
+
+def test_abstained_provider_response_requires_an_explicit_reason():
+    """Producer trace: ``abstained + abstain_reason=None`` is unreachable.
+
+    ``DiagnosisProviderResponse`` rejects an abstained provider result without a
+    reason, so no new row can reach the dominance service with an ambiguous
+    ``None`` abstain reason (no invented medical meaning for ``None``).
+    """
+
+    from pydantic import ValidationError
+
+    from backend.app.schemas.v3.diagnosis import DiagnosisProviderResponse
+
+    with pytest.raises(ValidationError, match="requires reason"):
+        DiagnosisProviderResponse.model_validate(
+            {
+                "status": "abstained",
+                "candidate_tendencies": [],
+                "abstained": True,
+                "abstain_reason": None,
+            }
+        )
+
+
+# --------------------------------------------------------------------------- #
+# B3 — real questionnaire -> assessment -> aggregation -> dominance (Case F)
+# --------------------------------------------------------------------------- #
+
+
+def test_case_f_real_questionnaire_pipeline_is_personalized_liver(db_session_factory):
+    """Case F must be proven through the real pipeline, with computed numbers.
+
+    No hard-coded raw support and no hand-made aggregation: the questionnaire
+    input is persisted through the real assessment service, the revision
+    evidence is read back, the canonical aggregation is built by production
+    code and the decision comes from the dominance service.
+    """
+
+    from backend.app.services.v3.assessment_service import load_revision_evidence
+    from backend.app.services.v3.knowledge_assets import (
+        load_five_tone_mapping,
+        load_organ_mapping,
+    )
+    from backend.app.services.v3.organ_dominance_service import (
+        build_organ_aggregation_snapshot,
+        load_configured_dominance_rule,
+        resolve_organ_dominance,
+        verify_candidate_policy_consistency,
+        verify_mapping_identity,
+    )
+
+    headers = _guest_headers()
+    db = db_session_factory()
+    session_id, _user_pk, session_row = _setup_flow_session(db, headers)
+    questionnaire_id, manifest = _seed_questionnaire_state(
+        db,
+        headers,
+        session_id=session_id,
+        session_row=session_row,
+        answers=_frozen_case_answers("F"),
+    )
+    db.close()
+    assessment_id = _create_questionnaire_assessment(
+        headers, session_id, questionnaire_id, manifest
+    )
+
+    db = db_session_factory()
+    try:
+        revision = (
+            db.query(AssessmentRevisionV3)
+            .filter(AssessmentRevisionV3.assessment_id == assessment_id)
+            .one()
+        )
+        evidence, links = load_revision_evidence(
+            db, assessment_id=assessment_id, revision=1, confirmed_only=False
+        )
+    finally:
+        db.close()
+
+    assert {item.claim_code for item in evidence} == {
+        "anger_tendency",
+        "eye_discomfort",
+        "flank_discomfort",
+        "overthinking_tendency",
+        "poor_appetite",
+    }
+    organ_mapping = load_organ_mapping()
+    tone_mapping = load_five_tone_mapping()
+    rule = load_configured_dominance_rule()
+    verify_candidate_policy_consistency(rule, organ_mapping=organ_mapping)
+    snapshot = build_organ_aggregation_snapshot(evidence, links, organ_mapping)
+    assets = verify_mapping_identity(
+        rule, organ_mapping=organ_mapping, five_tone_mapping=tone_mapping
+    )
+    decision = resolve_organ_dominance(
+        assessment_id=assessment_id,
+        assessment_revision=1,
+        input_revision=2,
+        aggregation=snapshot,
+        conflicts=json.loads(revision.conflicts_json or "[]"),
+        fact_claims=snapshot.fact_claims_by_fact_id,
+        dominance_rule=rule,
+        five_tone_mapping=tone_mapping,
+        assets=assets,
+    )
+
+    # computed, not injected
+    assert decision.coverage.confirmed_fact_count == 5
+    assert decision.coverage.evidence_coverage == 0.625
+    assert snapshot.raw_support_by_organ["liver"] == pytest.approx(1.85, abs=1e-4)
+    assert snapshot.raw_support_by_organ["spleen"] == pytest.approx(1.1125, abs=1e-4)
+    assert snapshot.normalized_weights_by_organ["liver"] == pytest.approx(0.6245, abs=1e-4)
+    assert snapshot.normalized_weights_by_organ["spleen"] == pytest.approx(0.3755, abs=1e-4)
+    assert list(snapshot.legal_candidate_organs) == ["liver", "spleen"]
+    assert decision.dominance.normalized_margin == pytest.approx(0.249, abs=1e-3)
+    assert decision.dominance.raw_ratio == pytest.approx(1.6629, abs=1e-3)
+    assert decision.regulation_mode == "personalized_five_tone"
+    assert decision.dominant_organ == "liver"
+    assert decision.primary_tone == "jiao"
+    assert decision.decision_reason_code == "PERSONALIZED_DOMINANCE_THRESHOLDS_MET"

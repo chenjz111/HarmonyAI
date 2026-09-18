@@ -23,6 +23,7 @@ from backend.app.schemas.v3.diagnosis import (
 from backend.app.schemas.v3.flow_v31 import (
     ConfirmedUserState,
     FiveToneAnalysisReadModel,
+    FiveToneAnalysisReadModelV33,
     ToneProfileV31,
 )
 
@@ -45,6 +46,7 @@ from backend.app.services.v3.organ_dominance_service import (
     OrganAggregationSnapshot,
     load_configured_dominance_rule,
     resolve_organ_dominance,
+    verify_candidate_policy_consistency,
     verify_mapping_identity,
 )
 
@@ -195,6 +197,7 @@ async def execute_v31_ai_pipeline(
         organ_mapping=organ_mapping,
         organ_aggregation=organ_aggregation,
         audit_context=audit_context,
+        upstream_status=execution.status,
     )
     profile = build_tone_profile_v31(
         diagnosis_id=diagnosis_id,
@@ -245,16 +248,112 @@ async def execute_v31_ai_pipeline(
     )
 
 
+@dataclass(frozen=True)
+class V31LegalAbstainResult:
+    """Authoritative result of a *legal abstain* (no provider/RAG call)."""
+
+    dominance_decision: OrganDominanceDecisionV1
+    tone_profile: ToneProfileV31
+    generation_spec: GenerationSpecV31
+    read_model: FiveToneAnalysisReadModel | FiveToneAnalysisReadModelV33
+
+
+def build_v31_legal_abstain(
+    *,
+    confirmed_user_state: ConfirmedUserState | Mapping[str, object],
+    assessment_snapshot: Mapping[str, object],
+    tone_mapping: Mapping[str, object],
+    generation_parameter_rules: Mapping[str, object] | None,
+    abstain_reason: str,
+    dominance_rule: Mapping[str, object] | None = None,
+    organ_mapping: Mapping[str, object] | None = None,
+    organ_aggregation: OrganAggregationSnapshot | None = None,
+    secondary_threshold: float | None = None,
+) -> V31LegalAbstainResult:
+    """Assemble the frozen ``basic_wellness`` outcome for a legal abstain.
+
+    Sprint 6 Phase 1B: an early legal abstain (element evidence insufficient)
+    must produce the same authoritative decision + v3.3 read model as the
+    pipeline path, without querying RAG or a provider. Technical/readiness
+    reasons never reach this function as an abstain: they are validated by the
+    dominance service and fail closed.
+    """
+
+    state = _validate_confirmed_state(confirmed_user_state, assessment_snapshot)
+    decision = _resolve_dominance_decision(
+        assessment_snapshot=assessment_snapshot,
+        state=state,
+        execution=None,
+        tone_mapping=tone_mapping,
+        dominance_rule=dominance_rule,
+        organ_mapping=organ_mapping,
+        organ_aggregation=organ_aggregation,
+        audit_context=None,
+        upstream_status="abstained",
+        upstream_abstain_reason=abstain_reason,
+    )
+    evidence_refs = [
+        str(item) for item in (assessment_snapshot.get("supporting_fact_ids") or [])
+    ] + [
+        str(item) for item in (assessment_snapshot.get("contradicting_fact_ids") or [])
+    ]
+    if not evidence_refs:
+        evidence_refs = [f"confirmed_state:{state.confirmed_user_state_id}"]
+    profile = build_tone_profile_v31(
+        diagnosis_id=str(
+            assessment_snapshot.get("diagnosis_id")
+            or f"diag_abstain_{assessment_snapshot.get('assessment_id', 'assessment')}"
+        ),
+        diagnosis_revision=int(assessment_snapshot.get("assessment_revision", 1)),
+        diagnosis_status="abstained",
+        organ_weights={},
+        supporting_evidence_refs=evidence_refs,
+        mapping=tone_mapping,
+        secondary_threshold=secondary_threshold,
+        dominance_decision=decision,
+    )
+    generation_spec = build_generation_spec_v31(
+        profile=profile,
+        parameter_rules=generation_parameter_rules,
+        secondary_threshold=secondary_threshold,
+    )
+    read_model = build_five_tone_analysis_v31(
+        confirmed_user_state_ref={
+            "confirmed_user_state_id": state.confirmed_user_state_id,
+            "revision": state.revision,
+            "content_checksum": state.content_checksum,
+        },
+        confirmed_state=state.confirmed_state_text,
+        state_tendency=str(
+            assessment_snapshot.get("state_tendency")
+            or "当前证据不足以形成五音主音方向。"
+        ),
+        profile=profile,
+        evidence_refs=evidence_refs,
+        mapping=tone_mapping,
+        generation_spec=generation_spec,
+        dominance_decision=decision,
+    )
+    return V31LegalAbstainResult(
+        dominance_decision=decision,
+        tone_profile=profile,
+        generation_spec=generation_spec,
+        read_model=read_model,
+    )
+
+
 def _resolve_dominance_decision(
     *,
     assessment_snapshot: Mapping[str, object],
     state: ConfirmedUserState,
-    execution: DiagnosisProviderExecution,
+    execution: DiagnosisProviderExecution | None,
     tone_mapping: Mapping[str, object],
     dominance_rule: Mapping[str, object] | None,
     organ_mapping: Mapping[str, object] | None,
     organ_aggregation: OrganAggregationSnapshot | None,
-    audit_context: V31PipelineAuditContext,
+    audit_context: V31PipelineAuditContext | None,
+    upstream_status: str | None = None,
+    upstream_abstain_reason: str | None = None,
 ) -> OrganDominanceDecisionV1:
     """Produce the single authoritative Phase 1B decision for this run.
 
@@ -291,6 +390,10 @@ def _resolve_dominance_decision(
         assets = verify_mapping_identity(
             rule, organ_mapping=mapping_asset, five_tone_mapping=tone_mapping
         )
+        # The approved organ mapping stays the candidate authority: a drift
+        # against the dominance asset's documented policy is a readiness
+        # failure, never a silently different candidate set.
+        verify_candidate_policy_consistency(rule, organ_mapping=mapping_asset)
         return resolve_organ_dominance(
             assessment_id=str(
                 assessment_snapshot.get("assessment_id")
@@ -308,7 +411,18 @@ def _resolve_dominance_decision(
             confirmed_user_state_id=state.confirmed_user_state_id,
             confirmed_user_state_revision=state.revision,
             upstream_abstain_reason=(
-                execution.reason_code if execution.status == "abstained" else None
+                upstream_abstain_reason
+                if upstream_abstain_reason is not None
+                else (
+                    execution.reason_code
+                    if execution is not None and execution.status == "abstained"
+                    else None
+                )
+            ),
+            upstream_status=(
+                upstream_status
+                if upstream_status is not None
+                else (execution.status if execution is not None else None)
             ),
         )
     except DominanceReadinessError as error:

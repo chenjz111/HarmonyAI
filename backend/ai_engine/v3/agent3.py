@@ -432,14 +432,13 @@ def build_tone_profile_v31(
         raise Agent3Blocked("INSUFFICIENT_EVIDENCE_REFERENCES")
     if secondary_threshold is not None and not 0 < secondary_threshold <= 1:
         raise Agent3Blocked("INVALID_SECONDARY_THRESHOLD")
-    if (
-        decision.regulation_mode == "personalized_five_tone"
-        and diagnosis_status == "abstained"
-    ):
-        # abstain ≠ 宫: a legal abstain can never carry a personalized decision.
+    if diagnosis_status == "abstained" and decision.regulation_mode != "basic_wellness":
+        # abstain ≠ 宫 and abstain ≠ 综合调适: a legal abstain may only project
+        # the frozen basic_wellness outcome. Anything else fails closed instead
+        # of becoming a personalized/integrated music mode.
         raise Agent3Blocked(
             "DOMINANCE_DECISION_CONFLICT",
-            "诊断已按证据不足中止，不能给出个性化五音主音。",
+            "诊断已按证据不足中止，不能给出个性化或综合调适音乐方向。",
         )
 
     basis = ToneProfileBasisV31(
@@ -480,6 +479,16 @@ def build_tone_profile_v31(
     if primary is None:  # pragma: no cover - decision validator guarantees this
         raise Agent3Blocked("INVALID_DOMINANCE_DECISION")
     primary_code = primary.value if hasattr(primary, "value") else str(primary)
+    # Authoritative tone consistency: the primary tone must be the approved
+    # mapping's tone for the decided dominant organ. Derived (smoothed) tone
+    # weights are deliberately NOT compared — they are not dominance authority.
+    dominant_code = getattr(decision.dominant_organ, "value", decision.dominant_organ)
+    mapped_row = _tone_table(mapping).get(primary_code)
+    if mapped_row is None or str(mapped_row.get("organ", "")).strip() != str(dominant_code):
+        raise Agent3Blocked(
+            "DOMINANCE_TONE_MAPPING_MISMATCH",
+            "主音与权威主导脏腑的批准映射不一致。",
+        )
     secondary = None
     if secondary_threshold is not None:
         candidates = [tone for tone in _TONE_CODES if tone != primary_code]

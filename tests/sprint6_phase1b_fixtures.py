@@ -155,6 +155,7 @@ def decision_from_organ_support(
     fact_claims: Mapping[str, Sequence[str]] | None = None,
     coverage_count: int | None = None,
     upstream_abstain_reason: str | None = None,
+    upstream_status: str | None = None,
     assessment_revision: int = 1,
 ):
     """Run the real dominance service over synthetic organ support."""
@@ -189,6 +190,7 @@ def decision_from_organ_support(
         confirmed_fact_count=covered,
         evidence_coverage=round(min(1.0, covered / 8.0), 3),
         upstream_abstain_reason=upstream_abstain_reason,
+        upstream_status=upstream_status,
     )
 
 

@@ -461,7 +461,16 @@ def _mapping() -> dict:
                 "kidney": {"yu": 1.0},
             }
         },
-        "organ_tone_table": [{"tone": tone, "tone_cn": tone} for tone in TONE_CODES],
+        "organ_tone_table": [
+            {"organ": organ, "tone": tone, "tone_cn": tone}
+            for organ, tone in (
+                ("liver", "jiao"),
+                ("heart", "zhi"),
+                ("spleen", "gong"),
+                ("lung", "shang"),
+                ("kidney", "yu"),
+            )
+        ],
     }
 
 

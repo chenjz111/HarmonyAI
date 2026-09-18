@@ -78,10 +78,85 @@ REASON_INTEGRATED_MARGIN_BELOW_THRESHOLD = "INTEGRATED_MARGIN_BELOW_THRESHOLD"
 REASON_INTEGRATED_RATIO_BELOW_THRESHOLD = "INTEGRATED_RATIO_BELOW_THRESHOLD"
 
 # Upstream legal-abstain reasons and their frozen Phase 1B basic_wellness codes.
-UPSTREAM_ABSTAIN_REASON_MAP: Mapping[str, str] = {
+#
+# A legal abstain means "no five-tone conclusion can be drawn" and must always
+# resolve to ``basic_wellness``. The same medical meaning is written with
+# different literals across the product (diagnosis persistence), the frozen
+# contract vocabulary and the provider, so normalization lives here — once.
+LEGAL_ABSTAIN_REASON_ALIASES: Mapping[str, str] = {
     "ELEMENT_EVIDENCE_INSUFFICIENT": REASON_BASIC_ELEMENT_EVIDENCE_INSUFFICIENT,
+    "INSUFFICIENT_EVIDENCE": REASON_BASIC_ELEMENT_EVIDENCE_INSUFFICIENT,
+    "EVIDENCE_INSUFFICIENT": REASON_BASIC_ELEMENT_EVIDENCE_INSUFFICIENT,
+    "evidence_insufficient": REASON_BASIC_ELEMENT_EVIDENCE_INSUFFICIENT,
     "RAG_EMPTY": REASON_BASIC_RAG_EMPTY,
+    "UNRESOLVED_MAJOR_CONFLICT": REASON_BASIC_UNRESOLVED_MAJOR_CONFLICT,
 }
+
+# Never a music mode: technical / readiness / safety markers. Defence in depth
+# — a technical failure is delivered as a *failed* execution, never as a legal
+# abstain, and a safety block is withheld by design (no Phase 1B producer).
+_TECHNICAL_REASON_MARKERS: tuple[str, ...] = (
+    "SAFETY",
+    "UNAVAILABLE",
+    "MODEL_SCHEMA",
+    "SCHEMA_INVALID",
+    "PROVIDER",
+    "TIMEOUT",
+    "TIME_OUT",
+    "RATE_LIMIT",
+    "NETWORK",
+    "AUTH",
+    "CREDENTIAL",
+    "API_KEY",
+    "CHECKSUM",
+    "ASSET",
+    "NOT_READY",
+    "NOT_CONFIGURED",
+    "MISMATCH",
+    "INGESTION",
+    "CHUNK_REFERENCE",
+    "RAG_UNAPPROVED",
+    "READINESS",
+    "INTERNAL",
+)
+
+
+def is_technical_abstain_reason(reason: str) -> bool:
+    """True when a reason must stay a failure and never become a music mode."""
+
+    normalized = str(reason or "").upper()
+    return any(marker in normalized for marker in _TECHNICAL_REASON_MARKERS)
+
+
+def normalize_legal_abstain_reason(reason: str) -> str:
+    """The single legal-abstain normalizer (see the alias table above).
+
+    Raises :class:`DominanceReadinessError` for an empty reason (unreachable
+    upstream: the provider response schema requires a reason for an abstained
+    result) and for technical/readiness/safety reasons.
+    """
+
+    text = str(reason or "").strip()
+    if not text:
+        raise DominanceReadinessError(
+            "DOMINANCE_ABSTAIN_REASON_MISSING",
+            "上游中止结果缺少可判定的原因，已停止推断音乐模式。",
+        )
+    mapped = LEGAL_ABSTAIN_REASON_ALIASES.get(text) or LEGAL_ABSTAIN_REASON_ALIASES.get(
+        text.lower()
+    )
+    if mapped is not None:
+        return mapped
+    if is_technical_abstain_reason(text):
+        raise DominanceReadinessError(
+            "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE",
+            "技术或就绪类失败不得转为音乐模式。",
+        )
+    # Unrecognized *legal* abstain: the diagnosis itself declined to conclude,
+    # so no five-tone direction may be claimed. The frozen vocabulary has no
+    # dedicated code for this class, and the insufficient-evidence class is the
+    # only abstain class defined as "no conclusion available".
+    return REASON_BASIC_ELEMENT_EVIDENCE_INSUFFICIENT
 
 # Fixed organ order for deterministic *audit display* only. It never breaks a
 # medical tie: the frozen tie rule is canonical raw support equality.
@@ -555,6 +630,45 @@ def verify_mapping_identity(
     )
 
 
+def verify_candidate_policy_consistency(
+    rule: Mapping[str, object],
+    *,
+    organ_mapping: Mapping[str, object],
+) -> None:
+    """Readiness check: the approved organ mapping stays the candidate authority.
+
+    The dominance asset only *documents* the candidate policy; the mapping is
+    what routing reads. A drift between the two would silently change which
+    organs qualify, so any mismatch is a readiness failure.
+    """
+
+    gate = rule.get("legal_candidate_gate")
+    gate = gate if isinstance(gate, Mapping) else {}
+    thresholds = organ_mapping.get("thresholds")
+    thresholds = thresholds if isinstance(thresholds, Mapping) else {}
+    expected_count = gate.get("minimum_effective_evidence_count")
+    expected_support = gate.get("minimum_raw_support")
+    actual_count = thresholds.get("minimum_evidence_count")
+    actual_support = thresholds.get("minimum_total_support")
+    per_rule_counts = {
+        int(item.get("min_count"))
+        for item in (organ_mapping.get("combination_rules") or [])
+        if isinstance(item, Mapping) and item.get("min_count") is not None
+    }
+    if (
+        expected_count is None
+        or expected_support is None
+        or actual_count != expected_count
+        or per_rule_counts != {int(expected_count)}
+        or actual_support is None
+        or abs(float(actual_support) - float(expected_support)) > 1e-9
+    ):
+        raise DominanceReadinessError(
+            "DOMINANCE_CANDIDATE_POLICY_MISMATCH",
+            "主导度规则与已批准脏腑映射的候选阈值不一致。",
+        )
+
+
 def fact_claim_index(
     evidence: Sequence[FactEvidence],
 ) -> dict[str, tuple[str, ...]]:
@@ -656,6 +770,7 @@ def resolve_organ_dominance(
     evidence_coverage: float | None = None,
     confirmed_fact_count: int | None = None,
     upstream_abstain_reason: str | None = None,
+    upstream_status: str | None = None,
 ) -> OrganDominanceDecisionV1:
     """Resolve the authoritative Phase 1B music-design decision (pure).
 
@@ -732,7 +847,21 @@ def resolve_organ_dominance(
     primary_tone: str | None = None
     dominance_passed = False
     branch = "evidence"
-    upstream_reason = UPSTREAM_ABSTAIN_REASON_MAP.get(str(upstream_abstain_reason or ""))
+    if upstream_status == "failed":
+        # A technical failure is never a mode (defence in depth: the pipeline
+        # raises before this point).
+        raise DominanceReadinessError(
+            "DOMINANCE_UPSTREAM_FAILED",
+            "上游技术失败不得转为音乐模式。",
+        )
+    abstained = upstream_status == "abstained" or (
+        upstream_status is None and bool(upstream_abstain_reason)
+    )
+    upstream_reason = (
+        normalize_legal_abstain_reason(upstream_abstain_reason or "")
+        if abstained
+        else None
+    )
 
     if upstream_reason is not None:
         mode, reason = "basic_wellness", upstream_reason
@@ -872,8 +1001,11 @@ __all__ = [
     "dominance_affecting_minor_conflict_ids",
     "fact_claim_index",
     "is_questionnaire_evidence",
+    "is_technical_abstain_reason",
     "load_configured_dominance_rule",
+    "normalize_legal_abstain_reason",
     "organ_tone_map",
+    "verify_candidate_policy_consistency",
     "resolve_organ_dominance",
     "select_effective_evidence",
     "shares_source",

@@ -42,7 +42,11 @@
         "regulation_mode": "personalized_five_tone",
         "dominant_organ": "liver",
         "primary_tone": "jiao",
-        "decision_reason_code": "PERSONALIZED_DOMINANCE_THRESHOLDS_MET"
+        "decision_reason_code": "PERSONALIZED_DOMINANCE_THRESHOLDS_MET",
+        "normalized_margin": 0.0914,
+        "raw_ratio": 1.201299,
+        "margin_gate_state": "passed",
+        "ratio_gate_state": "passed"
       }
     }
   },

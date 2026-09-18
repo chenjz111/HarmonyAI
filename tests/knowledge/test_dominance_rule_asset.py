@@ -214,3 +214,27 @@ def test_loader_rejects_a_self_consistent_asset_with_drifted_frozen_numbers(tmp_
             expected_checksum=drifted["content_checksum"],
         )
     assert error.value.error_code == "DOMINANCE_RULE_ASSET_INVALID"
+
+
+def test_declared_candidate_policy_matches_the_approved_organ_mapping():
+    """I6: the mapping stays the candidate authority; the asset only documents it.
+
+    A drift between the asset's declared candidate policy and the approved
+    organ mapping is a readiness failure, so this asserts the shipped pair is
+    consistent (the runtime check lives in ``verify_candidate_policy_consistency``).
+    """
+
+    from backend.app.services.v3.organ_dominance_service import (
+        verify_candidate_policy_consistency,
+    )
+
+    gate = _asset()["legal_candidate_gate"]
+    organ_mapping = load_organ_mapping()
+    thresholds = organ_mapping["thresholds"]
+    assert gate["minimum_effective_evidence_count"] == thresholds["minimum_evidence_count"]
+    assert gate["minimum_raw_support"] == thresholds["minimum_total_support"]
+    assert {
+        rule["min_count"] for rule in organ_mapping["combination_rules"]
+    } == {gate["minimum_effective_evidence_count"]}
+    # the runtime readiness check accepts the shipped pair
+    verify_candidate_policy_consistency(_load(), organ_mapping=organ_mapping)

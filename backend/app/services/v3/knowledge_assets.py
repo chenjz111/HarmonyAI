@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import re
 from typing import Literal, Mapping
@@ -227,6 +228,16 @@ APPROVED_DOMINANCE_RULE_CHECKSUM = (
     "sha256:7be01a93cd55118d496c08d234302b2d7cc8d601aa0152c62789a2ed31d9e019"
 )
 
+# Approved deterministic non-tone music parameter release. Used by paths that
+# must assemble a basic_wellness read model without the full provider/RAG
+# dependency factory (the legal-abstain path), and overridable by the same
+# environment configuration the pipeline uses.
+FORMAL_MUSIC_GENERATION_RULE_VERSION = "music-generation-rules-v3.1-r1"
+APPROVED_MUSIC_GENERATION_RULE_CHECKSUM = (
+    "sha256:c97acc241abe611b91d71c205cb021afaa47cfffd1c7bfe8d447e402d74f0ae0"
+)
+DEFAULT_MUSIC_GENERATION_RULES_FILENAME = "music-generation-rules-v3.1.json"
+
 # Frozen Phase 1B numbers. The rule asset must restate these exactly; they are
 # never re-declared as a competing authority inside routing code.
 DOMINANCE_EVIDENCE_DENOMINATOR = 8
@@ -426,6 +437,29 @@ def canonical_asset_checksum(payload: Mapping[str, object]) -> str:
     """Public canonical asset checksum (top-level ``content_checksum`` removed)."""
 
     return _canonical_asset_checksum(payload)
+
+
+def load_configured_music_generation_rules() -> dict[str, object]:
+    """Load the approved non-tone music parameter release.
+
+    The configured release (``V31_MUSIC_GENERATION_RULES_PATH`` /
+    ``_VERSION`` / ``_CHECKSUM``) wins when fully provided; otherwise the
+    repository's approved release is used. Either way the asset is verified
+    against its embedded and approved checksum, version, schema and approval
+    status — an unapproved or tampered asset is a readiness failure, never a
+    music mode.
+    """
+
+    path = os.getenv("V31_MUSIC_GENERATION_RULES_PATH", "").strip()
+    version = os.getenv("V31_MUSIC_GENERATION_RULES_VERSION", "").strip()
+    checksum = os.getenv("V31_MUSIC_GENERATION_RULES_CHECKSUM", "").strip()
+    if not (path and version and checksum):
+        path = str(_asset_root() / DEFAULT_MUSIC_GENERATION_RULES_FILENAME)
+        version = FORMAL_MUSIC_GENERATION_RULE_VERSION
+        checksum = APPROVED_MUSIC_GENERATION_RULE_CHECKSUM
+    return load_music_generation_rules(
+        Path(path), expected_version=version, expected_checksum=checksum
+    )
 
 
 def _asset_root() -> Path:

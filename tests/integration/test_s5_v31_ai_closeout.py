@@ -11,11 +11,11 @@ def _mapping():
             }
         },
         "organ_tone_table": [
-            {"tone": "jiao", "tone_cn": "角调"},
-            {"tone": "zhi", "tone_cn": "徵调"},
-            {"tone": "gong", "tone_cn": "宫调"},
-            {"tone": "shang", "tone_cn": "商调"},
-            {"tone": "yu", "tone_cn": "羽调"},
+            {"organ": "liver", "tone": "jiao", "tone_cn": "角调"},
+            {"organ": "heart", "tone": "zhi", "tone_cn": "徵调"},
+            {"organ": "spleen", "tone": "gong", "tone_cn": "宫调"},
+            {"organ": "lung", "tone": "shang", "tone_cn": "商调"},
+            {"organ": "kidney", "tone": "yu", "tone_cn": "羽调"},
         ],
     }
 

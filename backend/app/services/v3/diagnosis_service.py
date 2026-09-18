@@ -60,8 +60,10 @@ from backend.app.schemas.v3.flow_v31 import ConfirmedUserState
 from backend.ai_engine.v3.diagnosis_pipeline import DiagnosisPipelineFailure
 from backend.ai_engine.v3.v31_pipeline import (
     V31AiPipelineResult,
+    V31LegalAbstainResult,
     V31PipelineAuditContext,
     V31PipelineBlocked,
+    build_v31_legal_abstain,
     execute_v31_ai_pipeline,
 )
 from backend.ai_engine.v3.agent3 import Agent3Blocked
@@ -77,7 +79,10 @@ from backend.app.services.v3.agent3_preference_policy import (
 )
 from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
 from backend.app.services.v3.knowledge_assets import (
+    MusicGenerationRuleAssetNotReady,
     load_approved_syndrome_display_names,
+    load_configured_music_generation_rules,
+    load_five_tone_mapping,
     load_organ_mapping,
 )
 from backend.app.services.v3.assessment_service import load_revision_evidence
@@ -954,6 +959,125 @@ def _persist_failed_pipeline_audit(
     # the audit rows and idempotency terminal state in one transaction.
 
 
+def _build_snapshot_for_legal_abstain(
+    db: Session,
+    *,
+    assessment: AssessmentV3,
+    assessment_revision: AssessmentRevisionV3,
+) -> dict[str, object]:
+    """Minimal authoritative snapshot for a legal abstain (no provider/RAG).
+
+    The canonical aggregation snapshot is the same one the pipeline uses; the
+    evidence population is this revision's confirmed rows.
+    """
+
+    evidence, links = load_revision_evidence(
+        db,
+        assessment_id=assessment.assessment_id,
+        revision=assessment_revision.revision,
+        confirmed_only=True,
+    )
+    try:
+        organ_mapping = load_organ_mapping()
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise V31ReadinessError("ORGAN_MAPPING_ASSET_NOT_READY") from error
+    return {
+        "assessment_id": assessment.assessment_id,
+        "assessment_revision": assessment_revision.revision,
+        "input_revision": int(assessment_revision.input_revision or 1),
+        "organ_aggregation": build_organ_aggregation_snapshot(
+            evidence, links, organ_mapping
+        ),
+        "organ_mapping": organ_mapping,
+        "conflicts": assessment_revision.conflicts_json or [],
+        "supporting_fact_ids": [
+            item.fact_evidence_id for item in evidence if item.direction == "supporting"
+        ],
+        "contradicting_fact_ids": [
+            item.fact_evidence_id
+            for item in evidence
+            if item.direction == "contradicting"
+        ],
+    }
+
+
+def _build_early_legal_abstain_result(
+    db: Session,
+    *,
+    request: DiagnosisV31Input,
+    assessment: AssessmentV3,
+    assessment_revision: AssessmentRevisionV3,
+    session_row: SessionModel,
+    abstain_reason: str,
+) -> V31LegalAbstainResult:
+    """Phase 1B: canonical legal-abstain normalization -> ``basic_wellness``.
+
+    Sprint 6 Phase 1B closes the frozen contract
+    ``ELEMENT_EVIDENCE_INSUFFICIENT -> basic_wellness ->
+    BASIC_ELEMENT_EVIDENCE_INSUFFICIENT`` for early legal abstains: the same
+    dominance service and the same v3.3 read-model builder/checksum as the
+    pipeline path are used, and the result is persisted into the DiagnosisRun
+    that this path already creates. No provider or RAG call is made.
+    """
+
+    state = _load_confirmed_user_state(
+        db,
+        assessment=assessment,
+        assessment_revision=assessment_revision,
+        session_row=session_row,
+    )
+    snapshot = _build_snapshot_for_legal_abstain(
+        db, assessment=assessment, assessment_revision=assessment_revision
+    )
+    snapshot["diagnosis_id"] = request.diagnosis_id
+    try:
+        rules = load_configured_music_generation_rules()
+    except MusicGenerationRuleAssetNotReady as error:
+        raise V31ReadinessError(error.error_code, error.safe_message) from None
+    except (OSError, UnicodeError, ValueError, TypeError) as error:
+        raise V31ReadinessError("MUSIC_PARAMETER_ASSET_INVALID") from error
+    tone_mapping = load_five_tone_mapping()
+    try:
+        return build_v31_legal_abstain(
+            confirmed_user_state=state,
+            assessment_snapshot=snapshot,
+            tone_mapping=tone_mapping,
+            generation_parameter_rules=rules,
+            abstain_reason=abstain_reason,
+        )
+    except V31PipelineBlocked as error:
+        # Asset/readiness problems stay failures (never a music mode).
+        raise V31ReadinessError(error.error_code, error.safe_message) from None
+
+
+def _persist_legal_abstain_read_model(
+    run: DiagnosisRun,
+    abstain_result: V31LegalAbstainResult,
+) -> None:
+    """Persist the abstain decision in the checksum-protected v3.3 read model."""
+
+    read_model = abstain_result.read_model
+    read_model_payload = read_model.model_dump(mode="json")
+    canonical_read_model = json.dumps(
+        read_model_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    run.five_tone_read_model_schema_version = read_model.schema_version
+    run.five_tone_read_model_json = read_model_payload
+    run.five_tone_read_model_checksum = (
+        f"sha256:{sha256(canonical_read_model.encode('utf-8')).hexdigest()}"
+    )
+    generation_spec = to_transport_spec(
+        abstain_result.generation_spec,
+        tone_profile=abstain_result.tone_profile,
+    )
+    generation_spec = synchronize_generation_spec(generation_spec, read_model)
+    run.generation_spec_json = generation_spec.model_dump(mode="json")
+    run.five_tone_generated_at = datetime.now(timezone.utc)
+
+
 def run_diagnosis(
     db: Session,
     principal: AuthPrincipal,
@@ -1015,6 +1139,7 @@ def run_diagnosis(
         reason_codes=["RAG_INGESTION_NOT_APPROVED"],
     )
 
+    abstain_result: V31LegalAbstainResult | None = None
     if element_profile.status == "insufficient":
         # Honest abstain: element evidence is insufficient.
         result = DiagnosisV3(
@@ -1053,6 +1178,17 @@ def run_diagnosis(
             )
         )
         status = "abstained"
+        # Sprint 6 Phase 1B: the early legal abstain is normalized and routed
+        # through the authoritative dominance service so that the frozen
+        # basic_wellness decision (and its audit) is persisted, not inferred.
+        abstain_result = _build_early_legal_abstain_result(
+            db,
+            request=request,
+            assessment=_assessment,
+            assessment_revision=assessment_revision,
+            session_row=session_row,
+            abstain_reason="ELEMENT_EVIDENCE_INSUFFICIENT",
+        )
     elif _v31_real_mode():
         try:
             pipeline = _run_v31_pipeline(
@@ -1122,26 +1258,29 @@ def run_diagnosis(
         )
         raise failure
 
-    db.add(
-        DiagnosisRun(
-            diagnosis_id=diagnosis_id,
-            internal_user_pk=principal.internal_user_pk,
-            session_row_id=session_row.id,
-            assessment_id=ref.assessment_id,
-            assessment_revision=ref.revision,
-            status=status,
-            abstained=1 if status == "abstained" else 0,
-            abstain_reason="ELEMENT_EVIDENCE_INSUFFICIENT"
-            if status == "abstained"
-            else None,
-            primary_tendency_id=None,
-            element_profile_json=element_profile.model_dump(mode="json"),
-            degradation_json=rag_degraded.model_dump(mode="json"),
-            presentation_json=result.root.presentation.model_dump(mode="json"),
-            provider_run_id=None,
-            rag_run_id=None,
-        )
+    run = DiagnosisRun(
+        diagnosis_id=diagnosis_id,
+        internal_user_pk=principal.internal_user_pk,
+        session_row_id=session_row.id,
+        assessment_id=ref.assessment_id,
+        assessment_revision=ref.revision,
+        status=status,
+        abstained=1 if status == "abstained" else 0,
+        abstain_reason="ELEMENT_EVIDENCE_INSUFFICIENT"
+        if status == "abstained"
+        else None,
+        primary_tendency_id=None,
+        element_profile_json=element_profile.model_dump(mode="json"),
+        degradation_json=rag_degraded.model_dump(mode="json"),
+        presentation_json=result.root.presentation.model_dump(mode="json"),
+        provider_run_id=None,
+        rag_run_id=None,
     )
+    db.add(run)
+    if abstain_result is not None:
+        # Sprint 6 Phase 1B: persist the authoritative basic_wellness decision
+        # (already-created run, existing read-model columns — no migration).
+        _persist_legal_abstain_read_model(run, abstain_result)
     record.resource_type = "diagnosis"
     record.resource_id = diagnosis_id
     record.status = "succeeded"

@@ -25,8 +25,14 @@ def _profile():
                 }
             },
             "organ_tone_table": [
-                {"tone": tone, "tone_cn": tone}
-                for tone in ("jiao", "zhi", "gong", "shang", "yu")
+                {"organ": organ, "tone": tone, "tone_cn": tone}
+                for organ, tone in (
+                    ("liver", "jiao"),
+                    ("heart", "zhi"),
+                    ("spleen", "gong"),
+                    ("lung", "shang"),
+                    ("kidney", "yu"),
+                )
             ],
         },
     )

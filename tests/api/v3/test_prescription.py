@@ -42,6 +42,18 @@ def _approved_agent3_assets(monkeypatch):
                 "kidney": {"yu": 0.7, "gong": 0.15, "shang": 0.15},
             }
         },
+        # Phase 1B checks the primary tone against the approved organ->tone
+        # table, so the approved double carries the same shape as the asset.
+        "organ_tone_table": [
+            {"organ": organ, "tone": tone, "tone_cn": tone}
+            for organ, tone in (
+                ("liver", "jiao"),
+                ("heart", "zhi"),
+                ("spleen", "gong"),
+                ("lung", "shang"),
+                ("kidney", "yu"),
+            )
+        ],
     }
     rules = {
         "schema_id": "music_generation_rules_v3.1",

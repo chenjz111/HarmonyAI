@@ -139,10 +139,51 @@ def _diagnosis_body(session_id, assessment_id, input_revision):
     }
 
 
+_INSUFFICIENT_ANSWERS = [
+    {
+        "question_id": f"q{index:02d}",
+        "answer_type": "frequency_0_4" if index <= 5 else "multi_choice_evidence",
+        "value": 0 if index <= 5 else ["none"],
+    }
+    for index in range(1, 11)
+]
+
+
+def _seed_questionnaire_state(db, headers, session_id, session_row):
+    """Give the confirmed assessment a real ConfirmedUserState source.
+
+    Sprint 6 Phase 1B persists the legal-abstain decision inside the
+    checksum-protected read model, which references the *genuinely available*
+    confirmed user state. Production cannot produce a confirmed assessment
+    with neither an understanding nor a questionnaire (the assessment service
+    rejects it), so these abstain fixtures seed the questionnaire source the
+    product would have.
+    """
+
+    from tests.api.v3.test_assessment_v3 import _seed_questionnaire
+
+    questionnaire_id, _manifest = _seed_questionnaire(
+        db, headers=headers, session_id=session_id, answers=_INSUFFICIENT_ANSWERS
+    )
+    session_row.input_mode = "without_document"
+    session_row.input_revision = 2
+    session_row.active_questionnaire_submission_id = questionnaire_id
+    db.commit()
+    return questionnaire_id
+
+
+def _attach_questionnaire(db, assessment_id, questionnaire_id):
+    db.query(AssessmentV3).filter(
+        AssessmentV3.assessment_id == assessment_id
+    ).one().questionnaire_submission_id = questionnaire_id
+    db.commit()
+
+
 def test_diagnosis_abstains_when_element_evidence_insufficient(db_session_factory):
     headers = _guest_headers()
     db = db_session_factory()
     _session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    questionnaire_id = _seed_questionnaire_state(db, headers, _session_id, session_row)
     assessment_id = _seed_confirmed_assessment(
         db,
         user_pk=user_pk,
@@ -152,13 +193,16 @@ def test_diagnosis_abstains_when_element_evidence_insufficient(db_session_factor
             "weights": None,
             "score_semantics": "relative_evidence_distribution",
         },
+        assessment_input_revision=2,
+        revision_input_revision=2,
     )
+    _attach_questionnaire(db, assessment_id, questionnaire_id)
     db.close()
 
     response = client.post(
         "/api/v3/diagnoses",
         headers={**headers, "Idempotency-Key": f"diag-{uuid.uuid4().hex}"},
-        json=_diagnosis_body(_session_id, assessment_id, 1),
+        json=_diagnosis_body(_session_id, assessment_id, 2),
     )
     assert response.status_code == 201, response.text
     result = response.json()["data"]
@@ -347,16 +391,20 @@ def test_diagnosis_replay_and_conflict_do_not_duplicate_records(db_session_facto
     headers = _guest_headers()
     db = db_session_factory()
     session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    questionnaire_id = _seed_questionnaire_state(db, headers, session_id, session_row)
     assessment_id = _seed_confirmed_assessment(
         db,
         user_pk=user_pk,
         session_row=session_row,
         organ_profile_json={"status": "insufficient", "weights": None, "score_semantics": "relative_evidence_distribution"},
+        assessment_input_revision=2,
+        revision_input_revision=2,
     )
+    _attach_questionnaire(db, assessment_id, questionnaire_id)
     db.close()
 
     key = "diag-replay-and-conflict"
-    body = _diagnosis_body(session_id, assessment_id, 1)
+    body = _diagnosis_body(session_id, assessment_id, 2)
     first = client.post(
         "/api/v3/diagnoses",
         headers={**headers, "Idempotency-Key": key},
@@ -401,6 +449,7 @@ def test_diagnosis_concurrent_same_key_replays_without_duplicate(
     headers = _guest_headers()
     db = session_factory()
     session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    questionnaire_id = _seed_questionnaire_state(db, headers, session_id, session_row)
     assessment_id = _seed_confirmed_assessment(
         db,
         user_pk=user_pk,
@@ -410,10 +459,13 @@ def test_diagnosis_concurrent_same_key_replays_without_duplicate(
             "weights": None,
             "score_semantics": "relative_evidence_distribution",
         },
+        assessment_input_revision=2,
+        revision_input_revision=2,
     )
+    _attach_questionnaire(db, assessment_id, questionnaire_id)
     db.close()
 
-    body = _diagnosis_body(session_id, assessment_id, 1)
+    body = _diagnosis_body(session_id, assessment_id, 2)
     key = f"diag-concurrent-{uuid.uuid4().hex}"
     barrier = threading.Barrier(2)
     lock = threading.Lock()
@@ -468,6 +520,7 @@ def test_diagnosis_concurrent_different_payload_returns_idempotency_conflict(
     headers = _guest_headers()
     db = session_factory()
     session_id, user_pk, session_row = _setup_flow_session(db, headers)
+    questionnaire_id = _seed_questionnaire_state(db, headers, session_id, session_row)
     assessment_id = _seed_confirmed_assessment(
         db,
         user_pk=user_pk,
@@ -477,10 +530,13 @@ def test_diagnosis_concurrent_different_payload_returns_idempotency_conflict(
             "weights": None,
             "score_semantics": "relative_evidence_distribution",
         },
+        assessment_input_revision=2,
+        revision_input_revision=2,
     )
+    _attach_questionnaire(db, assessment_id, questionnaire_id)
     db.close()
 
-    first_body = _diagnosis_body(session_id, assessment_id, 1)
+    first_body = _diagnosis_body(session_id, assessment_id, 2)
     second_body = {**first_body, "diagnosis_id": "diag-concurrent-different"}
     key = f"diag-concurrent-conflict-{uuid.uuid4().hex}"
     bodies = [first_body, second_body]

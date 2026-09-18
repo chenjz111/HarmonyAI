@@ -12,6 +12,7 @@ import pytest
 
 from backend.app.schemas.v3.assessment import FactEvidence, OrganEvidenceLink
 from backend.app.services.v3.organ_dominance_service import (
+    LEGAL_ABSTAIN_REASON_ALIASES,
     DominanceReadinessError,
     build_organ_aggregation_snapshot,
     canonical_effective_evidence,
@@ -19,11 +20,14 @@ from backend.app.services.v3.organ_dominance_service import (
     decision_snapshot_checksum,
     dominance_affecting_minor_conflict_ids,
     fact_claim_index,
+    is_technical_abstain_reason,
     load_configured_dominance_rule,
+    normalize_legal_abstain_reason,
     organ_tone_map,
     resolve_organ_dominance,
     select_effective_evidence,
     unresolved_major_conflict_ids,
+    verify_candidate_policy_consistency,
     verify_mapping_identity,
 )
 from tests.sprint6_phase1b_fixtures import (
@@ -557,3 +561,279 @@ def test_resolve_rejects_an_unverified_aggregation_population():
     assert decision.confirmed_user_state_id == "cus_x"
     assert decision.confirmed_user_state_revision == 7
     assert decision.assets.organ_mapping_checksum == organ_mapping()["content_checksum"]
+
+# --------------------------------------------------------------------------- #
+# B2 — legal-abstain normalization (single authority)
+# --------------------------------------------------------------------------- #
+
+
+def test_legal_abstain_aliases_share_one_semantic_mapping():
+    assert normalize_legal_abstain_reason("ELEMENT_EVIDENCE_INSUFFICIENT") == (
+        "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT"
+    )
+    assert normalize_legal_abstain_reason("INSUFFICIENT_EVIDENCE") == (
+        "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT"
+    )
+    assert normalize_legal_abstain_reason("evidence_insufficient") == (
+        "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT"
+    )
+    assert normalize_legal_abstain_reason("RAG_EMPTY") == "BASIC_RAG_EMPTY"
+    assert normalize_legal_abstain_reason("UNRESOLVED_MAJOR_CONFLICT") == (
+        "BASIC_UNRESOLVED_MAJOR_CONFLICT"
+    )
+    assert "ELEMENT_EVIDENCE_INSUFFICIENT" in LEGAL_ABSTAIN_REASON_ALIASES
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "ELEMENT_EVIDENCE_INSUFFICIENT",
+        "INSUFFICIENT_EVIDENCE",
+        "evidence_insufficient",
+        "unrecognized_legal_abstain_reason",
+    ],
+)
+def test_any_legal_abstain_routes_to_basic_wellness(reason):
+    """No legal abstain may ever become personalized or integrated."""
+
+    for support in ({"liver": 6.0, "spleen": 5.0}, {"liver": 1.0, "spleen": 1.0}):
+        decision = decision_from_organ_support(
+            support, upstream_abstain_reason=reason, coverage_count=8
+        )
+        assert decision.regulation_mode == "basic_wellness"
+        assert decision.primary_tone is None
+        assert decision.dominant_organ is None
+        assert decision.coverage.coverage_gate_passed is True
+
+
+def test_rag_empty_and_unresolved_conflict_keep_their_frozen_reasons():
+    rag = decision_from_organ_support({"liver": 6.0, "spleen": 5.0}, upstream_abstain_reason="RAG_EMPTY")
+    assert (rag.regulation_mode, rag.decision_reason_code) == ("basic_wellness", "BASIC_RAG_EMPTY")
+    conflict = decision_from_organ_support(
+        {"liver": 6.0, "spleen": 5.0}, upstream_abstain_reason="UNRESOLVED_MAJOR_CONFLICT"
+    )
+    assert (conflict.regulation_mode, conflict.decision_reason_code) == (
+        "basic_wellness",
+        "BASIC_UNRESOLVED_MAJOR_CONFLICT",
+    )
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "RAG_UNAVAILABLE",
+        "MODEL_SCHEMA_INVALID",
+        "PROVIDER_TIMEOUT",
+        "PROVIDER_RATE_LIMITED",
+        "NETWORK_ERROR",
+        "PROVIDER_AUTH_FAILED",
+        "MUSIC_PARAMETER_ASSET_CHECKSUM_MISMATCH",
+        "DOMINANCE_RULE_ASSET_NOT_READY",
+        "SAFETY_BLOCKED",
+    ],
+)
+def test_technical_and_safety_reasons_never_become_a_mode(reason):
+    assert is_technical_abstain_reason(reason) is True
+    with pytest.raises(DominanceReadinessError) as error:
+        normalize_legal_abstain_reason(reason)
+    assert error.value.error_code == "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE"
+    with pytest.raises(DominanceReadinessError):
+        decision_from_organ_support({"liver": 6.0, "spleen": 5.0}, upstream_abstain_reason=reason)
+
+
+def test_missing_abstain_reason_fails_closed_not_a_mode():
+    """Defensive: the provider schema already forbids this upstream."""
+
+    with pytest.raises(DominanceReadinessError) as error:
+        decision_from_organ_support(
+            {"liver": 6.0, "spleen": 5.0}, upstream_status="abstained"
+        )
+    assert error.value.error_code == "DOMINANCE_ABSTAIN_REASON_MISSING"
+
+
+def test_failed_upstream_status_is_never_a_mode():
+    aggregation = aggregation_from_organ_support({"liver": 6.0, "spleen": 5.0})
+    rule = dominance_rule()
+    assets = verify_mapping_identity(
+        rule, organ_mapping=organ_mapping(), five_tone_mapping=five_tone_mapping()
+    )
+    with pytest.raises(DominanceReadinessError) as error:
+        resolve_organ_dominance(
+            assessment_id="asmt_failed",
+            assessment_revision=1,
+            input_revision=1,
+            aggregation=aggregation,
+            conflicts=[],
+            fact_claims=aggregation.fact_claims_by_fact_id,
+            dominance_rule=rule,
+            five_tone_mapping=five_tone_mapping(),
+            assets=assets,
+            upstream_status="failed",
+        )
+    assert error.value.error_code == "DOMINANCE_UPSTREAM_FAILED"
+
+
+# --------------------------------------------------------------------------- #
+# I3 — primary tone must be the approved mapping of the dominant organ
+# --------------------------------------------------------------------------- #
+
+
+def test_primary_tone_is_the_approved_mapping_of_the_dominant_organ():
+    for organ, tone in (
+        ("liver", "jiao"),
+        ("heart", "zhi"),
+        ("spleen", "gong"),
+        ("lung", "shang"),
+        ("kidney", "yu"),
+    ):
+        order = ["liver", "heart", "spleen", "lung", "kidney"]
+        second = order[(order.index(organ) + 1) % len(order)]
+        decision = decision_from_organ_weights({organ: 0.7, second: 0.3})
+        assert decision.dominant_organ == organ
+        assert decision.primary_tone == tone
+        assert organ_tone_map(five_tone_mapping())[organ] == tone
+
+
+def test_tampered_organ_tone_mismatch_fails_closed():
+    from backend.ai_engine.v3.agent3 import Agent3Blocked, build_tone_profile_v31
+    from tests.sprint6_phase1b_fixtures import synthetic_decision
+
+    tampered = synthetic_decision(
+        regulation_mode="personalized_five_tone",
+        dominant_organ="liver",
+        primary_tone="gong",
+    )
+    with pytest.raises(Agent3Blocked) as error:
+        build_tone_profile_v31(
+            diagnosis_id="diag_tampered",
+            organ_weights={"liver": 1.0},
+            supporting_evidence_refs=["fev_1"],
+            mapping=five_tone_mapping(),
+            dominance_decision=tampered,
+        )
+    assert error.value.error_code == "DOMINANCE_TONE_MAPPING_MISMATCH"
+
+
+def test_derived_tone_weight_argmax_does_not_change_primary_authority():
+    """Derived/smoothed tone weights are not dominance authority."""
+
+    from backend.ai_engine.v3.agent3 import build_tone_profile_v31
+
+    decision = decision_from_organ_support(
+        {"liver": 1.04, "spleen": 0.75, "heart": 0.75, "kidney": 0.75}, coverage_count=8
+    )
+    assert decision.regulation_mode == "personalized_five_tone"
+    assert decision.dominant_organ == "liver"
+    assert decision.primary_tone == "jiao"
+    total = 1.04 + 0.75 + 0.75 + 0.75
+    profile = build_tone_profile_v31(
+        diagnosis_id="diag_divergent",
+        organ_weights={
+            "liver": 1.04 / total,
+            "spleen": 0.75 / total,
+            "heart": 0.75 / total,
+            "kidney": 0.75 / total,
+        },
+        supporting_evidence_refs=["fev_1"],
+        mapping=five_tone_mapping(),
+        dominance_decision=decision,
+    )
+    tone_weights = {tone.value: value for tone, value in profile.weights.items()}
+    argmax_tone = max(tone_weights, key=lambda tone: tone_weights[tone])
+    assert argmax_tone != "jiao"  # the smoothed distribution peaks elsewhere
+    assert profile.primary_tone.value == "jiao"  # authority is the dominant organ
+    assert decision.dominance.top1_organ == "liver"
+
+
+def test_abstained_projection_invariants():
+    from backend.ai_engine.v3.agent3 import Agent3Blocked, build_tone_profile_v31
+    from tests.sprint6_phase1b_fixtures import synthetic_decision
+
+    basic = synthetic_decision(regulation_mode="basic_wellness")
+    accepted = build_tone_profile_v31(
+        diagnosis_id="diag_abstain",
+        diagnosis_status="abstained",
+        organ_weights={},
+        supporting_evidence_refs=["fev_1"],
+        mapping=five_tone_mapping(),
+        dominance_decision=basic,
+    )
+    assert accepted.regulation_mode == "basic_wellness"
+    assert accepted.primary_tone is None
+
+    for mode in ("personalized_five_tone", "integrated_regulation"):
+        decision = synthetic_decision(
+            regulation_mode=mode,
+            dominant_organ="liver" if mode == "personalized_five_tone" else None,
+            primary_tone="jiao" if mode == "personalized_five_tone" else None,
+        )
+        with pytest.raises(Agent3Blocked) as error:
+            build_tone_profile_v31(
+                diagnosis_id="diag_abstain_conflict",
+                diagnosis_status="abstained",
+                organ_weights={"liver": 1.0},
+                supporting_evidence_refs=["fev_1"],
+                mapping=five_tone_mapping(),
+                dominance_decision=decision,
+            )
+        assert error.value.error_code == "DOMINANCE_DECISION_CONFLICT"
+
+
+# --------------------------------------------------------------------------- #
+# I4 — unresolved minor conflict affecting TOP2 evidence
+# --------------------------------------------------------------------------- #
+
+
+def test_unresolved_minor_conflict_on_top2_evidence_is_integrated():
+    decision = decision_from_organ_support(
+        {"liver": 6.0, "spleen": 5.0},
+        conflicts=[
+            {
+                "conflict_id": "conf_minor_top2",
+                "fact_ids": ["fact_spleen_0"],
+                "severity": "minor",
+                "resolution_status": "unresolved",
+                "display_summary": "synthetic top2 conflict",
+            }
+        ],
+        coverage_count=8,
+    )
+    assert decision.dominance.top1_organ == "liver"
+    assert decision.dominance.top2_organ == "spleen"
+    assert decision.regulation_mode == "integrated_regulation"
+    assert decision.decision_reason_code == "INTEGRATED_DOMINANCE_CONFLICT"
+    assert list(decision.conflict.dominance_affecting_minor_conflict_ids) == [
+        "conf_minor_top2"
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# I6 — approved organ mapping remains the candidate authority
+# --------------------------------------------------------------------------- #
+
+
+def test_candidate_policy_consistency_accepts_the_approved_assets():
+    verify_candidate_policy_consistency(
+        load_configured_dominance_rule(), organ_mapping=organ_mapping()
+    )
+
+
+def test_candidate_policy_drift_is_a_readiness_failure():
+    import copy
+
+    drifted = copy.deepcopy(organ_mapping())
+    drifted["thresholds"] = dict(drifted["thresholds"])
+    drifted["thresholds"]["minimum_total_support"] = 0.70
+    with pytest.raises(DominanceReadinessError) as error:
+        verify_candidate_policy_consistency(
+            load_configured_dominance_rule(), organ_mapping=drifted
+        )
+    assert error.value.error_code == "DOMINANCE_CANDIDATE_POLICY_MISMATCH"
+
+    counted = copy.deepcopy(organ_mapping())
+    counted["thresholds"] = dict(counted["thresholds"])
+    counted["thresholds"]["minimum_evidence_count"] = 3
+    with pytest.raises(DominanceReadinessError):
+        verify_candidate_policy_consistency(
+            load_configured_dominance_rule(), organ_mapping=counted
+        )
