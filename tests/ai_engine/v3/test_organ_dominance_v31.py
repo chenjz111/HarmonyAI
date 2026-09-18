@@ -766,6 +766,22 @@ def test_missing_abstain_reason_fails_closed_not_a_mode():
     assert error.value.error_code == "DOMINANCE_ABSTAIN_REASON_MISSING"
 
 
+def test_explicitly_empty_abstain_reason_fails_closed_without_a_status():
+    """An explicitly provided empty reason is an abstain signal, not a no-op."""
+
+    for reason in ("", "   "):
+        with pytest.raises(DominanceReadinessError) as error:
+            decision_from_organ_support(
+                {"liver": 6.0, "spleen": 5.0},
+                upstream_abstain_reason=reason,
+                coverage_count=8,
+            )
+        assert error.value.error_code == "DOMINANCE_ABSTAIN_REASON_MISSING"
+    # ``None`` still means "no abstain signal" and routes normally
+    decision = decision_from_organ_support({"liver": 6.0, "spleen": 5.0}, coverage_count=8)
+    assert decision.regulation_mode == "personalized_five_tone"
+
+
 def test_failed_upstream_status_is_never_a_mode():
     aggregation = aggregation_from_organ_support({"liver": 6.0, "spleen": 5.0})
     rule = dominance_rule()

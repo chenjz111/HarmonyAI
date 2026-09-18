@@ -985,8 +985,12 @@ def resolve_organ_dominance(
             "DOMINANCE_UPSTREAM_FAILED",
             "上游技术失败不得转为音乐模式。",
         )
+    # An *explicitly provided* reason (even an empty/whitespace one) counts as an
+    # abstain signal; ``None`` means "not an abstain". Nothing relies on an
+    # empty string meaning "no abstain", and treating it as one would let an
+    # empty reason fall through to the evidence gates.
     abstained = upstream_status == "abstained" or (
-        upstream_status is None and bool(upstream_abstain_reason)
+        upstream_status is None and upstream_abstain_reason is not None
     )
     upstream_reason = (
         normalize_legal_abstain_reason(upstream_abstain_reason or "")
