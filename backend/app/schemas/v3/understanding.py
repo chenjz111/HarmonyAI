@@ -289,8 +289,8 @@ class UnderstandingConfirmationRequest(V3BaseModel):
         if self.decision != "confirm_with_changes" and has_edit:
             raise ValueError("edited_summary_text is only allowed for confirm_with_changes")
         if has_edit:
-            if has_changes:
-                raise ValueError("edited_summary_text and changes are mutually exclusive")
+            # Phase 2 (Option B): the narrative is presentation only and may
+            # accompany explicit structured decisions in the same request.
             if not self.reprocess_requested:
                 raise ValueError("edited_summary_text requires reprocess_requested")
         if self.schema_version == "understanding_v3.1" and self.expected_input_revision is None:

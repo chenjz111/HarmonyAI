@@ -58,15 +58,17 @@ def test_actual_diagnosis_input_uses_current_persisted_summary(monkeypatch, db_s
             assessment=assessment, assessment_revision=revision, deps=SimpleNamespace(
                 rag_store=SimpleNamespace(manifest=_manifest(), approved_chunk_ids={"chunk_1"}),
                 diagnosis_provider=provider, medical_rule_version="test", allowed_syndrome_codes={"syndrome_1"}))
-    assert snapshot["confirmed_state_text"] == text
+    # Phase 2 (D4): the provider state text is the deterministic projection of
+    # the confirmed structured evidence — never the editable narrative.
+    assert snapshot["confirmed_state_text"] == current["state_summary"]
+    assert snapshot["confirmed_state_text"].startswith("已确认的近期状态：")
+    assert snapshot["confirmed_state_text"] != text
     query = build_diagnosis_query(snapshot)
+    # Phase 2 (D3): a narrative-only edit never changes the structured
+    # population, so the diagnosis consumes every confirmed fact.
     expected_codes = (
-        {"postmeal_heaviness"}
-        if edited and mode == "questionnaire"
-        else {"palpitation_at_rest", "postmeal_heaviness"}
+        {"palpitation_at_rest", "postmeal_heaviness"}
         if mode == "questionnaire"
-        else {"flank_discomfort"}
-        if edited
         else {"anger_tendency", "flank_discomfort"}
     )
     assert set(query.claim_codes) == expected_codes
@@ -76,10 +78,7 @@ def test_actual_diagnosis_input_uses_current_persisted_summary(monkeypatch, db_s
     execution = asyncio.run(execute_diagnosis_provider(provider=provider, request={"assessment_id": original["assessment_id"]},
         facts=snapshot["facts"], rag_result=_rag_result(), confirmed_state_text=snapshot["confirmed_state_text"]))
     assert execution.status == "success"
-    assert captured[0]["confirmed_state_text"] == text
+    assert captured[0]["confirmed_state_text"] == snapshot["confirmed_state_text"]
     assert {f["claim_code"] for f in captured[0]["facts"]} == expected_codes
     if edited:
-        assert "anger_tendency" not in json.dumps(captured[0])
-    if edited and mode == "questionnaire":
-        assert "静息心悸" not in current["state_summary"]
-        assert "palpitation_at_rest" not in json.dumps(captured[0])
+        assert text not in json.dumps(captured[0])

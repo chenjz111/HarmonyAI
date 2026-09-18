@@ -1,4 +1,9 @@
-"""Three source modes compose meaningful summaries and preserve old evidence."""
+"""Three source modes compose meaningful summaries and preserve structured authority.
+
+Phase 2 (Option B): the editable narrative is presentation only. Structured
+evidence identity plus ``confirmation_status`` is the evidence authority, so a
+narrative edit never adds, removes, confirms, rejects or re-authorizes a fact.
+"""
 import uuid
 import pytest
 
@@ -68,30 +73,53 @@ def test_initial_summary_reflects_each_source_mode(monkeypatch, db_session_facto
 
 
 @pytest.mark.parametrize("mode", ["document", "questionnaire", "combined"])
-def test_full_text_edit_suppresses_removed_facts_only_in_active_revision(monkeypatch, db_session_factory, mode):
+def test_narrative_edit_keeps_every_structured_row_in_the_active_revision(
+    monkeypatch, db_session_factory, mode
+):
+    """Phase 2: a narrative edit is presentation only — no row is dropped."""
+
     headers, _, original = create_summary_assessment(monkeypatch, db_session_factory, mode)
+    narrative = "近期仅有胁肋不适、胁肋胀闷不适。"
     response = client.post(f"/api/v3/assessments/{original['assessment_id']}/confirmations", headers=headers, json={
         "expected_revision": 1, "expected_input_revision": original["input_revision"],
-        "decision": "confirm_with_changes", "changes": [], "edited_summary_text": "近期仅有胁肋不适、胁肋胀闷不适。",
+        "decision": "confirm_with_changes", "changes": [], "edited_summary_text": narrative,
     })
     assert response.status_code == 201, response.text
     current = _v3_data(response)
-    assert {f["claim_code"] for f in current["fact_evidence"]} == {"flank_discomfort"}
-    assert current["state_summary"] == "近期仅有胁肋不适、胁肋胀闷不适。"
+    assert current["presentation"]["summary"] == narrative
+    assert current["state_summary"] != narrative
+    assert current["state_summary"].startswith("已确认的近期状态：")
+    assert {
+        f["fact_evidence_id"] for f in current["fact_evidence"]
+    } == {f["fact_evidence_id"] for f in original["fact_evidence"]}
+    assert {f["claim_code"] for f in current["fact_evidence"]} == {
+        f["claim_code"] for f in original["fact_evidence"]
+    }
+    assert all(
+        f["confirmation_status"] == "confirmed" for f in current["fact_evidence"]
+    )
     with db_session_factory() as db:
         old = db.query(FactEvidenceRow).filter_by(assessment_id=original["assessment_id"], assessment_revision=1).all()
-        assert {f.claim_code for f in old} == {"anger_tendency", "flank_discomfort"}
+        assert {f.claim_code for f in old} == {f["claim_code"] for f in original["fact_evidence"]}
         assert len(old) == len(original["fact_evidence"])
 
 
-@pytest.mark.parametrize("text,codes", [("近期仅有胁肋不适。", {"flank_discomfort"}), ("近期状态平稳。", set())])
-def test_document_edit_can_continue_to_assessment_with_retained_or_empty_facts(monkeypatch, db_session_factory, text, codes):
-    _, _, result = create_summary_assessment(monkeypatch, db_session_factory, "document", understanding_edit=text)
-    assert result["state_summary"] == text
-    assert {f["claim_code"] for f in result["fact_evidence"]} == codes
+@pytest.mark.parametrize("text", ["近期仅有胁肋不适。", "近期状态平稳。"])
+def test_document_narrative_edit_never_selects_evidence(monkeypatch, db_session_factory, text):
+    """Phase 2 (D3): text alone cannot adopt evidence, so nothing is confirmed."""
+
+    _, _, result = create_summary_assessment(
+        monkeypatch, db_session_factory, "document", understanding_edit=text
+    )
+    assert result["presentation"]["summary"] == text
+    # The understanding revision keeps every structured fact, but a narrative
+    # edit never promotes one to ``confirmed``; adoption is explicit.
+    assert result["fact_evidence"] == []
 
 
-def test_full_text_edit_recomputes_derived_state_from_active_facts(monkeypatch, db_session_factory):
+def test_plain_confirmation_recomputes_derived_state_from_confirmed_evidence(
+    monkeypatch, db_session_factory
+):
     headers, _, original = create_summary_assessment(monkeypatch, db_session_factory, "combined")
     response = client.post(
         f"/api/v3/assessments/{original['assessment_id']}/confirmations",
@@ -99,39 +127,20 @@ def test_full_text_edit_recomputes_derived_state_from_active_facts(monkeypatch, 
         json={
             "expected_revision": 1,
             "expected_input_revision": original["input_revision"],
-            "decision": "confirm_with_changes",
+            "decision": "confirm",
             "changes": [],
-            "edited_summary_text": "近期状态平稳，仅补充一些自己的感受。",
         },
     )
-    assert response.status_code == 201, response.text
+    assert response.status_code == 200, response.text
     current = _v3_data(response)
-    assert current["fact_evidence"] == []
-    assert current["organ_evidence_links"] == []
-    assert current["conflicts"] == []
-    assert current["evidence_coverage"] == 0
-    assert current["source_diversity"] == 0
-    assert current["organ_profile"]["status"] == "insufficient"
-
-
-def test_full_text_edit_recomputes_derived_state_from_active_facts(monkeypatch, db_session_factory):
-    headers, _, original = create_summary_assessment(monkeypatch, db_session_factory, "combined")
-    response = client.post(
-        f"/api/v3/assessments/{original['assessment_id']}/confirmations",
-        headers=headers,
-        json={
-            "expected_revision": 1,
-            "expected_input_revision": original["input_revision"],
-            "decision": "confirm_with_changes",
-            "changes": [],
-            "edited_summary_text": "近期状态平稳，仅补充一些自己的感受。",
-        },
+    assert current["revision"] == 1
+    assert current["status"] == "confirmed"
+    assert all(
+        f["confirmation_status"] == "confirmed" for f in current["fact_evidence"]
     )
-    assert response.status_code == 201, response.text
-    current = _v3_data(response)
-    assert current["fact_evidence"] == []
-    assert current["organ_evidence_links"] == []
-    assert current["conflicts"] == []
-    assert current["evidence_coverage"] == 0
-    assert current["source_diversity"] == 0
-    assert current["organ_profile"]["status"] == "insufficient"
+    assert {f["claim_code"] for f in current["fact_evidence"]} == {
+        f["claim_code"] for f in original["fact_evidence"]
+    }
+    # Phase 2 (D4): the authoritative state text is the deterministic projection
+    # of the confirmed structured evidence, never the narrative.
+    assert current["state_summary"].startswith("已确认的近期状态：")

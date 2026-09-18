@@ -217,6 +217,13 @@ class AssessmentRefV31(V3BaseModel):
 
 
 class AssessmentRevisionChange(V3BaseModel):
+    """One explicit structured decision by stable ``fact_evidence_id``.
+
+    Phase 2 (Option B): ``changes[]`` is the structured authority;
+    ``edited_summary_text`` is presentation only, so both may appear in the same
+    ``confirm_with_changes`` request.
+    """
+
     target_type: Literal["fact_evidence"]
     target_id: NonEmptyString
     field: NonEmptyString
@@ -238,8 +245,6 @@ class AssessmentConfirmationRequest(V3BaseModel):
             self.changes or self.edited_summary_text is not None
         ):
             raise ValueError("confirm_with_changes requires a change")
-        if self.changes and self.edited_summary_text is not None:
-            raise ValueError("structured changes and edited_summary_text are mutually exclusive")
         if self.decision == "confirm" and (self.changes or self.edited_summary_text is not None):
             raise ValueError("confirm cannot include changes")
         return self

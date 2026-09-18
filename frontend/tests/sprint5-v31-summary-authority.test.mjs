@@ -46,7 +46,7 @@ test("questionnaire summary renders and pre-fills authoritative text, never a ge
   )
 })
 
-test("both confirmation editors remain full-text-only and guard empty submissions", () => {
+test("both confirmation editors keep the narrative textarea and add the bounded hybrid evidence control", () => {
   for (const [name, page, markup, draft] of [
     ["document", documentSummary, documentMarkup, "editText"],
     ["questionnaire", questionnaireSummary, questionnaireMarkup, "draftSummaryText"],
@@ -55,7 +55,12 @@ test("both confirmation editors remain full-text-only and guard empty submission
     assert.doesNotMatch(markup, /severity-row|allowed_values|organ-editor/, `${name} has no structured medical editor`)
     assert.match(page, new RegExp(`const\\s+\\w+\\s*=\\s*\\(this\\.${draft}\\s*\\|\\|\\s*["']{2}\\)\\.trim\\(\\)`), `${name} trims before save`)
     assert.match(page, /if\s*\(!\w+\)\s*\{[\s\S]{0,180}uni\.showToast/, `${name} blocks an empty save locally`)
-    assert.match(page, /edited_summary_text:\s*\w+/, `${name} submits only edited full text`)
+    assert.match(page, /edited_summary_text:\s*\w+/, `${name} submits the edited narrative`)
+    // Sprint 6 Phase 2 (D6 supersedes the full-text-only freeze): the bounded
+    // two-state evidence control is required and must be keyed by a stable id.
+    assert.match(markup, /保留[\s\S]*?不采用/, `${name} exposes the two-state evidence control`)
+    assert.match(markup, /:key="item\.(id|item_id)\b/, `${name} keys evidence items by a stable identity`)
+    assert.doesNotMatch(markup, /:key="index"/, `${name} never keys structured items by array index`)
   }
 })
 

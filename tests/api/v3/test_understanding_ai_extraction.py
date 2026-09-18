@@ -287,7 +287,7 @@ def test_provider_unavailable_never_fabricates_facts(monkeypatch, db_session_fac
     assert _v3_data(response)["normalized_facts"] == []
 
 
-def test_full_text_edit_removes_facts_absent_from_confirmed_text(monkeypatch, db_session_factory):
+def test_full_text_edit_never_changes_structured_fact_status(monkeypatch, db_session_factory):
     monkeypatch.setattr(
         understanding_service, "build_provider_chain", lambda: _mock_chain()
     )
@@ -303,6 +303,9 @@ def test_full_text_edit_removes_facts_absent_from_confirmed_text(monkeypatch, db
     understanding_id = _v3_data(
         _post(headers, session_id, [_document_source(document_id)])
     )["understanding_id"]
+    original = _v3_data(
+        client.get(f"/api/v3/understandings/{understanding_id}", headers=headers)
+    )
 
     response = _confirm(
         headers,
@@ -314,7 +317,10 @@ def test_full_text_edit_removes_facts_absent_from_confirmed_text(monkeypatch, db
     assert response.status_code == 201, response.text
     result = _v3_data(response)
     assert result["revision"] == 2
-    assert len(result["affected_fact_ids"]) == 1
+    # Phase 2 (D3): a narrative-only edit decides nothing about the structured
+    # facts, so no fact id is reported as affected.
+    assert result["affected_fact_ids"] == []
+    assert "chg_summary_edit" in result["applied_changes"]
 
     read = _v3_data(
         client.get(
@@ -322,7 +328,12 @@ def test_full_text_edit_removes_facts_absent_from_confirmed_text(monkeypatch, db
             headers=headers,
         )
     )
-    assert read["normalized_facts"] == []
+    assert [f["fact_id"] for f in read["normalized_facts"]] == [
+        f["fact_id"] for f in original["normalized_facts"]
+    ]
+    assert [f["confirmation_status"] for f in read["normalized_facts"]] == [
+        f["confirmation_status"] for f in original["normalized_facts"]
+    ]
     assert read["case_summary"]["summary"] == "资料中提到最近入睡较慢，白天有些疲惫。"
 
 
@@ -376,7 +387,12 @@ def test_successful_full_text_edit_keeps_previous_revision_immutable(
     )
     assert previous["normalized_facts"][0]["source_refs"][0]["source_type"] == "document"
     assert latest["case_summary"]["summary"] == "资料中提到最近入睡较慢，白天有些疲惫。"
-    assert latest["normalized_facts"] == []
+    # Phase 2 (D3/D6): the narrative is presentation only. An edit copies every
+    # structured fact forward with its own status instead of dropping the ones
+    # whose wording is absent from the text.
+    assert [f["fact_id"] for f in latest["normalized_facts"]] == [
+        f["fact_id"] for f in previous["normalized_facts"]
+    ]
 
 
 def test_full_text_edit_without_provider_confirms_new_revision(monkeypatch, db_session_factory):

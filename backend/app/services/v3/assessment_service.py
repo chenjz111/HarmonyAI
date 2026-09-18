@@ -97,6 +97,13 @@ class AssessmentRevisionConflict(RuntimeError):
 
 _OPERATION = "create_v3_assessment"
 
+# Phase 2 (Option B) structured authority: stable evidence identity decides.
+_FACT_STATUS_FIELD = "confirmation_status"
+_FACT_STATUS_VALUES = frozenset({"confirmed", "rejected"})
+_STATE_SUMMARY_SUPPORTING_PREFIX = "已确认的近期状态："
+_STATE_SUMMARY_CONTRADICTING_PREFIX = "已确认的相反状态："
+_STATE_SUMMARY_EMPTY = "当前没有已确认的状态事实。"
+
 
 def load_revision_evidence(
     db: Session,
@@ -252,103 +259,69 @@ def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str
         current.confirmation_status = "confirmed"
         current.confirmed_at = datetime.now(timezone.utc)
         run.status = "confirmed"
+        # Phase 2 (D1/D3): the explicit confirm completes the pending extraction
+        # status; it never resurrects a fact the user rejected.
         db.query(FactEvidenceRow).filter(
             FactEvidenceRow.assessment_id == assessment_id,
             FactEvidenceRow.assessment_revision == run.current_revision,
+            FactEvidenceRow.confirmation_status == "unconfirmed",
         ).update({"confirmation_status": "confirmed"}, synchronize_session=False)
+        db.flush()
+        # The bulk update bypasses the identity map; re-read before deriving.
+        db.expire_all()
+        derived = _recompute_derived_state(_all_revision_evidence(db, run))
+        _apply_derived_state(current, derived)
         db.commit()
         return _assessment_read_model(db, run), False
 
     next_revision = run.current_revision + 1
     presentation = dict(current.presentation_json or {})
-    summary = request.edited_summary_text or current.state_summary
-    organ_profile_json = current.organ_profile_json
-    evidence_coverage = current.evidence_coverage
-    source_diversity = current.source_diversity
-    conflicts_json = current.conflicts_json
-    degradation_json = current.degradation_json
+    # Phase 2 (Option B): the narrative is presentation only. It never selects,
+    # deletes, confirms, rejects or re-authorizes a structured row.
     if request.edited_summary_text is not None:
         presentation["summary"] = request.edited_summary_text
-        current_model = _assessment_read_model(db, run)
-        active_evidence = [
-            item
-            for item in current_model.fact_evidence
-            if item.display_name and item.display_name in summary
-        ]
-        active_ids = {item.fact_evidence_id for item in active_evidence}
-        active_links = [
-            item
-            for item in current_model.organ_evidence_links
-            if item.fact_evidence_id in active_ids
-        ]
-        mapping = load_organ_mapping()
-        weights = _organ_weights(active_evidence, active_links, mapping)
-        organ_profile_json = OrganProfile(
-            status="available" if weights is not None else "insufficient",
-            weights=weights,
-            score_semantics="relative_evidence_distribution",
-        ).model_dump(mode="json")
-        evidence_coverage = round(min(1.0, len(active_evidence) / 8.0), 3)
-        source_diversity = len(
-            {
-                (ref.source_type, ref.source_id)
-                for item in active_evidence
-                for ref in item.source_refs
-            }
+
+    old_rows = db.query(FactEvidenceRow).filter(
+        FactEvidenceRow.assessment_id == assessment_id,
+        FactEvidenceRow.assessment_revision == current.revision,
+    ).order_by(FactEvidenceRow.fact_evidence_id).all()
+    status_changes, severity_changes = _validated_structured_changes(
+        request, old_rows
+    )
+    snapshot = _all_revision_evidence(db, run)
+    derived_input = [
+        _with_structured_decisions(
+            item, status_changes=status_changes, severity_changes=severity_changes
         )
-        conflicts_json = [
-            item.model_dump(mode="json")
-            for item in _build_conflicts(active_evidence, mapping)
-        ]
-        degradation_json = Degradation(
-            active=weights is None,
-            reason_codes=["INSUFFICIENT_EVIDENCE"] if weights is None else [],
-        ).model_dump(mode="json")
+        for item in snapshot
+    ]
+    derived = _recompute_derived_state(derived_input)
+
     new_revision = AssessmentRevisionV3(
         assessment_id=assessment_id, revision=next_revision,
         previous_revision=current.revision,
         understanding_revision=current.understanding_revision,
         input_revision=current.input_revision, status="confirmed",
-        confirmation_status="confirmed", state_summary=summary,
+        confirmation_status="confirmed", state_summary=derived["state_summary"],
         recent_context_summary=current.recent_context_summary,
-        organ_profile_json=organ_profile_json,
-        evidence_coverage=evidence_coverage,
-        source_diversity=source_diversity,
-        conflicts_json=conflicts_json,
+        organ_profile_json=derived["organ_profile_json"],
+        evidence_coverage=derived["evidence_coverage"],
+        source_diversity=derived["source_diversity"],
+        conflicts_json=derived["conflicts_json"],
         missing_information_json=current.missing_information_json,
-        degradation_json=degradation_json,
+        degradation_json=derived["degradation_json"],
         presentation_json=presentation,
         confirmed_at=datetime.now(timezone.utc),
     )
     db.add(new_revision)
     db.flush()
-    old_rows = db.query(FactEvidenceRow).filter(
-        FactEvidenceRow.assessment_id == assessment_id,
-        FactEvidenceRow.assessment_revision == current.revision,
-    ).all()
-    changes = {item.target_id: item for item in request.changes}
-    evidence_by_id = {row.fact_evidence_id: row for row in old_rows}
-    if set(changes) - set(evidence_by_id):
-        raise AssessmentRevisionConflict
-    for target_id, change in changes.items():
-        value = evidence_by_id[target_id].value_json or {}
-        if (
-            change.field != "severity"
-            or value.get("type") != "severity"
-            or value.get("value") != change.old_value
-            or change.new_value not in {"none", "mild", "moderate", "severe"}
-        ):
-            raise AssessmentRevisionConflict
     new_rows = {}
+    # Every current row is copied with its stable identity, provenance and the
+    # user's structured decision (including rejected rows, which stay auditable).
     for old in old_rows:
-        if request.edited_summary_text is not None and (
-            not old.display_name or old.display_name not in summary
-        ):
-            continue
         value = dict(old.value_json)
-        change = changes.get(old.fact_evidence_id)
-        if change is not None:
-            value["value"] = change.new_value
+        if old.fact_evidence_id in severity_changes:
+            value["value"] = severity_changes[old.fact_evidence_id]
         new = FactEvidenceRow(
             fact_evidence_row_id=f"fer_{uuid.uuid4().hex}",
             fact_evidence_id=old.fact_evidence_id,
@@ -357,7 +330,10 @@ def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str
             claim_code=old.claim_code, display_name=old.display_name,
             category=old.category, value_json=value,
             time_window=old.time_window, direction=old.direction,
-            reliability=old.reliability, confirmation_status="confirmed",
+            reliability=old.reliability,
+            confirmation_status=status_changes.get(
+                old.fact_evidence_id, old.confirmation_status
+            ),
         )
         db.add(new)
         new_rows[old.fact_evidence_row_id] = new
@@ -378,6 +354,155 @@ def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str
     run.status = "confirmed"
     db.commit()
     return _assessment_read_model(db, run), True
+
+
+def _all_revision_evidence(db: Session, run: AssessmentV3) -> list[FactEvidence]:
+    """Every row of the current revision (all structured statuses)."""
+
+    return _assessment_read_model(db, run).fact_evidence
+
+
+def _with_structured_decisions(
+    item: FactEvidence,
+    *,
+    status_changes: dict,
+    severity_changes: dict,
+) -> FactEvidence:
+    """Apply the explicit structured decisions to one read-model row."""
+
+    update: dict = {
+        "confirmation_status": status_changes.get(
+            item.fact_evidence_id, item.confirmation_status
+        )
+    }
+    new_severity = severity_changes.get(item.fact_evidence_id)
+    if new_severity is not None:
+        update["value"] = item.value.model_copy(update={"value": new_severity})
+    return item.model_copy(update=update)
+
+
+def _validated_structured_changes(request, old_rows) -> tuple[dict, dict]:
+    """Validate ``changes[]`` against the current revision (fail closed).
+
+    Unknown ids, stale ``old_value``, unsupported fields and unsupported
+    statuses raise the existing contract-style ``AssessmentRevisionConflict``;
+    a structured change is never silently ignored or collapsed.
+    """
+
+    by_id = {row.fact_evidence_id: row for row in old_rows}
+    status_changes: dict[str, str] = {}
+    severity_changes: dict[str, str] = {}
+    seen: set[tuple[str, str]] = set()
+    for change in request.changes:
+        key = (change.target_id, change.field)
+        if key in seen:
+            raise AssessmentRevisionConflict
+        seen.add(key)
+        row = by_id.get(change.target_id)
+        if row is None:
+            raise AssessmentRevisionConflict
+        if change.field == _FACT_STATUS_FIELD:
+            if change.old_value != row.confirmation_status:
+                raise AssessmentRevisionConflict
+            if change.new_value not in _FACT_STATUS_VALUES:
+                raise AssessmentRevisionConflict
+            status_changes[change.target_id] = change.new_value
+            continue
+        if change.field == "severity":
+            value = row.value_json or {}
+            if (
+                value.get("type") != "severity"
+                or value.get("value") != change.old_value
+                or change.new_value not in {"none", "mild", "moderate", "severe"}
+            ):
+                raise AssessmentRevisionConflict
+            severity_changes[change.target_id] = change.new_value
+            continue
+        raise AssessmentRevisionConflict
+    return status_changes, severity_changes
+
+
+def _recompute_derived_state(evidence: list[FactEvidence]) -> dict:
+    """Phase 2 (D4): every derived field comes from the confirmed subset only.
+
+    ``confirmation_status == "confirmed"`` is the single evidence authority.
+    Rejected/unconfirmed rows stay stored and auditable but never contribute to
+    the organ profile, coverage, diversity, conflicts or degradation.
+    """
+
+    confirmed = [
+        item for item in evidence if item.confirmation_status == "confirmed"
+    ]
+    mapping = load_organ_mapping()
+    effective = _select_effective_evidence(confirmed, mapping)
+    links = _organ_links(effective, mapping)
+    weights = _organ_weights(effective, links, mapping)
+    return {
+        "state_summary": _authoritative_state_summary(effective),
+        "organ_profile_json": OrganProfile(
+            status="available" if weights is not None else "insufficient",
+            weights=weights,
+            score_semantics="relative_evidence_distribution",
+        ).model_dump(mode="json"),
+        "evidence_coverage": round(min(1.0, len(confirmed) / 8.0), 3),
+        "source_diversity": len(
+            {
+                (ref.source_type, ref.source_id)
+                for item in confirmed
+                for ref in item.source_refs
+            }
+        ),
+        "conflicts_json": [
+            item.model_dump(mode="json")
+            for item in _build_conflicts(confirmed, mapping)
+        ],
+        "degradation_json": Degradation(
+            active=weights is None,
+            reason_codes=["INSUFFICIENT_EVIDENCE"] if weights is None else [],
+        ).model_dump(mode="json"),
+    }
+
+
+def _apply_derived_state(revision: AssessmentRevisionV3, derived: dict) -> None:
+    revision.state_summary = derived["state_summary"]
+    revision.organ_profile_json = derived["organ_profile_json"]
+    revision.evidence_coverage = derived["evidence_coverage"]
+    revision.source_diversity = derived["source_diversity"]
+    revision.conflicts_json = derived["conflicts_json"]
+    revision.degradation_json = derived["degradation_json"]
+
+
+def _authoritative_state_summary(evidence: list[FactEvidence]) -> str:
+    """Deterministic projection of the confirmed structured evidence (D4).
+
+    No NLP, no inference, no thresholds and no narrative input: the text is a
+    stable rendering of the approved ``display_name`` values already stored on
+    the confirmed rows, grouped by their stored ``direction`` so contradicting
+    evidence is neither dropped nor silently restated as a positive finding.
+    """
+
+    supporting: list[str] = []
+    contradicting: list[str] = []
+    for item in evidence:
+        name = (item.display_name or "").strip()
+        if not name:
+            continue
+        bucket = (
+            contradicting
+            if item.direction == EvidenceDirection.contradicting
+            else supporting
+        )
+        if name not in bucket:
+            bucket.append(name)
+    parts: list[str] = []
+    if supporting:
+        parts.append(_STATE_SUMMARY_SUPPORTING_PREFIX + "、".join(supporting) + "。")
+    if contradicting:
+        parts.append(
+            _STATE_SUMMARY_CONTRADICTING_PREFIX + "、".join(contradicting) + "。"
+        )
+    return "\n".join(parts) or _STATE_SUMMARY_EMPTY
+
 
 
 def _approved_questionnaire_manifest() -> dict | None:
@@ -405,9 +530,12 @@ def load_confirmed_facts(
 ) -> list[dict]:
     """Load the confirmed NormalizedFacts of an Understanding revision.
 
-    Raises AssessmentInputNotReady when the revision is not confirmed or
-    carries no confirmed facts (Agent 1 must never consume unconfirmed or
-    fabricated evidence).
+    Raises AssessmentInputNotReady when the revision is not confirmed, or when
+    it carries no confirmed facts *and* the user made no explicit decision
+    (Agent 1 must never consume unconfirmed or fabricated evidence). Phase 2
+    (D5): an explicit decision — a narrative edit or explicit structured
+    rejections — may legitimately leave zero confirmed facts; the frozen
+    insufficiency path then applies downstream.
     """
     row = (
         db.query(UnderstandingRevision)
@@ -426,7 +554,7 @@ def load_confirmed_facts(
         if parsed.confirmation_status != "confirmed":
             continue
         facts.append(item)
-    if not facts and "chg_summary_edit" not in ((row.presentation_json or {}).get("applied_changes") or []):
+    if not facts and not ((row.presentation_json or {}).get("applied_changes") or []):
         raise AssessmentInputNotReady
     return facts
 

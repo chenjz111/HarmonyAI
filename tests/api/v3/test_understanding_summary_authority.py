@@ -47,7 +47,11 @@ def test_full_text_edit_projects_facts_without_provider_and_retains_provenance(m
     assert response.status_code == 201, response.text
     latest = _v3_data(client.get(f"/api/v3/understandings/{original['understanding_id']}", headers=headers))
     previous = _v3_data(client.get(f"/api/v3/understandings/{original['understanding_id']}?revision=1", headers=headers))
-    assert latest["normalized_facts"] == []
+    # Phase 2: the narrative is presentation only, so every structured fact is
+    # copied with its prior status instead of being filtered by the text.
+    assert [f["fact_id"] for f in latest["normalized_facts"]] == [
+        f["fact_id"] for f in original["normalized_facts"]
+    ]
     assert latest["case_summary"]["summary"] == "近期状态平稳。"
     assert previous == original
 
@@ -66,7 +70,13 @@ def test_full_text_edit_keeps_canonical_fact_and_source_reference(monkeypatch, d
     latest = _v3_data(client.get(f"/api/v3/understandings/{original['understanding_id']}", headers=headers))
     assert latest["normalized_facts"][0]["fact_id"] == original["normalized_facts"][0]["fact_id"]
     assert latest["normalized_facts"][0]["source_refs"] == original["normalized_facts"][0]["source_refs"]
-    assert latest["normalized_facts"][0]["confirmation_status"] == "confirmed"
+    # Phase 2 (D3): text alone never promotes a fact to ``confirmed``.
+    assert (
+        latest["normalized_facts"][0]["confirmation_status"]
+        == original["normalized_facts"][0]["confirmation_status"]
+        == "unconfirmed"
+    )
+
 
 
 def test_fact_summary_is_source_grounded_and_excludes_care_instructions():

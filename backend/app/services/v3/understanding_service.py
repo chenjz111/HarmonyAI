@@ -91,6 +91,11 @@ _WITH_DOCUMENT_TYPES = frozenset(
 )
 _REVISION_RECORD_PREFIX = "rev:"
 
+# Phase 2 (Option B) structured authority: stable fact identity decides.
+_FACT_STATUS_FIELD = "confirmation_status"
+_FACT_STATUS_VALUES = frozenset({"confirmed", "rejected"})
+_NARRATIVE_CHANGE_ID = "chg_summary_edit"
+
 
 class OwnedResourceNotFound(RuntimeError):
     pass
@@ -702,6 +707,15 @@ def confirm_understanding(
     if new_status == "confirmed" and isinstance(case_summary, dict):
         case_summary["status"] = "confirmed"
         case_summary["revision"] = next_revision
+    # Phase 2 (D1/D3): a structured rejection is sticky. Only the explicit
+    # ``confirm`` decision (no changes, no text) completes the pending
+    # extraction status; it never resurrects a ``rejected`` fact.
+    revision_facts = _facts_for_revision(
+        new_fact_dicts if new_fact_dicts is not None else _current_facts(current),
+        promote_unconfirmed=(
+            request.decision == "confirm" and new_status == "confirmed"
+        ),
+    )
     revision_row = UnderstandingRevision(
         understanding_id=understanding_id,
         revision=next_revision,
@@ -718,16 +732,10 @@ def confirm_understanding(
                 }
                 for row in sources
             ],
-            # Carry the normalized facts forward; a full-text edit replaces
-            # them via _apply_full_text_edit on the current revision. On a
-            # successful confirmation every fact is confirmed together with
-            # the outer status so Agent 1 consumes a coherent snapshot.
-            "normalized_facts": _confirmed_facts_for(
-                new_fact_dicts
-                if new_fact_dicts is not None
-                else (current.presentation_json or {}).get("normalized_facts") or [],
-                confirmed=new_status == "confirmed",
-            ),
+            # Phase 2 (Option B): the copied structured facts carry their own
+            # authoritative ``confirmation_status``. The user narrative never
+            # selects, deletes, confirms, rejects or re-authorizes a fact.
+            "normalized_facts": revision_facts,
             "applied_changes": applied_changes,
             "affected_fact_ids": affected_fact_ids,
         },
@@ -744,10 +752,7 @@ def confirm_understanding(
             db,
             understanding_id=understanding_id,
             understanding_revision=next_revision,
-            fact_dicts=_confirmed_facts_for(
-                new_fact_dicts,
-                confirmed=new_status == "confirmed",
-            ),
+            fact_dicts=revision_facts,
             source_rows=sources,
         )
     run.current_revision = next_revision
@@ -795,16 +800,37 @@ def confirm_understanding(
     )
 
 
-def _confirmed_facts_for(
-    fact_dicts: list[dict],
+def _current_facts(current: UnderstandingRevision) -> list[dict]:
+    """The current revision's structured facts (copy-on-read)."""
+
+    return list((current.presentation_json or {}).get("normalized_facts") or [])
+
+
+def _copy_facts(fact_dicts) -> list[dict]:
+    """Deep-copy fact dicts so a new revision never shares mutable state."""
+
+    return [json.loads(json.dumps(dict(fact))) for fact in (fact_dicts or [])]
+
+
+def _facts_for_revision(
+    fact_dicts,
     *,
-    confirmed: bool,
+    promote_unconfirmed: bool,
 ) -> list[dict]:
-    """Return normalized fact dicts with the confirmation status applied."""
-    result = [dict(item) for item in fact_dicts]
-    if confirmed:
+    """Copy facts into the new revision, preserving structured authority.
+
+    Phase 2 (Option B): ``confirmation_status`` is the evidence authority and is
+    copied unchanged. ``promote_unconfirmed`` is used only by the explicit
+    ``confirm`` decision, which completes the pending extraction status
+    (``unconfirmed`` -> ``confirmed``); it is never used by a narrative edit and
+    never resurrects a ``rejected`` fact (D1/D3).
+    """
+
+    result = _copy_facts(fact_dicts)
+    if promote_unconfirmed:
         for fact in result:
-            fact["confirmation_status"] = "confirmed"
+            if str(fact.get("confirmation_status") or "") == "unconfirmed":
+                fact["confirmation_status"] = "confirmed"
     return result
 
 
@@ -826,42 +852,60 @@ def _apply_decision(
             None,
         )
     if decision == "confirm_with_changes":
-        if request.edited_summary_text is not None:
-            return _apply_full_text_edit(current, request)
-        return (*_apply_changes(current, request), None)
+        return _apply_structured_edit(current, request)
     if decision == "reject_source":
         return None, [], [], None
     # cannot_confirm: keep the materialized snapshot undecided.
     return current.case_summary_json, [], [], None
 
 
-def _apply_full_text_edit(
+def _apply_fact_status_change(change, facts_by_id: dict) -> str:
+    """Apply one explicit structured fact-status decision (fail closed).
+
+    Returns ``"changed"`` or ``"unchanged"``. Unknown ids, unsupported fields,
+    a stale ``old_value`` or an unsupported target status all raise the existing
+    contract-style ``InvalidChange`` errors instead of being ignored.
+    """
+
+    fact = facts_by_id.get(change.target_id)
+    if fact is None:
+        raise InvalidChange("FACT_NOT_FOUND", "当前理解尚未包含该事实条目。")
+    if change.field != _FACT_STATUS_FIELD:
+        raise InvalidChange("UNSUPPORTED_FIELD", "该事实字段暂不支持在线修正。")
+    current_status = str(fact.get("confirmation_status") or "")
+    if change.old_value != current_status:
+        raise InvalidChange("FACT_STATUS_CONFLICT", "该事实状态已更新，请刷新后重试。")
+    new_status = change.new_value
+    if not isinstance(new_status, str) or new_status not in _FACT_STATUS_VALUES:
+        raise InvalidChange(
+            "INVALID_VALUE", "事实状态只能是 confirmed 或 rejected。"
+        )
+    if new_status == current_status:
+        return "unchanged"
+    fact["confirmation_status"] = new_status
+    return "changed"
+
+
+def _apply_structured_edit(
     current: UnderstandingRevision,
     request: UnderstandingConfirmationRequest,
 ) -> tuple[dict[str, object] | None, list[str], list[str], list[dict]]:
+    """Phase 2 structured confirmation: identity decides, narrative only presents.
+
+    Every current fact is copied into the new revision with its provenance and
+    its prior ``confirmation_status``; only an explicit structured decision by
+    stable ``fact_id`` may change a status. ``edited_summary_text`` updates the
+    presentation narrative and nothing else — there is no substring matching,
+    no negation parsing and no text-driven re-authorization.
+    """
+
     base = current.case_summary_json
     if base is None:
         raise InvalidChange("NO_CASE_SUMMARY", "当前没有可确认的材料摘要。")
     case_summary = json.loads(json.dumps(base))
-    case_summary["summary"] = request.edited_summary_text
-    case_summary["status"] = "confirmed"
-    # Full-text confirmation is authoritative. Retained canonical facts keep
-    # their original source references; earlier revisions remain provenance.
-    previous_facts = (current.presentation_json or {}).get("normalized_facts") or []
-    fact_dicts = [dict(fact) for fact in previous_facts
-                  if fact.get("display_name") and fact["display_name"] in request.edited_summary_text]
-    affected_fact_ids = [fact["fact_id"] for fact in previous_facts]
-    return case_summary, ["chg_summary_edit"], affected_fact_ids, fact_dicts
+    facts = _copy_facts(_current_facts(current))
+    facts_by_id = {fact.get("fact_id"): fact for fact in facts}
 
-
-def _apply_changes(
-    current: UnderstandingRevision,
-    request: UnderstandingConfirmationRequest,
-) -> tuple[dict[str, object] | None, list[str], list[str]]:
-    base = current.case_summary_json
-    if base is None:
-        raise InvalidChange("NO_CASE_SUMMARY", "当前没有可确认的材料摘要。")
-    case_summary = json.loads(json.dumps(base))
     applied: list[str] = []
     affected: list[str] = []
     for index, change in enumerate(request.changes, start=1):
@@ -870,25 +914,23 @@ def _apply_changes(
             if change.target_id != case_summary.get("case_summary_id"):
                 raise InvalidChange("CASE_SUMMARY_NOT_FOUND", "摘要与修正目标不匹配。")
             if change.field not in {"title", "summary"}:
-                raise InvalidChange(
-                    "UNSUPPORTED_FIELD",
-                    "该摘要字段不支持在线修正。",
-                )
+                raise InvalidChange("UNSUPPORTED_FIELD", "该摘要字段不支持在线修正。")
             if not isinstance(change.new_value, str):
                 raise InvalidChange("INVALID_VALUE", "摘要修正值必须是文本。")
             case_summary[change.field] = change.new_value
             applied.append(change_id)
             continue
-        if change.target_type == "normalized_fact":
-            raise InvalidChange(
-                "FACT_NOT_FOUND",
-                "当前理解尚未包含可修正的事实条目。",
-            )
-        raise InvalidChange(
-            "UNSUPPORTED_CHANGE",
-            "该修正目标类型暂不支持。",
-        )
-    return case_summary, applied, affected
+        if change.target_type != "normalized_fact":
+            raise InvalidChange("UNSUPPORTED_CHANGE", "该修正目标类型暂不支持。")
+        outcome = _apply_fact_status_change(change, facts_by_id)
+        applied.append(change_id)
+        if outcome == "changed":
+            affected.append(change.target_id)
+
+    if request.edited_summary_text is not None:
+        case_summary["summary"] = request.edited_summary_text
+        applied.append(_NARRATIVE_CHANGE_ID)
+    return case_summary, applied, affected, facts
 
 
 def _new_revision_status(decision: str, _run_status: str) -> str:

@@ -473,6 +473,9 @@ const realInputApi = {
       title: cs.title || "请确认资料摘要",
       summary: cs.summary,
       editable_fields: cs.editable_fields || [],
+      // Sprint 6 Phase 2（Option B）：结构化事实是对用户可见的证据权威。
+      // 每个条目携带稳定身份 fact_id；叙述文本只是展示，绝不参与选择/删除/确认。
+      evidence_items: understandingEvidenceItems(data),
       source_notice: "以下内容是系统根据你上传的资料整理出的简要信息。请确认它是否准确反映你的近期情况。",
       warnings: cs.warnings || [],
     }
@@ -782,6 +785,65 @@ const realInputApi = {
   },
 }
 
+// Sprint 6 Phase 2（Option B）：结构化证据身份 = 证据权威；可编辑叙述 = 纯展示。
+// 前端只按稳定身份构造 changes[]（Understanding=fact_id，Assessment=fact_evidence_id），
+// 绝不用显示名、数组下标、子串匹配、否定解析或任何语义推断来决定证据。
+export const EVIDENCE_DECISION_KEEP = "confirmed"
+export const EVIDENCE_DECISION_DROP = "rejected"
+
+// 条目的初始两态（保留 / 不采用）：只有后端明确 rejected 的条目默认“不采用”。
+export function evidenceDecisionFor(item) {
+  if (!item) return EVIDENCE_DECISION_KEEP
+  return item.confirmation_status === EVIDENCE_DECISION_DROP
+    ? EVIDENCE_DECISION_DROP
+    : EVIDENCE_DECISION_KEEP
+}
+
+// 只提交与当前状态不同的结构化决定；无变化就不发送条目。
+export function buildEvidenceChanges(items, decisions, targetType) {
+  const changes = []
+  for (const item of items || []) {
+    const id = item && (item.item_id || item.fact_id || item.fact_evidence_id)
+    if (!id) continue
+    const desired = (decisions || {})[id]
+    if (desired !== EVIDENCE_DECISION_KEEP && desired !== EVIDENCE_DECISION_DROP) continue
+    if (desired === item.confirmation_status) continue
+    changes.push({
+      target_type: targetType,
+      target_id: id,
+      field: "confirmation_status",
+      old_value: item.confirmation_status,
+      new_value: desired,
+    })
+  }
+  return changes
+}
+
+function understandingEvidenceItems(data) {
+  return (data.normalized_facts || []).map((fact) => ({
+    item_id: fact.fact_id,
+    fact_id: fact.fact_id,
+    fact_code: fact.fact_code,
+    claim_code: fact.fact_code,
+    display_name: fact.display_name,
+    confirmation_status: fact.confirmation_status,
+    direction: fact.negated ? "contradicting" : "supporting",
+    source_refs: fact.source_refs || [],
+  }))
+}
+
+function assessmentEvidenceItems(data) {
+  return (data.fact_evidence || []).map((item) => ({
+    item_id: item.fact_evidence_id,
+    fact_evidence_id: item.fact_evidence_id,
+    claim_code: item.claim_code,
+    display_name: item.display_name,
+    confirmation_status: item.confirmation_status,
+    direction: item.direction,
+    source_refs: item.source_refs || [],
+  }))
+}
+
 function assessmentPageModel(data) {
   return Object.assign({}, data, {
     page: "assessment_confirmation",
@@ -791,6 +853,8 @@ function assessmentPageModel(data) {
       { id: "body", title: "身体感受", items: data.presentation.body_summaries || [] },
       { id: "context", title: "最近情况", items: data.presentation.recent_context ? [data.presentation.recent_context] : [] },
     ],
+    // Sprint 6 Phase 2（Option B）：稳定身份 fact_evidence_id 是唯一权威。
+    evidence_items: assessmentEvidenceItems(data),
     editable_items: (data.fact_evidence || []).filter((item) => item.value && item.value.type === "severity").map((item) => ({
       target_id: item.fact_evidence_id, label: item.display_name, value: item.value,
       allowed_values: ["none", "mild", "moderate", "severe"], required: false,
@@ -950,6 +1014,10 @@ function mockCaseSummary() {
     title: "请确认资料摘要",
     summary: "资料中提到近期入睡偏慢、睡眠恢复不足，白天精神状态一般，其他方面未见明显异常描述。",
     editable_fields: [],
+    evidence_items: [
+      { item_id: "fact_mock_sleep", fact_id: "fact_mock_sleep", fact_code: "sleep_unrefreshing", claim_code: "sleep_unrefreshing", display_name: "睡眠恢复不足", confirmation_status: "unconfirmed", direction: "supporting", source_refs: [{ source_type: "document", source_id: "doc_mock_001" }] },
+      { item_id: "fact_mock_energy", fact_id: "fact_mock_energy", fact_code: "low_energy", claim_code: "low_energy", display_name: "精力不足", confirmation_status: "unconfirmed", direction: "supporting", source_refs: [{ source_type: "document", source_id: "doc_mock_001" }] },
+    ],
     source_notice: "以下内容是系统根据你上传的资料整理出的简要信息。请确认它是否准确反映你的近期情况。",
     warnings: [],
   }
@@ -971,6 +1039,10 @@ function mockAssessment() {
     editable_items: [
       { target_id: "fev_mock_sleep", label: "睡眠恢复不足", value: { type: "severity", value: "moderate" }, allowed_values: ["none", "mild", "moderate", "severe"], required: false },
       { target_id: "fev_mock_energy", label: "白天精力下降", value: { type: "severity", value: "mild" }, allowed_values: ["none", "mild", "moderate", "severe"], required: false },
+    ],
+    evidence_items: [
+      { item_id: "fev_mock_sleep", fact_evidence_id: "fev_mock_sleep", claim_code: "sleep_unrefreshing", display_name: "睡眠恢复不足", confirmation_status: "confirmed", direction: "supporting", source_refs: [{ source_type: "questionnaire", source_id: "qsub_mock_001" }] },
+      { item_id: "fev_mock_energy", fact_evidence_id: "fev_mock_energy", claim_code: "low_energy", display_name: "白天精力下降", confirmation_status: "confirmed", direction: "supporting", source_refs: [{ source_type: "questionnaire", source_id: "qsub_mock_001" }] },
     ],
     degradation_notice: null,
   }
