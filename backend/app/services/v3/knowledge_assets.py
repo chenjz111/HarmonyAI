@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import re
 from typing import Literal, Mapping
@@ -208,6 +209,257 @@ def load_music_generation_rules(
             "音乐参数规则资产版本与配置不一致。",
         )
     return asset.model_dump(mode="json", exclude_none=True)
+
+
+class DominanceRuleAssetNotReady(ValueError):
+    """A Sprint 6 Phase 1B dominance rule asset is absent, unapproved, or tampered."""
+
+    def __init__(self, error_code: str, safe_message: str) -> None:
+        self.error_code = error_code
+        self.safe_message = safe_message
+        super().__init__(f"{error_code}: {safe_message}")
+
+
+DOMINANCE_RULE_SCHEMA_ID = "dominance_rule_contract"
+DOMINANCE_RULE_ASSET_VERSION = "dominance-rule-v1.0-r1"
+# Canonical checksum of knowledge/v3/dominance-rule-v1.json (same
+# "configured approved release" convention as APPROVED_MEDICAL_RULE_CHECKSUMS).
+APPROVED_DOMINANCE_RULE_CHECKSUM = (
+    "sha256:7be01a93cd55118d496c08d234302b2d7cc8d601aa0152c62789a2ed31d9e019"
+)
+
+# Approved deterministic non-tone music parameter release. Used by paths that
+# must assemble a basic_wellness read model without the full provider/RAG
+# dependency factory (the legal-abstain path), and overridable by the same
+# environment configuration the pipeline uses.
+FORMAL_MUSIC_GENERATION_RULE_VERSION = "music-generation-rules-v3.1-r1"
+APPROVED_MUSIC_GENERATION_RULE_CHECKSUM = (
+    "sha256:c97acc241abe611b91d71c205cb021afaa47cfffd1c7bfe8d447e402d74f0ae0"
+)
+DEFAULT_MUSIC_GENERATION_RULES_FILENAME = "music-generation-rules-v3.1.json"
+
+# Frozen Phase 1B numbers. The rule asset must restate these exactly; they are
+# never re-declared as a competing authority inside routing code.
+DOMINANCE_EVIDENCE_DENOMINATOR = 8
+DOMINANCE_MINIMUM_COVERAGE = 0.50
+DOMINANCE_NORMALIZED_PRECISION = 4
+DOMINANCE_MARGIN_THRESHOLD = 0.08
+DOMINANCE_RAW_RATIO_THRESHOLD = 1.20
+
+DOMINANCE_REASON_CODES = (
+    "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT",
+    "BASIC_RAG_EMPTY",
+    "BASIC_EVIDENCE_COVERAGE_BELOW_THRESHOLD",
+    "BASIC_NO_LEGAL_ORGAN_CANDIDATE",
+    "BASIC_UNRESOLVED_MAJOR_CONFLICT",
+    "PERSONALIZED_SINGLE_LEGAL_CANDIDATE",
+    "PERSONALIZED_DOMINANCE_THRESHOLDS_MET",
+    "INTEGRATED_EXACT_TOP_TIE",
+    "INTEGRATED_DOMINANCE_CONFLICT",
+    "INTEGRATED_MARGIN_BELOW_THRESHOLD",
+    "INTEGRATED_RATIO_BELOW_THRESHOLD",
+)
+
+
+class DominanceReferenceIdentity(V3BaseModel):
+    """Identity of an approved upstream mapping this asset references."""
+
+    schema_id: NonEmptyString
+    schema_version: NonEmptyString
+    content_checksum: NonEmptyString
+
+
+class DominanceAbstainMapping(V3BaseModel):
+    upstream_reason_code: NonEmptyString
+    reason_code: NonEmptyString
+
+
+class DominanceEvidenceGate(V3BaseModel):
+    coverage_formula_version: NonEmptyString
+    coverage_formula: NonEmptyString
+    denominator: int
+    minimum_coverage: float
+    comparison: Literal[">="]
+    effective_evidence_population: NonEmptyString
+    counted_directions: list[Literal["supporting", "contradicting"]]
+    upstream_abstain_mappings: list[DominanceAbstainMapping]
+
+    @model_validator(mode="after")
+    def require_frozen_evidence_gate(self) -> "DominanceEvidenceGate":
+        if self.denominator != DOMINANCE_EVIDENCE_DENOMINATOR:
+            raise ValueError("evidence denominator must be 8")
+        if abs(self.minimum_coverage - DOMINANCE_MINIMUM_COVERAGE) > 1e-9:
+            raise ValueError("minimum evidence coverage must be 0.50")
+        if set(self.counted_directions) != {"supporting", "contradicting"}:
+            raise ValueError("coverage counts supporting and contradicting facts")
+        return self
+
+
+class DominanceLegalCandidateGate(V3BaseModel):
+    authority: Literal["approved_organ_mapping"]
+    reference: NonEmptyString
+    minimum_effective_evidence_count: int
+    minimum_raw_support: float
+    comparison: Literal[">="]
+    note: NonEmptyString
+
+    @model_validator(mode="after")
+    def require_frozen_legal_candidate_gate(self) -> "DominanceLegalCandidateGate":
+        if self.minimum_effective_evidence_count != 2:
+            raise ValueError("legal candidate evidence count must be 2")
+        if abs(self.minimum_raw_support - 0.75) > 1e-9:
+            raise ValueError("legal candidate raw support must be 0.75")
+        return self
+
+
+class DominanceGate(V3BaseModel):
+    comparison_population: Literal["legal_candidates_only"]
+    top_ordering_authority: Literal["canonical_raw_support"]
+    normalized_precision: int
+    normalized_margin_threshold: float
+    normalized_margin_comparison: Literal[">="]
+    raw_ratio_threshold: float
+    raw_ratio_comparison: Literal[">="]
+    exact_tie_basis: Literal["canonical_raw_support_equality"]
+    top1_hard_gate: None = None
+    epsilon: None = None
+    entropy_or_spread_gate: None = None
+
+    @model_validator(mode="after")
+    def require_frozen_dominance_gate(self) -> "DominanceGate":
+        if self.normalized_precision != DOMINANCE_NORMALIZED_PRECISION:
+            raise ValueError("normalized precision must be 4")
+        if abs(self.normalized_margin_threshold - DOMINANCE_MARGIN_THRESHOLD) > 1e-9:
+            raise ValueError("normalized margin threshold must be 0.08")
+        if abs(self.raw_ratio_threshold - DOMINANCE_RAW_RATIO_THRESHOLD) > 1e-9:
+            raise ValueError("raw ratio threshold must be 1.20")
+        return self
+
+
+class DominanceRuleAsset(V3BaseModel):
+    """Schema for the reviewed Phase 1B dominance/ambiguity rule contract."""
+
+    schema_id: Literal["dominance_rule_contract"]
+    schema_version: NonEmptyString
+    asset_version: NonEmptyString
+    review_status: Literal["approved"]
+    medical_review: Mapping[str, object]
+    owner_approval: Mapping[str, object]
+    scope: NonEmptyString
+    evidence_gate: DominanceEvidenceGate
+    legal_candidate_gate: DominanceLegalCandidateGate
+    dominance_gate: DominanceGate
+    candidate_policies: Mapping[str, object]
+    conflict_policy: Mapping[str, object]
+    failure_policy: Mapping[str, object]
+    reason_precedence: Mapping[str, object]
+    reason_codes: Mapping[str, NonEmptyString]
+    decision_snapshot_schema_id: Literal["organ_dominance_decision_v1"]
+    read_model_schema_version: Literal["five_tone_analysis_read_model_v3.3"]
+    references: Mapping[str, DominanceReferenceIdentity]
+    content_checksum: NonEmptyString
+
+    @model_validator(mode="after")
+    def require_frozen_vocabulary_and_references(self) -> "DominanceRuleAsset":
+        if set(self.reason_codes) != set(DOMINANCE_REASON_CODES):
+            raise ValueError("dominance asset must declare the frozen reason vocabulary")
+        if set(self.references) != {"organ_mapping", "five_tone_mapping"}:
+            raise ValueError("dominance asset must reference both approved mappings")
+        if self.medical_review.get("status") != "approved":
+            raise ValueError("medical review must be approved")
+        if self.owner_approval.get("status") != "approved":
+            raise ValueError("owner approval must be approved")
+        return self
+
+
+def load_dominance_rule_asset(
+    path: str | Path,
+    *,
+    expected_version: str,
+    expected_checksum: str,
+) -> dict[str, object]:
+    """Load only the approved, checksum-bound Phase 1B dominance rule asset."""
+
+    if not expected_version.strip() or not expected_checksum.startswith("sha256:"):
+        raise DominanceRuleAssetNotReady(
+            "DOMINANCE_RULE_ASSET_NOT_CONFIGURED",
+            "主导度规则资产版本或校验和尚未配置。",
+        )
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise DominanceRuleAssetNotReady(
+            "DOMINANCE_RULE_ASSET_NOT_CONFIGURED",
+            "主导度规则资产无法读取。",
+        ) from error
+    if not isinstance(payload, Mapping):
+        raise DominanceRuleAssetNotReady(
+            "DOMINANCE_RULE_ASSET_INVALID",
+            "主导度规则资产格式无效。",
+        )
+    declared_checksum = payload.get("content_checksum")
+    actual_checksum = _canonical_asset_checksum(payload)
+    if (
+        not isinstance(declared_checksum, str)
+        or declared_checksum != actual_checksum
+        or expected_checksum != actual_checksum
+    ):
+        raise DominanceRuleAssetNotReady(
+            "DOMINANCE_RULE_ASSET_CHECKSUM_MISMATCH",
+            "主导度规则资产校验和不匹配。",
+        )
+    if payload.get("schema_id") != DOMINANCE_RULE_SCHEMA_ID:
+        raise DominanceRuleAssetNotReady(
+            "DOMINANCE_RULE_ASSET_SCHEMA_INVALID",
+            "主导度规则资产标识无效。",
+        )
+    if payload.get("review_status") != "approved":
+        raise DominanceRuleAssetNotReady(
+            "DOMINANCE_RULE_ASSET_NOT_APPROVED",
+            "主导度规则资产尚未获得生产批准。",
+        )
+    try:
+        asset = DominanceRuleAsset.model_validate(payload)
+    except ValidationError as error:
+        raise DominanceRuleAssetNotReady(
+            "DOMINANCE_RULE_ASSET_INVALID",
+            "主导度规则资产格式无效。",
+        ) from error
+    if asset.asset_version != expected_version:
+        raise DominanceRuleAssetNotReady(
+            "DOMINANCE_RULE_ASSET_VERSION_MISMATCH",
+            "主导度规则资产版本与配置不一致。",
+        )
+    return asset.model_dump(mode="json", exclude_none=True)
+
+
+def canonical_asset_checksum(payload: Mapping[str, object]) -> str:
+    """Public canonical asset checksum (top-level ``content_checksum`` removed)."""
+
+    return _canonical_asset_checksum(payload)
+
+
+def load_configured_music_generation_rules() -> dict[str, object]:
+    """Load the approved non-tone music parameter release.
+
+    The configured release (``V31_MUSIC_GENERATION_RULES_PATH`` /
+    ``_VERSION`` / ``_CHECKSUM``) wins when fully provided; otherwise the
+    repository's approved release is used. Either way the asset is verified
+    against its embedded and approved checksum, version, schema and approval
+    status — an unapproved or tampered asset is a readiness failure, never a
+    music mode.
+    """
+
+    path = os.getenv("V31_MUSIC_GENERATION_RULES_PATH", "").strip()
+    version = os.getenv("V31_MUSIC_GENERATION_RULES_VERSION", "").strip()
+    checksum = os.getenv("V31_MUSIC_GENERATION_RULES_CHECKSUM", "").strip()
+    if not (path and version and checksum):
+        path = str(_asset_root() / DEFAULT_MUSIC_GENERATION_RULES_FILENAME)
+        version = FORMAL_MUSIC_GENERATION_RULE_VERSION
+        checksum = APPROVED_MUSIC_GENERATION_RULE_CHECKSUM
+    return load_music_generation_rules(
+        Path(path), expected_version=version, expected_checksum=checksum
+    )
 
 
 def _asset_root() -> Path:

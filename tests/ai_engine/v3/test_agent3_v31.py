@@ -15,11 +15,11 @@ def _mapping():
             }
         },
         "organ_tone_table": [
-            {"tone": "jiao", "tone_cn": "角调", "note": "舒展条达"},
-            {"tone": "zhi", "tone_cn": "徵调", "note": "欢快升发"},
-            {"tone": "gong", "tone_cn": "宫调", "note": "沉稳中和"},
-            {"tone": "shang", "tone_cn": "商调", "note": "清越肃降"},
-            {"tone": "yu", "tone_cn": "羽调", "note": "柔润静谧"},
+            {"organ": "liver", "tone": "jiao", "tone_cn": "角调", "note": "舒展条达"},
+            {"organ": "heart", "tone": "zhi", "tone_cn": "徵调", "note": "欢快升发"},
+            {"organ": "spleen", "tone": "gong", "tone_cn": "宫调", "note": "沉稳中和"},
+            {"organ": "lung", "tone": "shang", "tone_cn": "商调", "note": "清越肃降"},
+            {"organ": "kidney", "tone": "yu", "tone_cn": "羽调", "note": "柔润静谧"},
         ],
     }
 
@@ -55,6 +55,24 @@ def _generation_rules():
     }
 
 
+def _decision(organ: str = "heart", tone: str = "zhi"):
+    """Authoritative Phase 1B decision for non-routing Agent3 tests."""
+
+    from tests.sprint6_phase1b_fixtures import synthetic_decision
+
+    return synthetic_decision(
+        regulation_mode="personalized_five_tone",
+        dominant_organ=organ,
+        primary_tone=tone,
+    )
+
+
+def _mode_decision(mode: str):
+    from tests.sprint6_phase1b_fixtures import synthetic_decision
+
+    return synthetic_decision(regulation_mode=mode)
+
+
 def test_agent3_builds_v31_tone_profile_deterministically_from_approved_mapping():
     from backend.ai_engine.v3.agent3 import build_tone_profile_v31
 
@@ -63,6 +81,7 @@ def test_agent3_builds_v31_tone_profile_deterministically_from_approved_mapping(
         organ_weights={"heart": 0.6, "spleen": 0.4},
         supporting_evidence_refs=["fact_1", "fact_2"],
         mapping=_mapping(),
+        dominance_decision=_decision(),
     )
 
     assert profile.primary_tone.value == "zhi"
@@ -82,6 +101,7 @@ def test_agent3_accepts_the_repository_approved_five_tone_mapping_shape():
         organ_weights={"heart": 1.0},
         supporting_evidence_refs=["fact_approved"],
         mapping=mapping,
+        dominance_decision=_decision(),
     )
 
     assert profile.mapping_version == "five_tone_mapping_v3@3.0.0"
@@ -95,6 +115,7 @@ def test_agent3_only_emits_secondary_tone_when_an_explicit_threshold_is_supplied
         organ_weights={"heart": 0.6, "spleen": 0.4},
         supporting_evidence_refs=["fact_1"],
         mapping=_mapping(),
+        dominance_decision=_decision(),
     )
     with_threshold = build_tone_profile_v31(
         diagnosis_id="diag_1",
@@ -102,6 +123,7 @@ def test_agent3_only_emits_secondary_tone_when_an_explicit_threshold_is_supplied
         supporting_evidence_refs=["fact_1"],
         mapping=_mapping(),
         secondary_threshold=0.1,
+        dominance_decision=_decision(),
     )
 
     assert without_threshold.secondary_tone is None
@@ -124,6 +146,7 @@ def test_agent3_medical_abstain_never_fabricates_a_tone():
         organ_weights={"heart": 1.0},
         supporting_evidence_refs=["fact_1"],
         mapping=_mapping(),
+        dominance_decision=_mode_decision("basic_wellness"),
     )
 
     assert profile.regulation_mode == "basic_wellness"
@@ -149,6 +172,7 @@ def test_agent3_exact_tie_is_integrated_regulation_without_primary_tone():
         },
         supporting_evidence_refs=["fact_1"],
         mapping=_mapping(),
+        dominance_decision=_mode_decision("integrated_regulation"),
     )
 
     assert profile.regulation_mode == "integrated_regulation"
@@ -165,6 +189,7 @@ def test_agent3_can_render_a_grounded_degraded_result_without_claiming_abstentio
         organ_weights={"heart": 1.0},
         supporting_evidence_refs=["fact_1"],
         mapping=_mapping(),
+        dominance_decision=_decision(),
     )
 
     assert profile.primary_tone.value == "zhi"
@@ -179,6 +204,7 @@ def test_agent3_user_goal_is_not_part_of_medical_tone_calculation():
         supporting_evidence_refs=["fact_1"],
         mapping=_mapping(),
         user_goal={"primary_goal": "sleep"},
+        dominance_decision=_decision(),
     )
     second = build_tone_profile_v31(
         diagnosis_id="diag_1",
@@ -186,6 +212,7 @@ def test_agent3_user_goal_is_not_part_of_medical_tone_calculation():
         supporting_evidence_refs=["fact_1"],
         mapping=_mapping(),
         user_goal={"primary_goal": "energy"},
+        dominance_decision=_decision(),
     )
 
     assert first.weights == second.weights
@@ -204,6 +231,7 @@ def test_agent3_builds_public_read_model_without_internal_provider_fields():
         organ_weights={"heart": 0.6, "spleen": 0.4},
         supporting_evidence_refs=["fact_1", "fact_2"],
         mapping=_mapping(),
+        dominance_decision=_decision(),
     )
     generation_spec = build_generation_spec_v31(
         profile=profile,
@@ -221,6 +249,7 @@ def test_agent3_builds_public_read_model_without_internal_provider_fields():
         evidence_refs=["fact_1", "fact_2"],
         mapping=_mapping(),
         generation_spec=generation_spec,
+        dominance_decision=_decision(),
     )
 
     assert read_model.primary_tone.tone.value == "zhi"
@@ -229,7 +258,13 @@ def test_agent3_builds_public_read_model_without_internal_provider_fields():
     dumped = str(read_model.model_dump(mode="json"))
     assert "provider" not in dumped.lower()
     assert "prompt" not in dumped.lower()
-    assert "raw" not in dumped.lower()
+    # Sprint 6 Phase 1B: the v3.3 public read model carries the approved
+    # dominance audit (whose frozen field names include
+    # ``raw_organ_support_by_organ``) — never raw user text, embeddings,
+    # provider payloads or credentials.
+    assert "embedding" not in dumped.lower()
+    assert "api_key" not in dumped.lower()
+    assert "authorization" not in dumped.lower()
 
 
 def _preference_read_model():
@@ -244,6 +279,7 @@ def _preference_read_model():
         organ_weights={"heart": 1.0},
         supporting_evidence_refs=["fact_1"],
         mapping=_mapping(),
+        dominance_decision=_decision(),
     )
     spec = build_generation_spec_v31(
         profile=profile,
@@ -261,6 +297,7 @@ def _preference_read_model():
         evidence_refs=["fact_1"],
         mapping=_mapping(),
         generation_spec=spec,
+        dominance_decision=_decision(),
     )
 
 

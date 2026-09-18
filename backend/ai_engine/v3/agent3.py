@@ -24,10 +24,13 @@ from backend.app.schemas.v3.flow_v31 import (
     ConfirmedUserStateRef,
     DurationExplanation,
     FIVE_TONE_ANALYSIS_SCHEMA_VERSION,
+    FIVE_TONE_ANALYSIS_SCHEMA_VERSION_V33,
     FiveToneAnalysisReadModel,
+    FiveToneAnalysisReadModelV33,
     GenerationReadiness,
     ListParameterExplanation,
     MODE_WEIGHTS_TOLERANCE,
+    OrganDominanceDecisionV1,
     PublicRationale,
     PublicToneExplanation,
     RegulationMode,
@@ -365,6 +368,19 @@ def _calculate_weights(
     return {tone: score / total for tone, score in scores.items()}
 
 
+def _decision_model(
+    dominance_decision: OrganDominanceDecisionV1 | Mapping[str, Any] | object,
+) -> OrganDominanceDecisionV1:
+    """Validate the authoritative Phase 1B decision Agent3 must construct from."""
+
+    if isinstance(dominance_decision, OrganDominanceDecisionV1):
+        return dominance_decision
+    try:
+        return OrganDominanceDecisionV1.model_validate(dominance_decision)
+    except (TypeError, ValueError) as error:
+        raise Agent3Blocked("INVALID_DOMINANCE_DECISION") from error
+
+
 def build_tone_profile_v31(
     *,
     diagnosis_id: str,
@@ -375,27 +391,38 @@ def build_tone_profile_v31(
     diagnosis_status: str = "available",
     secondary_threshold: float | None = None,
     user_goal: Any = None,
+    dominance_decision: OrganDominanceDecisionV1 | Mapping[str, Any] | None = None,
 ) -> ToneProfileV31:
-    """Build the deterministic V3.1 tone profile from approved evidence.
+    """Build the deterministic V3.1 tone profile from an authoritative decision.
 
-    Sprint 6 mode semantics (Phase 1A — contract + fallback semantics; no
-    dominance *thresholds* are introduced here, those remain Phase 1B):
+    Sprint 6 Phase 1B: Agent3 is **not** a decision authority any more. The
+    routing decision (``regulation_mode`` / ``dominant_organ`` /
+    ``primary_tone`` / ``decision_reason_code``) is produced once by
+    ``backend.app.services.v3.organ_dominance_service`` and passed in as
+    ``dominance_decision``; this function only constructs the mode-scoped tone
+    profile from it:
 
-    * ``abstained`` diagnosis (evidence insufficient / legal abstain) →
-      ``basic_wellness`` with no primary tone and no fabricated weights.
-    * a genuine unique maximum organ→tone weight → ``personalized_five_tone``
-      with that single primary tone.
-    * a tie for the maximum (no genuine dominant direction) →
-      ``integrated_regulation`` retaining the full weights and **no** primary
-      tone. A near-but-not-equal maximum (margin calibration) is deliberately
-      NOT decided here; that is Phase 1B.
+    * ``basic_wellness`` → no primary tone and **no** evidence-derived weights
+      (an evidence/basic-gate stop is never presented as a tone claim);
+    * ``integrated_regulation`` → full balanced weights, no primary tone;
+    * ``personalized_five_tone`` → the decided dominant organ's mapped tone.
 
-    ``user_goal`` is intentionally accepted only at this boundary for callers
-    migrating from older orchestration code; it is never read or persisted in
-    the profile and cannot change any score.
+    A missing decision fails closed (``DOMINANCE_DECISION_REQUIRED``): the
+    Phase 1A interim "unique max → personalized / tie → integrated" rule is
+    gone, and no caller may re-derive a mode here.
+
+    ``user_goal`` is accepted only for callers migrating from older
+    orchestration code; it is never read or persisted in the profile and cannot
+    change any score.
     """
 
     del user_goal
+    if dominance_decision is None:
+        raise Agent3Blocked(
+            "DOMINANCE_DECISION_REQUIRED",
+            "缺少后端权威主导度决策，已停止音乐模式推断。",
+        )
+    decision = _decision_model(dominance_decision)
     if diagnosis_status not in {"available", "success", "degraded", "abstained"}:
         raise Agent3Blocked("DIAGNOSIS_NOT_AVAILABLE")
     if not diagnosis_id or diagnosis_revision < 1:
@@ -405,17 +432,27 @@ def build_tone_profile_v31(
         raise Agent3Blocked("INSUFFICIENT_EVIDENCE_REFERENCES")
     if secondary_threshold is not None and not 0 < secondary_threshold <= 1:
         raise Agent3Blocked("INVALID_SECONDARY_THRESHOLD")
+    if diagnosis_status == "abstained" and decision.regulation_mode != "basic_wellness":
+        # abstain ≠ 宫 and abstain ≠ 综合调适: a legal abstain may only project
+        # the frozen basic_wellness outcome. Anything else fails closed instead
+        # of becoming a personalized/integrated music mode.
+        raise Agent3Blocked(
+            "DOMINANCE_DECISION_CONFLICT",
+            "诊断已按证据不足中止，不能给出个性化或综合调适音乐方向。",
+        )
 
     basis = ToneProfileBasisV31(
         diagnosis_id=diagnosis_id,
         diagnosis_revision=diagnosis_revision,
         supporting_evidence_refs=evidence_refs,
     )
-    if diagnosis_status == "abstained":
-        # Legal abstain: never fabricate a tone (abstain ≠ 宫).
+    mode = decision.regulation_mode
+    if mode == "basic_wellness":
+        # An evidence/basic-gate stop carries no tone conclusion and never
+        # exposes evidence-derived weights as a product claim.
         return ToneProfileV31(
             schema_version=TONE_PROFILE_SCHEMA_VERSION,
-            regulation_mode="basic_wellness",
+            regulation_mode=mode,
             weights=None,
             primary_tone=None,
             secondary_tone=None,
@@ -425,17 +462,11 @@ def build_tone_profile_v31(
         )
 
     weights = _calculate_weights(organ_weights, mapping)
-    maximum = max(weights.values())
-    # Canonical exact tie only. Phase 1A does not introduce an ambiguity
-    # epsilon: a strict equality at the canonical normalised precision is the
-    # rule, and any margin-based rule belongs to Phase 1B.
-    leaders = [tone for tone in _TONE_CODES if weights[tone] == maximum]
-    if len(leaders) != 1:
-        # Balanced / tied profile: retain the weights, claim no primary tone.
-        # (The tuple-order argmax fallback that used to pick gong here is gone.)
+    if mode == "integrated_regulation":
+        # Balanced distribution: retain the weights, claim no primary tone.
         return ToneProfileV31(
             schema_version=TONE_PROFILE_SCHEMA_VERSION,
-            regulation_mode="integrated_regulation",
+            regulation_mode=mode,
             weights=weights,
             primary_tone=None,
             secondary_tone=None,
@@ -444,17 +475,30 @@ def build_tone_profile_v31(
             basis=basis,
         )
 
-    primary = leaders[0]
+    primary = decision.primary_tone
+    if primary is None:  # pragma: no cover - decision validator guarantees this
+        raise Agent3Blocked("INVALID_DOMINANCE_DECISION")
+    primary_code = primary.value if hasattr(primary, "value") else str(primary)
+    # Authoritative tone consistency: the primary tone must be the approved
+    # mapping's tone for the decided dominant organ. Derived (smoothed) tone
+    # weights are deliberately NOT compared — they are not dominance authority.
+    dominant_code = getattr(decision.dominant_organ, "value", decision.dominant_organ)
+    mapped_row = _tone_table(mapping).get(primary_code)
+    if mapped_row is None or str(mapped_row.get("organ", "")).strip() != str(dominant_code):
+        raise Agent3Blocked(
+            "DOMINANCE_TONE_MAPPING_MISMATCH",
+            "主音与权威主导脏腑的批准映射不一致。",
+        )
     secondary = None
     if secondary_threshold is not None:
-        candidates = [tone for tone in _TONE_CODES if tone != primary]
+        candidates = [tone for tone in _TONE_CODES if tone != primary_code]
         candidates.sort(key=lambda tone: (-weights[tone], _TONE_CODES.index(tone)))
         if candidates and weights[candidates[0]] >= secondary_threshold:
             secondary = candidates[0]
 
     return ToneProfileV31(
         schema_version=TONE_PROFILE_SCHEMA_VERSION,
-        regulation_mode="personalized_five_tone",
+        regulation_mode=mode,
         weights=weights,
         primary_tone=primary,
         secondary_tone=secondary,
@@ -516,12 +560,21 @@ def build_five_tone_analysis_v31(
     evidence_refs: Sequence[str],
     mapping: Mapping[str, Any],
     generation_spec: GenerationSpecV31 | Mapping[str, Any],
-) -> FiveToneAnalysisReadModel:
+    dominance_decision: OrganDominanceDecisionV1 | Mapping[str, Any] | None = None,
+) -> FiveToneAnalysisReadModel | FiveToneAnalysisReadModelV33:
     """Assemble the public-only V3.1 Five-Tone Analysis read model.
 
     Music parameters are supplied by ``build_generation_spec_v31`` from an
     approved deterministic rule asset. This function only presents that
     object and never accepts caller-selected raw parameters.
+
+    Sprint 6 Phase 1B: when the authoritative ``dominance_decision`` is
+    supplied the read model is the v3.3 shape, which carries the
+    checksum-protected decision audit (``dominant_organ``,
+    ``decision_reason_code``, ``dominance_decision``). Without it the Phase 1A
+    ``v3.2`` shape is produced unchanged, so pre-1B callers and rows stay
+    readable and no audit is ever synthesized from ``primary_tone`` /
+    ``tone_weights`` / argmax.
     """
 
     if profile.mapping_version != _mapping_version(mapping):
@@ -573,8 +626,7 @@ def build_five_tone_analysis_v31(
             evidence_refs=refs,
         )
     ]
-    return FiveToneAnalysisReadModel(
-        schema_version=FIVE_TONE_ANALYSIS_SCHEMA_VERSION,
+    shared = dict(
         confirmed_user_state_ref=confirmed_user_state_ref,
         confirmed_state=_required_text(confirmed_state, field="confirmed_state"),
         state_tendency=tendency,
@@ -604,4 +656,21 @@ def build_five_tone_analysis_v31(
             message=validate_public_text(message),
         ),
         disclaimer=validate_public_text("仅用于音乐调适参考，不构成医学诊断。"),
+    )
+    if dominance_decision is None:
+        return FiveToneAnalysisReadModel(
+            schema_version=FIVE_TONE_ANALYSIS_SCHEMA_VERSION, **shared
+        )
+    decision = _decision_model(dominance_decision)
+    if (
+        decision.regulation_mode != spec.regulation_mode
+        or decision.primary_tone != spec.primary_tone
+    ):
+        raise Agent3Blocked("DOMINANCE_DECISION_TONE_MISMATCH")
+    return FiveToneAnalysisReadModelV33(
+        schema_version=FIVE_TONE_ANALYSIS_SCHEMA_VERSION_V33,
+        dominant_organ=decision.dominant_organ,
+        decision_reason_code=decision.decision_reason_code,
+        dominance_decision=decision,
+        **shared,
     )

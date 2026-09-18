@@ -37,6 +37,7 @@ from pydantic import Field, model_validator
 from backend.app.schemas.v3.common import NonEmptyString, Score01, ToneCode, V3BaseModel
 from backend.app.schemas.v3.flow_v31 import (
     FIVE_TONE_ANALYSIS_SCHEMA_VERSION,
+    FIVE_TONE_ANALYSIS_SCHEMA_VERSION_V33,
     LEGACY_FIVE_TONE_ANALYSIS_SCHEMA_VERSION,
     LEGACY_TONE_PROFILE_SCHEMA_VERSION,
     TONE_PROFILE_SCHEMA_VERSION,
@@ -44,6 +45,7 @@ from backend.app.schemas.v3.flow_v31 import (
     ConfirmedUserStateRef,
     DurationExplanation,
     FiveToneAnalysisReadModel,
+    FiveToneAnalysisReadModelV33,
     GenerationReadiness,
     ListParameterExplanation,
     PublicRationale,
@@ -357,8 +359,13 @@ def resolve_read_model_payload(
     provenance: LegacyProvenance,
     *,
     tone_weights: Mapping[object, object] | None = None,
-) -> tuple[FiveToneAnalysisReadModel, LegacyModeCompatibility | None]:
+) -> tuple[FiveToneAnalysisReadModel | FiveToneAnalysisReadModelV33, LegacyModeCompatibility | None]:
     """Modern read model + compatibility metadata (``None`` for modern rows).
+
+    Sprint 6 Phase 1B: ``five_tone_analysis_read_model_v3.3`` rows carry the
+    full authoritative dominance audit and are returned as-is. Phase 1A
+    ``v3.2`` rows are still returned as ``v3.2`` (they have no Phase 1B audit
+    and none is synthesized from ``primary_tone``/``tone_weights``/argmax).
 
     A pre-Phase-1A read model never persisted tone weights (the field did not
     exist), so a ``personalized_five_tone`` projection can only be produced when
@@ -368,6 +375,8 @@ def resolve_read_model_payload(
 
     if not isinstance(payload, Mapping):
         raise ValueError(f"{UNSUPPORTED_SCHEMA_VERSION}:read_model")
+    if payload.get("schema_version") == FIVE_TONE_ANALYSIS_SCHEMA_VERSION_V33:
+        return FiveToneAnalysisReadModelV33.model_validate(payload), None
     if payload.get("schema_version") == FIVE_TONE_ANALYSIS_SCHEMA_VERSION:
         return FiveToneAnalysisReadModel.model_validate(payload), None
     if not is_legacy_read_model_payload(payload):

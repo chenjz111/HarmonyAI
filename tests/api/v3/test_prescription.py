@@ -42,6 +42,18 @@ def _approved_agent3_assets(monkeypatch):
                 "kidney": {"yu": 0.7, "gong": 0.15, "shang": 0.15},
             }
         },
+        # Phase 1B checks the primary tone against the approved organ->tone
+        # table, so the approved double carries the same shape as the asset.
+        "organ_tone_table": [
+            {"organ": organ, "tone": tone, "tone_cn": tone}
+            for organ, tone in (
+                ("liver", "jiao"),
+                ("heart", "zhi"),
+                ("spleen", "gong"),
+                ("lung", "shang"),
+                ("kidney", "yu"),
+            )
+        ],
     }
     rules = {
         "schema_id": "music_generation_rules_v3.1",
@@ -248,13 +260,22 @@ def _seed_diagnosis(
             from backend.app.services.v3.internal_agent3_service import (
                 build_prescription_spec,
             )
+            from tests.sprint6_phase1b_fixtures import decision_from_organ_weights
 
             user_goal = (
                 UserGoalV31.model_validate(sess.user_goal_json)
                 if sess.user_goal_json is not None
                 else None
             )
-            spec = build_prescription_spec(session, diagnosis, user_goal)
+            # Sprint 6 Phase 1B: the Agent3 adapter consumes the authoritative
+            # dominance decision (it no longer re-derives a mode from weights).
+            # This row's fixture organ profile is liver-dominant (0.7).
+            decision = decision_from_organ_weights(
+                {"liver": 0.7, "heart": 0.1, "spleen": 0.1, "lung": 0.05, "kidney": 0.05}
+            )
+            spec = build_prescription_spec(
+                session, diagnosis, user_goal, dominance_decision=decision
+            )
             read_model = {
                 "schema_version": "five_tone_analysis_read_model_v3.2",
                 "confirmed_user_state_ref": {

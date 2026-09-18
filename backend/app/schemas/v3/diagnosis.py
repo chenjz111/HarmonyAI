@@ -262,11 +262,30 @@ class ProviderCandidateTendency(V3BaseModel):
         return self
 
 
+# Sprint 6 Phase 1B: the provider abstain reason is a CLOSED vocabulary. An
+# unknown or future technical/readiness literal is a schema violation (and
+# therefore a MODEL_SCHEMA_INVALID failure), never a silently accepted legal
+# abstain that could be converted into a music mode downstream.
+ProviderAbstainReason: TypeAlias = Literal[
+    # legal business abstains
+    "ELEMENT_EVIDENCE_INSUFFICIENT",
+    "INSUFFICIENT_EVIDENCE",
+    "evidence_insufficient",
+    "RAG_EMPTY",
+    "UNRESOLVED_MAJOR_CONFLICT",
+    # safety / authority / readiness / technical (never a music mode)
+    "SAFETY_BLOCKED",
+    "ASSESSMENT_NOT_CONFIRMED",
+    "RAG_UNAVAILABLE",
+    "MODEL_SCHEMA_INVALID",
+]
+
+
 class DiagnosisProviderResponse(V3BaseModel):
     status: Literal["success", "degraded", "abstained", "failed"]
     candidate_tendencies: Annotated[list[ProviderCandidateTendency], Field(max_length=3)]
     abstained: bool
-    abstain_reason: NonEmptyString | None
+    abstain_reason: ProviderAbstainReason | None
 
     @model_validator(mode="after")
     def validate_status_union(self) -> "DiagnosisProviderResponse":

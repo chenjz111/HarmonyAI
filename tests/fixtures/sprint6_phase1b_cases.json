@@ -1,0 +1,263 @@
+{
+  "schema_id": "sprint6_phase1b_cases",
+  "schema_version": "1.0",
+  "phase": "Sprint 6 Phase 1B",
+  "description": "Synthetic Phase 1B dominance/ambiguity cases. All data is synthetic; the frozen Phase 0 A-H fixture (tests/fixtures/sprint6_acceptance_cases.json) is not modified.",
+  "frozen_phase_0_fixture": "tests/fixtures/sprint6_acceptance_cases.json",
+  "organ_tone_map": {
+    "liver": "jiao",
+    "heart": "zhi",
+    "spleen": "gong",
+    "lung": "shang",
+    "kidney": "yu"
+  },
+  "cases": {
+    "I": {
+      "title": "lung dominance stays personalized / shang",
+      "organ_support": { "lung": 1.85, "spleen": 1.1125 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "personalized_five_tone",
+        "dominant_organ": "lung",
+        "primary_tone": "shang",
+        "decision_reason_code": "PERSONALIZED_DOMINANCE_THRESHOLDS_MET"
+      }
+    },
+    "J": {
+      "title": "kidney dominance stays personalized / yu",
+      "organ_support": { "kidney": 1.85, "spleen": 1.1125 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "personalized_five_tone",
+        "dominant_organ": "kidney",
+        "primary_tone": "yu",
+        "decision_reason_code": "PERSONALIZED_DOMINANCE_THRESHOLDS_MET"
+      }
+    },
+    "K": {
+      "title": "dominant organ with a strong legal second is still personalized",
+      "organ_support": { "liver": 1.85, "spleen": 1.54 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "personalized_five_tone",
+        "dominant_organ": "liver",
+        "primary_tone": "jiao",
+        "decision_reason_code": "PERSONALIZED_DOMINANCE_THRESHOLDS_MET",
+        "normalized_margin": 0.0914,
+        "raw_ratio": 1.201299,
+        "margin_gate_state": "passed",
+        "ratio_gate_state": "passed"
+      }
+    }
+  },
+  "boundaries": [
+    {
+      "id": "zero_legal_candidate",
+      "title": "no organ clears the approved qualification thresholds",
+      "organ_support": {},
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "basic_wellness",
+        "dominant_organ": null,
+        "primary_tone": null,
+        "decision_reason_code": "BASIC_NO_LEGAL_ORGAN_CANDIDATE"
+      }
+    },
+    {
+      "id": "one_legal_candidate",
+      "title": "exactly one legal candidate after earlier gates pass",
+      "organ_support": { "liver": 1.0 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "personalized_five_tone",
+        "dominant_organ": "liver",
+        "primary_tone": "jiao",
+        "decision_reason_code": "PERSONALIZED_SINGLE_LEGAL_CANDIDATE",
+        "margin_gate_state": "not_applicable_single_candidate",
+        "ratio_gate_state": "not_applicable_single_candidate",
+        "normalized_margin": null,
+        "raw_ratio": null
+      }
+    },
+    {
+      "id": "exact_raw_tie",
+      "title": "canonical raw support equality is an exact tie",
+      "organ_support": { "liver": 1.0, "spleen": 1.0 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "integrated_regulation",
+        "dominant_organ": null,
+        "primary_tone": null,
+        "decision_reason_code": "INTEGRATED_EXACT_TOP_TIE"
+      }
+    },
+    {
+      "id": "margin_exactly_threshold",
+      "title": "normalized margin exactly 0.08 with ratio met stays personalized",
+      "organ_support": { "liver": 6.0, "spleen": 5.0, "lung": 1.5 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "personalized_five_tone",
+        "dominant_organ": "liver",
+        "primary_tone": "jiao",
+        "decision_reason_code": "PERSONALIZED_DOMINANCE_THRESHOLDS_MET",
+        "normalized_margin": 0.08,
+        "raw_ratio": 1.2,
+        "margin_gate_state": "passed",
+        "ratio_gate_state": "passed"
+      }
+    },
+    {
+      "id": "margin_just_below_threshold",
+      "title": "normalized margin just below 0.08 is integrated",
+      "organ_support": { "liver": 6.0, "spleen": 5.0, "lung": 1.6 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "integrated_regulation",
+        "dominant_organ": null,
+        "primary_tone": null,
+        "decision_reason_code": "INTEGRATED_MARGIN_BELOW_THRESHOLD",
+        "normalized_margin": 0.0794,
+        "raw_ratio": 1.2,
+        "margin_gate_state": "failed",
+        "ratio_gate_state": "passed"
+      }
+    },
+    {
+      "id": "ratio_exactly_threshold",
+      "title": "raw ratio exactly 1.20 with margin met stays personalized",
+      "organ_support": { "liver": 6.0, "spleen": 5.0 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "personalized_five_tone",
+        "dominant_organ": "liver",
+        "primary_tone": "jiao",
+        "decision_reason_code": "PERSONALIZED_DOMINANCE_THRESHOLDS_MET",
+        "normalized_margin": 0.091,
+        "raw_ratio": 1.2
+      }
+    },
+    {
+      "id": "ratio_just_below_threshold",
+      "title": "raw ratio just below 1.20 is integrated even when margin passes",
+      "organ_support": { "liver": 5.9, "spleen": 5.0 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "regulation_mode": "integrated_regulation",
+        "dominant_organ": null,
+        "primary_tone": null,
+        "decision_reason_code": "INTEGRATED_RATIO_BELOW_THRESHOLD",
+        "raw_ratio": 1.18,
+        "margin_gate_state": "passed",
+        "ratio_gate_state": "failed"
+      }
+    },
+    {
+      "id": "coverage_exactly_threshold",
+      "title": "4/8 = 0.50 clears the Evidence Gate",
+      "organ_support": { "liver": 1.0 },
+      "confirmed_fact_count": 4,
+      "expected": {
+        "evidence_coverage": 0.5,
+        "coverage_gate_passed": true,
+        "regulation_mode": "personalized_five_tone",
+        "primary_tone": "jiao"
+      }
+    },
+    {
+      "id": "coverage_below_threshold",
+      "title": "3/8 = 0.375 fails the Evidence Gate",
+      "organ_support": { "liver": 1.0 },
+      "confirmed_fact_count": 3,
+      "expected": {
+        "evidence_coverage": 0.375,
+        "coverage_gate_passed": false,
+        "regulation_mode": "basic_wellness",
+        "primary_tone": null,
+        "decision_reason_code": "BASIC_EVIDENCE_COVERAGE_BELOW_THRESHOLD"
+      }
+    },
+    {
+      "id": "unresolved_major_conflict",
+      "title": "an unresolved major conflict fails the Evidence Gate",
+      "organ_support": { "liver": 6.0, "spleen": 5.0 },
+      "confirmed_fact_count": 4,
+      "conflicts": [
+        {
+          "conflict_id": "conf_major",
+          "fact_ids": ["fact_liver_0"],
+          "severity": "major",
+          "resolution_status": "unresolved",
+          "display_summary": "synthetic major conflict"
+        }
+      ],
+      "expected": {
+        "regulation_mode": "basic_wellness",
+        "primary_tone": null,
+        "decision_reason_code": "BASIC_UNRESOLVED_MAJOR_CONFLICT",
+        "dominance_affecting_minor_conflict_ids": []
+      }
+    },
+    {
+      "id": "dominance_affecting_minor_conflict",
+      "title": "an unresolved minor conflict on top1 evidence forces integrated",
+      "organ_support": { "liver": 6.0, "spleen": 5.0 },
+      "confirmed_fact_count": 4,
+      "conflicts": [
+        {
+          "conflict_id": "conf_minor_top1",
+          "fact_ids": ["fact_liver_0"],
+          "severity": "minor",
+          "resolution_status": "unresolved",
+          "display_summary": "synthetic minor conflict"
+        }
+      ],
+      "expected": {
+        "regulation_mode": "integrated_regulation",
+        "primary_tone": null,
+        "decision_reason_code": "INTEGRATED_DOMINANCE_CONFLICT",
+        "dominance_affecting_minor_conflict_ids": ["conf_minor_top1"]
+      }
+    },
+    {
+      "id": "resolved_minor_conflict_is_audit_only",
+      "title": "a resolved minor conflict never changes the mode",
+      "organ_support": { "liver": 6.0, "spleen": 5.0 },
+      "confirmed_fact_count": 4,
+      "conflicts": [
+        {
+          "conflict_id": "conf_minor_resolved",
+          "fact_ids": ["fact_liver_0"],
+          "severity": "minor",
+          "resolution_status": "resolved",
+          "display_summary": "synthetic resolved conflict"
+        }
+      ],
+      "expected": {
+        "regulation_mode": "personalized_five_tone",
+        "primary_tone": "jiao",
+        "dominance_affecting_minor_conflict_ids": []
+      }
+    },
+    {
+      "id": "unrelated_minor_conflict_is_audit_only",
+      "title": "an unresolved minor conflict outside top1/top2 evidence is audit only",
+      "organ_support": { "liver": 6.0, "spleen": 5.0, "kidney": 1.0 },
+      "confirmed_fact_count": 4,
+      "conflicts": [
+        {
+          "conflict_id": "conf_minor_unrelated",
+          "fact_ids": ["fact_kidney_0"],
+          "severity": "minor",
+          "resolution_status": "unresolved",
+          "display_summary": "synthetic unrelated conflict"
+        }
+      ],
+      "expected": {
+        "regulation_mode": "personalized_five_tone",
+        "primary_tone": "jiao",
+        "dominance_affecting_minor_conflict_ids": []
+      }
+    }
+  ]
+}

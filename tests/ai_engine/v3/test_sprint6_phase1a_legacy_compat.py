@@ -40,6 +40,9 @@ from backend.app.services.v3.legacy_mode_compat import (
 TONE_CODES = ("jiao", "zhi", "gong", "shang", "yu")
 FABRICATED_WEIGHTS = {"jiao": 0.1, "zhi": 0.1, "gong": 0.6, "shang": 0.1, "yu": 0.1}
 
+from tests.sprint6_phase1b_fixtures import decision_from_organ_weights
+
+
 
 # --------------------------------------------------------------------------- #
 # pre-Phase-1A payload builders (the stored legacy representations)
@@ -458,11 +461,29 @@ def _mapping() -> dict:
                 "kidney": {"yu": 1.0},
             }
         },
-        "organ_tone_table": [{"tone": tone, "tone_cn": tone} for tone in TONE_CODES],
+        "organ_tone_table": [
+            {"organ": organ, "tone": tone, "tone_cn": tone}
+            for organ, tone in (
+                ("liver", "jiao"),
+                ("heart", "zhi"),
+                ("spleen", "gong"),
+                ("lung", "shang"),
+                ("kidney", "yu"),
+            )
+        ],
     }
 
 
 def test_canonical_authority_matches_across_spec_and_read_model():
+    decision = decision_from_organ_weights(
+        {
+            "spleen": 0.7,
+            "liver": 0.1,
+            "heart": 0.1,
+            "lung": 0.05,
+            "kidney": 0.05,
+        }
+    )
     profile = build_tone_profile_v31(
         diagnosis_id="diag_authority",
         diagnosis_status="success",
@@ -475,6 +496,7 @@ def test_canonical_authority_matches_across_spec_and_read_model():
         },
         supporting_evidence_refs=["fev_1"],
         mapping=_mapping(),
+        dominance_decision=decision,
     )
     rules = {
         "schema_id": "music_generation_rules_v3.1",
@@ -517,6 +539,7 @@ def test_canonical_authority_matches_across_spec_and_read_model():
         evidence_refs=["fev_1"],
         mapping=_mapping(),
         generation_spec=spec,
+        dominance_decision=decision,
     )
     assert (
         profile.regulation_mode
@@ -527,34 +550,61 @@ def test_canonical_authority_matches_across_spec_and_read_model():
 
 
 def test_exact_tie_uses_canonical_precision_without_an_epsilon():
-    """Canonical exact tie → integrated; a near (non-exact) tie is not invented."""
+    """Canonical exact tie → integrated; thin dominance is not promoted.
+
+    Sprint 6 Phase 1B owns the ambiguity rule: the frozen margin/ratio gates
+    (>= 0.08 normalized margin and >= 1.20 raw ratio) replaced the Phase 1A
+    interim "any unique maximum is personalized" behaviour. Exact equality of
+    the canonical *raw* support is still the tie rule.
+    """
 
     uniform = {name: 0.2 for name in ("liver", "heart", "spleen", "lung", "kidney")}
+    tied_decision = decision_from_organ_weights(uniform)
+    assert tied_decision.decision_reason_code == "INTEGRATED_EXACT_TOP_TIE"
     tied = build_tone_profile_v31(
         diagnosis_id="diag_tie",
         diagnosis_status="success",
         organ_weights=uniform,
         supporting_evidence_refs=["fev_1"],
         mapping=_mapping(),
+        dominance_decision=tied_decision,
     )
     assert tied.regulation_mode == "integrated_regulation"
     assert tied.primary_tone is None
     assert tied.weights is not None
 
-    # identical tone weights except one tone marginally higher: canonical
-    # equality does not hold, and Phase 1A introduces no ambiguity epsilon.
+    # A unique but thin maximum fails the frozen normalized-margin gate, so it
+    # is integrated rather than promoted to a personalized primary tone.
+    thin = {
+        "liver": 0.2001,
+        "heart": 0.2,
+        "spleen": 0.2,
+        "lung": 0.2,
+        "kidney": 0.1999,
+    }
+    thin_decision = decision_from_organ_weights(thin)
+    assert thin_decision.regulation_mode == "integrated_regulation"
+    assert thin_decision.dominance.normalized_margin < 0.08
     near = build_tone_profile_v31(
         diagnosis_id="diag_near",
         diagnosis_status="success",
-        organ_weights={
-            "liver": 0.2001,
-            "heart": 0.2,
-            "spleen": 0.2,
-            "lung": 0.2,
-            "kidney": 0.1999,
-        },
+        organ_weights=thin,
         supporting_evidence_refs=["fev_1"],
         mapping=_mapping(),
+        dominance_decision=thin_decision,
     )
-    assert near.regulation_mode == "personalized_five_tone"
-    assert near.primary_tone is not None
+    assert near.regulation_mode == "integrated_regulation"
+    assert near.primary_tone is None
+
+    # A genuine dominance (margin and ratio both pass) stays personalized.
+    strong = decision_from_organ_weights({"spleen": 0.7, "liver": 0.3})
+    strong_profile = build_tone_profile_v31(
+        diagnosis_id="diag_strong",
+        diagnosis_status="success",
+        organ_weights={"spleen": 0.7, "liver": 0.3},
+        supporting_evidence_refs=["fev_1"],
+        mapping=_mapping(),
+        dominance_decision=strong,
+    )
+    assert strong_profile.regulation_mode == "personalized_five_tone"
+    assert strong_profile.primary_tone is not None
