@@ -77,12 +77,18 @@ REASON_INTEGRATED_DOMINANCE_CONFLICT = "INTEGRATED_DOMINANCE_CONFLICT"
 REASON_INTEGRATED_MARGIN_BELOW_THRESHOLD = "INTEGRATED_MARGIN_BELOW_THRESHOLD"
 REASON_INTEGRATED_RATIO_BELOW_THRESHOLD = "INTEGRATED_RATIO_BELOW_THRESHOLD"
 
-# Upstream legal-abstain reasons and their frozen Phase 1B basic_wellness codes.
+# --------------------------------------------------------------------------- #
+# Abstain-reason vocabulary (CLOSED). Classification is by exact recognized
+# code (case-insensitive, whitespace-trimmed) — never by substring markers, and
+# never by an open-ended default.
 #
-# A legal abstain means "no five-tone conclusion can be drawn" and must always
-# resolve to ``basic_wellness``. The same medical meaning is written with
-# different literals across the product (diagnosis persistence), the frozen
-# contract vocabulary and the provider, so normalization lives here — once.
+#   legal business abstain      -> basic_wellness (the only tolerated class)
+#   safety/authority/readiness/ -> non-mode (readiness failure; withheld by the
+#   technical codes                frozen contract, never a music mode)
+#   anything else               -> explicit fail-closed readiness failure
+# --------------------------------------------------------------------------- #
+
+# The only classes that may become ``basic_wellness`` through normalization.
 LEGAL_ABSTAIN_REASON_ALIASES: Mapping[str, str] = {
     "ELEMENT_EVIDENCE_INSUFFICIENT": REASON_BASIC_ELEMENT_EVIDENCE_INSUFFICIENT,
     "INSUFFICIENT_EVIDENCE": REASON_BASIC_ELEMENT_EVIDENCE_INSUFFICIENT,
@@ -92,48 +98,174 @@ LEGAL_ABSTAIN_REASON_ALIASES: Mapping[str, str] = {
     "UNRESOLVED_MAJOR_CONFLICT": REASON_BASIC_UNRESOLVED_MAJOR_CONFLICT,
 }
 
-# Never a music mode: technical / readiness / safety markers. Defence in depth
-# — a technical failure is delivered as a *failed* execution, never as a legal
-# abstain, and a safety block is withheld by design (no Phase 1B producer).
-_TECHNICAL_REASON_MARKERS: tuple[str, ...] = (
-    "SAFETY",
-    "UNAVAILABLE",
-    "MODEL_SCHEMA",
-    "SCHEMA_INVALID",
-    "PROVIDER",
-    "TIMEOUT",
-    "TIME_OUT",
-    "RATE_LIMIT",
-    "NETWORK",
-    "AUTH",
-    "CREDENTIAL",
-    "API_KEY",
-    "CHECKSUM",
-    "ASSET",
-    "NOT_READY",
-    "NOT_CONFIGURED",
-    "MISMATCH",
-    "INGESTION",
-    "CHUNK_REFERENCE",
-    "RAG_UNAPPROVED",
-    "READINESS",
-    "INTERNAL",
+# Safety / authority: withheld or authoritative-state non-mode handling.
+_NON_MODE_SAFETY_AUTHORITY: frozenset[str] = frozenset(
+    {
+        "SAFETY_BLOCKED",
+        "ASSESSMENT_NOT_CONFIRMED",
+        "ASSESSMENT_SNAPSHOT_CONFLICT",
+        "ASSESSMENT_SNAPSHOT_INVALID",
+        "ASSESSMENT_AGGREGATION_NOT_READY",
+        "CONFIRMED_USER_STATE_INVALID",
+        "CONFIRMED_USER_STATE_NOT_CONFIRMED",
+        "CONFIRMED_USER_STATE_NOT_CURRENT",
+        "CONFIRMED_USER_STATE_NOT_OWNED",
+        "DOMINANCE_ABSTAIN_REASON_MISSING",
+        "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE",
+        "DOMINANCE_ABSTAIN_REASON_UNCLASSIFIED",
+        "DOMINANCE_CANDIDATE_POLICY_MISMATCH",
+        "DOMINANCE_DECISION_CONFLICT",
+        "DOMINANCE_DECISION_NOT_PERSISTED",
+        "DOMINANCE_DECISION_REQUIRED",
+        "DOMINANCE_DECISION_TONE_MISMATCH",
+        "DOMINANCE_MAPPING_IDENTITY_MISMATCH",
+        "DOMINANCE_TONE_MAPPING_INVALID",
+        "DOMINANCE_TONE_MAPPING_MISMATCH",
+        "DOMINANCE_UPSTREAM_FAILED",
+        "AGENT3_NOT_READY",
+    }
 )
 
+# Readiness: approved-asset / manifest / ingestion / configuration problems.
+_NON_MODE_READINESS: frozenset[str] = frozenset(
+    {
+        "RAG_UNAVAILABLE",
+        "RAG_NOT_READY",
+        "RAG_MANIFEST_NOT_READY",
+        "RAG_MANIFEST_MISMATCH",
+        "RAG_MANIFEST_ID_MISMATCH",
+        "RAG_INDEX_UNAVAILABLE",
+        "RAG_INDEX_COUNT_MISMATCH",
+        "RAG_DISTANCE_METRIC_MISMATCH",
+        "RAG_DISTANCE_METRIC_NOT_APPROVED",
+        "RAG_KNOWLEDGE_VERSION_MISMATCH",
+        "RAG_INVALID_RESULT",
+        "RAG_INGESTION_NOT_APPROVED",
+        "RAG_QUERY_MAPPING_NOT_APPROVED",
+        "RAG_UNAPPROVED_CHUNK",
+        "CORPUS_CHUNK_COUNT_MISMATCH",
+        "MEDICAL_RULE_ASSET_NOT_READY",
+        "MEDICAL_RULE_ASSET_NOT_CONFIGURED",
+        "MEDICAL_RULE_ASSET_INVALID",
+        "MEDICAL_RULE_ASSET_NOT_APPROVED",
+        "MEDICAL_RULE_ASSET_CHECKSUM_MISMATCH",
+        "MEDICAL_RULE_CHECKSUM_NOT_APPROVED",
+        "MEDICAL_RULE_CODES_INVALID",
+        "MEDICAL_RULE_CODES_NOT_APPROVED",
+        "MEDICAL_RULE_VERSION_MISMATCH",
+        "MEDICAL_RULE_VERSION_NOT_APPROVED",
+        "MEDICAL_ASSET_UNAVAILABLE",
+        "ORGAN_MAPPING_ASSET_NOT_READY",
+        "MUSIC_PARAMETER_ASSET_NOT_READY",
+        "MUSIC_PARAMETER_ASSET_NOT_CONFIGURED",
+        "MUSIC_PARAMETER_ASSET_INVALID",
+        "MUSIC_PARAMETER_ASSET_NOT_APPROVED",
+        "MUSIC_PARAMETER_ASSET_CHECKSUM_MISMATCH",
+        "MUSIC_PARAMETER_ASSET_SCHEMA_INVALID",
+        "MUSIC_PARAMETER_ASSET_VERSION_MISMATCH",
+        "MUSIC_PARAMETER_ASSET_UNAVAILABLE",
+        "DOMINANCE_RULE_ASSET_NOT_READY",
+        "DOMINANCE_RULE_ASSET_NOT_CONFIGURED",
+        "DOMINANCE_RULE_ASSET_INVALID",
+        "DOMINANCE_RULE_ASSET_NOT_APPROVED",
+        "DOMINANCE_RULE_ASSET_CHECKSUM_MISMATCH",
+        "DOMINANCE_RULE_ASSET_SCHEMA_INVALID",
+        "DOMINANCE_RULE_ASSET_VERSION_MISMATCH",
+        "FIVE_TONE_SNAPSHOT_INVALID",
+        "FIVE_TONE_SNAPSHOT_NOT_READY",
+        "GENERATION_SPEC_INVALID",
+        "GENERATION_SPEC_NOT_READY",
+        "GENERATION_SPEC_TONE_MISMATCH",
+        "V31_PROVIDER_CHAIN_NOT_READY",
+        "V31_PIPELINE_FAILED",
+        "DIAGNOSIS_NOT_AVAILABLE",
+        "DIAGNOSIS_REQUEST_INVALID",
+        "DIAGNOSIS_RESPONSE_INVALID",
+        "INVALID_DIAGNOSIS_REFERENCE",
+        "INVALID_DOMINANCE_DECISION",
+        "INVALID_GENERATION_SPEC",
+        "INVALID_SECONDARY_THRESHOLD",
+        "INSUFFICIENT_ORGAN_EVIDENCE",
+        "INSUFFICIENT_EVIDENCE_REFERENCES",
+        "MAPPING_VERSION_MISMATCH",
+        "USER_GOAL_INVALID",
+        "USER_GOAL_RULE_NOT_APPROVED",
+    }
+)
 
-def is_technical_abstain_reason(reason: str) -> bool:
-    """True when a reason must stay a failure and never become a music mode."""
+# Technical: provider / transport / schema / reference integrity failures.
+_NON_MODE_TECHNICAL: frozenset[str] = frozenset(
+    {
+        "MODEL_SCHEMA_INVALID",
+        "DIAGNOSIS_FAILED",
+        "DIAGNOSIS_SCHEMA_INVALID",
+        "DIAGNOSIS_PROVIDER_NOT_CONFIGURED",
+        "DIAGNOSIS_PROVIDER_TIMEOUT",
+        "DIAGNOSIS_PROVIDER_RATE_LIMITED",
+        "DIAGNOSIS_PROVIDER_UNAVAILABLE",
+        "CONNECTION_TIMEOUT",
+        "READ_TIMEOUT",
+        "RATE_LIMITED",
+        "EMPTY_RESPONSE",
+        "INVALID_JSON",
+        "JSON_REPAIR_FAILED",
+        "SCHEMA_VIOLATION",
+        "CHUNK_REFERENCE_INVALID",
+        "FACT_REFERENCE_INVALID",
+        "DUPLICATE_EVIDENCE_REFERENCE",
+        "EVIDENCE_DIRECTION_MISMATCH",
+        "SYNDROME_NOT_APPROVED",
+    }
+)
 
-    normalized = str(reason or "").upper()
-    return any(marker in normalized for marker in _TECHNICAL_REASON_MARKERS)
+NON_MODE_ABSTAIN_REASONS: Mapping[str, str] = {
+    **{code: "safety_or_authority" for code in _NON_MODE_SAFETY_AUTHORITY},
+    **{code: "readiness" for code in _NON_MODE_READINESS},
+    **{code: "technical" for code in _NON_MODE_TECHNICAL},
+}
+
+_LEGAL_ABSTAIN_LOOKUP: Mapping[str, str] = {
+    key.casefold(): value for key, value in LEGAL_ABSTAIN_REASON_ALIASES.items()
+}
+_NON_MODE_LOOKUP: Mapping[str, str] = {
+    key.casefold(): value for key, value in NON_MODE_ABSTAIN_REASONS.items()
+}
+
+ABSTAIN_REASON_CLASS_LEGAL = "legal"
+ABSTAIN_REASON_CLASS_NON_MODE = "non_mode"
+ABSTAIN_REASON_CLASS_UNCLASSIFIED = "unclassified"
+ABSTAIN_REASON_CLASS_MISSING = "missing"
+
+
+def classify_abstain_reason(reason: str | None) -> str:
+    """The single classification seam: exact code, closed vocabulary."""
+
+    text = str(reason or "").strip()
+    if not text:
+        return ABSTAIN_REASON_CLASS_MISSING
+    folded = text.casefold()
+    if folded in _LEGAL_ABSTAIN_LOOKUP:
+        return ABSTAIN_REASON_CLASS_LEGAL
+    if folded in _NON_MODE_LOOKUP:
+        return ABSTAIN_REASON_CLASS_NON_MODE
+    return ABSTAIN_REASON_CLASS_UNCLASSIFIED
+
+
+def is_non_mode_abstain_reason(reason: str) -> bool:
+    """True for the recognized safety/authority/readiness/technical codes."""
+
+    return str(reason or "").strip().casefold() in _NON_MODE_LOOKUP
 
 
 def normalize_legal_abstain_reason(reason: str) -> str:
-    """The single legal-abstain normalizer (see the alias table above).
+    """Map an upstream legal-abstain reason to its frozen basic reason.
 
-    Raises :class:`DominanceReadinessError` for an empty reason (unreachable
-    upstream: the provider response schema requires a reason for an abstained
-    result) and for technical/readiness/safety reasons.
+    Closed vocabulary: only the recognized legal aliases become
+    ``basic_wellness``. Recognized non-mode codes raise
+    ``DOMINANCE_ABSTAIN_REASON_NOT_A_MODE``; an empty reason raises
+    ``DOMINANCE_ABSTAIN_REASON_MISSING``; **anything else fails closed** with
+    ``DOMINANCE_ABSTAIN_REASON_UNCLASSIFIED`` — an unknown or future
+    technical/readiness code can never be converted into a business mode.
     """
 
     text = str(reason or "").strip()
@@ -142,21 +274,20 @@ def normalize_legal_abstain_reason(reason: str) -> str:
             "DOMINANCE_ABSTAIN_REASON_MISSING",
             "上游中止结果缺少可判定的原因，已停止推断音乐模式。",
         )
-    mapped = LEGAL_ABSTAIN_REASON_ALIASES.get(text) or LEGAL_ABSTAIN_REASON_ALIASES.get(
-        text.lower()
-    )
+    folded = text.casefold()
+    mapped = _LEGAL_ABSTAIN_LOOKUP.get(folded)
     if mapped is not None:
         return mapped
-    if is_technical_abstain_reason(text):
+    if folded in _NON_MODE_LOOKUP:
         raise DominanceReadinessError(
             "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE",
-            "技术或就绪类失败不得转为音乐模式。",
+            "技术、就绪、安全或权威类原因不得转为音乐模式。",
         )
-    # Unrecognized *legal* abstain: the diagnosis itself declined to conclude,
-    # so no five-tone direction may be claimed. The frozen vocabulary has no
-    # dedicated code for this class, and the insufficient-evidence class is the
-    # only abstain class defined as "no conclusion available".
-    return REASON_BASIC_ELEMENT_EVIDENCE_INSUFFICIENT
+    raise DominanceReadinessError(
+        "DOMINANCE_ABSTAIN_REASON_UNCLASSIFIED",
+        "上游中止原因不在已批准词表内，已按未分类状态停止推断音乐模式。",
+    )
+
 
 # Fixed organ order for deterministic *audit display* only. It never breaks a
 # medical tie: the frozen tie rule is canonical raw support equality.
@@ -1001,7 +1132,13 @@ __all__ = [
     "dominance_affecting_minor_conflict_ids",
     "fact_claim_index",
     "is_questionnaire_evidence",
-    "is_technical_abstain_reason",
+    "ABSTAIN_REASON_CLASS_LEGAL",
+    "ABSTAIN_REASON_CLASS_MISSING",
+    "ABSTAIN_REASON_CLASS_NON_MODE",
+    "ABSTAIN_REASON_CLASS_UNCLASSIFIED",
+    "classify_abstain_reason",
+    "is_non_mode_abstain_reason",
+    "NON_MODE_ABSTAIN_REASONS",
     "load_configured_dominance_rule",
     "normalize_legal_abstain_reason",
     "organ_tone_map",

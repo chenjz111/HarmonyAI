@@ -847,6 +847,63 @@ def test_abstained_provider_response_requires_an_explicit_reason():
 # --------------------------------------------------------------------------- #
 
 
+def test_provider_abstain_reason_vocabulary_is_closed():
+    """The provider boundary accepts only the frozen compound vocabulary.
+
+    B4: an unknown/future technical literal must fail as a schema violation
+    (MODEL_SCHEMA_INVALID path), never be accepted as an arbitrary legal abstain
+    that could be converted into a music mode downstream.
+    """
+
+    from pydantic import ValidationError
+
+    from backend.app.schemas.v3.diagnosis import (
+        ProviderAbstainReason,
+        DiagnosisProviderResponse,
+    )
+
+    allowed = list(ProviderAbstainReason.__args__)
+    assert set(allowed) == {
+        # legal business abstains
+        "ELEMENT_EVIDENCE_INSUFFICIENT",
+        "INSUFFICIENT_EVIDENCE",
+        "evidence_insufficient",
+        "RAG_EMPTY",
+        "UNRESOLVED_MAJOR_CONFLICT",
+        # safety / authority / readiness / technical (never a music mode)
+        "SAFETY_BLOCKED",
+        "ASSESSMENT_NOT_CONFIRMED",
+        "RAG_UNAVAILABLE",
+        "MODEL_SCHEMA_INVALID",
+    }
+    for reason in allowed:
+        DiagnosisProviderResponse.model_validate(
+            {
+                "status": "abstained",
+                "candidate_tendencies": [],
+                "abstained": True,
+                "abstain_reason": reason,
+            }
+        )
+    for unknown in (
+        "MODEL_TRUNCATED",
+        "LLM_EMPTY_RESPONSE",
+        "PROMPT_OVERFLOW",
+        "OCR_DEGRADED",
+        "CONTRACT_UNCLASSIFIED",
+        "SOME_FUTURE_TECHNICAL_REASON",
+    ):
+        with pytest.raises(ValidationError):
+            DiagnosisProviderResponse.model_validate(
+                {
+                    "status": "abstained",
+                    "candidate_tendencies": [],
+                    "abstained": True,
+                    "abstain_reason": unknown,
+                }
+            )
+
+
 def test_case_f_real_questionnaire_pipeline_is_personalized_liver(db_session_factory):
     """Case F must be proven through the real pipeline, with computed numbers.
 

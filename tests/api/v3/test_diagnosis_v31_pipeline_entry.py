@@ -484,7 +484,9 @@ def test_formal_router_persists_provider_abstain_and_replays_without_duplicate(
             status="abstained",
             candidate_tendencies=[],
             abstained=True,
-            abstain_reason="NO_LEGAL_CANDIDATE",
+            # Sprint 6 Phase 1B: the provider abstain reason is a closed
+            # vocabulary (an unknown literal is a MODEL_SCHEMA_INVALID failure).
+            abstain_reason="INSUFFICIENT_EVIDENCE",
         )
 
     dependencies.diagnosis_provider.acomplete_json = abstain_provider
@@ -523,7 +525,7 @@ def test_formal_router_persists_provider_abstain_and_replays_without_duplicate(
         assert audit_db.query(DiagnosisRun).count() == 1
         provider_run = audit_db.query(AiProviderRun).one()
         assert provider_run.status == "abstained"
-        assert provider_run.error_code == "NO_LEGAL_CANDIDATE"
+        assert provider_run.error_code == "INSUFFICIENT_EVIDENCE"
         assert provider_run.attempts == 1
     finally:
         audit_db.close()

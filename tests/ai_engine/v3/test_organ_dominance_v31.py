@@ -19,8 +19,14 @@ from backend.app.services.v3.organ_dominance_service import (
     canonical_evidence_coverage,
     decision_snapshot_checksum,
     dominance_affecting_minor_conflict_ids,
+    ABSTAIN_REASON_CLASS_LEGAL,
+    ABSTAIN_REASON_CLASS_MISSING,
+    ABSTAIN_REASON_CLASS_NON_MODE,
+    ABSTAIN_REASON_CLASS_UNCLASSIFIED,
+    NON_MODE_ABSTAIN_REASONS,
+    classify_abstain_reason,
     fact_claim_index,
-    is_technical_abstain_reason,
+    is_non_mode_abstain_reason,
     load_configured_dominance_rule,
     normalize_legal_abstain_reason,
     organ_tone_map,
@@ -584,26 +590,158 @@ def test_legal_abstain_aliases_share_one_semantic_mapping():
     assert "ELEMENT_EVIDENCE_INSUFFICIENT" in LEGAL_ABSTAIN_REASON_ALIASES
 
 
+# --------------------------------------------------------------------------- #
+# B4 — frozen six-code contract table (closed vocabulary, exact codes only)
+# --------------------------------------------------------------------------- #
+
+FROZEN_ABSTAIN_VOCABULARY = [
+    ("SAFETY_BLOCKED", ABSTAIN_REASON_CLASS_NON_MODE, None, "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE"),
+    ("ASSESSMENT_NOT_CONFIRMED", ABSTAIN_REASON_CLASS_NON_MODE, None, "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE"),
+    ("INSUFFICIENT_EVIDENCE", ABSTAIN_REASON_CLASS_LEGAL, "basic_wellness", None),
+    ("UNRESOLVED_MAJOR_CONFLICT", ABSTAIN_REASON_CLASS_LEGAL, "basic_wellness", None),
+    ("RAG_UNAVAILABLE", ABSTAIN_REASON_CLASS_NON_MODE, None, "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE"),
+    ("MODEL_SCHEMA_INVALID", ABSTAIN_REASON_CLASS_NON_MODE, None, "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE"),
+]
+
+FROZEN_ABSTAIN_REASON_CODES = {
+    "INSUFFICIENT_EVIDENCE": "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT",
+    "UNRESOLVED_MAJOR_CONFLICT": "BASIC_UNRESOLVED_MAJOR_CONFLICT",
+}
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected_class", "expected_mode", "expected_error"),
+    FROZEN_ABSTAIN_VOCABULARY,
+    ids=[item[0] for item in FROZEN_ABSTAIN_VOCABULARY],
+)
+def test_frozen_six_code_abstain_contract_table(
+    reason, expected_class, expected_mode, expected_error
+):
+    """The frozen contract vocabulary classifies exactly, with no open default."""
+
+    assert classify_abstain_reason(reason) == expected_class
+
+    if expected_mode is not None:
+        assert normalize_legal_abstain_reason(reason) == FROZEN_ABSTAIN_REASON_CODES[reason]
+        for support in ({"liver": 6.0, "spleen": 5.0}, {"liver": 1.0, "spleen": 1.0}):
+            decision = decision_from_organ_support(
+                support, upstream_abstain_reason=reason, coverage_count=8
+            )
+            assert decision.regulation_mode == "basic_wellness"
+            assert decision.primary_tone is None
+            assert decision.dominant_organ is None
+        return
+
+    # non-mode codes never produce any decision object / regulation mode
+    with pytest.raises(DominanceReadinessError) as error:
+        normalize_legal_abstain_reason(reason)
+    assert error.value.error_code == expected_error
+    with pytest.raises(DominanceReadinessError) as blocked:
+        decision_from_organ_support(
+            {"liver": 6.0, "spleen": 5.0}, upstream_abstain_reason=reason, coverage_count=8
+        )
+    assert blocked.value.error_code == expected_error
+
+
 @pytest.mark.parametrize(
     "reason",
     [
-        "ELEMENT_EVIDENCE_INSUFFICIENT",
-        "INSUFFICIENT_EVIDENCE",
-        "evidence_insufficient",
-        "unrecognized_legal_abstain_reason",
+        "RAG_NOT_READY",
+        "RAG_MANIFEST_NOT_READY",
+        "RAG_INGESTION_NOT_APPROVED",
+        "RAG_UNAPPROVED_CHUNK",
+        "CHUNK_REFERENCE_INVALID",
+        "MEDICAL_RULE_ASSET_NOT_READY",
+        "MEDICAL_RULE_VERSION_MISMATCH",
+        "ORGAN_MAPPING_ASSET_NOT_READY",
+        "MUSIC_PARAMETER_ASSET_CHECKSUM_MISMATCH",
+        "MUSIC_PARAMETER_ASSET_VERSION_MISMATCH",
+        "DOMINANCE_RULE_ASSET_NOT_READY",
+        "DOMINANCE_MAPPING_IDENTITY_MISMATCH",
+        "DOMINANCE_CANDIDATE_POLICY_MISMATCH",
+        "DIAGNOSIS_FAILED",
+        "DIAGNOSIS_SCHEMA_INVALID",
+        "DIAGNOSIS_PROVIDER_NOT_CONFIGURED",
+        "DIAGNOSIS_PROVIDER_TIMEOUT",
+        "DIAGNOSIS_PROVIDER_RATE_LIMITED",
+        "DIAGNOSIS_PROVIDER_UNAVAILABLE",
+        "CONNECTION_TIMEOUT",
+        "READ_TIMEOUT",
+        "EMPTY_RESPONSE",
+        "ASSESSMENT_SNAPSHOT_INVALID",
+        "CONFIRMED_USER_STATE_NOT_CURRENT",
     ],
 )
-def test_any_legal_abstain_routes_to_basic_wellness(reason):
+def test_existing_production_non_mode_codes_are_classified_exactly(reason):
+    assert is_non_mode_abstain_reason(reason) is True
+    assert classify_abstain_reason(reason) == ABSTAIN_REASON_CLASS_NON_MODE
+    assert NON_MODE_ABSTAIN_REASONS[reason] in {"safety_or_authority", "readiness", "technical"}
+    with pytest.raises(DominanceReadinessError) as error:
+        normalize_legal_abstain_reason(reason)
+    assert error.value.error_code == "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "MODEL_TRUNCATED",
+        "LLM_EMPTY_RESPONSE",
+        "PROMPT_OVERFLOW",
+        "OCR_DEGRADED",
+        "CONTRACT_UNCLASSIFIED",
+        "SOME_FUTURE_TECHNICAL_REASON",
+    ],
+)
+def test_unknown_abstain_reasons_fail_closed(reason):
+    """Future vocabulary extension must never become a music mode."""
+
+    assert classify_abstain_reason(reason) == ABSTAIN_REASON_CLASS_UNCLASSIFIED
+    assert is_non_mode_abstain_reason(reason) is False
+    with pytest.raises(DominanceReadinessError) as error:
+        normalize_legal_abstain_reason(reason)
+    assert error.value.error_code == "DOMINANCE_ABSTAIN_REASON_UNCLASSIFIED"
+    with pytest.raises(DominanceReadinessError) as blocked:
+        decision_from_organ_support(
+            {"liver": 6.0, "spleen": 5.0}, upstream_abstain_reason=reason, coverage_count=8
+        )
+    assert blocked.value.error_code == "DOMINANCE_ABSTAIN_REASON_UNCLASSIFIED"
+
+
+def test_classification_is_exact_not_substring_based():
+    """A code that merely *contains* a recognized word is unclassified."""
+
+    for reason in (
+        "NOT_SAFETY_BLOCKED",
+        "RAG_UNAVAILABLE_EXTENDED",
+        "PRECHECK_ASSESSMENT_NOT_CONFIRMED",
+        "MODEL_SCHEMA_INVALID_V2",
+        "DEFINITELY_INSUFFICIENT_EVIDENCE",
+    ):
+        assert classify_abstain_reason(reason) == ABSTAIN_REASON_CLASS_UNCLASSIFIED
+        with pytest.raises(DominanceReadinessError) as error:
+            normalize_legal_abstain_reason(reason)
+        assert error.value.error_code == "DOMINANCE_ABSTAIN_REASON_UNCLASSIFIED"
+
+
+def test_abstain_reason_classification_of_missing_and_legal_values():
+    assert classify_abstain_reason(None) == ABSTAIN_REASON_CLASS_MISSING
+    assert classify_abstain_reason("   ") == ABSTAIN_REASON_CLASS_MISSING
+    assert classify_abstain_reason("  rag_empty  ") == ABSTAIN_REASON_CLASS_LEGAL
+    assert classify_abstain_reason("Rag_Empty") == ABSTAIN_REASON_CLASS_LEGAL
+
+
+def test_any_legal_abstain_routes_to_basic_wellness():
     """No legal abstain may ever become personalized or integrated."""
 
-    for support in ({"liver": 6.0, "spleen": 5.0}, {"liver": 1.0, "spleen": 1.0}):
-        decision = decision_from_organ_support(
-            support, upstream_abstain_reason=reason, coverage_count=8
-        )
-        assert decision.regulation_mode == "basic_wellness"
-        assert decision.primary_tone is None
-        assert decision.dominant_organ is None
-        assert decision.coverage.coverage_gate_passed is True
+    for reason in ("ELEMENT_EVIDENCE_INSUFFICIENT", "INSUFFICIENT_EVIDENCE", "evidence_insufficient"):
+        for support in ({"liver": 6.0, "spleen": 5.0}, {"liver": 1.0, "spleen": 1.0}):
+            decision = decision_from_organ_support(
+                support, upstream_abstain_reason=reason, coverage_count=8
+            )
+            assert decision.regulation_mode == "basic_wellness"
+            assert decision.primary_tone is None
+            assert decision.dominant_organ is None
+            assert decision.coverage.coverage_gate_passed is True
 
 
 def test_rag_empty_and_unresolved_conflict_keep_their_frozen_reasons():
@@ -616,29 +754,6 @@ def test_rag_empty_and_unresolved_conflict_keep_their_frozen_reasons():
         "basic_wellness",
         "BASIC_UNRESOLVED_MAJOR_CONFLICT",
     )
-
-
-@pytest.mark.parametrize(
-    "reason",
-    [
-        "RAG_UNAVAILABLE",
-        "MODEL_SCHEMA_INVALID",
-        "PROVIDER_TIMEOUT",
-        "PROVIDER_RATE_LIMITED",
-        "NETWORK_ERROR",
-        "PROVIDER_AUTH_FAILED",
-        "MUSIC_PARAMETER_ASSET_CHECKSUM_MISMATCH",
-        "DOMINANCE_RULE_ASSET_NOT_READY",
-        "SAFETY_BLOCKED",
-    ],
-)
-def test_technical_and_safety_reasons_never_become_a_mode(reason):
-    assert is_technical_abstain_reason(reason) is True
-    with pytest.raises(DominanceReadinessError) as error:
-        normalize_legal_abstain_reason(reason)
-    assert error.value.error_code == "DOMINANCE_ABSTAIN_REASON_NOT_A_MODE"
-    with pytest.raises(DominanceReadinessError):
-        decision_from_organ_support({"liver": 6.0, "spleen": 5.0}, upstream_abstain_reason=reason)
 
 
 def test_missing_abstain_reason_fails_closed_not_a_mode():
