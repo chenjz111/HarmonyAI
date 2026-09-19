@@ -23,6 +23,10 @@ from backend.app.schemas.v3.diagnosis import (
     RagQuery,
     RagResult,
 )
+from backend.ai_engine.v3.rag_ingestion import (
+    approved_text_checksum,
+    load_rag_query_policy,
+)
 
 
 class DiagnosisPipelineFailure(RuntimeError):
@@ -78,6 +82,12 @@ def build_diagnosis_query(snapshot: Mapping[str, object]) -> RagQuery:
         "contradicting_fact_ids": contradicting,
     }
     query_id = f"query_{sha256(_canonical_json(canonical)).hexdigest()[:24]}"
+    # Sprint 6 Phase 3 (R3-D3): top_k is never a hard-coded product literal.
+    # The caller supplies the approved policy value; a caller that does not is
+    # resolved against the approved policy asset instead of a code default.
+    top_k = snapshot.get("top_k")
+    if top_k is None:
+        top_k = load_rag_query_policy().top_k
     return RagQuery(
         query_id=query_id,
         knowledge_version=canonical["knowledge_version"],
@@ -86,7 +96,7 @@ def build_diagnosis_query(snapshot: Mapping[str, object]) -> RagQuery:
         claim_codes=claims,
         supporting_fact_ids=supporting,
         contradicting_fact_ids=contradicting,
-        top_k=int(snapshot.get("top_k", 5)),
+        top_k=int(top_k),
     )
 
 
@@ -171,6 +181,7 @@ async def execute_diagnosis_provider(
     rag_result: RagResult,
     medical_rule_version: str | None = None,
     rag_chunk_checksums: Mapping[str, str] | None = None,
+    rag_text_checksums: Mapping[str, str] | None = None,
     confirmed_state_text: str | None = None,
 ) -> DiagnosisProviderExecution:
     """Run Agent2 only when the approved RAG gate provides grounded hits.
@@ -245,13 +256,35 @@ async def execute_diagnosis_provider(
                 reason_code="RAG_UNAPPROVED_CHUNK",
                 attempts=0,
             )
-        if approved_chunk_ids and hit.chunk_id not in approved_chunk_ids:
+        # Sprint 6 Phase 3 (R3-D1): absolute membership enforcement. A
+        # successful hit with an empty approved set is invalid; the previous
+        # conditional guard silently disabled the check when the set was empty.
+        if hit.chunk_id not in approved_chunk_ids:
             return execution(
                 "failed",
                 response=None,
                 reason_code="CHUNK_REFERENCE_INVALID",
                 attempts=0,
             )
+        # Sprint 6 Phase 3 (R3-D1): defence in depth for any caller handing over
+        # the approved live-text hashes. The retrieval store already fails
+        # closed on its own; this protects the provider boundary as well.
+        if rag_text_checksums:
+            expected_text_checksum = rag_text_checksums.get(hit.chunk_id)
+            if expected_text_checksum is None:
+                return execution(
+                    "failed",
+                    response=None,
+                    reason_code="RAG_CHUNK_TEXT_UNVERIFIABLE",
+                    attempts=0,
+                )
+            if approved_text_checksum(hit.text) != expected_text_checksum:
+                return execution(
+                    "failed",
+                    response=None,
+                    reason_code="RAG_CHUNK_CONTENT_CHECKSUM_MISMATCH",
+                    attempts=0,
+                )
 
     if medical_rule_version is not None and getattr(provider, "medical_rule_version", None) != medical_rule_version:
         return execution(

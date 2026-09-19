@@ -435,6 +435,9 @@ def _build_v31_assessment_snapshot(
         provider.allowed_chunk_ids = set(
             getattr(deps.rag_store, "approved_chunk_ids", ())
         )
+    # Sprint 6 Phase 3 (R3-D3): top_k and the query-mapping identity are
+    # authoritative in the approved/versioned RAG query policy asset.
+    query_policy = _resolve_rag_query_policy(deps)
     return {
         "assessment_id": assessment.assessment_id,
         "assessment_revision": assessment_revision.revision,
@@ -461,10 +464,35 @@ def _build_v31_assessment_snapshot(
         "manifest_checksum": manifest.manifest_checksum,
         "embedding_version": manifest.embedding_version,
         "retrieval_score_semantics": manifest.retrieval_score_semantics,
-        "top_k": 5,
+        "top_k": int(query_policy.top_k),
+        "query_builder_version": query_policy.builder_identity,
         "max_candidates": 3,
         "allowed_syndrome_codes": sorted(deps.allowed_syndrome_codes),
     }
+
+
+def _resolve_rag_query_policy(deps):
+    """Resolve the approved RAG query policy for this diagnosis request.
+
+    Order: the dependency bundle, then the bound RAG store, then the approved
+    repository asset (checksum-verified). A missing or invalid policy is a
+    readiness failure — never a silent default.
+    """
+
+    policy = getattr(deps, "rag_query_policy", None)
+    if policy is None:
+        policy = getattr(getattr(deps, "rag_store", None), "query_policy", None)
+    if policy is not None:
+        return policy
+    from backend.ai_engine.v3.rag_ingestion import (
+        RagQueryPolicyNotReady,
+        load_rag_query_policy,
+    )
+
+    try:
+        return load_rag_query_policy()
+    except RagQueryPolicyNotReady as error:
+        raise V31ReadinessError(error.error_code, error.safe_message) from None
 
 
 def _run_v31_pipeline(
@@ -834,7 +862,9 @@ def _persist_pipeline_audit(
     for field, value in {
         "diagnosis_id": diagnosis_id,
         "query_hash": _request_hash(audit.query.model_dump(mode="json")),
-        "query_builder_version": "diagnosis_query_v3.1",
+        "query_builder_version": getattr(
+            audit, "query_builder_version", "diagnosis_query_v3.1"
+        ),
         "knowledge_manifest_id": manifest_row.knowledge_manifest_id,
         "knowledge_version": audit.rag_result.knowledge_version,
         "manifest_checksum": manifest_checksum,
@@ -850,6 +880,13 @@ def _persist_pipeline_audit(
     db.flush()
     chunk_checksums = audit.rag_chunk_checksums
     for hit in audit.rag_result.hits:
+        # Sprint 6 Phase 3 (B2): the persisted audit keeps its historical,
+        # documented semantics. ``chunk_content_checksum`` is the approved
+        # manifest/corpus payload checksum (the persistence contract requires it
+        # to match the manifest) and ``text_ciphertext`` keeps the historical
+        # request-hash form, so pre-Phase-3 and Phase-3 rows stay comparable.
+        # Live-text integrity is verified separately at retrieval and at the
+        # provider boundary; it is deliberately not folded into these fields.
         chunk_checksum = chunk_checksums.get(hit.chunk_id) or _request_hash(
             {"chunk_id": hit.chunk_id, "text": hit.text}
         )

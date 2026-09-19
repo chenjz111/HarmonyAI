@@ -91,7 +91,8 @@ def _manifest(chunks):
         "embedding_version": "text-embedding-v4@1024",
         "distance_metric": "cosine",
         "retrieval_score_semantics": "normalized_similarity",
-        "minimum_score": 0.5,
+        # Sprint 6 Phase 3: restate the approved query-policy semantics.
+        "minimum_score": 0.740741,
         "chunk_count": len(chunks),
         "manifest_checksum": "",
         "review_status": "approved",

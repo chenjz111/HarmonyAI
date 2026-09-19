@@ -32,6 +32,9 @@ class V31AiPipelineDependencies:
     generation_parameter_rules: Mapping[str, object]
     allowed_syndrome_codes: frozenset[str]
     medical_rule_version: str
+    # Sprint 6 Phase 3 (R3-D3): the approved/versioned RAG query policy is the
+    # authority for top_k and the query-mapping identity.
+    rag_query_policy: object | None = None
 
 # ---------------------------------------------------------------------------
 # Feature flag
@@ -285,6 +288,17 @@ def get_v31_ai_pipeline_dependencies(
         )
 
     rag_store = get_v31_rag_store(values)
+    from backend.ai_engine.v3.rag_ingestion import (
+        RagQueryPolicyNotReady,
+        load_rag_query_policy,
+    )
+
+    try:
+        query_policy = getattr(rag_store, "query_policy", None) or load_rag_query_policy(
+            environment=values
+        )
+    except RagQueryPolicyNotReady as error:
+        raise V31ReadinessFailure(error.error_code, error.safe_message) from None
     medical_review_versions = set(
         getattr(rag_store, "medical_review_versions", ())
     )
@@ -323,6 +337,7 @@ def get_v31_ai_pipeline_dependencies(
         generation_parameter_rules=generation_parameter_rules,
         allowed_syndrome_codes=medical_rule_asset.allowed_syndrome_codes,
         medical_rule_version=medical_rule_version,
+        rag_query_policy=query_policy,
     )
 
 
