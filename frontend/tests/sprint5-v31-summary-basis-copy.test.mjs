@@ -71,7 +71,7 @@ test("状态总结页渲染后端 read model 的真实字段", () => {
   assert.ok(!/claim_code\s*===/.test(confirmMarkup), "不得在前端按 claim_code 推导结论")
 })
 
-test("状态总结页保留原业务行为：全文编辑 + 两个冻结按钮", () => {
+test("状态总结页保留原业务行为：全文编辑 + 两个冻结按钮 + 受控两态条目", () => {
   assert.ok(confirmMarkup.includes("基本符合，继续"), "确认按钮保持")
   assert.ok(confirmMarkup.includes("有些地方不对，我要修改"), "修改入口保持")
   assert.ok(confirmPage.includes("edited_summary_text"), "V3.1 仍为完整文本 edited_summary_text")
@@ -80,6 +80,9 @@ test("状态总结页保留原业务行为：全文编辑 + 两个冻结按钮",
   // 不得恢复结构化逐项 severity 编辑
   assert.ok(!confirmMarkup.includes("severity-row"), "不得恢复结构化 severity 编辑行")
   assert.ok(!confirmMarkup.includes("allowed_values"), "不得恢复结构化可选值编辑")
+  // Sprint 6 Phase 2（D6 取代旧的 full-text-only freeze）：只允许受限的
+  // “保留 / 不采用”证据两态控制，仍然不是 severity 医学编辑器。
+  assert.ok(confirmMarkup.includes("保留") && confirmMarkup.includes("不采用"), "两态证据控制保持可见")
 })
 
 // ---------------------------------------------------------------- 问题 2

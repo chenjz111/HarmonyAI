@@ -65,8 +65,20 @@ def test_confirmation_with_edited_summary_creates_revision(monkeypatch, db_sessi
     changed = _v3_data(response)
     assert changed["revision"] == 2
     assert changed["status"] == "confirmed"
-    assert changed["state_summary"] == "最近容易烦躁，也会感到胸胁不舒。"
-    assert changed["presentation"]["summary"] == changed["state_summary"]
+    # Phase 2 (Option B): the narrative is presentation only, and the
+    # authoritative state text is the deterministic projection of the confirmed
+    # structured evidence.
+    assert changed["presentation"]["summary"] == "最近容易烦躁，也会感到胸胁不舒。"
+    assert changed["state_summary"] != changed["presentation"]["summary"]
+    assert changed["state_summary"].startswith("已确认的近期状态：")
+    assert "烦躁易怒倾向" in changed["state_summary"]
+    assert {
+        item["fact_evidence_id"] for item in changed["fact_evidence"]
+    } == {item["fact_evidence_id"] for item in created["fact_evidence"]}
+    assert all(
+        item["confirmation_status"] == "confirmed"
+        for item in changed["fact_evidence"]
+    )
 
 def test_confirmation_rejects_stale_revision(monkeypatch, db_session_factory):
     headers, created = _create_available_assessment(monkeypatch, db_session_factory)
