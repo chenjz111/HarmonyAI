@@ -1,0 +1,66 @@
+{
+  "schema_id": "rag_query_policy",
+  "schema_version": "3.2.0",
+  "asset_version": "rag-query-policy-v3.2-r1",
+  "review_status": "approved",
+  "query_builder_version": "diagnosis_query_v3.2",
+  "top_k": 5,
+  "distance_metric": "cosine",
+  "retrieval_score_semantics": "normalized_similarity",
+  "source_cosine_threshold": 0.65,
+  "minimum_score": 0.740741,
+  "score_conversion": "normalized_similarity = 1 / (2 - cosine)",
+  "score_comparison_epsilon": 1e-06,
+  "default_query_intent": "状态关联和相关说明",
+  "organ_display_names": {
+    "liver": "肝",
+    "heart": "心",
+    "spleen": "脾",
+    "lung": "肺",
+    "kidney": "肾"
+  },
+  "query_intent_terms": {
+    "anger_tendency": {
+      "intent": "五志五脏对应关系和相关说明",
+      "terms": [
+        "怒"
+      ]
+    },
+    "agitation_tendency": {
+      "intent": "五志五脏对应关系和相关说明",
+      "terms": [
+        "喜"
+      ]
+    },
+    "overthinking_tendency": {
+      "intent": "五志五脏对应关系和相关说明",
+      "terms": [
+        "思"
+      ]
+    },
+    "sadness_tendency": {
+      "intent": "五志五脏对应关系和相关说明",
+      "terms": [
+        "悲"
+      ]
+    },
+    "fear_tendency": {
+      "intent": "五志五脏对应关系和相关说明",
+      "terms": [
+        "恐"
+      ]
+    },
+    "sleep_disturbance": {
+      "intent": "状态关联和相关说明",
+      "terms": [
+        "不寐"
+      ]
+    }
+  },
+  "claim_dictionary_reference": {
+    "schema_id": "claim_dictionary_v3",
+    "schema_version": "3.0.0",
+    "content_checksum": "sha256:9a20931048e775fbf1b4c02861e02c912d26b3b8d409bee33428efaded1f77b9"
+  },
+  "content_checksum": "sha256:aabee0682d47b4c3f1ade3dd3531b8dd4ce98b1ee86d6c8f911b343c20d7b495"
+}

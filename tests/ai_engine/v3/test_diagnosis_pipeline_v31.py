@@ -362,6 +362,8 @@ def test_diagnosis_execution_fails_when_medical_rule_version_does_not_match():
 
     class Provider:
         medical_rule_version = "medical-rules-v3.1-r0"
+        # Sprint 6 Phase 3: a successful hit requires a non-empty approved set.
+        allowed_chunk_ids = {"chunk_1"}
 
         async def acomplete_json(self, **kwargs):
             raise AssertionError("provider must not run with a stale medical rule asset")
@@ -781,6 +783,9 @@ def test_diagnosis_execution_preserves_retryable_provider_failure():
     from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
 
     class Provider:
+        # Sprint 6 Phase 3: a successful hit requires a non-empty approved set.
+        allowed_chunk_ids = {"chunk_1"}
+
         async def acomplete_json(self, **kwargs):
             del kwargs
             raise DiagnosisProviderFailure(
@@ -959,6 +964,9 @@ def test_diagnosis_execution_passes_only_approved_rag_chunk_ids_to_qwen():
     from backend.ai_engine.v3.diagnosis_pipeline import execute_diagnosis_provider
 
     class Provider:
+        # Sprint 6 Phase 3: a successful hit requires a non-empty approved set.
+        allowed_chunk_ids = {"chunk_1"}
+
         def __init__(self):
             self.kwargs = None
 

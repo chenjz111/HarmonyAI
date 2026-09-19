@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from hashlib import sha256
 import re
 import uuid
 
@@ -14,28 +15,28 @@ from backend.app.schemas.v3.diagnosis import (
     RagQuery,
     RagResult,
 )
-from backend.ai_engine.v3.rag_ingestion import validate_production_corpus
+from backend.ai_engine.v3.rag_ingestion import (
+    RagQueryPolicy,
+    approved_text_checksum,
+    load_rag_query_policy,
+    validate_production_corpus,
+)
 
 
 CHROMA_DISTANCE_METADATA_KEY = "hnsw:space"
 APPROVED_DISTANCE_METRIC = "cosine"
+# Frozen Phase 3 default. The runtime authority for the comparison epsilon is
+# the approved query policy asset; this constant is only the store's fallback
+# for a policy object handed in by a caller.
 SCORE_COMPARISON_EPSILON = 1e-6
+# The approved set the organ-mapping asset and the query policy must both
+# expose; the display names themselves come from the approved policy asset.
 APPROVED_ORGAN_DISPLAY_NAMES = {
     "liver": "肝",
     "heart": "心",
     "spleen": "脾",
     "lung": "肺",
     "kidney": "肾",
-}
-# These anchors are copied from the approved corpus wording.  They are
-# retrieval vocabulary only; they do not add a claim, diagnosis, or rule.
-APPROVED_QUERY_INTENT_TERMS = {
-    "anger_tendency": ("五志五脏对应关系和相关说明", ("怒",)),
-    "agitation_tendency": ("五志五脏对应关系和相关说明", ("喜",)),
-    "overthinking_tendency": ("五志五脏对应关系和相关说明", ("思",)),
-    "sadness_tendency": ("五志五脏对应关系和相关说明", ("悲",)),
-    "fear_tendency": ("五志五脏对应关系和相关说明", ("恐",)),
-    "sleep_disturbance": ("状态关联和相关说明", ("不寐",)),
 }
 
 
@@ -61,13 +62,20 @@ class VersionedRagStore:
         production: bool = True,
         claim_display_names: Mapping[str, str] | None = None,
         organ_display_names: Mapping[str, str] | None = None,
+        query_policy: RagQueryPolicy | None = None,
     ) -> None:
         self.persist_directory = persist_directory
         self.collection_name = collection_name
         self.embedding_provider = embedding_provider
         self.production = production
+        # Sprint 6 Phase 3 (R3-D3/R3-D6): the approved query policy is the
+        # single authority for top_k, the query display mapping, the intent
+        # vocabulary and the frozen retrieval semantics.
+        self._query_policy = query_policy or load_rag_query_policy()
         if claim_display_names is None or organ_display_names is None:
-            approved_claims, approved_organs = _load_approved_query_display_names()
+            approved_claims, approved_organs = _load_approved_query_display_names(
+                self._query_policy
+            )
             if claim_display_names is None:
                 claim_display_names = approved_claims
             if organ_display_names is None:
@@ -80,7 +88,14 @@ class VersionedRagStore:
         self._approved_chunk_ids: frozenset[str] = frozenset()
         self._medical_review_versions: frozenset[str] = frozenset()
         self._chunk_checksums: dict[str, str] = {}
+        self._chunk_text_checksums: dict[str, str] = {}
         self._active_collection_name: str | None = None
+
+    @property
+    def query_policy(self) -> RagQueryPolicy:
+        """The approved query policy bound to this store."""
+
+        return self._query_policy
 
     @property
     def manifest(self) -> IngestionManifest | None:
@@ -105,6 +120,19 @@ class VersionedRagStore:
         """Checksums for chunks admitted to the active collection."""
 
         return dict(self._chunk_checksums)
+
+    @property
+    def chunk_text_checksums(self) -> Mapping[str, str]:
+        """Approved live-text hashes for chunks admitted to the collection.
+
+        Phase 3 (R3-D1): the approved per-chunk ``content_checksum`` binds the
+        whole approved chunk payload, which cannot be recomputed from a
+        retrieval hit (the index does not carry every chunk field). The
+        retrieval-integrity authority is therefore the hash of the approved
+        chunk text, derived at ingest from the same checksum-validated chunk set.
+        """
+
+        return dict(self._chunk_text_checksums)
 
     @property
     def active_collection_name(self) -> str | None:
@@ -145,6 +173,7 @@ class VersionedRagStore:
                 "RAG_DISTANCE_METRIC_NOT_APPROVED",
                 "RAG 索引必须使用已批准的 cosine 距离。",
             )
+        self._assert_policy_matches_manifest(checked)
         checked_chunks = [KnowledgeChunk.model_validate(chunk) for chunk in chunks]
         incoming_checksums = {
             chunk.chunk_id: chunk.content_checksum for chunk in checked_chunks
@@ -223,8 +252,26 @@ class VersionedRagStore:
         self._chunk_checksums = {
             chunk.chunk_id: chunk.content_checksum for chunk in chunks
         }
+        self._chunk_text_checksums = {
+            chunk.chunk_id: approved_text_checksum(chunk.text) for chunk in chunks
+        }
         self._collection = collection
         self._active_collection_name = collection_name
+
+    def _assert_policy_matches_manifest(self, manifest: IngestionManifest) -> None:
+        """The approved query policy must restate the manifest semantics."""
+
+        policy = self._query_policy
+        if (
+            policy.distance_metric != manifest.distance_metric
+            or policy.retrieval_score_semantics != manifest.retrieval_score_semantics
+            or abs(float(policy.minimum_score) - float(manifest.minimum_score))
+            > float(policy.score_comparison_epsilon)
+        ):
+            raise RagStoreFailure(
+                "RAG_QUERY_POLICY_MISMATCH",
+                "RAG 查询策略与医学语料清单的检索语义不一致。",
+            )
 
     @staticmethod
     def _collection_matches(collection, chunks: Sequence[KnowledgeChunk], manifest: IngestionManifest) -> bool:
@@ -264,7 +311,10 @@ class VersionedRagStore:
             raise RagStoreFailure("RAG_KNOWLEDGE_VERSION_MISMATCH", "RAG 知识版本不一致。")
         if query.ingestion_manifest_checksum != manifest.manifest_checksum:
             raise RagStoreFailure("RAG_MANIFEST_MISMATCH", "RAG 清单版本不一致。")
-        self._assert_cosine_collection(self._collection)
+        # Phase 3 (R3-D2): re-assert the bound collection contract before any
+        # result is trusted. An unbuilt, emptied or partially lost index is a
+        # readiness/technical failure and never a legal no-match abstain.
+        self._assert_collection_contract(manifest)
         try:
             query_text = self._query_text(query)
             if confirmed_state_text:
@@ -274,8 +324,6 @@ class VersionedRagStore:
                 input_type="query",
             )
             count = int(self._collection.count())
-            if count <= 0:
-                return self._result("empty", [])
             raw = self._collection.query(
                 query_embeddings=[query_vector],
                 n_results=min(query.top_k, count),
@@ -286,6 +334,7 @@ class VersionedRagStore:
         except Exception as error:
             raise RagStoreFailure("RAG_INDEX_UNAVAILABLE", "RAG 索引暂时不可用。") from error
 
+        policy = self._query_policy
         documents = (raw.get("documents") or [[]])[0]
         metadatas = (raw.get("metadatas") or [[]])[0]
         distances = (raw.get("distances") or [[]])[0]
@@ -299,7 +348,7 @@ class VersionedRagStore:
             score = 1.0 / (2.0 - cosine_similarity)
             metadata = metadata or {}
             if (
-                score + SCORE_COMPARISON_EPSILON < manifest.minimum_score
+                score + policy.score_comparison_epsilon < policy.minimum_score
                 or metadata.get("review_status") != "approved"
             ):
                 continue
@@ -308,19 +357,107 @@ class VersionedRagStore:
                     "RAG_INVALID_RESULT",
                     "RAG 返回结果缺少稳定标识。",
                 )
+            chunk_id = str(ids[index])
+            live_text = str(document)
+            self._assert_approved_hit(manifest, chunk_id, live_text, metadata)
             hits.append(
                 RagHit(
-                    chunk_id=str(ids[index]),
+                    chunk_id=chunk_id,
                     source_id=str(metadata["source_id"]),
                     source_title=str(metadata["source_title"]),
                     section=str(metadata["section"]),
                     retrieval_score=score,
-                    text=str(document),
+                    text=live_text,
                     display_summary=str(metadata["display_summary"]),
                     review_status="approved",
                 )
             )
         return self._result("success" if hits else "empty", hits)
+
+    def _assert_collection_contract(self, manifest: IngestionManifest) -> None:
+        """Re-assert collection identity and expected count before trusting hits."""
+
+        self._assert_cosine_collection(self._collection)
+        metadata = getattr(self._collection, "metadata", None)
+        if not isinstance(metadata, Mapping):
+            raise RagStoreFailure(
+                "RAG_INDEX_IDENTITY_MISMATCH",
+                "RAG 索引缺少可验证的集合身份。",
+            )
+        if metadata.get("knowledge_version") != manifest.knowledge_version:
+            raise RagStoreFailure(
+                "RAG_KNOWLEDGE_VERSION_MISMATCH",
+                "RAG 索引集合的知识版本与清单不一致。",
+            )
+        if metadata.get("manifest_checksum") != manifest.manifest_checksum:
+            raise RagStoreFailure(
+                "RAG_MANIFEST_MISMATCH",
+                "RAG 索引集合的清单校验和与清单不一致。",
+            )
+        if metadata.get("embedding_version") != manifest.embedding_version:
+            raise RagStoreFailure(
+                "RAG_EMBEDDING_IDENTITY_MISMATCH",
+                "RAG 索引集合的 Embedding 身份与清单不一致。",
+            )
+        count = self._safe_count()
+        if count != int(manifest.chunk_count):
+            raise RagStoreFailure(
+                "RAG_INDEX_COUNT_MISMATCH",
+                "RAG 索引数量与医学语料清单不一致。",
+            )
+
+    def _safe_count(self) -> int:
+        try:
+            return int(self._collection.count())
+        except RagStoreFailure:
+            raise
+        except Exception as error:
+            raise RagStoreFailure(
+                "RAG_INDEX_UNAVAILABLE",
+                "RAG 索引暂时不可用。",
+            ) from error
+
+    def _assert_approved_hit(
+        self,
+        manifest: IngestionManifest,
+        chunk_id: str,
+        live_text: str,
+        metadata: Mapping[str, object],
+    ) -> None:
+        """Fail closed unless a hit is the approved chunk, byte for byte.
+
+        Phase 3 (R3-D1): an approved id alone is not sufficient. The live
+        retrieved text must hash to the approved chunk text hash, and the
+        immutable per-hit metadata must still match the approved corpus.
+        """
+
+        if chunk_id not in self._approved_chunk_ids:
+            raise RagStoreFailure(
+                "RAG_UNAPPROVED_CHUNK",
+                "RAG 返回了未批准的医学语料块。",
+            )
+        expected_text_checksum = self._chunk_text_checksums.get(chunk_id)
+        if expected_text_checksum is None:
+            raise RagStoreFailure(
+                "RAG_CHUNK_TEXT_UNVERIFIABLE",
+                "RAG 返回的医学语料块缺少可验证的文本校验和。",
+            )
+        if approved_text_checksum(live_text) != expected_text_checksum:
+            raise RagStoreFailure(
+                "RAG_CHUNK_CONTENT_CHECKSUM_MISMATCH",
+                "RAG 返回的医学语料块内容与已批准文本不一致。",
+            )
+        if metadata.get("content_checksum") != self._chunk_checksums.get(chunk_id):
+            raise RagStoreFailure(
+                "RAG_CHUNK_METADATA_MISMATCH",
+                "RAG 返回的医学语料块校验和元数据与已批准内容不一致。",
+            )
+        if metadata.get("knowledge_version") != manifest.knowledge_version:
+            raise RagStoreFailure(
+                "RAG_CHUNK_METADATA_MISMATCH",
+                "RAG 返回的医学语料块知识版本与已批准内容不一致。",
+            )
+
 
     def _result(self, status: str, hits: list[RagHit]) -> RagResult:
         assert self._manifest is not None
@@ -363,10 +500,10 @@ class VersionedRagStore:
             subject = f"{'、'.join(organ_names)}与{'、'.join(claim_names)}"
         else:
             subject = "、".join([*organ_names, *claim_names])
-        intent = "状态关联和相关说明"
+        intent = self._query_policy.default_query_intent
         query_terms: list[str] = []
         for code in claim_codes:
-            configured = APPROVED_QUERY_INTENT_TERMS.get(code)
+            configured = self._query_policy.intent_for(code)
             if configured is None:
                 continue
             intent = configured[0] if len(claim_codes) == 1 else intent
@@ -403,8 +540,16 @@ class VersionedRagStore:
         return chromadb.PersistentClient(path=persist_directory)
 
 
-def _load_approved_query_display_names() -> tuple[dict[str, str], dict[str, str]]:
-    """Load checksum-gated public labels without adding medical inference."""
+def _load_approved_query_display_names(
+    policy: RagQueryPolicy,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Load checksum-gated public labels without adding medical inference.
+
+    Phase 3 (R3-D3): the organ display mapping comes from the approved query
+    policy asset; the claim display names come from the approved claim
+    dictionary. The organ-mapping asset must still expose exactly the approved
+    organ set, so a drifted mapping asset fails closed.
+    """
 
     from backend.app.services.v3.knowledge_assets import (
         load_claim_dictionary,
@@ -414,9 +559,11 @@ def _load_approved_query_display_names() -> tuple[dict[str, str], dict[str, str]
     _version, claim_dictionary = load_claim_dictionary()
     organ_mapping = load_organ_mapping()
     approved_organs = set((organ_mapping.get("organ_element") or {}).keys())
+    policy_organs = set(policy.organ_display_names)
     if (
         organ_mapping.get("review_status") != "approved"
         or approved_organs != set(APPROVED_ORGAN_DISPLAY_NAMES)
+        or policy_organs != set(APPROVED_ORGAN_DISPLAY_NAMES)
     ):
         raise RagStoreFailure(
             "RAG_QUERY_MAPPING_NOT_APPROVED",
@@ -426,4 +573,4 @@ def _load_approved_query_display_names() -> tuple[dict[str, str], dict[str, str]
         code: entry.display_name
         for code, entry in claim_dictionary.items()
     }
-    return claim_names, dict(APPROVED_ORGAN_DISPLAY_NAMES)
+    return claim_names, dict(policy.organ_display_names)
