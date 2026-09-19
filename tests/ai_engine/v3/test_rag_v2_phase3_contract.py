@@ -589,6 +589,66 @@ def test_p3_i_verified_hit_reaches_the_provider():
     assert provider.calls == 1
 
 
+class _PendingReviewClient(FakeClient):
+    """Client whose stored row metadata claims a non-approved review status."""
+
+    def get_or_create_collection(self, *, name, metadata, embedding_function):
+        collection = super().get_or_create_collection(
+            name=name, metadata=metadata, embedding_function=embedding_function
+        )
+        original_query = collection.query
+
+        def query(**kwargs):
+            raw = original_query(**kwargs)
+            raw["metadatas"] = [
+                [{**item, "review_status": "pending"} for item in row]
+                for row in raw["metadatas"]
+            ]
+            return raw
+
+        collection.query = query
+        return collection
+
+
+def test_p3_d1_store_never_returns_a_non_approved_row():
+    store = _store(client=_PendingReviewClient())
+    store.ingest(_manifest(), [_chunk()])
+
+    result = store.query(_query())
+
+    assert result.status == "empty"
+    assert result.hits == []
+
+
+def test_p3_d1_pipeline_rejects_a_non_approved_hit():
+    from backend.app.schemas.v3.diagnosis import RagHit
+
+    approved_hit = _hit_result("approved text").hits[0]
+    unapproved_hit = RagHit.model_construct(
+        **{
+            **approved_hit.model_dump(),
+            "review_status": "pending",
+        }
+    )
+    result = _hit_result("approved text").model_copy(
+        update={"hits": [unapproved_hit]}
+    )
+
+    provider = _RecordingProvider()
+    execution = _run(
+        execute_diagnosis_provider(
+            provider=provider,
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[],
+            rag_result=result,
+        )
+    )
+
+    assert execution.status == "failed"
+    assert execution.reason_code == "RAG_UNAPPROVED_CHUNK"
+    assert provider.calls == 0
+
+
 # --------------------------------------------------------------------------- #
 # P3-J — absolute allow-list
 # --------------------------------------------------------------------------- #
