@@ -126,13 +126,43 @@ def test_p3_d_approved_policy_is_the_only_top_k_authority_in_source():
 def test_p3_i_persisted_rag_audit_is_truthful_and_policy_aware(
     db_session_factory, monkeypatch
 ):
-    """A successful run implies text_ciphertext == chunk_content_checksum."""
+    """The persisted audit keeps its documented hash domains (Phase 3, B2).
+
+    ``chunk_content_checksum`` stays the approved manifest/corpus *payload*
+    checksum — the persistence contract requires it to match the manifest — and
+    ``text_ciphertext`` keeps the historical request-hash form. Phase 3 must not
+    silently redefine either column, or pre-Phase-3 rows stop being comparable.
+    Live-text integrity is verified at retrieval and at the provider boundary,
+    not by rewriting these columns.
+    """
 
     from backend.app.models.v3.diagnosis import RagRetrievalHit, RagRetrievalRun
-    from tests.api.v3.test_diagnosis_dominance_routing import _run_diagnosis
+    from backend.app.services.v3.diagnosis_service import _request_hash
+    from backend.ai_engine.v3.diagnosis_pipeline import _rag_context
+    from backend.ai_engine.v3.rag_ingestion import approved_text_checksum
+    from tests.ai_engine.v3.test_v31_pipeline import _rag_result
+    from tests.api.v3 import test_diagnosis_dominance_routing as routing
 
-    _headers, response = _run_diagnosis(
-        db_session_factory, monkeypatch, organ_support={"liver": 6.0, "spleen": 5.0}
+    # The approved store binds every chunk id to its manifest/corpus payload
+    # checksum; inject that same contract into the shared fake chain.
+    approved_payload_checksum = "sha256:" + "0f" * 32
+    original_dependencies = routing._pipeline_dependencies
+
+    def _dependencies_with_checksums(calls, **kwargs):
+        dependencies = original_dependencies(calls, **kwargs)
+        dependencies.rag_store.chunk_checksums = {
+            "chunk_1": approved_payload_checksum
+        }
+        return dependencies
+
+    monkeypatch.setattr(
+        routing, "_pipeline_dependencies", _dependencies_with_checksums
+    )
+
+    _headers, response = routing._run_diagnosis(
+        db_session_factory,
+        monkeypatch,
+        organ_support={"liver": 6.0, "spleen": 5.0},
     )
     assert response.status_code == 201, response.text
 
@@ -152,7 +182,24 @@ def test_p3_i_persisted_rag_audit_is_truthful_and_policy_aware(
     # real run can only ever persist the frozen 0.740741.
     assert run.minimum_score is not None
 
-    assert hits, "a successful retrieval must persist its hits"
-    for hit in hits:
-        assert hit.text_ciphertext.startswith("sha256:")
-        assert hit.chunk_content_checksum == hit.text_ciphertext
+    hit = _rag_result().hits[0]
+    assert [row.chunk_id for row in hits] == [hit.chunk_id]
+
+    # The provider-facing RAG context, the persisted audit row and the approved
+    # store all carry the one manifest payload checksum.
+    context = _rag_context(_rag_result(), {"chunk_1": approved_payload_checksum})
+    assert [item["content_checksum"] for item in context] == [
+        approved_payload_checksum
+    ]
+
+    row = hits[0]
+    assert row.chunk_content_checksum == approved_payload_checksum
+    # ... while text_ciphertext keeps the historical request-hash form.
+    assert row.text_ciphertext == _request_hash({"text": hit.text})
+
+    # Regression guard for Phase 3 (B2): the two columns are distinct hash
+    # domains, and chunk_content_checksum is never sha256(text).
+    assert row.chunk_content_checksum != row.text_ciphertext
+    assert row.chunk_content_checksum != approved_text_checksum(hit.text)
+    assert row.text_ciphertext != approved_text_checksum(hit.text)
+    assert row.chunk_content_checksum == context[0]["content_checksum"]

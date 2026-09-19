@@ -919,3 +919,244 @@ def test_p3_l_real_chroma_index_persists_reopens_and_verifies(tmp_path):
 
     # The temporary index may be discarded; nothing outside tmp_path was touched.
     del chromadb
+
+
+# --------------------------------------------------------------------------- #
+# B1 — exact approved index population (same-count substitution)
+# --------------------------------------------------------------------------- #
+
+TWO_CHUNK_IDS = ("chunk_001", "chunk_002")
+
+
+def _two_chunk_store(*, distance=0.1):
+    store = _store(client=ScenarioClient(distance))
+    store.ingest(_manifest(chunk_count=2), [_chunk("chunk_001"), _chunk("chunk_002")])
+    return store
+
+
+def _rows(store):
+    return store._collection.rows
+
+
+def test_b1_s1_exact_approved_set_proceeds():
+    store = _two_chunk_store()
+
+    result = store.query(_query())
+
+    assert result.status == "success"
+    assert set(store._approved_chunk_ids) == set(TWO_CHUNK_IDS)
+
+
+def test_b1_s2_missing_approved_id_fails_closed():
+    store = _two_chunk_store()
+    del _rows(store)["chunk_002"]
+
+    with pytest.raises(RagStoreFailure) as error:
+        store.query(_query())
+    assert error.value.error_code in {
+        "RAG_INDEX_COUNT_MISMATCH",
+        "RAG_INDEX_ID_SET_MISMATCH",
+    }
+
+
+def test_b1_s3_extra_rogue_id_fails_closed():
+    store = _two_chunk_store()
+    rows = _rows(store)
+    rows["rogue_chunk"] = (
+        "rogue_chunk",
+        "rogue text",
+        dict(next(iter(rows.values()))[2]),
+        [0.1] * 1024,
+    )
+
+    with pytest.raises(RagStoreFailure) as error:
+        store.query(_query())
+    assert error.value.error_code in {
+        "RAG_INDEX_COUNT_MISMATCH",
+        "RAG_INDEX_ID_SET_MISMATCH",
+    }
+
+
+def test_b1_s4_same_count_substitution_fails_closed():
+    """Delete one approved id and add one rogue id: the count is unchanged."""
+
+    store = _two_chunk_store()
+    rows = _rows(store)
+    metadata = dict(next(iter(rows.values()))[2])
+    del rows["chunk_002"]
+    rows["rogue_chunk"] = ("rogue_chunk", "rogue text", metadata, [0.1] * 1024)
+
+    assert store._collection.count() == 2  # count check alone cannot see this
+
+    with pytest.raises(RagStoreFailure, match="RAG_INDEX_ID_SET_MISMATCH"):
+        store.query(_query())
+
+
+def test_b1_s4b_same_count_swap_on_a_larger_set_fails_closed():
+    store = _store(client=ScenarioClient(0.1))
+    ids = ["chunk_001", "chunk_002", "chunk_003"]
+    store.ingest(_manifest(chunk_count=3), [_chunk(item) for item in ids])
+    rows = _rows(store)
+    metadata = dict(rows["chunk_003"][2])
+    del rows["chunk_001"]
+    rows["rogue_chunk"] = ("rogue_chunk", "rogue text", metadata, [0.1] * 1024)
+
+    assert store._collection.count() == 3
+
+    with pytest.raises(RagStoreFailure, match="RAG_INDEX_ID_SET_MISMATCH"):
+        store.query(_query())
+
+
+def test_b1_s5_exact_index_without_match_is_still_legal_rag_empty():
+    store = _two_chunk_store(distance=0.9)
+
+    result = store.query(_query())
+
+    assert result.status == "empty"
+    provider = _RecordingProvider()
+    execution = _run(
+        execute_diagnosis_provider(
+            provider=provider,
+            request={"assessment_id": "asmt_1", "revision": 1},
+            facts=[],
+            rag_result=result,
+        )
+    )
+    assert execution.status == "abstained"
+    assert execution.reason_code == "RAG_EMPTY"
+    assert provider.calls == 0
+
+
+def test_b1_s6_same_count_substitution_on_real_chroma_fails_closed(tmp_path):
+    """B1-S6: the substitution probe on a temporary real Chroma index."""
+
+    pytest.importorskip("chromadb")
+    manifest, chunks = load_production_corpus(APPROVED_MANIFEST, APPROVED_CHUNKS)
+    store = VersionedRagStore(
+        persist_directory=str(tmp_path / "chroma-b1"),
+        collection_name="harmony_v31",
+        embedding_provider=_DeterministicEmbedding(),
+        production=True,
+    )
+    store.ingest(manifest, chunks)
+    query = build_diagnosis_query(
+        {
+            "knowledge_version": manifest.knowledge_version,
+            "manifest_checksum": manifest.manifest_checksum,
+            "organ_codes": ["liver"],
+            "claim_codes": ["anger_tendency"],
+            "supporting_fact_ids": ["fev_a"],
+            "contradicting_fact_ids": [],
+            "approved_organ_codes": ["liver", "heart", "spleen", "lung", "kidney"],
+            "approved_claim_codes": ["anger_tendency"],
+        }
+    )
+    assert store.query(query).status == "success"
+
+    # Same-count substitution: remove one approved chunk, add one rogue chunk.
+    collection = store._collection
+    removed = sorted(store.approved_chunk_ids)[0]
+    collection.delete(ids=[removed])
+    collection.add(
+        ids=["rogue_chunk_999"],
+        documents=["rogue injected text"],
+        metadatas=[
+            {
+                "source_id": "rogue",
+                "source_title": "rogue",
+                "section": "rogue",
+                "display_summary": "rogue",
+                "review_status": "approved",
+                "knowledge_version": manifest.knowledge_version,
+                "content_checksum": approved_text_checksum("rogue injected text"),
+            }
+        ],
+        embeddings=[[0.5] * 1024],
+    )
+    assert int(collection.count()) == manifest.chunk_count == 13
+
+    with pytest.raises(RagStoreFailure, match="RAG_INDEX_ID_SET_MISMATCH"):
+        store.query(query)
+
+
+def test_b1_id_set_check_fails_closed_for_missing_and_extra_ids_on_real_chroma(
+    tmp_path,
+):
+    pytest.importorskip("chromadb")
+    manifest, chunks = load_production_corpus(APPROVED_MANIFEST, APPROVED_CHUNKS)
+    store = VersionedRagStore(
+        persist_directory=str(tmp_path / "chroma-b1-shapes"),
+        collection_name="harmony_v31",
+        embedding_provider=_DeterministicEmbedding(),
+        production=True,
+    )
+    store.ingest(manifest, chunks)
+    query = build_diagnosis_query(
+        {
+            "knowledge_version": manifest.knowledge_version,
+            "manifest_checksum": manifest.manifest_checksum,
+            "organ_codes": ["liver"],
+            "claim_codes": ["anger_tendency"],
+            "supporting_fact_ids": ["fev_a"],
+            "contradicting_fact_ids": [],
+            "approved_organ_codes": ["liver", "heart", "spleen", "lung", "kidney"],
+            "approved_claim_codes": ["anger_tendency"],
+        }
+    )
+    collection = store._collection
+    removed = sorted(store.approved_chunk_ids)[0]
+    collection.delete(ids=[removed])
+
+    with pytest.raises(RagStoreFailure, match="RAG_INDEX_COUNT_MISMATCH"):
+        store.query(query)
+
+
+# --------------------------------------------------------------------------- #
+# B2 — persisted checksum semantics restored
+# --------------------------------------------------------------------------- #
+
+
+def test_b2_s1_approved_payload_checksum_differs_from_the_text_hash():
+    manifest, chunks = load_production_corpus(APPROVED_MANIFEST, APPROVED_CHUNKS)
+    sample = chunks[0]
+
+    assert sample.content_checksum != approved_text_checksum(sample.text)
+    assert sample.content_checksum == dict(
+        (chunk.chunk_id, chunk.content_checksum) for chunk in chunks
+    )[sample.chunk_id]
+
+
+def test_b2_s3_audit_writer_uses_the_manifest_payload_checksum_and_historical_text_hash():
+    """The persisted pair keeps its pre-Phase-3 semantics."""
+
+    from backend.ai_engine.v3.diagnosis_pipeline import _rag_context
+    from backend.app.services.v3.diagnosis_service import _request_hash
+
+    hit = _hit_result("approved text").hits[0]
+    payload_checksum = "sha256:manifest-payload-checksum"
+
+    # Provider context keeps the manifest payload checksum.
+    context = _rag_context(_hit_result("approved text"), {"chunk_1": payload_checksum})
+    assert context[0]["content_checksum"] == payload_checksum
+
+    # The historical persistence forms are unchanged by Phase 3.
+    assert _request_hash({"text": hit.text}).startswith("sha256:")
+    assert _request_hash({"text": hit.text}) != approved_text_checksum(hit.text)
+    assert _request_hash(
+        {"chunk_id": hit.chunk_id, "text": hit.text}
+    ) != approved_text_checksum(hit.text)
+
+
+def test_b2_s4_persisted_audit_columns_are_unchanged():
+    """No migration and no schema change: the pair keeps its documented form."""
+
+    from backend.app.models.v3.diagnosis import RagRetrievalHit, RagRetrievalRun
+
+    hit_columns = set(RagRetrievalHit.__table__.columns.keys())
+    run_columns = set(RagRetrievalRun.__table__.columns.keys())
+    assert "chunk_content_checksum" in hit_columns
+    assert "text_ciphertext" in hit_columns
+    assert "query_builder_version" in run_columns
+    # Live-text integrity is not stored in a new column.
+    assert not any("text_hash" in name for name in hit_columns)
+    assert not any("integrity" in name for name in hit_columns)

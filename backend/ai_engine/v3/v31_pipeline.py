@@ -9,7 +9,7 @@ by their owning services and passed here as an already-authorized snapshot.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import inspect
 import uuid
 
@@ -82,10 +82,8 @@ class V31PipelineAuditContext:
     rag_manifest: object | None
     rag_chunk_checksums: Mapping[str, str]
     mapping_version: str
-    # Sprint 6 Phase 3: policy-aware query-builder identity + the approved
-    # live-text hashes used for runtime integrity verification and audit.
+    # Sprint 6 Phase 3: policy-aware query-builder identity for the audit row.
     query_builder_version: str = "diagnosis_query_v3.1"
-    rag_text_checksums: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -176,7 +174,6 @@ async def execute_v31_ai_pipeline(
                 "diagnosis_query_v3.1",
             )
         ),
-        rag_text_checksums=dict(getattr(rag_store, "chunk_text_checksums", {})),
     )
     if execution.status == "abstained":
         pass

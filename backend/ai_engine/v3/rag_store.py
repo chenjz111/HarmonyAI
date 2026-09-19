@@ -405,6 +405,34 @@ class VersionedRagStore:
                 "RAG_INDEX_COUNT_MISMATCH",
                 "RAG 索引数量与医学语料清单不一致。",
             )
+        # Phase 3 B1 fix: a count check alone cannot detect a same-count
+        # substitution (one approved chunk deleted and one rogue chunk added).
+        # The exact approved id population is part of the trusted contract.
+        present = self._runtime_collection_ids()
+        if present != set(self._approved_chunk_ids):
+            raise RagStoreFailure(
+                "RAG_INDEX_ID_SET_MISMATCH",
+                "RAG 索引的语料块集合与已批准集合不一致。",
+            )
+
+    def _runtime_collection_ids(self) -> set[str]:
+        try:
+            rows = self._collection.get(
+                ids=sorted(self._approved_chunk_ids), include=[]
+            )
+        except RagStoreFailure:
+            raise
+        except Exception as error:
+            raise RagStoreFailure(
+                "RAG_INDEX_UNAVAILABLE",
+                "RAG 索引暂时不可用。",
+            ) from error
+        if not isinstance(rows, Mapping):
+            raise RagStoreFailure(
+                "RAG_INVALID_RESULT",
+                "RAG 索引返回的语料块集合无效。",
+            )
+        return {str(item) for item in (rows.get("ids") or [])}
 
     def _safe_count(self) -> int:
         try:

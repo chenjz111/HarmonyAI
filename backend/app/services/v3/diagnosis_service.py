@@ -58,7 +58,6 @@ from backend.app.schemas.v3.diagnosis import (
 )
 from backend.app.schemas.v3.flow_v31 import ConfirmedUserState
 from backend.ai_engine.v3.diagnosis_pipeline import DiagnosisPipelineFailure
-from backend.ai_engine.v3.rag_ingestion import approved_text_checksum
 from backend.ai_engine.v3.v31_pipeline import (
     V31AiPipelineResult,
     V31LegalAbstainResult,
@@ -880,14 +879,17 @@ def _persist_pipeline_audit(
         setattr(rag_run, field, value)
     db.flush()
     chunk_checksums = audit.rag_chunk_checksums
-    text_checksums = getattr(audit, "rag_text_checksums", {}) or {}
     for hit in audit.rag_result.hits:
-        # Sprint 6 Phase 3 (R3-D1/R3-D2): persistence stays truthful. The
-        # stored chunk checksum is the approved live-text hash, and the stored
-        # text hash is the hash of the text actually retrieved, so a successful
-        # run implies equality.
-        live_text_checksum = approved_text_checksum(hit.text)
-        chunk_checksum = text_checksums.get(hit.chunk_id) or live_text_checksum
+        # Sprint 6 Phase 3 (B2): the persisted audit keeps its historical,
+        # documented semantics. ``chunk_content_checksum`` is the approved
+        # manifest/corpus payload checksum (the persistence contract requires it
+        # to match the manifest) and ``text_ciphertext`` keeps the historical
+        # request-hash form, so pre-Phase-3 and Phase-3 rows stay comparable.
+        # Live-text integrity is verified separately at retrieval and at the
+        # provider boundary; it is deliberately not folded into these fields.
+        chunk_checksum = chunk_checksums.get(hit.chunk_id) or _request_hash(
+            {"chunk_id": hit.chunk_id, "text": hit.text}
+        )
         hit_row = db.get(RagRetrievalHit, (rag_run_id, hit.chunk_id))
         if hit_row is None:
             hit_row = RagRetrievalHit(rag_run_id=rag_run_id, chunk_id=hit.chunk_id)
@@ -898,7 +900,7 @@ def _persist_pipeline_audit(
             "section": hit.section,
             "retrieval_score": float(hit.retrieval_score),
             "display_summary": hit.display_summary,
-            "text_ciphertext": live_text_checksum,
+            "text_ciphertext": _request_hash({"text": hit.text}),
             "review_status": hit.review_status,
             "knowledge_version": audit.rag_result.knowledge_version,
             "chunk_content_checksum": chunk_checksum,

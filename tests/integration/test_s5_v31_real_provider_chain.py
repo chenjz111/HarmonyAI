@@ -91,6 +91,14 @@ class _Collection:
     def count(self):
         return len(self.rows)
 
+    def get(self, *, ids, include):
+        del include
+        rows = [self.rows[item] for item in ids if item in self.rows]
+        return {
+            "ids": [row[0] for row in rows],
+            "metadatas": [row[2] for row in rows],
+        }
+
     def query(self, *, query_embeddings, n_results, include):
         del query_embeddings, n_results, include
         row = next(iter(self.rows.values()))
