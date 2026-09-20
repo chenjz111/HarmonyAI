@@ -129,7 +129,9 @@ export default {
       this.phase = "loading"
       this.error = ""
       try {
-        this.basis = await apiV3.getMusicBasis()
+        // Phase 6 (R7): this page is still the generation step, so it is the only caller allowed to
+        // create the server-side analysis artifacts when the local cache is incomplete.
+        this.basis = await apiV3.getMusicBasis({ allowCreate: true })
         this.simulated = !!apiV3.AGENT_SIMULATED
         this.phase = "basis"
       } catch (e) {

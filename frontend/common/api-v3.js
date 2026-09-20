@@ -59,6 +59,8 @@ import {
   modeLabelFor,
   normalizeRegulationMode,
 } from "./v31-tone-theme.js"
+// Sprint 6 Phase 6 (P6-D3): the generation fallback request policy has exactly one definition.
+import { GENERATION_FALLBACK_POLICY } from "./music-generation-session.js"
 
 // ===== 配置 =====
 
@@ -710,12 +712,22 @@ const realInputApi = {
     return realRequest("/api/v3/me/preferences")
   },
 
-  async getMusicBasis() {
+  // Sprint 6 Phase 6 (R7): reading the music basis is NOT allowed to create server-side medical
+  // artifacts. The default is cache-only and issues 0 POST /diagnoses and 0 POST /prescriptions;
+  // only the generation step may explicitly opt in with { allowCreate: true }.
+  async getMusicBasis(options = {}) {
+    const allowCreate = options && options.allowCreate === true
     const state = loadFlowState()
     const assessment = state.assessment
     if (!assessment || assessment.status !== "confirmed") throw apiError("请先确认近期状态总结", "ASSESSMENT_NOT_CONFIRMED")
-    if (state.diagnosis && state.prescription && state.generation_spec) {
-      return musicBasisModel(assessment, state.diagnosis, state.prescription)
+    const cachedPrescription =
+      state.prescription && state.prescription.generation_spec ? state.prescription : null
+    if (state.diagnosis && cachedPrescription) {
+      return musicBasisModel(assessment, state.diagnosis, cachedPrescription)
+    }
+    if (!allowCreate) {
+      // Cache-first read: the caller renders its own "not ready" state. Never re-create.
+      throw apiError("音乐方案尚未准备好", "BASIS_NOT_CACHED", { retryable: true })
     }
     const diagnosis = await realRequest("/api/v3/diagnoses", {
       method: "POST",
@@ -747,10 +759,14 @@ const realInputApi = {
     return musicBasisModel(assessment, diagnosis, prescription)
   },
 
-  async startMusicGeneration() {
+  // 音乐生成：requestId 由调用方（music-generation-session）持有，使同一请求的重试复用同一
+  // idempotency key（P6-D2：非终态重试绝不二次付费；终态重试才生成新 key）。
+  async startMusicGeneration(options = {}) {
     const state = loadFlowState()
     if (!state.prescription_id || !state.generation_spec) throw apiError("音乐方案尚未准备好", "PRESCRIPTION_NOT_READY")
-    const requestId = "music_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10)
+    const requestId =
+      (options && typeof options.requestId === "string" && options.requestId) ||
+      "music_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10)
     const task = await realRequest("/api/v3/music/generations", {
       method: "POST",
       data: {
@@ -758,7 +774,7 @@ const realInputApi = {
         prescription_id: state.prescription_id,
         idempotency_key: "sha256:" + requestId,
         generation_spec: state.generation_spec,
-        provider_policy: { mode: "prefer_real_generation", fallback: "none" },
+        provider_policy: Object.assign({}, GENERATION_FALLBACK_POLICY),
       },
     })
     persistMusicTask(task)
@@ -1588,15 +1604,16 @@ export const apiV3 = {
     return AGENT_MOCK ? mockApi.confirmAssessment(payload) : realInputApi.confirmAssessment(payload)
   },
 
-  // 辨证与生成依据（依赖后端辨证能力，尚未交付）
-  getMusicBasis() {
-    return AGENT_MOCK ? mockApi.getMusicBasis() : realInputApi.getMusicBasis()
+  // 辨证与生成依据。默认 cache-only（0 次 POST /diagnoses、0 次 POST /prescriptions）；
+  // 仅生成步骤可显式 allowCreate（P6-D1/D2：播放器只读，绝不重建医疗产物）。
+  getMusicBasis(options) {
+    return AGENT_MOCK ? mockApi.getMusicBasis(options) : realInputApi.getMusicBasis(options)
   },
 
   // 音乐生成：后端接口已交付但依赖辨证处方能力（尚未接入）→ real 等待状态；
   // mock/hybrid 走演示状态机
-  startMusicGeneration() {
-    return AGENT_MOCK ? mockApi.startMusicGeneration() : realInputApi.startMusicGeneration()
+  startMusicGeneration(options) {
+    return AGENT_MOCK ? mockApi.startMusicGeneration(options) : realInputApi.startMusicGeneration(options)
   },
   pollMusicGeneration(taskId) {
     return AGENT_MOCK ? mockApi.pollMusicGeneration() : realInputApi.pollMusicGeneration(taskId)
