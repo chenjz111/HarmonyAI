@@ -14,9 +14,18 @@ Covers:
 import asyncio
 import json
 from pathlib import Path
+import re
 
 import pytest
 import requests
+
+from backend.ai_engine.v3.prompt_compiler import (
+    PROMPT_COMPILER_VERSION,
+    PROMPT_MAX_LENGTH,
+    TONE_PROMPT_DESCRIPTORS,
+    PromptDialect,
+    compile_music_prompt,
+)
 
 from backend.ai_engine.v3.generation_provider_adapter import (
     NotConfiguredMusicProvider,
@@ -27,6 +36,7 @@ from backend.ai_engine.v3.stability_music_provider import (
     DEFAULT_STABILITY_MODEL,
     STABILITY_AUDIO_PATH,
     STABILITY_MAX_DURATION_SECONDS,
+    STABILITY_PROMPT_MAX_LENGTH,
     StabilityMusicProvider,
     _requests_poster,
 )
@@ -407,3 +417,113 @@ def test_cancel_task_reports_unsupported_capability(tmp_path):
 
 def test_requests_poster_importable():
     assert callable(_requests_poster)
+
+
+# --------------------------------------------------------------------------- #
+# Sprint 6 Phase 5 — Prompt Compiler V2 integration (§15)
+# --------------------------------------------------------------------------- #
+TONE_CODES = ("jiao", "zhi", "gong", "shang", "yu")
+
+
+def _request_with(*, instruments=None, ambient=None, constraints=None):
+    spec = dict(_generation_spec())
+    if instruments is not None:
+        spec["instruments"] = instruments
+    if ambient is not None:
+        spec["ambient_sounds"] = ambient
+    if constraints is not None:
+        spec["forbidden_constraints"] = constraints
+    return ProviderMusicRequest(
+        provider_request_id="pr_stability_test",
+        generation_spec=spec,  # type: ignore[arg-type]
+        output_format="mp3",
+        callback_ref=None,
+    )
+
+
+def test_stability_prompt_actually_uses_prompt_compiler_v2(tmp_path):
+    poster = FakePoster(response=FakeResponse(content=mp3_bytes(seconds=3)))
+    provider = _provider(tmp_path, poster)
+    request = _request_with(instruments=["古琴", "箫"])
+    provider.create_task(request)
+
+    prompt = poster.calls[0]["data"]["prompt"]
+    expected = compile_music_prompt(request.generation_spec, PromptDialect.STABILITY)
+    assert prompt == expected.text
+    assert TONE_PROMPT_DESCRIPTORS["gong"] in prompt
+    assert "primary tone emphasis 0.2" in prompt
+    assert "Instruments: guqin, xiao" in prompt
+    assert "古琴" not in prompt
+    assert "total duration 60 seconds" in prompt
+
+
+def test_stability_prompt_has_no_raw_tone_enum_leakage(tmp_path):
+    poster = FakePoster(response=FakeResponse(content=mp3_bytes(seconds=3)))
+    provider = _provider(tmp_path, poster)
+    provider.create_task(_request())
+    prompt = poster.calls[0]["data"]["prompt"]
+    for tone in TONE_CODES:
+        assert not re.search(rf"\b{tone}\b", prompt, re.IGNORECASE), prompt
+
+
+def test_stability_no_extra_ambient_never_renders_contradictory_text(tmp_path):
+    poster = FakePoster(response=FakeResponse(content=mp3_bytes(seconds=3)))
+    provider = _provider(tmp_path, poster)
+    provider.create_task(_request_with(ambient=["无额外环境音"]))
+    prompt = poster.calls[0]["data"]["prompt"]
+    assert "无额外环境音" not in prompt
+    assert "Atmosphere" not in prompt
+    assert "ambience" not in prompt
+
+
+def test_stability_real_ambience_renders_and_mixed_input_is_not_contradictory(
+    tmp_path,
+):
+    poster = FakePoster(response=FakeResponse(content=mp3_bytes(seconds=3)))
+    provider = _provider(tmp_path, poster)
+    provider.create_task(_request_with(ambient=["water"]))
+    assert "Atmosphere: soft water ambience." in poster.calls[0]["data"]["prompt"]
+
+    provider.create_task(_request_with(ambient=["无额外环境音", "water"]))
+    prompt = poster.calls[1]["data"]["prompt"]
+    assert "Atmosphere: soft water ambience." in prompt
+    assert "无额外环境音" not in prompt
+    assert "soft 无额外环境音 ambience" not in prompt
+
+
+def test_stability_unknown_instrument_fails_before_any_post(tmp_path):
+    poster = FakePoster(response=FakeResponse(content=mp3_bytes(seconds=3)))
+    provider = _provider(tmp_path, poster)
+    for instruments in (["suona"], ["古琴", "唢呐"]):
+        with pytest.raises(MusicProviderFailureV3) as caught:
+            provider.create_task(_request_with(instruments=instruments))
+        assert caught.value.error_code == "GENERATION_INSTRUMENT_UNSUPPORTED"
+    assert poster.calls == []
+    assert provider.post_calls == 0
+
+
+def test_stability_prompt_identity_is_recorded(tmp_path):
+    poster = FakePoster(response=FakeResponse(content=mp3_bytes(seconds=3)))
+    provider = _provider(tmp_path, poster)
+    provider.create_task(_request())
+    prompt = poster.calls[0]["data"]["prompt"]
+    metadata = provider.last_run_metadata
+    assert metadata["compiler_version"] == PROMPT_COMPILER_VERSION
+    assert metadata["dialect_id"] == PromptDialect.STABILITY.value
+    assert metadata["prompt_checksum"].startswith("sha256:")
+    assert metadata["input_spec_checksum"].startswith("sha256:")
+    assert prompt not in {value for value in metadata.values()}
+
+
+def test_stability_prompt_over_the_cap_fails_before_any_post(tmp_path):
+    poster = FakePoster(response=FakeResponse(content=mp3_bytes(seconds=3)))
+    provider = _provider(tmp_path, poster)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request_with(constraints=["x" * 20] * 500))
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+    assert poster.calls == []
+
+
+def test_stability_cap_matches_the_compiler_dialect_cap():
+    assert STABILITY_PROMPT_MAX_LENGTH == PROMPT_MAX_LENGTH[PromptDialect.STABILITY]
+    assert PROMPT_MAX_LENGTH[PromptDialect.STABILITY] == 10000

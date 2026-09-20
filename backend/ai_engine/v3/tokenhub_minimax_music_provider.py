@@ -19,6 +19,11 @@ Design boundaries
   values stay in the request/persistence for display. Unmapped instruments fail
   explicitly. The "无额外环境音" ambient value never becomes a prompt fragment —
   the ambience sentence is omitted instead.
+* Sprint 6 Phase 5: the prompt itself is produced by Prompt Compiler V2
+  (``backend/ai_engine/v3/prompt_compiler.py``), which owns the tone descriptor
+  vocabulary (no raw tone enum), the authoritative tone-weight rendering, the
+  shared instrument/ambience normalization and the length cap. This adapter only
+  declares its dialect and keeps the exactly-one-POST contract.
 * The generation POST is executed EXACTLY ONCE — automatic retry is 0 — so a
   transient failure can never cause a duplicate paid generation. Idempotency is
   the service layer's job (Idempotency-Key).
@@ -58,8 +63,18 @@ from urllib.parse import urljoin, urlsplit
 import requests
 
 from backend.ai_engine.v3.music_provider import (
+    INSTRUMENT_ALIASES,
+    NO_AMBIENT_TOKENS,
     MusicProviderFailureV3,
+    ambient_prompt_parts,
+    normalize_instrument,
+    normalize_instruments,
     validate_provider_request_capabilities,
+)
+from backend.ai_engine.v3.prompt_compiler import (
+    CompiledPrompt,
+    PromptDialect,
+    compile_music_prompt,
 )
 from backend.app.schemas.v3.common import (
     ProviderCapabilities,
@@ -70,6 +85,22 @@ from backend.app.schemas.v3.music import (
     ProviderMusicRequest,
     ProviderTask,
 )
+
+__all__ = [
+    "INSTRUMENT_ALIASES",
+    "NO_AMBIENT_TOKENS",
+    "REFERENCE_INSTRUMENTS",
+    "SUPPORTED_INSTRUMENTS",
+    "TOKENHUB_DEFAULT_BASE_URL",
+    "TOKENHUB_MUSIC_PATH",
+    "TOKENHUB_PROMPT_MAX_LENGTH",
+    "DEFAULT_TOKENHUB_MUSIC_MODEL",
+    "TokenHubMinimaxMusicProvider",
+    "ambient_prompt_parts",
+    "compile_tokenhub_prompt",
+    "normalize_instrument",
+    "normalize_instruments",
+]
 
 # --------------------------------------------------------------------------- #
 # Constants
@@ -96,50 +127,13 @@ TOKENHUB_MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 TOKENHUB_PROMPT_MAX_LENGTH = 2000
 
-# Fixed rule-asset -> provider token mapping. Rule assets publish Chinese
-# instrument names (used unchanged for the five-tone analysis page display);
-# the provider prompt uses the normalized token only.
-INSTRUMENT_ALIASES: dict[str, str] = {
-    "古琴": "guqin",
-    "箫": "xiao",
-    "琵琶": "pipa",
-    "笛": "dizi",
-    "埙": "xun",
-    # canonical tokens are accepted as-is
-    "guqin": "guqin",
-    "xiao": "xiao",
-    "pipa": "pipa",
-    "dizi": "dizi",
-    "xun": "xun",
-}
-
-# Instruments the TokenHub adapter can render (normalized provider tokens).
+# Instruments this dialect can render (normalized provider tokens). The
+# approved-name -> token mapping and the unknown-value failure are owned by the
+# shared Prompt Compiler V2 vocabulary seam (`music_provider`), so the three
+# dialects cannot drift; only the accepted set stays dialect-specific.
 SUPPORTED_INSTRUMENTS: tuple[str, ...] = ("guqin", "xiao", "pipa", "dizi", "xun")
 # Backwards-compatible alias for older references/tests.
 REFERENCE_INSTRUMENTS = SUPPORTED_INSTRUMENTS
-
-# Ambient values that mean "no extra ambient sound": they must never be rendered
-# as "soft 无额外环境音 ambience" and the ambience sentence is omitted instead.
-NO_AMBIENT_TOKENS: frozenset[str] = frozenset(
-    {
-        "无额外环境音",
-        "无其他环境音",
-        "无环境音",
-        "无",
-        "不需要",
-        "none",
-        "no_extra_ambient",
-        "no_ambient",
-    }
-)
-
-_TONE_MOOD = {
-    "gong": "steady, grounded, calm earth energy",
-    "shang": "clear, bright metal energy",
-    "jiao": "gentle, flowing wood energy",
-    "zhi": "warm, radiant fire energy",
-    "yu": "fluid, deep water energy",
-}
 
 _MEDIA_ROOT_ENV = "HARMONY_MEDIA_ROOT"
 _GENERATED_SUBDIR = Path("generated") / "tokenhub"
@@ -340,89 +334,33 @@ def milliseconds_to_seconds(value: int | float) -> float:
     return float(value) / 1000.0
 
 
-def normalize_instrument(value: str) -> str:
-    """Map a rule-asset instrument value to the provider token.
+def compile_tokenhub_prompt(request: ProviderMusicRequest) -> CompiledPrompt:
+    """Compile this dialect's prompt via Prompt Compiler V2 (§13).
 
-    Chinese names published by the rule assets are supported for the five fixed
-    instruments; anything unmapped fails explicitly (never silently dropped).
+    Instrument normalization, tone/weight rendering, the no-ambient rule and the
+    length cap are all owned by the compiler; this dialect only declares which
+    dialect it is and refuses to accept anything but canonical instrument tokens.
     """
-    key = str(value).strip()
-    token = INSTRUMENT_ALIASES.get(key)
-    if token is None:
+
+    compiled = compile_music_prompt(
+        request.generation_spec, PromptDialect.TOKENHUB_MINIMAX
+    )
+    unsupported = sorted(
+        token
+        for token in _compiled_instruments(request.generation_spec)
+        if token not in SUPPORTED_INSTRUMENTS
+    )
+    if unsupported:
         raise MusicProviderFailureV3(
             "GENERATION_INSTRUMENT_UNSUPPORTED",
             retryable=False,
-            safe_message="当前生成服务不支持所需乐器（存在未映射的乐器值）。",
+            safe_message="当前生成服务不支持所需乐器组合。",
         )
-    return token
+    return compiled
 
 
-def normalize_instruments(values: list[str]) -> list[str]:
-    seen: list[str] = []
-    for value in values:
-        token = normalize_instrument(value)
-        if token not in seen:
-            seen.append(token)
-    return seen
-
-
-def _ambient_prompt_parts(ambient_sounds: list[str]) -> list[str]:
-    """Render real ambience only; 'no extra ambient' never becomes a prompt."""
-    parts: list[str] = []
-    for item in ambient_sounds:
-        token = str(item).strip()
-        if not token:
-            continue
-        if token in NO_AMBIENT_TOKENS or token.lower() in NO_AMBIENT_TOKENS:
-            continue
-        parts.append(f"soft {token} ambience")
-    return parts
-
-
-def _build_prompt(request: ProviderMusicRequest, *, instruments: list[str]) -> str:
-    """Deterministic, medical-neutral instrumental prompt from the spec.
-
-    ``instruments`` must already be normalized provider tokens; the spec keeps
-    the rule-asset (Chinese) values for display. ``duration_seconds`` is only a
-    prompt-level TARGET — TokenHub / MiniMax music has no duration parameter.
-    """
-    spec = request.generation_spec
-    tone_profile = spec.tone_profile
-    # V3.1 ToneProfile exposes primary_tone; legacy V3.0 exposes dominant_tone.
-    tone = getattr(tone_profile, "primary_tone", None) or getattr(
-        tone_profile, "dominant_tone", None
-    )
-    rendered_instruments = ", ".join(instruments) or "warm acoustic textures"
-    ambient_parts = _ambient_prompt_parts(spec.ambient_sounds)
-    structure = spec.structure
-    parts = ["Traditional Chinese instrumental healing music"]
-    if tone:
-        mood = _TONE_MOOD.get(tone, "steady, calm")
-        parts.append(f"in {tone} mode ({mood})")
-    parts.extend(
-        [
-            f"bpm {spec.bpm}",
-            f"target length about {spec.duration_seconds} seconds",
-            f"Instruments: {rendered_instruments}",
-            (
-                f"Structure: intro {structure.intro_seconds}s, "
-                f"main {structure.main_seconds}s, outro {structure.outro_seconds}s"
-            ),
-            f"Energy: {spec.energy_curve}",
-        ]
-    )
-    if ambient_parts:
-        parts.append("Atmosphere: " + ", ".join(ambient_parts) + ".")
-    if spec.forbidden_constraints:
-        parts.append("Avoid: " + ", ".join(spec.forbidden_constraints) + ".")
-    prompt = " ".join(parts) + "."
-    if len(prompt) > TOKENHUB_PROMPT_MAX_LENGTH:
-        raise MusicProviderFailureV3(
-            "GENERATION_PROVIDER_REJECTED",
-            retryable=False,
-            safe_message="音乐生成提示词过长，无法提交生成服务。",
-        )
-    return prompt
+def _compiled_instruments(spec: object) -> list[str]:
+    return normalize_instruments(list(getattr(spec, "instruments", ()) or ()))
 
 
 def _looks_like_mp3(payload: bytes) -> bool:
@@ -521,8 +459,14 @@ class TokenHubMinimaxMusicProvider:
         self.downloader = downloader or _requests_downloader
         self._health_status: str = "configured"
         self.last_run_metadata: dict[str, object] = {}
+        #: Prompt Compiler V2 identity of the most recent compile (never the text).
+        self._last_compiled_prompt: CompiledPrompt | None = None
         self.post_calls = 0
         self.download_calls = 0
+
+    def _prompt_identity(self) -> dict[str, str]:
+        compiled = self._last_compiled_prompt
+        return {} if compiled is None else compiled.audit_identity()
 
     # ------------------------------------------------------------------ #
     # Provider protocol
@@ -558,12 +502,13 @@ class TokenHubMinimaxMusicProvider:
         )
 
     def create_task(self, request: ProviderMusicRequest) -> ProviderTask:
-        # Rule assets publish Chinese instrument names; normalize to provider
-        # tokens for capability validation and the prompt only. The request (and
-        # therefore persistence/read model) keeps the original values.
-        normalized_instruments = normalize_instruments(
-            list(request.generation_spec.instruments)
-        )
+        # Prompt Compiler V2 (Sprint 6 Phase 5): approved Chinese instrument
+        # names are normalized to provider tokens inside the compiler, which also
+        # owns the tone/weight vocabulary, the no-ambient rule and the length cap.
+        # The request (and therefore persistence/read model) keeps the original
+        # display values.
+        compiled = compile_tokenhub_prompt(request)
+        normalized_instruments = _compiled_instruments(request.generation_spec)
         normalized_spec = request.generation_spec.model_copy(
             update={"instruments": normalized_instruments}
         )
@@ -571,8 +516,9 @@ class TokenHubMinimaxMusicProvider:
             update={"generation_spec": normalized_spec}
         )
         validate_provider_request_capabilities(normalized_request, self.capabilities())
+        self._last_compiled_prompt = compiled
         started = time.perf_counter()
-        prompt = _build_prompt(request, instruments=normalized_instruments)
+        prompt = compiled.text
         # NOTE: TokenHub / MiniMax music has NO duration request parameter.
         # spec.duration_seconds is a prompt-level target only; the persisted
         # duration comes from measuring the saved audio after success.
@@ -710,6 +656,7 @@ class TokenHubMinimaxMusicProvider:
                 if isinstance(music_duration_ms, (int, float))
                 else None
             ),
+            **self._prompt_identity(),
         }
         return ProviderTask(
             provider_task_id=_safe_provider_task_id(
@@ -862,6 +809,7 @@ class TokenHubMinimaxMusicProvider:
             "attempts": attempt,
             "latency_ms": latency_ms,
             "error_code": error.error_code,
+            **self._prompt_identity(),
         }
         # Raw vendor message/body is intentionally never stored (secret risk).
         self._health_status = "degraded" if error.retryable else "down"

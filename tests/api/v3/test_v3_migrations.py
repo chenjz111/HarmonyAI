@@ -74,6 +74,7 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
         "0007_v3_prescription_mode",
         "0008_v3_prescription_user_goal_snapshot",
         "0009_v3_five_tone_read_model",
+        "0010_v3_generation_prompt_audit",
     ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)
@@ -135,13 +136,37 @@ def test_0009_is_idempotent_after_local_model_schema_creation(tmp_path):
 
     result = apply_v3_migrations(engine)
 
-    assert result["applied_versions"][-1] == "0009_v3_five_tone_read_model"
+    assert result["applied_versions"][-1] == "0010_v3_generation_prompt_audit"
     with engine.connect() as connection:
         assert connection.execute(
             text(
                 "SELECT COUNT(*) FROM schema_migrations "
                 "WHERE version = '0009_v3_five_tone_read_model'"
             )
+        ).scalar_one() == 1
+        assert connection.execute(
+            text(
+                "SELECT COUNT(*) FROM schema_migrations "
+                "WHERE version = '0010_v3_generation_prompt_audit'"
+            )
+        ).scalar_one() == 1
+
+
+def test_0010_adds_prompt_audit_identity_column(tmp_path):
+    assert "0010_v3_generation_prompt_audit" in V3_MIGRATION_VERSIONS
+    engine = create_engine(f"sqlite:///{tmp_path / 'prompt-audit.db'}")
+    _create_legacy_foundation(engine)
+    apply_v3_migrations(engine)
+
+    columns = {
+        column["name"] for column in inspect(engine).get_columns("generation_tasks")
+    }
+    assert "prompt_audit_json" in columns
+    # Nullable: historical rows stay valid without a backfill.
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT COUNT(*) FROM pragma_table_info('generation_tasks') "
+                 "WHERE name = 'prompt_audit_json' AND \"notnull\" = 0")
         ).scalar_one() == 1
 
 
@@ -295,12 +320,15 @@ def test_sqlite_v3_identity_constraints_and_cascade_are_enforced(tmp_path):
 def test_v3_migration_upgrades_an_existing_0008_database_incrementally(
     tmp_path, monkeypatch
 ):
-    """A database already migrated through 0008 must upgrade to 0009 in place,
-    without re-running earlier migrations or hitting a checksum mismatch."""
+    """A database already migrated through 0008 must upgrade in place to the
+    current head, without re-running earlier migrations or hitting a checksum
+    mismatch."""
     engine = create_engine(f"sqlite:///{tmp_path / 'incremental.db'}")
     _create_legacy_foundation(engine)
 
-    up_to_0008 = V3_MIGRATION_VERSIONS[:-1]  # 0001..0008, no 0009 yet
+    up_to_0008 = V3_MIGRATION_VERSIONS[
+        : V3_MIGRATION_VERSIONS.index("0009_v3_five_tone_read_model")
+    ]  # 0001..0008, no 0009 yet
     monkeypatch.setattr(
         "backend.app.core.v3_migrations.V3_MIGRATION_VERSIONS", up_to_0008
     )
@@ -311,12 +339,19 @@ def test_v3_migration_upgrades_an_existing_0008_database_incrementally(
         "backend.app.core.v3_migrations.V3_MIGRATION_VERSIONS", V3_MIGRATION_VERSIONS
     )
     second = apply_v3_migrations(engine)
-    assert second["applied_versions"] == ["0009_v3_five_tone_read_model"]
+    assert second["applied_versions"] == [
+        "0009_v3_five_tone_read_model",
+        "0010_v3_generation_prompt_audit",
+    ]
 
     columns = {
         column["name"] for column in inspect(engine).get_columns("diagnosis_runs")
     }
     assert "five_tone_read_model_json" in columns
+    generation_columns = {
+        column["name"] for column in inspect(engine).get_columns("generation_tasks")
+    }
+    assert "prompt_audit_json" in generation_columns
 
 
 def test_v3_migration_0008_down_restores_schema(tmp_path):

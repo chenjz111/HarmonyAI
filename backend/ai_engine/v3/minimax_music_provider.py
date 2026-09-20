@@ -51,7 +51,13 @@ from backend.ai_engine.providers import (
 )
 from backend.ai_engine.v3.music_provider import (
     MusicProviderFailureV3,
+    normalize_instruments,
     validate_provider_request_capabilities,
+)
+from backend.ai_engine.v3.prompt_compiler import (
+    CompiledPrompt,
+    PromptDialect,
+    compile_music_prompt,
 )
 from backend.app.schemas.v3.common import (
     ProviderCapabilities,
@@ -106,13 +112,10 @@ MAX_DURATION_SECONDS = 300
 # Prompt length cap documented by MiniMax (1-2000 characters).
 MINIMAX_PROMPT_MAX_LENGTH = 2000
 
-_TONE_MOOD = {
-    "gong": "steady, grounded, calm earth energy",
-    "shang": "clear, bright metal energy",
-    "jiao": "gentle, flowing wood energy",
-    "zhi": "warm, radiant fire energy",
-    "yu": "fluid, deep water energy",
-}
+# Sprint 6 Phase 5: tone descriptors, tone-weight rendering, instrument and
+# ambience normalization, medical neutrality and the prompt length cap are all
+# owned by Prompt Compiler V2 (`prompt_compiler.py`). This adapter only declares
+# its dialect, so the three dialects cannot drift on prompt semantics.
 
 # Stable public vocabulary used by the service layer (music_provider.py).
 _ERROR_MAPPING = {
@@ -203,51 +206,29 @@ def _safe_provider_task_id(raw: str | None, fallback: str) -> str:
     return fallback
 
 
-def _build_prompt(request: ProviderMusicRequest) -> str:
-    """Deterministic, medical-neutral prompt from the structured spec.
+def compile_minimax_prompt(request: ProviderMusicRequest) -> CompiledPrompt:
+    """Compile this dialect's prompt via Prompt Compiler V2 (§14).
 
-    The spec carries only tone/parameter fields (no patient text), so the
-    prompt cannot leak protected content. When the ToneProfile is insufficient
-    no tone claim is made.
+    The compiler normalizes approved instrument names to canonical tokens, fails
+    closed on unknown values, renders authoritative tone weights, drops
+    "no extra ambient" tokens and enforces the 2000-character MiniMax cap.
     """
-    spec = request.generation_spec
-    tone_profile = spec.tone_profile
-    tone = getattr(tone_profile, "dominant_tone", None) if tone_profile else None
-    instruments = ", ".join(spec.instruments) or "warm acoustic textures"
-    ambient_parts = [f"soft {item} ambience" for item in spec.ambient_sounds]
-    structure = spec.structure
-    parts = [
-        "Traditional Chinese instrumental healing music",
-    ]
-    if tone:
-        mood = _TONE_MOOD.get(tone, "steady, calm")
-        parts.append(f"in {tone} mode ({mood})")
-    parts.extend(
-        [
-            f"bpm {spec.bpm}",
-            f"total duration {spec.duration_seconds} seconds",
-            f"Instruments: {instruments}",
-            (
-                f"Structure: intro {structure.intro_seconds}s, "
-                f"main {structure.main_seconds}s, outro {structure.outro_seconds}s"
-            ),
-            f"Energy: {spec.energy_curve}",
-        ]
+
+    compiled = compile_music_prompt(request.generation_spec, PromptDialect.MINIMAX)
+    unsupported = sorted(
+        token
+        for token in normalize_instruments(
+            list(request.generation_spec.instruments)
+        )
+        if token not in REFERENCE_INSTRUMENTS
     )
-    if ambient_parts:
-        parts.append("Atmosphere: " + ", ".join(ambient_parts) + ".")
-    if spec.forbidden_constraints:
-        parts.append(
-            "Avoid: " + ", ".join(spec.forbidden_constraints) + "."
-        )
-    prompt = " ".join(parts) + "."
-    if len(prompt) > MINIMAX_PROMPT_MAX_LENGTH:
+    if unsupported:
         raise MusicProviderFailureV3(
-            "GENERATION_PROVIDER_REJECTED",
+            "GENERATION_INSTRUMENT_UNSUPPORTED",
             retryable=False,
-            safe_message="音乐生成提示词过长，无法提交生成服务。",
+            safe_message="当前生成服务不支持所需乐器组合。",
         )
-    return prompt
+    return compiled
 
 
 def _looks_like_audio(payload: bytes) -> bool:
@@ -323,6 +304,12 @@ class MiniMaxMusicProvider:
         self.transport = transport or MiniMaxHttpTransport()
         self._health_status: str = "configured"
         self.last_run_metadata: dict[str, object] = {}
+        #: Prompt Compiler V2 identity of the most recent compile (never the text).
+        self._last_compiled_prompt: CompiledPrompt | None = None
+
+    def _prompt_identity(self) -> dict[str, str]:
+        compiled = self._last_compiled_prompt
+        return {} if compiled is None else compiled.audit_identity()
 
     # ------------------------------------------------------------------ #
     # Public provider protocol
@@ -357,9 +344,24 @@ class MiniMaxMusicProvider:
         )
 
     def create_task(self, request: ProviderMusicRequest) -> ProviderTask:
-        validate_provider_request_capabilities(request, self.capabilities())
+        # Prompt Compiler V2 owns prompt semantics; capability validation then
+        # runs on the normalized (canonical-token) request, before any network
+        # call, so an unsupported raw instrument can never reach the provider.
+        compiled = compile_minimax_prompt(request)
+        normalized_spec = request.generation_spec.model_copy(
+            update={
+                "instruments": normalize_instruments(
+                    list(request.generation_spec.instruments)
+                )
+            }
+        )
+        validate_provider_request_capabilities(
+            request.model_copy(update={"generation_spec": normalized_spec}),
+            self.capabilities(),
+        )
+        self._last_compiled_prompt = compiled
         started = time.perf_counter()
-        prompt = _build_prompt(request)
+        prompt = compiled.text
         body = json.dumps(
             {
                 "model": self.model,
@@ -511,6 +513,7 @@ class MiniMaxMusicProvider:
             "latency_ms": latency_ms,
             "error_code": None,
             "trace_id": payload.get("trace_id"),
+            **self._prompt_identity(),
         }
         return ProviderTask(
             provider_task_id=_safe_provider_task_id(
@@ -603,6 +606,7 @@ class MiniMaxMusicProvider:
             "attempts": attempt,
             "latency_ms": latency_ms,
             "error_code": error.error_code,
+            **self._prompt_identity(),
         }
         # Do not store raw vendor causes (may contain credentials).
         self._health_status = "degraded" if error.retryable else "down"
