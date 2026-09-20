@@ -167,12 +167,21 @@ def test_public_read_model_uses_canonical_chinese_name_not_provider_english():
     )
 
     root = result.root
-    assert root.presentation.primary_tendency == "脾虚湿困倾向"
     assert [candidate.display_name for candidate in root.candidate_tendencies] == [
         "脾虚湿困倾向"
     ]
     assert root.candidate_tendencies[0].syndrome_code == "syd_005"
+    # Sprint 6 Phase 4 (F4-D6/F4-D8): the user-facing headline is the
+    # deterministic read-model authority (the approved tone label), never the
+    # provider's free text.
+    assert root.presentation.primary_tendency == (
+        pipeline.read_model.primary_tone.display_name
+    )
     assert "Spleen Deficiency" not in root.presentation.primary_tendency
+    assert all(
+        "Spleen Deficiency" not in summary
+        for summary in root.presentation.basis_summaries
+    )
 
 
 def test_unknown_provider_syndrome_code_falls_back_to_provider_display_name():
@@ -200,7 +209,15 @@ def test_unknown_provider_syndrome_code_falls_back_to_provider_display_name():
     )
 
     root = result.root
-    assert root.presentation.primary_tendency == "Spleen Deficiency"
     assert [candidate.display_name for candidate in root.candidate_tendencies] == [
         "Spleen Deficiency"
     ]
+    # Phase 4: the unapproved/English candidate text stays out of the
+    # presentation; the headline still comes from the deterministic read model.
+    assert root.presentation.primary_tendency == (
+        pipeline.read_model.primary_tone.display_name
+    )
+    assert all(
+        "Spleen Deficiency" not in summary
+        for summary in root.presentation.basis_summaries
+    )

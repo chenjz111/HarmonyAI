@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 import inspect
@@ -117,12 +117,23 @@ def validate_diagnosis_provider_response(
             "DIAGNOSIS_SCHEMA_INVALID",
             "辨证服务返回格式无效。",
         ) from error
+    seen_syndrome_codes: set[str] = set()
     for candidate in checked.candidate_tendencies:
         if candidate.syndrome_code not in allowed_syndrome_codes:
             raise DiagnosisPipelineFailure(
                 "SYNDROME_NOT_APPROVED",
                 "辨证结果包含未批准的证型。",
             )
+        # Sprint 6 Phase 4 (F4-D5): one candidate per syndrome code. Two rows with
+        # the same code are schema-legal but violate the persistence uniqueness
+        # contract, so they must fail here as a mapped provider-contract failure
+        # instead of surfacing as a raw IntegrityError at insert time.
+        if candidate.syndrome_code in seen_syndrome_codes:
+            raise DiagnosisPipelineFailure(
+                "DUPLICATE_SYNDROME_CODE",
+                "辨证结果包含重复的证型。",
+            )
+        seen_syndrome_codes.add(candidate.syndrome_code)
         if len(candidate.supporting_fact_ids) != len(set(candidate.supporting_fact_ids)):
             raise DiagnosisPipelineFailure(
                 "DUPLICATE_EVIDENCE_REFERENCE",
@@ -294,6 +305,15 @@ async def execute_diagnosis_provider(
             attempts=0,
         )
 
+    # Sprint 6 Phase 4 (F4-D3): candidate knowledge citations are limited to the
+    # exact hits of *this* run. The set only ever narrows — the retrieval loop
+    # above already rejected any hit outside the caller's approved context — so
+    # an approved-but-not-retrieved chunk or a previous run's chunk can no longer
+    # be cited. Phase 3's corpus integrity controls are untouched.
+    current_hit_ids = {str(hit.chunk_id) for hit in rag_result.hits}
+    if hasattr(provider, "allowed_chunk_ids"):
+        provider.allowed_chunk_ids = set(current_hit_ids)
+
     from backend.ai_engine.v3.diagnosis_provider import DiagnosisProviderFailure
 
     provider_run_id = f"provider_{uuid.uuid4().hex}"
@@ -336,6 +356,48 @@ async def execute_diagnosis_provider(
             reason_code=error.error_code,
             attempts=error.attempts,
             retryable=error.retryable,
+            safe_diagnostics=error.safe_diagnostics,
+        )
+
+    # Sprint 6 Phase 4 (F4-D4): the pipeline is the shared, final enforcement
+    # point. The Qwen adapter keeps its own validation as defence in depth, but
+    # an alternate provider or test double must not be able to bypass the
+    # contract, so the same validator runs here against the current-run
+    # authoritative sets (approved syndromes, current-revision fact ids with
+    # their directions, exact current-run chunk ids).
+    shared_syndrome_codes = set(
+        getattr(provider, "allowed_syndrome_codes", ()) or ()
+    )
+    if not shared_syndrome_codes:
+        if isinstance(request, Mapping):
+            shared_syndrome_codes = set(request.get("allowed_syndrome_codes") or ())
+        else:
+            shared_syndrome_codes = set(
+                getattr(request, "allowed_syndrome_codes", ()) or ()
+            )
+    # The approved fact set is the union of the ids declared by the request
+    # facts and the provider's own allow-list. Both are caller-declared
+    # authorities, so an empty union still fails closed (a candidate may not
+    # invent a fact id when no fact is approved for this revision).
+    allowed_fact_ids = {
+        str(entry.fact_evidence_id)
+        for entry in facts
+        if getattr(entry, "fact_evidence_id", None)
+    } | {str(item) for item in (getattr(provider, "allowed_fact_ids", ()) or ())}
+    try:
+        response = validate_diagnosis_provider_response(
+            response,
+            allowed_syndrome_codes=shared_syndrome_codes,
+            allowed_fact_ids=allowed_fact_ids,
+            allowed_chunk_ids=current_hit_ids,
+            fact_directions=fact_directions(facts),
+        )
+    except DiagnosisPipelineFailure as error:
+        return execution(
+            "failed",
+            response=None,
+            reason_code=error.error_code,
+            attempts=attempts,
             safe_diagnostics=error.safe_diagnostics,
         )
     return execution(
@@ -459,6 +521,36 @@ def _organ_profile(snapshot: Mapping[str, object]):
         "weights": {key: value / total for key, value in normalized.items()},
         "score_semantics": "relative_evidence_distribution",
     }
+
+
+def fact_directions(facts: Sequence[object] | Mapping[str, object]) -> dict[str, str]:
+    """Map ``fact_evidence_id`` -> declared direction for direction validation.
+
+    Shared by the provider adapter and the pipeline-level enforcement so the two
+    cannot drift.
+    """
+
+    directions: dict[str, str] = {}
+    items: Sequence[object]
+    if isinstance(facts, Mapping):
+        items = list(facts.values())
+    else:
+        items = list(facts)
+    for fact in items:
+        dumped: object
+        if hasattr(fact, "model_dump"):
+            dumped = fact.model_dump(mode="json")
+        elif isinstance(fact, Mapping):
+            dumped = dict(fact)
+        else:
+            dumped = fact
+        if not isinstance(dumped, Mapping):
+            continue
+        fact_id = dumped.get("fact_evidence_id")
+        direction = dumped.get("direction")
+        if isinstance(fact_id, str) and isinstance(direction, str):
+            directions[fact_id] = direction
+    return directions
 
 
 def _strings(value: object) -> list[str]:

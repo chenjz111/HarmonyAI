@@ -58,6 +58,10 @@ from backend.app.schemas.v3.diagnosis import (
 )
 from backend.app.schemas.v3.flow_v31 import ConfirmedUserState
 from backend.ai_engine.v3.diagnosis_pipeline import DiagnosisPipelineFailure
+from backend.ai_engine.v3.grounding import (
+    authoritative_primary_tendency,
+    presentation_with_kernel,
+)
 from backend.ai_engine.v3.v31_pipeline import (
     V31AiPipelineResult,
     V31LegalAbstainResult,
@@ -138,6 +142,11 @@ class V31PipelineFailure(RuntimeError):
 
 
 _OPERATION = "create_v3_diagnosis"
+
+#: Sprint 6 Phase 4 fallback basis line. It is deterministic, non-diagnostic and
+#: only used when the safe-atom builder produced nothing (it always produces at
+#: least one atom for a successful run, so this is defence in depth).
+DEFAULT_SAFE_BASIS_SUMMARY = "已根据本次确认信息整理音乐调适方向。"
 
 
 def _request_hash(payload: dict[str, object]) -> str:
@@ -641,6 +650,24 @@ def _diagnosis_from_v31_pipeline(
         )
     if not candidates:
         raise V31PipelineFailure("DIAGNOSIS_RESPONSE_INVALID")
+    # Sprint 6 Phase 4 (F4-D6 / F4-D8): the user-facing presentation is built from
+    # deterministic authority only. Provider `reasoning_summary`, `display_name`
+    # fallbacks, `relative_support` and candidate ordering no longer feed
+    # `presentation.primary_tendency` or `presentation.basis_summaries`; those
+    # come from the Phase 1B decision / read model and the safe explanation atoms.
+    presentation_primary_tendency = authoritative_primary_tendency(
+        getattr(pipeline, "read_model", None)
+    )
+    atom_texts: list[str] = []
+    for atom in (
+        getattr(getattr(pipeline, "evidence_kernel", None), "explanation_atoms", ())
+        or ()
+    ):
+        text = str(getattr(atom, "display_text", "") or "").strip()
+        if text and text not in atom_texts:
+            atom_texts.append(text)
+    if not atom_texts:
+        atom_texts = [DEFAULT_SAFE_BASIS_SUMMARY]
     root = {
         "schema_version": "diagnosis_v3.0",
         "agent_id": "diagnosis_agent",
@@ -662,8 +689,8 @@ def _diagnosis_from_v31_pipeline(
         ),
         "presentation": DiagnosisPresentation(
             title="辨证分析",
-            primary_tendency=candidates[0].display_name,
-            basis_summaries=[item.reasoning_summary for item in candidates],
+            primary_tendency=presentation_primary_tendency,
+            basis_summaries=atom_texts,
             knowledge_references=rag_refs,
             disclaimer="本结果不构成医学诊断或治疗建议。",
         ),
@@ -710,7 +737,16 @@ def _persist_diagnosis(
     run.primary_tendency_id = root.primary_tendency_id
     run.element_profile_json = root.element_profile.model_dump(mode="json")
     run.degradation_json = root.degradation.model_dump(mode="json")
-    run.presentation_json = root.presentation.model_dump(mode="json")
+    # Sprint 6 Phase 4 (F4-D11): the EvidenceKernelV1 is persisted additively
+    # inside this existing JSON snapshot. The column is an internal, write-only
+    # audit snapshot (no reader builds a contract model from it), so no column,
+    # table, migration or public read-model version is required, and the public
+    # presentation served to clients is unchanged in shape. Legacy rows simply
+    # have no `evidence_kernel` key and stay readable as legacy_unverified.
+    run.presentation_json = presentation_with_kernel(
+        root.presentation.model_dump(mode="json"),
+        getattr(pipeline, "evidence_kernel", None) if pipeline is not None else None,
+    )
     if pipeline is not None:
         # Sprint 6 Phase 1B: the pipeline emits the v3.3 read model (with the
         # checksum-protected dominance audit); a Phase 1A v3.2 payload stays

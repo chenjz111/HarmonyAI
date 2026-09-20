@@ -39,11 +39,13 @@ from .diagnosis_pipeline import (
     build_diagnosis_query,
     execute_diagnosis_provider,
 )
+from .grounding import EvidenceKernelV1, build_evidence_kernel
 from backend.app.schemas.v3.flow_v31 import OrganDominanceDecisionV1
 from backend.app.services.v3.knowledge_assets import load_organ_mapping
 from backend.app.services.v3.organ_dominance_service import (
     DominanceReadinessError,
     OrganAggregationSnapshot,
+    decision_snapshot_checksum,
     load_configured_dominance_rule,
     resolve_organ_dominance,
     verify_candidate_policy_consistency,
@@ -101,6 +103,11 @@ class V31AiPipelineResult:
     rag_chunk_checksums: Mapping[str, str]
     audit_context: V31PipelineAuditContext | None = None
     dominance_decision: OrganDominanceDecisionV1 | None = None
+    #: Sprint 6 Phase 4: deterministic authority snapshot for this run. Built
+    #: only from already-authoritative inputs; provider free text is never an
+    #: input, so the kernel cannot be influenced by reasoning_summary,
+    #: display_name, relative_support or candidate ordering.
+    evidence_kernel: EvidenceKernelV1 | None = None
 
 
 async def execute_v31_ai_pipeline(
@@ -256,6 +263,34 @@ async def execute_v31_ai_pipeline(
         rag_chunk_checksums=dict(getattr(rag_store, "chunk_checksums", {})),
         audit_context=audit_context,
         dominance_decision=decision,
+        evidence_kernel=build_evidence_kernel(
+            assessment_id=str(
+                assessment_snapshot.get("assessment_id") or diagnosis_id
+            ),
+            assessment_revision=int(assessment_snapshot.get("assessment_revision", 1)),
+            facts=diagnosis_request.facts,
+            rag_result=rag_result,
+            decision=decision,
+            read_model=read_model,
+            generation_spec=generation_spec,
+            chunk_checksums=dict(getattr(rag_store, "chunk_checksums", {})),
+            decision_checksum=decision_snapshot_checksum(decision),
+            mapping_version=_mapping_version(tone_mapping),
+            manifest=getattr(rag_store, "manifest", None),
+            query_builder_version=str(
+                assessment_snapshot.get("query_builder_version")
+                or getattr(
+                    getattr(rag_store, "query_policy", None),
+                    "builder_identity",
+                    "diagnosis_query_v3.1",
+                )
+            ),
+            medical_rule_version=(
+                str(assessment_snapshot["medical_rule_version"])
+                if assessment_snapshot.get("medical_rule_version") is not None
+                else None
+            ),
+        ),
     )
 
 
