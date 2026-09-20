@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from backend.ai_engine.v3.diagnosis_pipeline import (
     DiagnosisPipelineFailure,
+    fact_directions,
     validate_diagnosis_provider_response,
 )
 from backend.ai_engine.sprint4_contracts import ProviderError
@@ -152,7 +153,7 @@ class DiagnosisProvider:
                         allowed_syndrome_codes=self.allowed_syndrome_codes,
                         allowed_fact_ids=self.allowed_fact_ids,
                         allowed_chunk_ids=self.allowed_chunk_ids,
-                        fact_directions=_fact_directions(facts),
+                        fact_directions=fact_directions(facts),
                     ),
                     attempts_used,
                 )
@@ -297,15 +298,3 @@ def _safe_model_dump(value: object) -> object:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
-
-
-def _fact_directions(facts: Sequence[object]) -> dict[str, str]:
-    directions: dict[str, str] = {}
-    for fact in facts:
-        dumped = _safe_model_dump(fact)
-        if isinstance(dumped, Mapping):
-            fact_id = dumped.get("fact_evidence_id")
-            direction = dumped.get("direction")
-            if isinstance(fact_id, str) and isinstance(direction, str):
-                directions[fact_id] = direction
-    return directions

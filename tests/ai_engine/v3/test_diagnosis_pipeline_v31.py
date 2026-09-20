@@ -966,6 +966,11 @@ def test_diagnosis_execution_passes_only_approved_rag_chunk_ids_to_qwen():
     class Provider:
         # Sprint 6 Phase 3: a successful hit requires a non-empty approved set.
         allowed_chunk_ids = {"chunk_1"}
+        # Sprint 6 Phase 4: the shared pipeline validator runs against the
+        # caller-declared approved syndromes/facts, so the double declares the
+        # same allow-lists the production adapter always carries.
+        allowed_syndrome_codes = {"syndrome_1"}
+        allowed_fact_ids = {"fact_1"}
 
         def __init__(self):
             self.kwargs = None
