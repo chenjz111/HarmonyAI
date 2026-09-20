@@ -146,6 +146,10 @@ class GenerationTask(Base):
     fallback_applied = Column(Integer, nullable=False)
     fallback_reason_code = Column(String(64), nullable=True)
     error_code = Column(String(64), nullable=True)
+    # Sprint 6 Phase 5 (Prompt Compiler V2): ops-internal prompt identity only
+    # (compiler_version / dialect_id / prompt_checksum / input_spec_checksum).
+    # The full prompt text is never persisted. Nullable: legacy rows stay valid.
+    prompt_audit_json = Column(JSON, nullable=True)
     music_asset_id = Column(
         String(64),
         ForeignKey("music_assets.music_asset_id"),

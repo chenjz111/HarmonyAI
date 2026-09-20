@@ -21,6 +21,7 @@ V3_MIGRATION_VERSIONS = [
     "0007_v3_prescription_mode",
     "0008_v3_prescription_user_goal_snapshot",
     "0009_v3_five_tone_read_model",
+    "0010_v3_generation_prompt_audit",
 ]
 
 _REQUIRED_TABLES = {
@@ -167,6 +168,34 @@ def _render_sqlite_five_tone_migration(engine: Engine, sql: str) -> str:
     return "\n".join(rendered_lines)
 
 
+def _render_sqlite_generation_prompt_audit_migration(engine: Engine, sql: str) -> str:
+    """Skip the 0010 ADD COLUMN when a model-created schema already has it.
+
+    ``init_database`` creates the current SQLAlchemy model schema before it
+    applies versioned migrations, so a fresh local database may already carry the
+    nullable ``generation_tasks.prompt_audit_json`` column. The source SQL
+    checksum is unchanged; only execution omits the duplicate ADD COLUMN.
+    """
+
+    if "generation_tasks" not in inspect(engine).get_table_names():
+        return sql
+
+    present = {
+        column["name"]
+        for column in inspect(engine).get_columns("generation_tasks")
+    }
+    if "prompt_audit_json" not in present:
+        return sql
+    rendered_lines = [
+        line
+        for line in sql.splitlines()
+        if not line.strip().startswith(
+            "ALTER TABLE generation_tasks ADD COLUMN prompt_audit_json"
+        )
+    ]
+    return "\n".join(rendered_lines)
+
+
 def _enable_sqlite_foreign_keys(engine: Engine) -> None:
     if getattr(engine, "_harmonyai_v3_fk_listener", False):
         return
@@ -227,6 +256,10 @@ def _apply_sqlite_migration(
             rendered = _remove_marked_block(rendered, "V3_OWNER_FLOW_SESSION")
         if version == "0009_v3_five_tone_read_model":
             rendered = _render_sqlite_five_tone_migration(engine, rendered)
+        if version == "0010_v3_generation_prompt_audit":
+            rendered = _render_sqlite_generation_prompt_audit_migration(
+                engine, rendered
+            )
         raw.executescript(rendered)
         cursor.execute(
             "INSERT INTO schema_migrations (version, checksum) VALUES (?, ?)",

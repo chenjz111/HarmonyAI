@@ -9,9 +9,18 @@ error mapping (HTTP + base_resp), secret non-leakage, and the forbidden
 import asyncio
 import json
 from pathlib import Path
+import re
 
 import pytest
 import requests
+
+from backend.ai_engine.v3.prompt_compiler import (
+    PROMPT_COMPILER_VERSION,
+    PROMPT_MAX_LENGTH,
+    TONE_PROMPT_DESCRIPTORS,
+    PromptDialect,
+    compile_music_prompt,
+)
 
 from backend.ai_engine.v3.generation_provider_adapter import (
     NotConfiguredMusicProvider,
@@ -28,6 +37,7 @@ from backend.ai_engine.v3.tokenhub_minimax_music_provider import (
     TOKENHUB_DEFAULT_BASE_URL,
     TOKENHUB_MAX_DURATION_SECONDS,
     TOKENHUB_MUSIC_PATH,
+    TOKENHUB_PROMPT_MAX_LENGTH,
     AudioDownloadTooLarge,
     DownloadedAudio,
     TokenHubMinimaxMusicProvider,
@@ -983,3 +993,89 @@ def test_adapter_maps_unsafe_and_excessive_redirects_to_rejected(tmp_path):
         assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED", error
         assert not list((tmp_path / "generated").glob("**/*")), error
         assert provider.post_calls == 1
+
+
+# --------------------------------------------------------------------------- #
+# Sprint 6 Phase 5 — Prompt Compiler V2 integration (§13)
+# --------------------------------------------------------------------------- #
+TONE_CODES = ("jiao", "zhi", "gong", "shang", "yu")
+
+
+def _long_request(entries: int) -> ProviderMusicRequest:
+    payload = dict(_generation_spec())
+    payload["forbidden_constraints"] = ["x" * 20] * entries
+    return ProviderMusicRequest(
+        provider_request_id="pr_long",
+        generation_spec=payload,  # type: ignore[arg-type]
+        output_format="mp3",
+        callback_ref=None,
+    )
+
+
+def test_tokenhub_prompt_actually_uses_prompt_compiler_v2(tmp_path):
+    poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
+    provider = _provider(tmp_path, poster)
+    request = _request(instruments=["古琴", "箫"])
+    provider.create_task(request)
+
+    prompt = poster.calls[0]["json"]["prompt"]
+    expected = compile_music_prompt(
+        request.generation_spec, PromptDialect.TOKENHUB_MINIMAX
+    )
+    assert prompt == expected.text
+    assert TONE_PROMPT_DESCRIPTORS["gong"] in prompt
+    assert "primary tone emphasis 0.2" in prompt
+    assert "Instruments: guqin, xiao" in prompt
+
+
+def test_tokenhub_prompt_has_no_raw_tone_enum_leakage(tmp_path):
+    poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
+    provider = _provider(tmp_path, poster)
+    provider.create_task(_request(instruments=["古琴", "箫"]))
+
+    prompt = poster.calls[0]["json"]["prompt"]
+    for tone in TONE_CODES:
+        assert not re.search(rf"\b{tone}\b", prompt, re.IGNORECASE), prompt
+
+
+def test_tokenhub_prompt_identity_is_recorded_without_the_prompt_text(tmp_path):
+    poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
+    provider = _provider(tmp_path, poster)
+    provider.create_task(_request())
+
+    prompt = poster.calls[0]["json"]["prompt"]
+    metadata = provider.last_run_metadata
+    assert metadata["compiler_version"] == PROMPT_COMPILER_VERSION
+    assert metadata["dialect_id"] == PromptDialect.TOKENHUB_MINIMAX.value
+    assert metadata["prompt_checksum"].startswith("sha256:")
+    assert metadata["input_spec_checksum"].startswith("sha256:")
+    assert prompt not in {value for value in metadata.values()}
+    assert len(prompt) > 1  # the compiled prompt is a real string, just not stored
+
+
+def test_tokenhub_prompt_over_the_cap_fails_before_any_post(tmp_path):
+    poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
+    provider = _provider(tmp_path, poster)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_long_request(entries=200))
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+    assert caught.value.retryable is False
+    assert poster.calls == []
+
+
+def test_tokenhub_failure_attempt_still_records_the_prompt_identity(tmp_path):
+    def _boom(*args, **kwargs):
+        raise TimeoutError("transport down")
+
+    provider = _provider(tmp_path, _boom)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request())
+    assert caught.value.error_code == "GENERATION_PROVIDER_TIMEOUT"
+    assert provider.last_run_metadata["compiler_version"] == PROMPT_COMPILER_VERSION
+    assert provider.last_run_metadata["dialect_id"] == PromptDialect.TOKENHUB_MINIMAX.value
+    assert provider.last_run_metadata["prompt_checksum"].startswith("sha256:")
+
+
+def test_tokenhub_cap_matches_the_compiler_dialect_cap():
+    assert TOKENHUB_PROMPT_MAX_LENGTH == PROMPT_MAX_LENGTH[PromptDialect.TOKENHUB_MINIMAX]
+    assert set(SUPPORTED_INSTRUMENTS) == {"guqin", "xiao", "pipa", "dizi", "xun"}

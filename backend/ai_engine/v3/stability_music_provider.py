@@ -44,7 +44,13 @@ import requests
 
 from backend.ai_engine.v3.music_provider import (
     MusicProviderFailureV3,
+    normalize_instruments,
     validate_provider_request_capabilities,
+)
+from backend.ai_engine.v3.prompt_compiler import (
+    CompiledPrompt,
+    PromptDialect,
+    compile_music_prompt,
 )
 from backend.app.schemas.v3.common import (
     ProviderCapabilities,
@@ -86,13 +92,10 @@ REFERENCE_INSTRUMENTS = (
     "bianzhong",
 )
 
-_TONE_MOOD = {
-    "gong": "steady, grounded, calm earth energy",
-    "shang": "clear, bright metal energy",
-    "jiao": "gentle, flowing wood energy",
-    "zhi": "warm, radiant fire energy",
-    "yu": "fluid, deep water energy",
-}
+# Sprint 6 Phase 5: tone descriptors, tone-weight rendering, instrument and
+# ambience normalization, medical neutrality and the prompt length cap are all
+# owned by Prompt Compiler V2 (`prompt_compiler.py`). This adapter only declares
+# its dialect, so the three dialects cannot drift on prompt semantics.
 
 _MEDIA_ROOT_ENV = "HARMONY_MEDIA_ROOT"
 _GENERATED_SUBDIR = Path("generated") / "stability"
@@ -166,42 +169,29 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _build_prompt(request: ProviderMusicRequest) -> str:
-    """Deterministic, medical-neutral prompt from the structured spec."""
-    spec = request.generation_spec
-    tone_profile = spec.tone_profile
-    tone = getattr(tone_profile, "dominant_tone", None) if tone_profile else None
-    instruments = ", ".join(spec.instruments) or "warm acoustic textures"
-    ambient_parts = [f"soft {item} ambience" for item in spec.ambient_sounds]
-    structure = spec.structure
-    parts = ["Traditional Chinese instrumental healing music"]
-    if tone:
-        mood = _TONE_MOOD.get(tone, "steady, calm")
-        parts.append(f"in {tone} mode ({mood})")
-    parts.extend(
-        [
-            f"bpm {spec.bpm}",
-            f"total duration {spec.duration_seconds} seconds",
-            f"Instruments: {instruments}",
-            (
-                f"Structure: intro {structure.intro_seconds}s, "
-                f"main {structure.main_seconds}s, outro {structure.outro_seconds}s"
-            ),
-            f"Energy: {spec.energy_curve}",
-        ]
-    )
-    if ambient_parts:
-        parts.append("Atmosphere: " + ", ".join(ambient_parts) + ".")
-    if spec.forbidden_constraints:
-        parts.append("Avoid: " + ", ".join(spec.forbidden_constraints) + ".")
-    prompt = " ".join(parts) + "."
-    if len(prompt) > STABILITY_PROMPT_MAX_LENGTH:
-        raise MusicProviderFailureV3(
-            "GENERATION_PROVIDER_REJECTED",
-            retryable=False,
-            safe_message="音乐生成提示词过长，无法提交生成服务。",
+def compile_stability_prompt(request: ProviderMusicRequest) -> CompiledPrompt:
+    """Compile this dialect's prompt via Prompt Compiler V2 (§15).
+
+    The compiler normalizes approved instrument names to canonical tokens, fails
+    closed on unknown values, renders authoritative tone weights, drops
+    "no extra ambient" tokens and enforces the 10000-character Stability cap.
+    """
+
+    compiled = compile_music_prompt(request.generation_spec, PromptDialect.STABILITY)
+    unsupported = sorted(
+        token
+        for token in normalize_instruments(
+            list(request.generation_spec.instruments)
         )
-    return prompt
+        if token not in REFERENCE_INSTRUMENTS
+    )
+    if unsupported:
+        raise MusicProviderFailureV3(
+            "GENERATION_INSTRUMENT_UNSUPPORTED",
+            retryable=False,
+            safe_message="当前生成服务不支持所需乐器组合。",
+        )
+    return compiled
 
 
 def _looks_like_mp3(payload: bytes) -> bool:
@@ -255,7 +245,13 @@ class StabilityMusicProvider:
         self.poster = poster or _requests_poster
         self._health_status: str = "configured"
         self.last_run_metadata: dict[str, object] = {}
+        #: Prompt Compiler V2 identity of the most recent compile (never the text).
+        self._last_compiled_prompt: CompiledPrompt | None = None
         self.post_calls = 0
+
+    def _prompt_identity(self) -> dict[str, str]:
+        compiled = self._last_compiled_prompt
+        return {} if compiled is None else compiled.audit_identity()
 
     # ------------------------------------------------------------------ #
     # Provider protocol
@@ -290,9 +286,24 @@ class StabilityMusicProvider:
         )
 
     def create_task(self, request: ProviderMusicRequest) -> ProviderTask:
-        validate_provider_request_capabilities(request, self.capabilities())
+        # Prompt Compiler V2 owns prompt semantics; capability validation then
+        # runs on the normalized (canonical-token) request, before any network
+        # call, so an unsupported raw instrument can never reach the provider.
+        compiled = compile_stability_prompt(request)
+        normalized_spec = request.generation_spec.model_copy(
+            update={
+                "instruments": normalize_instruments(
+                    list(request.generation_spec.instruments)
+                )
+            }
+        )
+        validate_provider_request_capabilities(
+            request.model_copy(update={"generation_spec": normalized_spec}),
+            self.capabilities(),
+        )
+        self._last_compiled_prompt = compiled
         started = time.perf_counter()
-        prompt = _build_prompt(request)
+        prompt = compiled.text
         duration_seconds = int(request.generation_spec.duration_seconds)
         # Multipart field names follow the Owner-verified successful request and
         # the official Stable Audio 2.5 text-to-audio schema:
@@ -405,6 +416,7 @@ class StabilityMusicProvider:
             "attempts": 1,
             "latency_ms": latency_ms,
             "error_code": None,
+            **self._prompt_identity(),
         }
         task_id = _safe_task_id(sha256(audio).hexdigest())
         return ProviderTask(
@@ -467,6 +479,7 @@ class StabilityMusicProvider:
             "attempts": attempt,
             "latency_ms": latency_ms,
             "error_code": error.error_code,
+            **self._prompt_identity(),
         }
         self._health_status = "degraded" if error.retryable else "down"
 

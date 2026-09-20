@@ -14,8 +14,17 @@ Covers:
 import asyncio
 import json
 from pathlib import Path
+import re
 
 import pytest
+
+from backend.ai_engine.v3.prompt_compiler import (
+    PROMPT_COMPILER_VERSION,
+    PROMPT_MAX_LENGTH,
+    TONE_PROMPT_DESCRIPTORS,
+    PromptDialect,
+    compile_music_prompt,
+)
 
 from backend.ai_engine.v3.generation_provider_adapter import (
     NotConfiguredMusicProvider,
@@ -24,6 +33,7 @@ from backend.ai_engine.v3.generation_provider_adapter import (
 from backend.ai_engine.v3.minimax_music_provider import (
     DEFAULT_MINIMAX_BASE_URL,
     MAX_DURATION_SECONDS,
+    MINIMAX_PROMPT_MAX_LENGTH,
     MiniMaxMusicProvider,
     REFERENCE_INSTRUMENTS,
 )
@@ -401,3 +411,128 @@ def test_duration_beyond_capability_is_rejected_before_call(tmp_path):
     with pytest.raises(MusicProviderFailureV3) as caught:
         provider.create_task(request)
     assert caught.value.error_code == "GENERATION_DURATION_UNSUPPORTED"
+
+
+# --------------------------------------------------------------------------- #
+# Sprint 6 Phase 5 — Prompt Compiler V2 integration (§14)
+# --------------------------------------------------------------------------- #
+TONE_CODES = ("jiao", "zhi", "gong", "shang", "yu")
+
+
+def _request_with(
+    *,
+    instruments=None,
+    ambient=None,
+    constraints=None,
+    duration_seconds=None,
+) -> ProviderMusicRequest:
+    spec = dict(_generation_spec())
+    if instruments is not None:
+        spec["instruments"] = instruments
+    if ambient is not None:
+        spec["ambient_sounds"] = ambient
+    if constraints is not None:
+        spec["forbidden_constraints"] = constraints
+    if duration_seconds is not None:
+        spec["duration_seconds"] = duration_seconds
+        spec["structure"] = {
+            "intro_seconds": 30,
+            "main_seconds": duration_seconds - 60,
+            "outro_seconds": 30,
+        }
+    return ProviderMusicRequest(
+        provider_request_id="pr_minimax_test",
+        generation_spec=spec,  # type: ignore[arg-type]
+        output_format="mp3",
+        callback_ref=None,
+    )
+
+
+def test_minimax_prompt_actually_uses_prompt_compiler_v2(tmp_path):
+    transport = FakeTransport(response=_completed_body(_mp3_bytes()))
+    provider = _provider(tmp_path, transport)
+    request = _request_with(instruments=["古琴", "箫"])
+    provider.create_task(request)
+
+    body = json.loads(transport.calls[0]["body"])
+    prompt = body["prompt"]
+    expected = compile_music_prompt(request.generation_spec, PromptDialect.MINIMAX)
+    assert prompt == expected.text
+    assert TONE_PROMPT_DESCRIPTORS["gong"] in prompt
+    assert "primary tone emphasis 0.2" in prompt
+    # the approved Chinese names were normalized to canonical tokens
+    assert "Instruments: guqin, xiao" in prompt
+    assert "古琴" not in prompt
+    assert "total duration 300 seconds" in prompt
+
+
+def test_minimax_prompt_has_no_raw_tone_enum_leakage(tmp_path):
+    transport = FakeTransport(response=_completed_body(_mp3_bytes()))
+    provider = _provider(tmp_path, transport)
+    provider.create_task(_request())
+    prompt = json.loads(transport.calls[0]["body"])["prompt"]
+    for tone in TONE_CODES:
+        assert not re.search(rf"\b{tone}\b", prompt, re.IGNORECASE), prompt
+
+
+def test_minimax_no_extra_ambient_never_renders_contradictory_text(tmp_path):
+    transport = FakeTransport(response=_completed_body(_mp3_bytes()))
+    provider = _provider(tmp_path, transport)
+    provider.create_task(_request_with(ambient=["无额外环境音"]))
+    prompt = json.loads(transport.calls[0]["body"])["prompt"]
+    assert "无额外环境音" not in prompt
+    assert "Atmosphere" not in prompt
+    assert "ambience" not in prompt
+
+
+def test_minimax_real_ambience_still_renders_and_mixed_input_is_not_contradictory(
+    tmp_path,
+):
+    transport = FakeTransport(response=_completed_body(_mp3_bytes()))
+    provider = _provider(tmp_path, transport)
+    provider.create_task(_request_with(ambient=["water"]))
+    assert "Atmosphere: soft water ambience." in json.loads(
+        transport.calls[0]["body"]
+    )["prompt"]
+
+    provider.create_task(_request_with(ambient=["无额外环境音", "water"]))
+    prompt = json.loads(transport.calls[1]["body"])["prompt"]
+    assert "Atmosphere: soft water ambience." in prompt
+    assert "无额外环境音" not in prompt
+    assert "soft 无额外环境音 ambience" not in prompt
+
+
+def test_minimax_unknown_instrument_fails_before_any_post(tmp_path):
+    transport = FakeTransport(response=_completed_body(_mp3_bytes()))
+    provider = _provider(tmp_path, transport)
+    for instruments in (["suona"], ["古琴", "唢呐"]):
+        with pytest.raises(MusicProviderFailureV3) as caught:
+            provider.create_task(_request_with(instruments=instruments))
+        assert caught.value.error_code == "GENERATION_INSTRUMENT_UNSUPPORTED"
+    assert transport.calls == []
+
+
+def test_minimax_prompt_identity_is_recorded(tmp_path):
+    transport = FakeTransport(response=_completed_body(_mp3_bytes()))
+    provider = _provider(tmp_path, transport)
+    provider.create_task(_request())
+    prompt = json.loads(transport.calls[0]["body"])["prompt"]
+    metadata = provider.last_run_metadata
+    assert metadata["compiler_version"] == PROMPT_COMPILER_VERSION
+    assert metadata["dialect_id"] == PromptDialect.MINIMAX.value
+    assert metadata["prompt_checksum"].startswith("sha256:")
+    assert metadata["input_spec_checksum"].startswith("sha256:")
+    assert prompt not in {value for value in metadata.values()}
+
+
+def test_minimax_prompt_over_the_cap_fails_before_any_post(tmp_path):
+    transport = FakeTransport(response=_completed_body(_mp3_bytes()))
+    provider = _provider(tmp_path, transport)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request_with(constraints=["x" * 20] * 200))
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+    assert transport.calls == []
+
+
+def test_minimax_cap_matches_the_compiler_dialect_cap():
+    assert MINIMAX_PROMPT_MAX_LENGTH == PROMPT_MAX_LENGTH[PromptDialect.MINIMAX]

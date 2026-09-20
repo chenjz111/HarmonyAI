@@ -430,6 +430,7 @@ Assessment 不复制问卷 answers；通过 `questionnaire_submission_id` 引用
 | `fallback_applied` | boolean | NOT NULL |
 | `fallback_reason_code` | string nullable | 稳定错误码 |
 | `error_code` | string nullable | 不存原始异常 |
+| `prompt_audit_json` | JSON nullable | Sprint 6 Phase 5：Prompt Compiler V2 标识（`compiler_version`/`dialect_id`/`prompt_checksum`/`input_spec_checksum`）；运维内部，**不存完整 Prompt 文本**，历史行为空 |
 | `music_asset_id` | FK nullable | 成功态必须有值 |
 | `created_at/updated_at/completed_at` | timestamp | completed_at可空 |
 

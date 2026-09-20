@@ -8,6 +8,7 @@ ids and asset locators are never returned to clients.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
@@ -314,6 +315,33 @@ def _provider_identity(provider: object) -> tuple[str, str | None]:
         name = "music"
     model = getattr(provider, "model", None)
     return name, model if isinstance(model, str) and model else None
+
+
+_PROMPT_AUDIT_KEYS = (
+    "compiler_version",
+    "dialect_id",
+    "prompt_checksum",
+    "input_spec_checksum",
+)
+
+
+def _provider_prompt_audit(provider: object) -> dict[str, str] | None:
+    """Prompt Compiler V2 identity from the provider's ops-internal metadata.
+
+    Only the four identity fields are persisted (never the prompt text, never
+    credentials/vendor payloads). Returns ``None`` when the provider did not
+    compile a prompt for this attempt, which leaves the nullable column unset.
+    """
+
+    metadata = getattr(provider, "last_run_metadata", None)
+    if not isinstance(metadata, Mapping):
+        return None
+    identity = {
+        key: metadata[key]
+        for key in _PROMPT_AUDIT_KEYS
+        if isinstance(metadata.get(key), str) and metadata.get(key)
+    }
+    return identity or None
 
 
 def _persist_task_outcome(
@@ -635,6 +663,12 @@ def execute_generation_task(
                 _failed_music_task(task.task_id, "GENERATION_PROVIDER_UNAVAILABLE"),
                 None,
             )
+        # Sprint 6 Phase 5 (Prompt Compiler V2, P5-D4): persist the prompt
+        # identity for this attempt (success or failure). Identity only — the
+        # compiled prompt text is never stored.
+        prompt_audit = _provider_prompt_audit(provider)
+        if prompt_audit is not None:
+            task.prompt_audit_json = prompt_audit
         db.commit()
     except Exception:  # noqa: BLE001 - background worker must not raise
         db.rollback()

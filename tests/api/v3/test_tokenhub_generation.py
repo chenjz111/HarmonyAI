@@ -26,6 +26,10 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy import null
 
+from backend.ai_engine.v3.prompt_compiler import (
+    PROMPT_COMPILER_VERSION,
+    PromptDialect,
+)
 from backend.ai_engine.v3.tokenhub_minimax_music_provider import (
     DEFAULT_TOKENHUB_MUSIC_MODEL,
     TOKENHUB_DEFAULT_BASE_URL,
@@ -682,5 +686,118 @@ def test_anomalous_generated_audio_degrades_to_matched_not_generated(tmp_path):
                 .all()
             )
             assert generated == []
+    finally:
+        _uninstall_provider()
+
+
+# ---------------------------------------------------- Prompt Compiler V2 audit
+# Sprint 6 Phase 5 (P5-D4): the generation task persists the prompt identity
+# only (compiler version, dialect, prompt checksum, input-spec checksum). The
+# compiled prompt text and the identity are never exposed to clients.
+
+
+def test_tokenhub_success_persists_prompt_audit_identity(tmp_path):
+    audio = _mp3_bytes(seconds=3)
+    poster = _FakePoster(response=_FakeResponse(text=_completed_body(audio)))
+    provider = _provider(tmp_path, poster)
+    _install_provider(provider)
+    try:
+        headers, session_id = _setup_guest(idempotency_key="th-prompt-audit")
+        with _seed_db() as session:
+            public_user_id = _public_user_id(headers["Authorization"].split()[1])
+            rx_id = _seed_chain(
+                session,
+                public_user_id=public_user_id,
+                session_id=session_id,
+                generation_spec=_generation_spec(),
+            )
+
+        created = client.post(
+            "/api/v3/music/generations",
+            headers=headers,
+            json=_generation_body(rx_id, "sha256:th-prompt-audit-1"),
+        )
+        assert created.status_code == 201
+        created_task = _v3_data(created)
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
+        assert body["status"] == "succeeded"
+
+        with _seed_db() as session:
+            task = (
+                session.query(GenerationTask)
+                .filter(GenerationTask.task_id == body["task_id"])
+                .one()
+            )
+            audit = task.prompt_audit_json
+            assert isinstance(audit, dict)
+            assert set(audit) == {
+                "compiler_version",
+                "dialect_id",
+                "prompt_checksum",
+                "input_spec_checksum",
+            }
+            assert audit["compiler_version"] == PROMPT_COMPILER_VERSION
+            assert audit["dialect_id"] == PromptDialect.TOKENHUB_MINIMAX.value
+            assert audit["prompt_checksum"].startswith("sha256:")
+            assert audit["input_spec_checksum"].startswith("sha256:")
+
+        # The prompt identity is internal: never in the API response.
+        prompt = poster.calls[0]["json"]["prompt"]
+        detail = client.get(
+            f"/api/v3/music/generations/{body['task_id']}", headers=headers
+        )
+        for response_text in (created.text, detail.text):
+            assert "prompt_audit" not in response_text
+            assert "prompt_checksum" not in response_text
+            assert "compiler_version" not in response_text
+            assert prompt not in response_text
+    finally:
+        _uninstall_provider()
+
+
+def test_tokenhub_failure_persists_the_prompt_identity_of_the_attempt(tmp_path):
+    import requests as _requests
+
+    audio_path = tmp_path / "matched.mp3"
+    audio_path.write_bytes(_mp3_bytes(seconds=2))
+    poster = _FakePoster(error=_requests.ConnectionError("provider down"))
+    _install_provider(_provider(tmp_path, poster))
+    try:
+        headers, session_id = _setup_guest(idempotency_key="th-prompt-audit-fail")
+        with _seed_db() as session:
+            public_user_id = _public_user_id(headers["Authorization"].split(" ")[1])
+            _seed_catalog_asset(session, audio_path=audio_path, title="审核曲库-角调")
+            rx_id = _seed_chain(
+                session,
+                public_user_id=public_user_id,
+                session_id=session_id,
+                generation_spec=_generation_spec(),
+            )
+
+        created = client.post(
+            "/api/v3/music/generations",
+            headers=headers,
+            json=_generation_body(rx_id, "sha256:th-prompt-audit-fail-1"),
+        )
+        assert created.status_code == 201
+        created_task = _v3_data(created)
+        body = poll_until(client, headers, created_task["task_id"], is_terminal_task)
+        assert body["status"] == "matched_fallback"
+        assert body["fallback"]["reason_code"] == "GENERATION_PROVIDER_UNAVAILABLE"
+
+        with _seed_db() as session:
+            task = (
+                session.query(GenerationTask)
+                .filter(GenerationTask.task_id == body["task_id"])
+                .one()
+            )
+            audit = task.prompt_audit_json
+            assert isinstance(audit, dict)
+            # The failed attempt is attributable to an exact compiled prompt.
+            assert audit["compiler_version"] == PROMPT_COMPILER_VERSION
+            assert audit["dialect_id"] == PromptDialect.TOKENHUB_MINIMAX.value
+            assert audit["prompt_checksum"].startswith("sha256:")
+            assert audit["input_spec_checksum"].startswith("sha256:")
+        assert len(poster.calls) == 1
     finally:
         _uninstall_provider()

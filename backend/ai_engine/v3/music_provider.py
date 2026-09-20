@@ -72,6 +72,134 @@ class MusicProviderFailureV3(RuntimeError):
         super().__init__(f"{error_code}: {safe_message}")
 
 
+# --------------------------------------------------------------------------- #
+# Sprint 6 Phase 5 — shared prompt vocabulary seam (Prompt Compiler V2)
+#
+# The three music dialects must not drift on what an instrument or an ambient
+# value means. Only the *rendered* vocabulary stays dialect-specific; the
+# approved-name -> canonical-token mapping, the unknown-value failure and the
+# "no extra ambient sound" rule are shared here.
+# --------------------------------------------------------------------------- #
+
+#: Fixed approved-name/alias -> canonical provider token mapping. Approved rule
+#: assets publish Chinese instrument names (used unchanged for the five-tone
+#: analysis page display); prompts use the canonical token only.
+INSTRUMENT_ALIASES: dict[str, str] = {
+    "古琴": "guqin",
+    "箫": "xiao",
+    "洞箫": "xiao",
+    "琵琶": "pipa",
+    "笛": "dizi",
+    "笛子": "dizi",
+    "埙": "xun",
+    "古筝": "guzheng",
+    "二胡": "erhu",
+    "笙": "sheng",
+    "编钟": "bianzhong",
+    # canonical tokens are accepted as-is
+    "guqin": "guqin",
+    "xiao": "xiao",
+    "pipa": "pipa",
+    "dizi": "dizi",
+    "xun": "xun",
+    "guzheng": "guzheng",
+    "erhu": "erhu",
+    "sheng": "sheng",
+    "bianzhong": "bianzhong",
+}
+
+#: Every canonical instrument token the compiler can render.
+CANONICAL_INSTRUMENTS: tuple[str, ...] = (
+    "guqin",
+    "xiao",
+    "pipa",
+    "dizi",
+    "xun",
+    "guzheng",
+    "erhu",
+    "sheng",
+    "bianzhong",
+)
+
+#: Ambient values that mean "no extra ambient sound": they must never be
+#: rendered as "soft 无额外环境音 ambience"; the ambience fragment is omitted.
+NO_AMBIENT_TOKENS: frozenset[str] = frozenset(
+    {
+        "无额外环境音",
+        "无其他环境音",
+        "无环境音",
+        "无",
+        "不需要",
+        "none",
+        "no_extra_ambient",
+        "no_ambient",
+    }
+)
+
+
+def normalize_instrument(value: str) -> str:
+    """Map one approved instrument name/alias to its canonical provider token.
+
+    Unknown values fail closed with the long-standing stable error code so no
+    unsupported instrument text can ever reach a provider prompt.
+    """
+
+    if not isinstance(value, str) or not value.strip():
+        raise MusicProviderFailureV3(
+            "GENERATION_INSTRUMENT_UNSUPPORTED",
+            retryable=False,
+            safe_message="当前生成服务不支持所需乐器组合。",
+        )
+    token = INSTRUMENT_ALIASES.get(value.strip())
+    if token is None:
+        raise MusicProviderFailureV3(
+            "GENERATION_INSTRUMENT_UNSUPPORTED",
+            retryable=False,
+            safe_message="当前生成服务不支持所需乐器组合。",
+        )
+    return token
+
+
+def normalize_instruments(values: list[str] | tuple[str, ...]) -> list[str]:
+    """Normalize approved instrument names deterministically (order preserved).
+
+    A single unknown value fails the whole list before any network call; nothing
+    is silently dropped, and repeated approved values collapse to one canonical
+    token (the historical TokenHub behaviour, now shared by all dialects).
+    """
+
+    tokens: list[str] = []
+    for item in values:
+        token = normalize_instrument(item)
+        if token not in tokens:
+            tokens.append(token)
+    return tokens
+
+
+def is_no_ambient(value: str) -> bool:
+    """True when an ambient value means 'no extra ambient sound'."""
+
+    if not isinstance(value, str):
+        return False
+    stripped = value.strip()
+    return stripped in NO_AMBIENT_TOKENS or stripped.lower() in NO_AMBIENT_TOKENS
+
+
+def ambient_prompt_parts(values: list[str] | tuple[str, ...]) -> list[str]:
+    """Render real ambience only; a no-ambient token never becomes a fragment."""
+
+    parts: list[str] = []
+    for item in values:
+        if not isinstance(item, str):
+            continue
+        token = item.strip()
+        if not token or is_no_ambient(token):
+            continue
+        if token not in parts:
+            parts.append(token)
+    return [f"soft {token} ambience" for token in parts]
+
+
 def validate_provider_request_capabilities(
     request: ProviderMusicRequest,
     capabilities: MusicProviderCapabilities,
