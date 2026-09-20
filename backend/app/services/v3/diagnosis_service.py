@@ -59,7 +59,7 @@ from backend.app.schemas.v3.diagnosis import (
 from backend.app.schemas.v3.flow_v31 import ConfirmedUserState
 from backend.ai_engine.v3.diagnosis_pipeline import DiagnosisPipelineFailure
 from backend.ai_engine.v3.grounding import (
-    authoritative_primary_tendency,
+    authoritative_state_tendency,
     presentation_with_kernel,
 )
 from backend.ai_engine.v3.v31_pipeline import (
@@ -655,7 +655,12 @@ def _diagnosis_from_v31_pipeline(
     # fallbacks, `relative_support` and candidate ordering no longer feed
     # `presentation.primary_tendency` or `presentation.basis_summaries`; those
     # come from the Phase 1B decision / read model and the safe explanation atoms.
-    presentation_primary_tendency = authoritative_primary_tendency(
+    #
+    # Phase 4 blocking fix: `primary_tendency` is a *state/tendency* field (the H5
+    # client renders it inside 「状态解读」), so it takes the read model's
+    # authoritative `state_tendency` text — never the primary-tone label, never
+    # provider free text and never the page title.
+    presentation_primary_tendency = authoritative_state_tendency(
         getattr(pipeline, "read_model", None)
     )
     atom_texts: list[str] = []
@@ -664,7 +669,12 @@ def _diagnosis_from_v31_pipeline(
         or ()
     ):
         text = str(getattr(atom, "display_text", "") or "").strip()
-        if text and text not in atom_texts:
+        # The state line is the headline itself, so it is not repeated in the
+        # user-facing basis rows. The kernel keeps the `state_context` atom
+        # internally for audit/provenance.
+        if not text or text == presentation_primary_tendency:
+            continue
+        if text not in atom_texts:
             atom_texts.append(text)
     if not atom_texts:
         atom_texts = [DEFAULT_SAFE_BASIS_SUMMARY]

@@ -332,21 +332,20 @@ def build_safe_explanation_atoms(
     return tuple(atoms)
 
 
-def authoritative_primary_tendency(read_model: Any) -> str | None:
-    """Headline tendency from the deterministic read model, never the provider.
+def authoritative_state_tendency(read_model: Any) -> str | None:
+    """State/tendency interpretation from the deterministic read model.
 
-    Only a genuine ``personalized_five_tone`` primary tone yields a headline;
-    ``integrated_regulation``/``basic_wellness`` carry no primary-tone authority
-    and therefore expose ``None`` instead of inventing or borrowing provider text.
+    Phase 4 blocking fix: ``presentation.primary_tendency`` is a *state /
+    tendency* field (the H5 client renders it inside 「状态解读」), so it must be
+    the read model's authoritative ``state_tendency`` text — never the primary
+    tone label, never a provider display name / reasoning summary / support, and
+    never the page title.
+
+    Returns ``None`` only when the read model carries no usable state text, in
+    which case the existing safe nullable client behaviour applies.
     """
 
-    primary_tone = getattr(read_model, "primary_tone", None)
-    if primary_tone is None:
-        return None
-    display_name = getattr(primary_tone, "display_name", None)
-    if display_name is None:
-        return None
-    text = str(display_name).strip()
+    text = str(getattr(read_model, "state_tendency", "") or "").strip()
     return text or None
 
 

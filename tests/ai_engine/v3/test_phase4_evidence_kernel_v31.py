@@ -20,7 +20,7 @@ from backend.ai_engine.v3.grounding import (
     KERNEL_PRESENTATION_KEY,
     KNOWLEDGE_CONTEXT_ATOM_TEXT,
     SAFE_EXPLANATION_ATOM_VERSION,
-    authoritative_primary_tendency,
+    authoritative_state_tendency,
     build_evidence_kernel,
     build_safe_explanation_atoms,
     canonical_checksum,
@@ -219,19 +219,29 @@ def test_knowledge_atom_absent_without_current_hits():
     assert all(not atom.rag_refs for atom in atoms)
 
 
-def test_authoritative_primary_tendency_only_uses_read_model_authority():
-    assert authoritative_primary_tendency(SimpleNamespace(primary_tone=None)) is None
+def test_authoritative_state_tendency_uses_only_the_read_model_state_text():
+    """Phase 4 blocking fix: the headline is state/tendency text, not a tone."""
+
+    assert authoritative_state_tendency(SimpleNamespace(state_tendency="")) is None
     assert (
-        authoritative_primary_tendency(
-            SimpleNamespace(primary_tone=SimpleNamespace(display_name="  "))
-        )
-        is None
+        authoritative_state_tendency(SimpleNamespace(state_tendency="   ")) is None
     )
     assert (
-        authoritative_primary_tendency(
-            SimpleNamespace(primary_tone=SimpleNamespace(display_name="徵调"))
+        authoritative_state_tendency(
+            SimpleNamespace(
+                state_tendency="整体状态倾向已根据确认信息整理。",
+                primary_tone=SimpleNamespace(display_name="角调"),
+            )
         )
-        == "徵调"
+        == "整体状态倾向已根据确认信息整理。"
+    )
+    # A read model without any state text falls back to the safe nullable
+    # behaviour instead of borrowing the tone label.
+    assert (
+        authoritative_state_tendency(
+            SimpleNamespace(primary_tone=SimpleNamespace(display_name="角调"))
+        )
+        is None
     )
 
 

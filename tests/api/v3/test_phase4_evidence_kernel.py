@@ -612,7 +612,9 @@ def test_p4_t9_provider_order_does_not_control_the_headline(
     assert presentation["primary_tendency"] not in {"first by order", "second by order"}
     run = harness.run_row(data["diagnosis_id"])
     read_model = run.five_tone_read_model_json
-    assert presentation["primary_tendency"] == read_model["primary_tone"]["display_name"]
+    # Phase 4 blocking fix: the headline is the read model's state-tendency text
+    # (the field's documented meaning), never the tone label and never order.
+    assert presentation["primary_tendency"] == read_model["state_tendency"]
 
 
 def test_p4_t10_relative_support_does_not_change_authority(
@@ -952,3 +954,267 @@ def test_p4_t18_no_extra_provider_or_embedding_calls(db_session_factory, monkeyp
     # embedding call at all (the RAG store double has no embedder and the
     # pipeline never asks for one).
     assert harness.provider.calls == 1
+
+
+# --------------------------------------------------------------------------- #
+# Round-1 blocking fix — F4-B1..F4-B6 (presentation.primary_tendency semantics)
+# --------------------------------------------------------------------------- #
+def test_f4_b1_primary_tendency_is_the_state_tendency_not_the_tone(
+    db_session_factory, monkeypatch
+):
+    harness = _Harness(
+        db_session_factory,
+        monkeypatch,
+        payloads=[_response([_candidate()])],
+    )
+    fact_id = harness.fact_ids()[0]
+    harness.use(
+        [
+            _response(
+                [
+                    _candidate(
+                        supporting_fact_ids=[fact_id],
+                        knowledge_chunk_ids=["chunk_1"],
+                    )
+                ]
+            )
+        ]
+    )
+    response = harness.post()
+    assert response.status_code == 201, response.text
+
+    data = _body(response)
+    run = harness.run_row(data["diagnosis_id"])
+    read_model = run.five_tone_read_model_json
+    presentation = data["presentation"]
+
+    assert presentation["primary_tendency"] == read_model["state_tendency"]
+    # The tone label and the state text are different concepts in this fixture.
+    assert presentation["primary_tendency"] != read_model["primary_tone"]["display_name"]
+    assert presentation["primary_tendency"] != presentation["title"]
+    assert presentation["primary_tendency"] not in {
+        item["display_name"] for item in data["candidate_tendencies"]
+    }
+
+
+def test_f4_b2_primary_tendency_is_provider_invariant(db_session_factory, monkeypatch):
+    harness = _Harness(
+        db_session_factory,
+        monkeypatch,
+        payloads=[_response([_candidate()])],
+        allowed_syndrome_codes=("syndrome_1", "syndrome_2"),
+    )
+    facts = harness.fact_ids()
+    first = _candidate(
+        syndrome_code="syndrome_1",
+        display_name="FIRST NAME",
+        relative_support=0.10,
+        supporting_fact_ids=[facts[0]],
+        knowledge_chunk_ids=["chunk_1"],
+        reasoning_summary="FIRST REASONING",
+    )
+    second = _candidate(
+        syndrome_code="syndrome_2",
+        display_name="SECOND NAME",
+        relative_support=0.90,
+        supporting_fact_ids=[facts[1]],
+        knowledge_chunk_ids=["chunk_1"],
+        reasoning_summary="SECOND REASONING",
+    )
+    observed: list[tuple[str | None, str]] = []
+    for payload, label in (
+        (_response([first]), "baseline"),
+        (_response([dict(first, reasoning_summary="CHANGED")]), "reasoning"),
+        (_response([dict(first, display_name="CHANGED NAME")]), "display_name"),
+        (_response([dict(first, relative_support=0.99)]), "support"),
+        (_response([second, first]), "order"),
+    ):
+        harness.use([payload])
+        response = harness.post()
+        assert response.status_code == 201, (label, response.text)
+        data = _body(response)
+        run = harness.run_row(data["diagnosis_id"])
+        observed.append(
+            (
+                data["presentation"]["primary_tendency"],
+                run.five_tone_read_model_json["state_tendency"],
+            )
+        )
+    assert len({value for value, _ in observed}) == 1
+    assert all(value == state for value, state in observed)
+    assert observed[0][0] not in {"FIRST NAME", "SECOND NAME", "CHANGED NAME"}
+
+
+def test_f4_b3_integrated_and_basic_modes_keep_state_semantics(
+    db_session_factory, monkeypatch
+):
+    # Exact top tie -> integrated_regulation (no primary tone).
+    integrated = _Harness(
+        db_session_factory,
+        monkeypatch,
+        payloads=[_response([_candidate()])],
+        organ_support={"liver": 5.0, "spleen": 5.0},
+    )
+    fact_id = integrated.fact_ids()[0]
+    integrated.use(
+        [
+            _response(
+                [
+                    _candidate(
+                        supporting_fact_ids=[fact_id],
+                        knowledge_chunk_ids=["chunk_1"],
+                    )
+                ]
+            )
+        ]
+    )
+    response = integrated.post()
+    assert response.status_code == 201, response.text
+    data = _body(response)
+    run = integrated.run_row(data["diagnosis_id"])
+    read_model = run.five_tone_read_model_json
+    assert read_model["regulation_mode"] == "integrated_regulation"
+    assert read_model["primary_tone"] is None
+    # The headline must be the deterministic state text, never the page title.
+    assert data["presentation"]["primary_tendency"] == read_model["state_tendency"]
+    assert data["presentation"]["primary_tendency"] != data["presentation"]["title"]
+
+    # legal RAG_EMPTY abstain -> basic_wellness keeps its frozen nullable shape
+    # (no tone label, no provider text, no fabricated state claim).
+    basic = _Harness(
+        db_session_factory,
+        monkeypatch,
+        payloads=[_response([_candidate()])],
+        hit_ids=(),
+        rag_status="empty",
+    )
+    response = basic.post()
+    assert response.status_code == 201, response.text
+    body = _body(response)
+    assert body["status"] == "abstained"
+    assert body["presentation"]["primary_tendency"] is None
+    assert all(
+        "调" not in (item or "")[:1] for item in [body["presentation"]["primary_tendency"]]
+    )
+
+
+def test_f4_b4_frontend_state_tendency_slot_receives_state_semantics(
+    db_session_factory, monkeypatch
+):
+    harness = _Harness(
+        db_session_factory,
+        monkeypatch,
+        payloads=[_response([_candidate()])],
+    )
+    fact_id = harness.fact_ids()[0]
+    harness.use(
+        [
+            _response(
+                [
+                    _candidate(
+                        supporting_fact_ids=[fact_id],
+                        knowledge_chunk_ids=["chunk_1"],
+                    )
+                ]
+            )
+        ]
+    )
+    response = harness.post()
+    assert response.status_code == 201, response.text
+
+    data = _body(response)
+    run = harness.run_row(data["diagnosis_id"])
+    read_model = run.five_tone_read_model_json
+    # The client maps presentation.primary_tendency into basis.state_tendency.
+    assert data["presentation"]["primary_tendency"] == read_model["state_tendency"]
+    tone_labels = {
+        read_model["primary_tone"]["display_name"],
+        "角调",
+        "徵调",
+        "宫调",
+        "商调",
+        "羽调",
+    }
+    assert data["presentation"]["primary_tendency"] not in tone_labels
+
+
+def test_f4_b5_basis_summaries_do_not_repeat_the_state_line(
+    db_session_factory, monkeypatch
+):
+    harness = _Harness(
+        db_session_factory,
+        monkeypatch,
+        payloads=[_response([_candidate()])],
+    )
+    fact_id = harness.fact_ids()[0]
+    harness.use(
+        [
+            _response(
+                [
+                    _candidate(
+                        supporting_fact_ids=[fact_id],
+                        knowledge_chunk_ids=["chunk_1"],
+                    )
+                ]
+            )
+        ]
+    )
+    response = harness.post()
+    assert response.status_code == 201, response.text
+
+    data = _body(response)
+    presentation = data["presentation"]
+    kernel = _kernel_of(harness, response)
+    atoms = kernel["explanation_atoms"]
+    atom_types = [atom["atom_type"] for atom in atoms]
+
+    # The kernel still keeps the state_context atom for audit/provenance.
+    assert "state_context" in atom_types
+    state_atom = next(atom for atom in atoms if atom["atom_type"] == "state_context")
+    assert state_atom["display_text"] == presentation["primary_tendency"]
+    # ... but the user-facing basis rows do not repeat the headline.
+    assert presentation["primary_tendency"] not in presentation["basis_summaries"]
+    assert presentation["basis_summaries"], "the basis rows must not be empty"
+    for atom_type in ("analysis_rationale", "generation_readiness", "knowledge_context"):
+        atom = next(item for item in atoms if item["atom_type"] == atom_type)
+        assert atom["display_text"] in presentation["basis_summaries"]
+
+
+def test_f4_b6_firewall_keeps_severe_prose_out_of_the_state_headline(
+    db_session_factory, monkeypatch
+):
+    harness = _Harness(
+        db_session_factory,
+        monkeypatch,
+        payloads=[_response([_candidate()])],
+    )
+    fact_id = harness.fact_ids()[0]
+    severe = "severe disease and medication instruction prose"
+    harness.use(
+        [
+            _response(
+                [
+                    _candidate(
+                        supporting_fact_ids=[fact_id],
+                        knowledge_chunk_ids=["chunk_1"],
+                        reasoning_summary=severe,
+                        display_name="SEVERE NAME",
+                    )
+                ]
+            )
+        ]
+    )
+    response = harness.post()
+    assert response.status_code == 201, response.text
+
+    data = _body(response)
+    presentation = data["presentation"]
+    run = harness.run_row(data["diagnosis_id"])
+    assert presentation["primary_tendency"] == run.five_tone_read_model_json[
+        "state_tendency"
+    ]
+    assert severe not in (presentation["primary_tendency"] or "")
+    assert all(severe not in item for item in presentation["basis_summaries"])
+    assert "SEVERE NAME" not in (presentation["primary_tendency"] or "")
+    # Raw prose remains provenance-only.
+    assert data["candidate_tendencies"][0]["reasoning_summary"] == severe
