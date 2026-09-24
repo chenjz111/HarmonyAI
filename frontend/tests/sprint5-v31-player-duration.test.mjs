@@ -57,32 +57,11 @@ test("player page carries no hardcoded 180-second duration assumption", () => {
   assert.doesNotMatch(player, /3\s*分钟/, "no static 3-minute label")
 })
 
-test("total duration comes from persisted duration_seconds, then the real audio context", () => {
-  // 1) 数据源：后端 read model 持久化的 duration_seconds
-  assert.match(player, /duration_seconds/, "player must read the persisted duration_seconds value")
-  assert.match(
-    player,
-    /this\.music\s*&&\s*this\.music\.duration_seconds/,
-    "duration_seconds must be read from the same music object the page already loads",
-  )
-  // 2) 兜底：InnerAudioContext 上报的真实音频时长
-  assert.match(player, /uni\.createInnerAudioContext\(\)/, "player must use uni InnerAudioContext")
-  assert.match(player, /onCanplay\(/, "player must read the real audio duration after load")
-  assert.match(player, /this\.audioCtx\.duration/, "total must fall back to the real audio duration")
-
-  // 优先级：duration_seconds 必须排在音频时长之前
-  const totalBlock = (player.match(/totalSeconds\(\)\s*\{[\s\S]*?\n {4}\},/) || [""])[0]
-  assert.ok(totalBlock.includes("totalSeconds()"), "player must define a totalSeconds computed")
-  const persistedIndex = totalBlock.indexOf("duration_seconds")
-  const audioIndex = totalBlock.indexOf("this.duration")
-  assert.ok(persistedIndex >= 0, "totalSeconds must consider the persisted duration_seconds")
-  assert.ok(audioIndex >= 0, "totalSeconds must fall back to the audio-reported duration")
-  assert.ok(
-    persistedIndex < audioIndex,
-    "persisted duration_seconds must take priority over the audio-reported duration",
-  )
-
-  // 展示的总时长不得是常量字符串
+test("duration authority belongs to player-controller and music-presentation", () => {
+  assert.match(player, /createPlayerController/)
+  assert.match(player, /measuredSeconds:\s*this\.playerState\.duration/)
+  assert.match(player, /playerPresentation\.duration/)
+  assert.doesNotMatch(player, /this\.audioCtx\.duration|totalSeconds\(\)/, "page must not calculate audio duration")
   assert.doesNotMatch(
     player,
     /["'`]\s*\d{1,2}:\d{2}\s*["'`]/,
@@ -90,36 +69,11 @@ test("total duration comes from persisted duration_seconds, then the real audio 
   )
 })
 
-test("time readout shows current / total via the shared MM:SS helper on one real time base", () => {
+test("time readout and progress bar consume one shared presentation model", () => {
   const template = (player.match(/<template>[\s\S]*?<\/template>/) || [""])[0]
-  // current / total 组合读数（例如 00:35 / 03:00）
-  assert.match(
-    template,
-    /\{\{\s*formatDuration\(currentTime\)\s*\}\}\s*\/\s*\{\{\s*formatDuration\(totalSeconds\)\s*\}\}/,
-    "progress readout must render current / total with the shared helper",
-  )
-  // 读数与进度条共用同一时间基：onTimeUpdate -> currentTime -> progressPercent -> 宽度
-  assert.match(player, /onTimeUpdate\(/, "currentTime must be driven by the real onTimeUpdate event")
-  assert.match(player, /this\.currentTime\s*=\s*this\.audioCtx\.currentTime/)
-  assert.match(player, /progressPercent\(\)\s*\{[\s\S]*?this\.currentTime\s*\/\s*this\.totalSeconds/)
-  assert.match(
-    template,
-    /width:\s*progressPercent\s*\+\s*'%'/,
-    "progress bar width must be the percentage derived from the same time base",
-  )
-  // helper 直接复用页面导入的纯函数（模板与测试同源）
-  assert.match(
-    player,
-    /import\s*\{\s*formatDuration\s*\}\s*from\s*"\.\.\/\.\.\/common\/v31-player-time\.js"/,
-    "player must import formatDuration from common/v31-player-time.js",
-  )
-  // 暂停不清零当前时间/进度
-  const pauseBlock = (player.match(/pause\(\)\s*\{[\s\S]*?\n {4}\},/) || [""])[0]
-  assert.ok(pauseBlock.includes("pause()"), "pause() must be implemented")
-  assert.doesNotMatch(pauseBlock, /this\.currentTime\s*=\s*0/, "pause must not reset currentTime")
-  // 播放结束后仍保留完整总时长与进度
-  const endedBlock = (player.match(/onEnded\(\(\)\s*=>\s*\{[\s\S]*?\n {10}\}/) || [""])[0]
-  assert.ok(endedBlock.includes("onEnded"), "onEnded must be wired")
-  assert.doesNotMatch(endedBlock, /this\.currentTime\s*=\s*0/, "playback end must not wipe the elapsed time")
-  assert.match(endedBlock, /this\.totalSeconds/, "playback end must keep the real total visible")
+  assert.match(player, /presentProgress/)
+  assert.match(template, /progressPresentation\.currentText/)
+  assert.match(template, /progressPresentation\.totalText/)
+  assert.match(template, /progressPresentation\.percent/)
+  assert.doesNotMatch(player, /onTimeUpdate\(|formatDuration\(|progressPercent\(\)/, "page must not own progress calculations")
 })

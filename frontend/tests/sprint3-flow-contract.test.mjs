@@ -15,8 +15,6 @@ test("V3.1: entry is the launch home page; welcome keeps a registered sprint-3 e
     "pages/material/material",
     "pages/narrative/narrative",
     "pages/survey-v2/survey-v2",
-    "pages/result/result",
-    "pages/player-v2/player-v2",
     "pages/feedback-v2/feedback-v2",
     "pages/complete/complete",
   ]
@@ -29,15 +27,16 @@ test("V3.1: entry is the launch home page; welcome keeps a registered sprint-3 e
 })
 
 
-test("Sprint 2 pages remain reachable", () => {
+test("Sprint 2 safe pages remain reachable; unsafe player source is retained but unregistered", () => {
   for (const route of [
     "pages/index/index",
     "pages/emotion/emotion",
     "pages/survey/survey",
-    "pages/player/player",
   ]) {
     assert.ok(routes.includes(route), `legacy route removed: ${route}`)
   }
+  assert.ok(!routes.includes("pages/player/player"))
+  assert.ok(existsSync(resolve(frontendRoot, "pages/player/player.vue")))
 })
 
 const sprint3Source = [

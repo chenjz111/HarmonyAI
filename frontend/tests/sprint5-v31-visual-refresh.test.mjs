@@ -136,9 +136,11 @@ test("one player uses five data-driven themes and real duration", () => {
   for (const tone of ["gong", "shang", "jiao", "zhi", "yu"]) {
     assert.match(theme, new RegExp(`\\b${tone}\\b`))
   }
-  // Sprint 6：主音主题统一走 mode-aware 入口（personalized + 真实主音才生效）
-  assert.match(player, /personalizedToneTheme/)
-  assert.match(player, /duration_seconds/)
+  // Sprint 6：事实展示统一走 presentation，播放状态统一走 controller。
+  assert.match(player, /buildMusicPresentation/)
+  assert.match(player, /createPlayerController/)
+  assert.match(player, /playerPresentation\.duration/)
+  assert.doesNotMatch(player, /v31-tone-theme/)
   assert.match(player, /toggleFavorite/)
   assert.match(player, /反馈本次体验/)
   assert.match(player, /结束本次聆听/)

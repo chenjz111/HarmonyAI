@@ -88,14 +88,14 @@ function toneProfile({ mode, primary = null, secondary = null, weights = null } 
 }
 
 /** 通过真实 flow-state 缓存分支驱动 apiV3.getMusicBasis()（无网络）。 */
-function seedBasisState(profile) {
+function seedBasisState(profile, { ambientSounds = ["流水"], parameterSummaries = ["舒缓节奏"] } = {}) {
   const spec = {
     schema_version: "generation_spec_v3.0",
     tone_profile: profile,
     bpm: 60,
     duration_seconds: 180,
     instruments: ["古琴"],
-    ambient_sounds: ["流水"],
+    ambient_sounds: ambientSounds,
     structure: { intro_seconds: 30, main_seconds: 120, outro_seconds: 30 },
     energy_curve: "calm",
     forbidden_constraints: [],
@@ -119,7 +119,7 @@ function seedBasisState(profile) {
         generation_spec: spec,
         presentation: {
           tone_summary: "本次以宫音为主。",
-          parameter_summaries: ["舒缓节奏"],
+          parameter_summaries: parameterSummaries,
           personalization_summary: "未应用历史偏好。",
         },
       },
@@ -127,6 +127,20 @@ function seedBasisState(profile) {
     }),
   )
 }
+
+test("API basis 不为缺失的解释或 ambience 制造前端事实", async () => {
+  seedBasisState(
+    toneProfile({ mode: "integrated_regulation", weights: WEIGHTS }),
+    { ambientSounds: [], parameterSummaries: [] },
+  )
+
+  const basis = await apiV3.getMusicBasis()
+  assert.equal(basis.bpm.explanation, "")
+  assert.equal(basis.instruments.explanation, "")
+  assert.deepEqual(basis.ambience.values, [])
+  assert.equal(basis.ambience.explanation, "")
+  assert.equal(basis.duration.explanation, "")
+})
 
 async function basisFor(profile) {
   seedBasisState(profile)
@@ -323,26 +337,21 @@ test("api-v3.js 归一化保留 regulation_mode / 权重，并 mode-aware 派生
   assert.doesNotMatch(api, /toneProfile\.dominant_tone/)
 })
 
-test("v3-basis：主音区块受 mode-aware guard 保护，并渲染综合调适 / 基础舒缓", () => {
+test("v3-basis：主音区块通过 music-presentation 的 mode-aware view model 渲染", () => {
   const basis = read("pages/v3-basis/v3-basis.vue")
-  assert.match(basis, /v-if="hasPrimaryTone"[\s\S]*?basis\.primary_tone\.display_name/)
-  assert.match(basis, /v-if="hasPrimaryTone && basis\.secondary_tone"/)
+  assert.match(basis, /buildAnalysisViewModel/)
+  assert.match(basis, /analysisPresentation\.primaryTone/)
+  assert.match(basis, /analysisPresentation\.secondaryTone/)
   assert.match(basis, /v-else class="tone-detail tone-detail--neutral"/)
-  assert.match(basis, /return \{ title: "综合调适"/)
-  assert.match(basis, /return \{ title: "基础舒缓"/)
-  assert.match(basis, /const primary = this\.hasPrimaryTone && this\.basis\.primary_tone \? this\.basis\.primary_tone\.tone : ""/)
-  // 主音详情必须出现在 guard 之后（模板里不得先解引用再判断）
-  const guardIndex = basis.indexOf('v-if="hasPrimaryTone"')
-  const primaryBindingIndex = basis.indexOf("basis.primary_tone.display_name")
-  assert.ok(guardIndex >= 0 && primaryBindingIndex > guardIndex, "主音详情必须位于 hasPrimaryTone guard 之内")
+  assert.match(basis, /return this\.analysisPresentation\.hasPrimaryTone/)
   assert.doesNotMatch(basis, /toneThemeFor\(/)
 })
 
-test("v3-player：主音印章/摘要随 mode 变化，且不存在宫兜底", () => {
+test("v3-player：主音展示来自 music-presentation，且不存在宫兜底", () => {
   const player = read("pages/v3-player/v3-player.vue")
-  assert.match(player, /toneSealText/)
-  assert.match(player, /return this\.isPersonalized \? "主音" : this\.modeLabel/)
-  assert.match(player, /personalizedToneTheme\(this\.regulationMode, this\.toneSource\)/)
+  assert.match(player, /buildMusicPresentation/)
+  assert.match(player, /playerPresentation\.primaryTone/)
+  assert.doesNotMatch(player, /v31-tone-theme/)
   assert.doesNotMatch(player, /["']gong["']/)
   assert.doesNotMatch(player, /<text class="tone-seal">主音<\/text>/)
 })

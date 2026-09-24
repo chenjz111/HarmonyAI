@@ -97,8 +97,8 @@ test("五音解析页受控证型名称使用 canonical 中文（含“倾向”
   }
   // 页面渲染受控名称必须来自 read model 字段，而不是前端字典；
   // Sprint 6：主音/辅音区块只能在 personalized + 真实主音时渲染（null 安全的 mode-aware guard）
-  assert.match(basisMarkup, /v-if="hasPrimaryTone"[\s\S]*?\{\{\s*basis\.primary_tone\.display_name\s*\}\}/)
-  assert.match(basisMarkup, /v-if="hasPrimaryTone && basis\.secondary_tone"[\s\S]*?\{\{\s*basis\.secondary_tone\.display_name\s*\}\}/)
+  assert.match(basisMarkup, /v-if="hasPrimaryTone"[\s\S]*?analysisPresentation\.primaryTone\.displayName/)
+  assert.match(basisMarkup, /v-if="hasPrimaryTone && analysisPresentation\.secondaryTone\.hasTone"[\s\S]*?analysisPresentation\.secondaryTone\.displayName/)
 })
 
 test("五音解析页用户可见解释不含已知英文 fixture，且不做逐句字典翻译", () => {
@@ -122,9 +122,9 @@ test("五音解析页用户可见解释不含已知英文 fixture，且不做逐
   // 不得引入任何翻译/本地化辅助模块
   assert.ok(!/from\s+["'][^"']*(translat|i18n|locale)/i.test(basisPage), "不得引入翻译模块")
   // 用户可见解释文本必须直接来自 read model 字段
-  assert.match(basisMarkup, /\{\{\s*basis\.state_tendency\s*\}\}/, "状态解读取 read model")
+  assert.match(basisMarkup, /\{\{\s*analysisPresentation\.tendency\.displayText\s*\}\}/, "状态解读取 presentation view model")
   assert.match(basisMarkup, /v-for="\(row, idx\) in rationaleRows"/, "调适依据取 read model 推导行")
-  assert.ok(basisPage.includes("basis.analysis_rationales"), "调适依据来源为 analysis_rationales")
+  assert.ok(basisPage.includes("analysisPresentation.rationales.rows"), "调适依据来源为 presentation view model")
 })
 
 // ---------------------------------------------------------------- 问题 3
@@ -149,7 +149,7 @@ test("音乐设计：不存在重复的 BPM·乐器·时长行，也不存在“
   )
   assert.ok(!basisPage.includes("由服务端处方生成"), "2/3/4 张卡不得出现“由服务端处方生成。”")
   // 数值与名称保持不变（数据来源不变）
-  assert.match(basisMarkup, /\{\{\s*basis\.bpm\.value\s*\}\}\s*BPM/)
+  assert.match(basisMarkup, /\{\{\s*analysisPresentation\.parameters\.bpm\.displayText\s*\}\}/)
   assert.ok(basisMarkup.includes("舒缓节奏"))
   assert.ok(basisMarkup.includes("时长"))
   assert.ok(basisMarkup.includes("主要乐器"))

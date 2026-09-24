@@ -18,145 +18,87 @@
  *   - 业务逻辑 togglePlay/toggleFavorite/goFeedback/exitSession 完全保留
  */
 import { apiV3 } from "../../common/api-v3.js"
-import {
-  modeLabelFor,
-  normalizeRegulationMode,
-  personalizedToneTheme,
-} from "../../common/v31-tone-theme.js"
-// 纯函数：MM:SS（≥1 小时才 HH:MM:SS），未知时长显示 "--:--"
-import { formatDuration } from "../../common/v31-player-time.js"
+import { createPlayerController } from "../../common/player-controller.js"
+import { buildMusicPresentation, presentProgress } from "../../common/music-presentation.js"
 
 export default {
   data() {
     return {
       loading: true,
-      error: "",
+      loadFailure: null,
       music: null,
       basis: null,
-      playing: false,
-      audioCtx: null,
-      resolvedAudioSrc: "",
-      resolvedAudioStreamUrl: "",
-      currentTime: 0, // 当前播放时间（秒），唯一来源：InnerAudioContext.onTimeUpdate
-      duration: 0, // 真实音频时长（秒），来源：InnerAudioContext（onCanplay/onTimeUpdate）
+      playerController: null,
+      playerState: {
+        playing: false,
+        currentTime: 0,
+        duration: 0,
+        error: null,
+      },
       favorite: false,
       favBusy: false,
       simulated: false,
     }
   },
   computed: {
-    audioSrc() {
-      if (!this.music || !this.music.stream_url) return ""
-      return apiV3.musicStreamUrl(this.music.stream_url)
+    playerPresentation() {
+      return buildMusicPresentation({
+        music: this.music,
+        basis: this.basis,
+        measuredSeconds: this.playerState.duration,
+      })
     },
-    // 总时长（秒）：优先后端 read model 持久化的 duration_seconds，
-    // 其次 InnerAudioContext 加载后上报的真实音频时长；都没有则返回 null（显示 --:--）。
-    // 不伪造时长，也不使用任何固定常量。
-    totalSeconds() {
-      const persisted = Number(this.music && this.music.duration_seconds)
-      if (Number.isFinite(persisted) && persisted > 0) return persisted
-      const fromAudio = Number(this.duration)
-      if (Number.isFinite(fromAudio) && fromAudio > 0) return fromAudio
-      return null
+    progressPresentation() {
+      return presentProgress({
+        currentSeconds: this.playerState.currentTime,
+        totalSeconds: this.playerPresentation.duration.seconds,
+      })
     },
-    // 进度百分比：currentTime / totalSeconds 同一真实时间基，总时长未知时为 0
-    progressPercent() {
-      if (!this.totalSeconds) return 0
-      const p = (this.currentTime / this.totalSeconds) * 100
-      return Math.max(0, Math.min(100, p))
+    failurePresentation() {
+      return this.loadFailure ? buildMusicPresentation({ failure: this.loadFailure }) : { isFailure: false }
     },
-    // 主音的权威来源优先级（均为服务端数据，前端不重算、不猜）：
-    //   1. 本次 music asset 的 tone_profile.primary_tone（persistMusicTask 已固化为 tone_code，
-    //      且只在后端明确 personalized_five_tone 时才非空）
-    //   2. 本次音乐方案 / 五音分析 read model 明确存在的 primary_tone.tone（同样要求 personalized）
-    // Sprint 6：integrated / basic / 未知 mode 一律返回空字符串 → 中性空状态，
-    // 绝不回退成"宫"，也不在前端推断 mode。
-    toneSource() {
-      const music = this.music || {}
-      if (music.tone_code) return music.tone_code
-      if (!this.isPersonalized) return ""
-      if (this.basis && this.basis.primary_tone) return this.basis.primary_tone.tone
-      return ""
+    playing() {
+      return !!this.playerState.playing
     },
-    // 后端权威 mode：优先本次 asset，其次本次 basis；缺失/未知一律为 ""
-    regulationMode() {
-      const fromMusic = normalizeRegulationMode(this.music && this.music.regulation_mode)
-      if (fromMusic) return fromMusic
-      return normalizeRegulationMode(this.basis && this.basis.regulation_mode)
-    },
-    isPersonalized() {
-      return this.regulationMode === "personalized_five_tone"
-    },
-    modeLabel() {
-      return modeLabelFor(this.regulationMode)
-    },
-    toneTheme() {
-      // 主音主题只在 personalized + 真实主音时生效；其余为中性空状态主题
-      return personalizedToneTheme(this.regulationMode, this.toneSource)
-    },
-    // 主音印章：非 personalized 不显示"主音"字样，改为本次调适方向（未知 mode 则为空）
     toneSealText() {
-      return this.isPersonalized ? "主音" : this.modeLabel
+      return this.playerPresentation.sealText
     },
     toneSummaryLabel() {
-      return this.toneTheme.traits || this.modeLabel || ""
+      return this.playerPresentation.modeDisplayLabel
     },
     playerStyle() {
+      const tone = this.playerPresentation.primaryTone
       const style = {
-        "--tone-accent": this.toneTheme.accent,
-        "--tone-soft": this.toneTheme.soft,
+        "--tone-accent": tone.accent,
+        "--tone-soft": tone.soft,
       }
-      if (this.toneTheme.imageCode) {
-        style.backgroundImage = `linear-gradient(rgba(255,255,252,.08),rgba(255,255,252,.08)), url('/static/v31-player/${this.toneTheme.imageCode}-1.png')`
+      if (tone.imageCode) {
+        style.backgroundImage = `linear-gradient(rgba(255,255,252,.08),rgba(255,255,252,.08)), url('/static/v31-player/${tone.imageCode}-1.png')`
       }
       return style
     },
     toneHeroSrc() {
-      if (!this.toneTheme.imageCode) return ""
-      return `/static/v31-player/${this.toneTheme.imageCode}-2.png`
-    },
-    basisMatchesTone() {
-      return !!(this.basis && this.basis.primary_tone && this.basis.primary_tone.tone === this.toneTheme.code)
-    },
-    displayTitle() {
-      return (this.music && this.music.title) || this.toneTheme.title || "—"
-    },
-    // 主音未解析出来时显示占位符或本次调适方向，而不是任何具体的五音
-    tonePairText() {
-      if (!this.toneTheme.code) return this.modeLabel || "—"
-      return `${this.toneTheme.glyph}音`
-    },
-    toneSummaryValue() {
-      if (!this.toneTheme.code) return this.modeLabel || "—"
-      return `${this.toneTheme.glyph}音主调`
-    },
-    displayBpm() {
-      return this.basis && this.basis.bpm ? `${this.basis.bpm.value} BPM` : "—"
-    },
-    displayInstruments() {
-      if (this.basisMatchesTone && this.basis.instruments) return this.basis.instruments.values.join(" · ")
-      if (this.music && this.music.instrument_labels && this.music.instrument_labels.length) return this.music.instrument_labels.join(" · ")
-      return this.toneTheme.instruments || "—"
-    },
-    displayAmbience() {
-      if (this.basis && this.basis.ambience) return this.basis.ambience.values.join(" · ")
-      return this.toneTheme.ambience || "—"
-    },
-    summaryDuration() {
-      if (!this.totalSeconds) return "—"
-      return `${Math.max(1, Math.round(this.totalSeconds / 60))}分钟`
+      const imageCode = this.playerPresentation.primaryTone.imageCode
+      return imageCode ? `/static/v31-player/${imageCode}-2.png` : ""
     },
   },
   onLoad() {
     this.load()
   },
+  onHide() {
+    if (this.playerController) this.playerController.handleHide()
+  },
+  onShow() {
+    if (this.playerController) this.playerController.handleShow()
+  },
   onUnload() {
-    this.stopAudio()
+    if (this.playerController) this.playerController.dispose()
+    this.playerController = null
   },
   methods: {
     async load() {
       this.loading = true
-      this.error = ""
+      this.loadFailure = null
       try {
         this.music = await apiV3.getMusic()
         this.favorite = !!this.music.favorite
@@ -166,96 +108,35 @@ export default {
         } catch (e) {
           this.basis = null
         }
+        this.setupPlayerController()
       } catch (e) {
-        if (e.agentPending) {
-          this.error = e.message
-        } else {
-          this.error = e.message || "音乐加载失败，请重试"
-        }
+        this.loadFailure = e
       } finally {
         this.loading = false
       }
     },
+    setupPlayerController() {
+      if (this.playerController) this.playerController.dispose()
+      this.playerController = createPlayerController({
+        downloadAudio: apiV3.fetchAuthorizedAudio,
+        createAudioContext: uni.createInnerAudioContext,
+        onStateChange: snapshot => {
+          this.playerState = snapshot
+        },
+        onError: error => {
+          const failure = buildMusicPresentation({ failure: error })
+          uni.showToast({ title: failure.failure.message, icon: "none" })
+        },
+      })
+      this.playerState = this.playerController.getState()
+    },
     togglePlay() {
-      if (this.playing) {
-        this.pause()
-      } else {
-        this.play()
-      }
+      if (!this.playerController || !this.music) return
+      void this.playerController.toggle(this.music.stream_url)
     },
-    async play() {
-      if (!this.audioSrc || this.playing) return
-      try {
-        // 已解析过后端鉴权地址时直接恢复本地音频，不重复下载或重置进度。
-        if (this.audioCtx && this.resolvedAudioSrc) {
-          if (this.resolvedAudioStreamUrl === this.music.stream_url) {
-            this.audioCtx.play()
-            this.playing = true
-            return
-          }
-        }
-
-        // 只在首次或切曲时才下载音频文件
-        const src = await apiV3.fetchAuthorizedAudio(this.music.stream_url)
-        this.resolvedAudioSrc = src
-        this.resolvedAudioStreamUrl = this.music.stream_url
-        if (!this.audioCtx) {
-          this.audioCtx = uni.createInnerAudioContext()
-          
-          // 元数据加载成功：获取真实音频时长（totalSeconds 的兜底来源）
-          this.audioCtx.onCanplay(() => {
-            if (!this.audioCtx) return
-            const realDuration = Number(this.audioCtx.duration)
-            if (Number.isFinite(realDuration) && realDuration > 0) {
-              this.duration = realDuration
-            }
-          })
-          
-          // 真实播放进度更新（唯一驱动 currentTime 的事件）；
-          // 部分平台 onCanplay 时 duration 仍为 0，这里用同一音频时间基补齐真实总时长。
-          this.audioCtx.onTimeUpdate(() => {
-            if (!this.audioCtx) return
-            this.currentTime = this.audioCtx.currentTime || 0
-            const realDuration = Number(this.audioCtx.duration)
-            if (Number.isFinite(realDuration) && realDuration > 0) {
-              this.duration = realDuration
-            }
-          })
-          
-          this.audioCtx.onError(() => {
-            this.playing = false
-            uni.showToast({ title: "播放失败，请稍后重试", icon: "none" })
-          })
-          
-          this.audioCtx.onEnded(() => {
-            this.playing = false
-            // 播放结束后进度停在总时长上，不清零：总时长与完整进度保持可见
-            if (this.totalSeconds) this.currentTime = this.totalSeconds
-          })
-        }
-        // 仅在 src 不同时才设置（换曲或首次）
-        if (this.audioCtx.src !== src) {
-          this.audioCtx.src = src
-        }
-        this.audioCtx.play()
-        this.playing = true
-      } catch (e) {
-        this.playing = false
-        uni.showToast({ title: e.message || "播放失败，请稍后重试", icon: "none" })
-      }
-    },
-    pause() {
-      if (this.audioCtx) this.audioCtx.pause()
-      this.playing = false
-    },
-    stopAudio() {
-      if (this.audioCtx) {
-        this.audioCtx.destroy()
-        this.audioCtx = null
-      }
-      this.resolvedAudioSrc = ""
-      this.resolvedAudioStreamUrl = ""
-      this.playing = false
+    seekToRatio(ratio) {
+      if (!this.playerController) return false
+      return this.playerController.seek(ratio)
     },
     async toggleFavorite() {
       if (this.favBusy) return
@@ -281,14 +162,12 @@ export default {
         this.favBusy = false
       }
     },
-    // 时间格式化：复用 common/v31-player-time.js 的纯函数，模板与测试同源
-    formatDuration,
     goFeedback() {
-      this.stopAudio()
+      if (this.playerController) this.playerController.dispose()
       uni.navigateTo({ url: "/pages/v3-feedback/v3-feedback" })
     },
     exitSession() {
-      this.stopAudio()
+      if (this.playerController) this.playerController.dispose()
       uni.reLaunch({ url: "/pages/entry/entry" })
     },
   },
@@ -310,16 +189,16 @@ export default {
         <text class="loading-text">正在准备音乐…</text>
       </view>
 
-      <view v-else-if="error" class="error-wrap ink-fade-in">
+      <view v-else-if="failurePresentation.isFailure" class="error-wrap ink-fade-in">
         <view class="error-seal">
           <text class="error-seal-text">音</text>
         </view>
-        <text class="error-title">暂时无法播放</text>
-        <text class="error-text">{{ error }}</text>
+        <text class="error-title">{{ failurePresentation.failure.title }}</text>
+        <text class="error-text">{{ failurePresentation.failure.message }}</text>
         <view class="han-btn han-btn-primary btn-retry" @click="load">
           <text class="btn-text">重试</text>
         </view>
-        <text class="error-hint">你不必着急 · 待服务就绪再来聆听</text>
+        <text class="error-hint">{{ failurePresentation.failure.retry.notice }}</text>
       </view>
 
       <view v-else class="player-content ink-fade-up">
@@ -332,25 +211,25 @@ export default {
             <view class="tone-hero-frame">
               <image v-if="toneHeroSrc" class="tone-hero-image" :src="toneHeroSrc" mode="aspectFill" />
               <view class="tone-copy">
-                <view class="tone-glyph-row"><text class="tone-glyph">{{ toneTheme.glyph }}</text><text class="tone-seal">{{ toneSealText }}</text></view>
-                <text class="tone-traits">{{ toneTheme.traits }}</text>
+                <view class="tone-glyph-row"><text class="tone-glyph">{{ playerPresentation.primaryTone.glyph }}</text><text class="tone-seal">{{ toneSealText }}</text></view>
+                <text class="tone-traits">{{ playerPresentation.modeDisplayLabel }}</text>
               </view>
             </view>
           </view>
         </view>
 
-        <text class="music-title">{{ displayTitle }}</text>
-        <text class="tone-pair">{{ tonePairText }}</text>
-        <text class="music-instruments">—　{{ displayInstruments }} · {{ displayAmbience }}　—</text>
-        <text class="music-caption">让音乐回归身心的自然节奏，在静谧中遇见更好的自己。</text>
+        <text class="music-title">{{ playerPresentation.title.displayText }}</text>
+        <text class="tone-pair">{{ playerPresentation.primaryTone.displayText || playerPresentation.modeDisplayLabel }}</text>
+        <text class="music-instruments">—　{{ playerPresentation.instruments.displayText }} · {{ playerPresentation.ambience.displayText }}　—</text>
+        <text class="music-caption">{{ playerPresentation.sourceLabel }}</text>
 
-        <!-- 控制区：current / total 与进度条共用同一条真实音频时间基（onTimeUpdate） -->
+        <!-- 控制区：只渲染 controller snapshot 经 presentation 格式化的进度 -->
         <view class="progress-wrap">
-          <view class="progress-track" role="progressbar" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100">
-            <view class="progress-value" :style="{ width: progressPercent + '%' }"><view class="progress-thumb" /></view>
+          <view class="progress-track" role="progressbar" :aria-valuenow="progressPresentation.percent" aria-valuemin="0" aria-valuemax="100">
+            <view class="progress-value" :style="{ width: progressPresentation.percent + '%' }"><view class="progress-thumb" /></view>
           </view>
           <view class="progress-times">
-            <text class="progress-time">{{ formatDuration(currentTime) }} / {{ formatDuration(totalSeconds) }}</text>
+            <text class="progress-time">{{ progressPresentation.currentText }} / {{ progressPresentation.totalText }}</text>
           </view>
         </view>
         <view class="controls">
@@ -366,11 +245,11 @@ export default {
         <view class="music-summary-card">
           <view class="summary-heading"><view class="summary-note">♫</view><text>本次音乐</text></view>
           <view class="music-summary-grid">
-            <view class="music-summary-cell"><text class="summary-value">{{ toneSummaryValue }}</text><text class="summary-label">{{ toneSummaryLabel }}</text></view>
-            <view class="music-summary-cell"><text class="summary-value">{{ displayBpm }}</text><text class="summary-label">舒缓节奏</text></view>
-            <view class="music-summary-cell"><text class="summary-value">{{ summaryDuration }}</text><text class="summary-label">聆听时长</text></view>
-            <view class="music-summary-cell"><text class="summary-value">{{ displayInstruments }}</text><text class="summary-label">主要乐器</text></view>
-            <view class="music-summary-cell"><text class="summary-value">{{ displayAmbience }}</text><text class="summary-label">音乐氛围</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.primaryTone.displayText || playerPresentation.modeDisplayLabel }}</text><text class="summary-label">{{ toneSummaryLabel }}</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.analysis.parameters.bpm.displayText }}</text><text class="summary-label">舒缓节奏</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.duration.minutesText }}</text><text class="summary-label">聆听时长</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.instruments.displayText }}</text><text class="summary-label">主要乐器</text></view>
+            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.ambience.displayText }}</text><text class="summary-label">音乐氛围</text></view>
           </view>
         </view>
 
@@ -384,7 +263,7 @@ export default {
             <view class="action-copy"><text class="action-title">结束本次聆听</text><text class="action-subtitle">愿你身心安宁</text></view>
           </view>
         </view>
-        <text class="player-disclaimer">{{ music.disclaimer }}</text>
+        <text class="player-disclaimer">{{ playerPresentation.disclaimer.displayText }}</text>
         <view class="page-motto"><text>—　五音和鸣 · 乐养身心　—</text></view>
       </view>
     </view>

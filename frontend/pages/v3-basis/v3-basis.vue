@@ -15,10 +15,13 @@
  */
 import { apiV3 } from "../../common/api-v3.js"
 import {
-  modeLabelFor,
-  normalizeRegulationMode,
-  personalizedToneTheme,
-} from "../../common/v31-tone-theme.js"
+  createMusicGenerationSession,
+  GENERATION_STATES,
+} from "../../common/music-generation-session.js"
+import {
+  buildAnalysisViewModel,
+  presentFailureDisplay,
+} from "../../common/music-presentation.js"
 
 export default {
   data() {
@@ -27,34 +30,34 @@ export default {
       error: "",
       basis: null,
       task: null,
-      pollTimer: null,
+      generationSession: null,
+      unsubscribeGeneration: null,
+      generationSnapshot: null,
+      playerNavigationStarted: false,
       simulated: false, // hybrid：演示数据标识
     }
   },
   computed: {
     stateTags() {
-      if (!this.basis || !this.basis.confirmed_state) return []
-      return this.basis.confirmed_state
+      const summary = this.analysisPresentation.stateSummary.text
+      if (!summary) return []
+      return summary
         .split(/[，、。；;]/)
         .map(item => item.trim().replace(/^近期/, ""))
         .filter(Boolean)
         .slice(0, 5)
     },
     rationaleRows() {
-      if (!this.basis) return []
-      return this.basis.analysis_rationales.map(item => {
-        const parts = item.summary.split(/[，。]?提示/)
-        return {
-          source: (parts[0] || item.summary).replace(/[，。]$/, ""),
-          target: (parts[1] || "作为本次调适依据").replace(/^[，。]/, "").replace(/。$/, ""),
-        }
-      })
+      return this.analysisPresentation.rationales.rows
+    },
+    analysisPresentation() {
+      return buildAnalysisViewModel(this.basis)
     },
     toneOptions() {
       // Sprint 6：主音/辅音角色只在后端明确 personalized_five_tone 时标注；
       // integrated / basic / 未知 mode 绝不标记任何音为主音。
-      const primary = this.hasPrimaryTone && this.basis.primary_tone ? this.basis.primary_tone.tone : ""
-      const secondary = this.isPersonalized && this.basis && this.basis.secondary_tone ? this.basis.secondary_tone.tone : ""
+      const primary = this.hasPrimaryTone ? this.analysisPresentation.primaryTone.code : ""
+      const secondary = this.isPersonalized ? this.analysisPresentation.secondaryTone.code : ""
       // code 必须是后端权威拼写（gong/shang/jiao/zhi/yu），否则主音无法被标记出来
       return [
         { code: "gong", label: "宫" },
@@ -69,57 +72,55 @@ export default {
     },
     // 后端权威 mode：缺失/未知一律为 ""（前端绝不从主音或权重推断 mode）
     regulationMode() {
-      return normalizeRegulationMode(this.basis && this.basis.regulation_mode)
+      return this.analysisPresentation.mode
     },
     isPersonalized() {
       return this.regulationMode === "personalized_five_tone"
     },
     modeLabel() {
-      return modeLabelFor(this.regulationMode)
+      return this.analysisPresentation.modeLabel
     },
     hasPrimaryTone() {
-      return this.isPersonalized && !!(this.basis && this.basis.primary_tone && this.basis.primary_tone.tone)
+      return this.analysisPresentation.hasPrimaryTone
     },
     // 非个性化模式的中性说明：不主张五音主音，也不使用"主音未定"这类技术兜底措辞
     modeCopy() {
-      if (this.regulationMode === "integrated_regulation") {
-        return { title: "综合调适", body: "本次未形成单一五音主音，按综合调适方向配置音乐参数。" }
-      }
-      if (this.regulationMode === "basic_wellness") {
-        return { title: "基础舒缓", body: "当前依据尚不充分，未主张五音主音，按基础舒缓方向配置音乐参数。" }
-      }
-      return { title: "本次五音解析暂不可用", body: "未能读取到可用的音乐设计模式，暂不展示五音主音结论。" }
-    },
-    // 主音/辅音的性格文案取自五音主题表，避免写死某个音（例如"宫"）的旧文案；
-    // 且只在 personalized + 真实主音时生效，其余一律中性空状态。
-    primaryToneTheme() {
-      return personalizedToneTheme(this.regulationMode, this.basis && this.basis.primary_tone ? this.basis.primary_tone.tone : "")
-    },
-    secondaryToneTheme() {
-      return personalizedToneTheme(this.regulationMode, this.basis && this.basis.secondary_tone ? this.basis.secondary_tone.tone : "")
+      return { title: this.analysisPresentation.modeDisplayLabel, body: "" }
     },
     statusText() {
-      const map = {
-        queued: "排队中，请稍候…",
-        running: "正在根据本次音乐参数生成。",
-        succeeded: "生成完成！",
-        matched_fallback: "已为你匹配审核曲库中的音乐。",
-        failed: "生成失败，你可以重试。",
-        cancelled: "已取消生成。",
-      }
-      return this.task ? (map[this.task.status] || "正在生成音乐…") : ""
+      return this.generationSnapshot ? this.generationSnapshot.copy : ""
     },
     progressPercent() {
       if (!this.task || !this.task.progress) return 0
       if (this.task.progress.indeterminate) return null
       return this.task.progress.value
     },
+    terminalNotice() {
+      const snapshot = this.generationSnapshot
+      if (!snapshot) return ""
+      if (snapshot.state === GENERATION_STATES.FAILED || snapshot.state === GENERATION_STATES.SYNC_ERROR) {
+        return presentFailureDisplay(
+          { code: snapshot.errorCode, message: snapshot.copy },
+          { taskStatus: snapshot.status, canResume: snapshot.retryKind === "resume", terminal: snapshot.state === GENERATION_STATES.FAILED },
+        ).message
+      }
+      return snapshot.copy
+    },
   },
   onLoad() {
     this.load()
   },
+  onHide() {
+    if (this.generationSession) this.generationSession.onHide()
+  },
+  onShow() {
+    if (this.generationSession) void this.generationSession.onShow()
+  },
   onUnload() {
-    this.stopPoll()
+    if (this.unsubscribeGeneration) this.unsubscribeGeneration()
+    if (this.generationSession) this.generationSession.dispose()
+    this.unsubscribeGeneration = null
+    this.generationSession = null
   },
   methods: {
     back() {
@@ -133,6 +134,7 @@ export default {
         // create the server-side analysis artifacts when the local cache is incomplete.
         this.basis = await apiV3.getMusicBasis({ allowCreate: true })
         this.simulated = !!apiV3.AGENT_SIMULATED
+        this.setupGenerationSession()
         this.phase = "basis"
       } catch (e) {
         if (e.agentPending) {
@@ -145,73 +147,68 @@ export default {
         }
       }
     },
+    setupGenerationSession() {
+      if (this.unsubscribeGeneration) this.unsubscribeGeneration()
+      if (this.generationSession) this.generationSession.dispose()
+      this.playerNavigationStarted = false
+      this.generationSession = createMusicGenerationSession({
+        api: {
+          startGeneration: ({ requestId }) => apiV3.startMusicGeneration({ requestId }),
+          syncTask: taskId => apiV3.pollMusicGeneration(taskId),
+          cancelTask: taskId => apiV3.cancelMusicGeneration(taskId),
+        },
+      })
+      this.unsubscribeGeneration = this.generationSession.subscribe(snapshot => {
+        this.applyGenerationSnapshot(snapshot)
+      })
+      this.generationSession.ready()
+    },
+    applyGenerationSnapshot(snapshot) {
+      this.generationSnapshot = snapshot
+      this.task = snapshot.task
+      if (snapshot.state === GENERATION_STATES.PLAYABLE || snapshot.state === GENERATION_STATES.MATCHED_FALLBACK) {
+        if (!this.playerNavigationStarted) {
+          this.playerNavigationStarted = true
+          this.goPlayer()
+        }
+        return
+      }
+      if (snapshot.state === GENERATION_STATES.SYNC_ERROR && !snapshot.taskId) {
+        // POST 结果未知且尚无 task identity：显示 retry，由 session 复用原 request id。
+        this.phase = "cancelled"
+        return
+      }
+      if (
+        snapshot.state === GENERATION_STATES.CREATING ||
+        snapshot.state === GENERATION_STATES.QUEUED ||
+        snapshot.state === GENERATION_STATES.RUNNING ||
+        snapshot.state === GENERATION_STATES.SYNC_ERROR
+      ) {
+        this.phase = "generating"
+        return
+      }
+      if (snapshot.state === GENERATION_STATES.FAILED || snapshot.state === GENERATION_STATES.CANCELLED) {
+        this.phase = "cancelled"
+        return
+      }
+      if (snapshot.state === GENERATION_STATES.READY_TO_GENERATE) this.phase = "basis"
+    },
     // 发起生成
     async generate() {
-      this.phase = "generating"
-      try {
-        this.task = await apiV3.startMusicGeneration()
-        if (this.task.status === "succeeded" || this.task.status === "matched_fallback") {
-          // 幂等重放/已即时完成时直接进播放器，不空转轮询
-          this.goPlayer()
-        } else {
-          this.schedulePoll()
-        }
-      } catch (e) {
-        if (e.agentPending) {
-          // real 模式：音乐生成依赖辨证处方能力（未接入），明确等待，不伪造进度
-          this.phase = "pending"
-          return
-        }
-        uni.showToast({ title: e.message || "生成发起失败，请重试", icon: "none" })
-        this.phase = "basis"
-      }
-    },
-    schedulePoll() {
-      this.stopPoll()
-      const interval = (this.task && this.task.poll_after_ms) || 2000
-      this.pollTimer = setInterval(async () => {
-        try {
-          this.task = await apiV3.pollMusicGeneration()
-          if (this.task.status === "succeeded" || this.task.status === "matched_fallback") {
-            // V3.1：删除"生成完成"中间步骤，成功后直接进入播放器
-            this.stopPoll()
-            setTimeout(() => { this.goPlayer() }, 600)
-          } else if (this.task.status === "failed" || this.task.status === "cancelled") {
-            this.stopPoll()
-            this.phase = "cancelled"
-          }
-        } catch (e) {
-          this.stopPoll()
-          this.phase = "cancelled"
-        }
-      }, interval)
-    },
-    stopPoll() {
-      if (this.pollTimer) {
-        clearInterval(this.pollTimer)
-        this.pollTimer = null
-      }
+      if (!this.generationSession) return
+      await this.generationSession.ensureGeneration()
     },
     async cancel() {
-      this.stopPoll()
-      try {
-        await apiV3.cancelMusicGeneration()
-        this.phase = "cancelled"
-      } catch (e) {
-        uni.showToast({ title: e.message || "取消失败，请重试", icon: "none" })
-      }
+      if (!this.generationSession) return
+      await this.generationSession.cancel()
     },
-    retry() {
-      this.generate()
+    async retry() {
+      if (!this.generationSession) return
+      await this.generationSession.retry()
     },
     goPlayer() {
       // Owner 2026-09-11: bottom tab is Home/Profile; Player is a normal flow page.
       uni.redirectTo({ url: "/pages/v3-player/v3-player" })
-    },
-    formatDuration(sec) {
-      const m = Math.floor(sec / 60)
-      const s = sec % 60
-      return m + "分钟" + (s ? s + "秒" : "")
     },
   },
 }
@@ -288,7 +285,7 @@ export default {
             <text class="section-title">状态解读</text>
           </view>
           <view class="interpretation-box">
-            <text class="interpretation-text">{{ basis.state_tendency }} 当前调适更适合从安定情绪、帮助入静、降低刺激、辅助睡眠几个方向展开。</text>
+            <text class="interpretation-text">{{ analysisPresentation.tendency.displayText }}</text>
           </view>
         </view>
 
@@ -301,9 +298,7 @@ export default {
           <view class="rationale-list">
             <view v-for="(row, idx) in rationaleRows" :key="idx" class="rationale-row">
               <text class="rationale-index">{{ idx + 1 }}</text>
-              <text class="rationale-source">{{ row.source }}</text>
-              <text class="rationale-arrow">→</text>
-              <text class="rationale-target">{{ row.target }}</text>
+              <text class="rationale-source rationale-source--full">{{ row.text }}</text>
             </view>
           </view>
         </view>
@@ -325,18 +320,14 @@ export default {
           </view>
           <view class="tone-details">
             <view v-if="hasPrimaryTone" class="tone-detail tone-detail--primary">
-              <text class="tone-detail-title">{{ basis.primary_tone.display_name }} · 主音</text>
-              <text class="tone-detail-subtitle">{{ primaryToneTheme.traits }}</text>
-              <text class="tone-detail-copy">{{ basis.primary_tone.explanation }}</text>
+              <text class="tone-detail-title">{{ analysisPresentation.primaryTone.displayName }} · 主音</text>
             </view>
             <view v-else class="tone-detail tone-detail--neutral">
               <text class="tone-detail-title">{{ modeCopy.title }}</text>
               <text class="tone-detail-copy">{{ modeCopy.body }}</text>
             </view>
-            <view v-if="hasPrimaryTone && basis.secondary_tone" class="tone-detail tone-detail--secondary">
-              <text class="tone-detail-title">{{ basis.secondary_tone.display_name }} · 辅音</text>
-              <text class="tone-detail-subtitle">{{ secondaryToneTheme.traits }}</text>
-              <text class="tone-detail-copy">{{ basis.secondary_tone.explanation }}</text>
+            <view v-if="hasPrimaryTone && analysisPresentation.secondaryTone.hasTone" class="tone-detail tone-detail--secondary">
+              <text class="tone-detail-title">{{ analysisPresentation.secondaryTone.displayName }} · 辅音</text>
             </view>
           </view>
         </view>
@@ -353,22 +344,22 @@ export default {
           <view class="design-grid">
             <view class="design-card">
               <image class="basis-icon-image design-icon" src="/static/v31-basis/bpm.png" mode="aspectFit" />
-              <text class="param-value">{{ basis.bpm.value }} BPM</text>
+              <text class="param-value">{{ analysisPresentation.parameters.bpm.displayText }}</text>
               <text class="param-label">舒缓节奏</text>
             </view>
             <view class="design-card">
               <image class="basis-icon-image design-icon" src="/static/v31-basis/duration.png" mode="aspectFit" />
-              <text class="param-value">{{ formatDuration(basis.duration.seconds) }}</text>
+              <text class="param-value">{{ analysisPresentation.parameters.duration.displayText }}</text>
               <text class="param-label">时长</text>
             </view>
             <view class="design-card">
               <image class="basis-icon-image design-icon" src="/static/v31-basis/instrument.png" mode="aspectFit" />
-              <text class="param-value">{{ basis.instruments.values.join('、') }}</text>
+              <text class="param-value">{{ analysisPresentation.parameters.instruments.displayText }}</text>
               <text class="param-label">主要乐器</text>
             </view>
             <view class="design-card">
               <image class="basis-icon-image design-icon" src="/static/v31-basis/ambience.png" mode="aspectFit" />
-              <text class="param-value">{{ basis.ambience.values.join('、') }}</text>
+              <text class="param-value">{{ analysisPresentation.parameters.ambience.displayText }}</text>
               <text class="param-label">音乐氛围</text>
             </view>
           </view>
@@ -386,13 +377,13 @@ export default {
 
         <view v-else class="actions">
           <view v-if="phase === 'cancelled'" class="cancel-note">
-            <text class="cancel-note-text">已取消，可重新发起生成。</text>
+            <text class="cancel-note-text">{{ terminalNotice }}</text>
           </view>
-          <view class="generate-button" @click="generate">
+          <view class="generate-button" @click="phase === 'cancelled' ? retry() : generate()">
             <text>{{ phase === 'cancelled' ? "重新生成" : "生成我的音乐" }}</text><text class="button-arrow">→</text>
           </view>
         </view>
-        <text class="basis-disclaimer">{{ basis.disclaimer }}</text>
+        <text class="basis-disclaimer">{{ analysisPresentation.disclaimer.displayText }}</text>
       </view>
       <view class="page-motto"><text>—　五音和鸣 · 乐养身心　—</text></view>
     </view>
@@ -858,6 +849,7 @@ export default {
 .rationale-row:last-child { border-bottom:0; }
 .rationale-index { display:flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; color:#fff; background:#bcd3cb; font-size:13px; }
 .rationale-source,.rationale-target { color:#285a5d; font-size:13px; line-height:1.55; }
+.rationale-source--full { grid-column:2/-1; }
 .rationale-arrow { color:#8ca7a2; font-size:15px; text-align:center; }
 .tone-row { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; margin:2px 3px 9px; }
 .tone-option { display:flex; flex-direction:column; align-items:center; min-width:0; }

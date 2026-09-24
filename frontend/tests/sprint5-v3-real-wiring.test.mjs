@@ -83,7 +83,9 @@ test("real questionnaire through player and feedback uses server resources in or
 
 test("basis page sends an immediately successful generation directly to Player", () => {
   const page = readFileSync(resolve(import.meta.dirname, "../pages/v3-basis/v3-basis.vue"), "utf8")
-  assert.match(page, /this\.task\.status === "succeeded"[\s\S]*this\.goPlayer\(\)/)
+  assert.match(page, /snapshot\.state === GENERATION_STATES\.PLAYABLE/)
+  assert.match(page, /snapshot\.state === GENERATION_STATES\.MATCHED_FALLBACK/)
+  assert.match(page, /this\.goPlayer\(\)/)
 })
 
 // P0 regression: Frozen Contract §3 requires the session read model to carry the server-owned

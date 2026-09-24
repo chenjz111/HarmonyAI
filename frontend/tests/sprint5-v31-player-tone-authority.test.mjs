@@ -90,25 +90,13 @@ test("静态插画按 imageCode 取图：角的 code 是 jiao、插画仍是 jue
   assert.equal(toneThemeFor("jiao").imageCode, "jue")
 })
 
-test("播放器主音来源优先级：本次 asset tone_profile → 本次 prescription", () => {
-  // asset 优先
-  assert.match(player, /if \(music\.tone_code\) return music\.tone_code/)
-  // asset 未暴露时用本次 prescription / read model 的 primary_tone
-  assert.match(player, /basis\.primary_tone/)
+test("播放器的主音展示只通过 music-presentation，不直接读取主题事实", () => {
+  assert.match(player, /buildMusicPresentation/)
+  assert.match(player, /playerPresentation\.primaryTone/)
   // 不得把缺失的主音静默回退成宫
   assert.doesNotMatch(player, /["']gong["']/, "播放器不得出现 gong 常量")
-  assert.doesNotMatch(player, /toneThemeFor\([^)]*\|\|/, "toneThemeFor 的参数不得带 || 回退")
-  // 渲染的主音汉字只能来自主题表
-  assert.match(playerMarkup, /\{\{\s*toneTheme\.glyph\s*\}\}/)
-  assert.match(playerMarkup, /\{\{\s*tonePairText\s*\}\}/)
-  assert.match(playerMarkup, /\{\{\s*toneSummaryValue\s*\}\}/)
-  // 空状态：主音未知时显示占位符（或本次调适方向），绝不显示具体五音
-  assert.match(player, /if \(!this\.toneTheme\.code\) return this\.modeLabel \|\| "—"/)
-  assert.match(player, /return `\$\{this\.toneTheme\.glyph\}音`/)
-  assert.match(player, /return `\$\{this\.toneTheme\.glyph\}音主调`/)
-  // Sprint 6：主音主题只在后端明确 personalized_five_tone 时生效（mode 权威，前端不推断）
-  assert.match(player, /personalizedToneTheme\(this\.regulationMode, this\.toneSource\)/)
-  assert.match(player, /normalizeRegulationMode/)
+  assert.doesNotMatch(player, /v31-tone-theme/)
+  assert.doesNotMatch(player, /(?:toneTheme|primaryToneTheme|secondaryToneTheme)\.(traits|instruments|ambience|title)\b/)
 })
 
 test("五音解析页五音条使用权威 code，主音角色能被标记出来", () => {
@@ -116,9 +104,10 @@ test("五音解析页五音条使用权威 code，主音角色能被标记出来
     assert.match(basisMarkup, new RegExp(`code: "${code}"`), `五音条必须包含 ${code}`)
   }
   assert.doesNotMatch(basisMarkup, /code: "jue"/, "五音条不得再使用历史拼写 jue")
-  // 主音/辅音性格文案取自主题表，不再写死某个音的旧文案
-  assert.match(basisMarkup, /\{\{\s*primaryToneTheme\.traits\s*\}\}/)
-  assert.match(basisMarkup, /\{\{\s*secondaryToneTheme\.traits\s*\}\}/)
+  // Phase 6：页面通过 presentation 展示后端事实，主题表不再携带性格/乐器/氛围事实。
+  assert.match(basisMarkup, /music-presentation\.js/)
+  assert.doesNotMatch(basisMarkup, /v31-tone-theme/)
+  assert.doesNotMatch(basisMarkup, /(?:toneTheme|primaryToneTheme|secondaryToneTheme)\.(traits|instruments|ambience|title)\b/)
   assert.doesNotMatch(basisMarkup, /沉稳 · 平和 · 安定/, "不得把宫的性格文案写死在主音下")
 })
 
