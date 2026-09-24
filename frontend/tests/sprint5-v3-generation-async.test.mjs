@@ -143,7 +143,9 @@ async function reachGeneration(apiV3) {
   await apiV3.createAssessment()
   await apiV3.getAssessment()
   await apiV3.confirmAssessment({ expected_revision: 1, decision: "confirm", changes: [] })
-  await apiV3.getMusicBasis()
+  // Sprint 6 Phase 6 (R7): creating the basis is now explicit; the cache-only default is locked by
+  // tests/sprint6-phase6-dsh-r7-basis-cache.test.mjs.
+  await apiV3.getMusicBasis({ allowCreate: true })
 }
 
 function flowState() {

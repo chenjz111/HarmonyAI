@@ -62,7 +62,8 @@ test("real questionnaire through player and feedback uses server resources in or
   await apiV3.createAssessment(); await apiV3.getAssessment()
   await apiV3.submitHealingIntent({ primary_goal: "relaxation" })
   await apiV3.confirmAssessment({ expected_revision: 1, decision: "confirm", changes: [] })
-  const basis = await apiV3.getMusicBasis()
+  // Sprint 6 Phase 6 (R7): this is the generation step, so creating the basis is explicit here.
+  const basis = await apiV3.getMusicBasis({ allowCreate: true })
   assert.equal(basis.primary_tone.tone, "gong")
   const task = await apiV3.startMusicGeneration()
   assert.equal(task.status, "succeeded")
@@ -82,7 +83,9 @@ test("real questionnaire through player and feedback uses server resources in or
 
 test("basis page sends an immediately successful generation directly to Player", () => {
   const page = readFileSync(resolve(import.meta.dirname, "../pages/v3-basis/v3-basis.vue"), "utf8")
-  assert.match(page, /this\.task\.status === "succeeded"[\s\S]*this\.goPlayer\(\)/)
+  assert.match(page, /snapshot\.state === GENERATION_STATES\.PLAYABLE/)
+  assert.match(page, /snapshot\.state === GENERATION_STATES\.MATCHED_FALLBACK/)
+  assert.match(page, /this\.goPlayer\(\)/)
 })
 
 // P0 regression: Frozen Contract §3 requires the session read model to carry the server-owned

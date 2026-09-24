@@ -76,17 +76,19 @@ test("welcome routes into the V3 entry page", () => {
   assert.ok(welcome.includes("/pages/entry/entry"), "welcome must navigate to V3 entry")
 })
 
-test("Sprint 3/4 legacy routes remain (compatibility not removed)", () => {
+test("safe Sprint 3/4 legacy routes remain; unsafe routes are source-only", () => {
   for (const route of [
     "pages/material/material",
     "pages/narrative/narrative",
     "pages/questionnaire-v2/questionnaire-v2",
-    "pages/assessment-result/assessment-result",
-    "pages/player-v2/player-v2",
     "pages/feedback-v2/feedback-v2",
     "pages/safety-support/safety-support",
   ]) {
     assert.ok(routes.includes(route), `legacy route removed: ${route}`)
+  }
+  for (const route of ["pages/assessment-result/assessment-result", "pages/player-v2/player-v2"]) {
+    assert.ok(!routes.includes(route), `unsafe legacy route must stay unregistered: ${route}`)
+    assert.ok(existsSync(resolve(frontendRoot, `${route}.vue`)), `legacy source must remain: ${route}.vue`)
   }
 })
 
@@ -238,9 +240,10 @@ test("P1-3: tabBar keeps Home/My and feedback returns to V3 home", () => {
   assert.ok(basis.includes("redirectTo"), "basis must redirect to the non-tab V3 player")
   assert.ok(!basis.includes("switchTab"), "basis must not treat the player as a tab page")
 
-  // Sprint 3 旧页面保留用于兼容（页面文件与路由不删）
+  // 安全旧页面仍注册；unsafe player 只保留源码，不再注册。
   assert.ok(routes.includes("pages/index/index"), "legacy home page remains for compatibility")
-  assert.ok(routes.includes("pages/player/player"), "legacy player page remains for compatibility")
+  assert.ok(!routes.includes("pages/player/player"), "unsafe legacy player route stays unregistered")
+  assert.ok(existsSync(resolve(frontendRoot, "pages/player/player.vue")), "legacy player source remains")
 })
 
 test("V3.1 freeze: free-text narrative page is deleted from the user flow (freeze §1/§5)", () => {
@@ -310,24 +313,14 @@ test("P0-3: backend audio streams are fetched with auth headers before playback"
   )
 })
 
-test("P0-3: player caches the resolved local audio path for pause/resume", () => {
+test("P0-3: player delegates download/cache/pause-resume authority to player-controller", () => {
   const player = readPage("v3-player/v3-player.vue")
-  assert.ok(player.includes("resolvedAudioSrc"), "player must retain the resolved local audio path")
-  assert.ok(player.includes("resolvedAudioStreamUrl"), "player must bind the local path to its remote stream")
-  assert.match(
-    player,
-    /if\s*\(this\.audioCtx\s*&&\s*this\.resolvedAudioSrc\)/,
-    "resume must reuse the resolved local path instead of comparing it to the remote URL",
-  )
-  assert.match(
-    player,
-    /this\.resolvedAudioSrc\s*=\s*src/,
-    "first authorized download must populate the cached local path",
-  )
-  assert.ok(
-    player.includes("this.resolvedAudioStreamUrl === this.music.stream_url"),
-    "a different music stream must not reuse a stale local path",
-  )
+  const controller = readFileSync(resolve(frontendRoot, "common/player-controller.js"), "utf8")
+  assert.ok(player.includes("createPlayerController"), "page must use the shared player controller")
+  assert.ok(player.includes("downloadAudio: apiV3.fetchAuthorizedAudio"), "controller owns authorized download")
+  assert.doesNotMatch(player, /resolvedAudioSrc|resolvedAudioStreamUrl|audioCtx/, "page must not retain a second audio state machine")
+  assert.match(controller, /resolvedSrc/, "controller retains the resolved local path")
+  assert.match(controller, /resolvedStreamUrl/, "controller binds the local path to its stream")
 })
 
 test("P0-2: upload failures still offer the questionnaire-only path (freeze §4.2)", () => {
@@ -748,9 +741,10 @@ test("V3.1: basis page is 五音调适解析 without a Generation Complete stopo
 test("player only renders backend-provided asset, wires favorites and V3 feedback", () => {
   const player = readPage("v3-player/v3-player.vue")
   assert.ok(player.includes("stream_url"), "player must use backend stream_url")
-  assert.ok(player.includes("musicStreamUrl"), "player must resolve stream url via api")
-  assert.ok(player.includes("source_label"), "player must show source label from backend")
-  assert.ok(player.includes("music.disclaimer"), "player must render backend disclaimer text")
+  assert.ok(player.includes("fetchAuthorizedAudio"), "player controller must receive the authorized audio downloader")
+  assert.ok(player.includes("buildMusicPresentation"), "player facts must render through music-presentation")
+  assert.ok(player.includes("playerPresentation.sourceLabel"), "player must show presentation source label")
+  assert.ok(player.includes("playerPresentation.disclaimer.displayText"), "player must render the authoritative disclaimer")
   assert.ok(player.includes("addFavorite"), "favorites must use backend API")
   assert.ok(player.includes("/pages/v3-feedback/v3-feedback"), "feedback entry must route to V3 feedback page")
   assert.ok(!player.includes("/pages/feedback-v2/feedback-v2"), "V3 flow must not reuse V2 feedback page")
@@ -765,12 +759,12 @@ test("V3.1: player footer offers feedback vs end-session as an explicit choice",
   // 结束本次聆听不留在页内，而是退出主流程回到入口
   assert.ok(player.includes('url: "/pages/entry/entry"'), "exit must relaunch back to entry home")
   assert.ok(player.includes("reLaunch"), "exit must use reLaunch (tab page escape)")
-  assert.ok(player.includes("stopAudio"), "exit must stop playback before leaving")
+  assert.ok(player.includes("playerController.dispose()"), "exit must dispose playback before leaving")
 })
 
 // ===== V3 反馈页（feedback_v3.0） =====
 
-test("feedback page: optional illustrated change cards preserve the V3 feedback contract", () => {
+test("feedback page: Q1 is required while Q2-Q5 and skip remain optional", () => {
   const feedback = readPage("v3-feedback/v3-feedback.vue")
   const template = (feedback.match(/<template>[\s\S]*?<\/template>/) || [""])[0]
   // 2×2 状态变化卡片：四个 change label
@@ -779,10 +773,10 @@ test("feedback page: optional illustrated change cards preserve the V3 feedback 
   }
   assert.ok(feedback.includes("feedback-option--active"), "change cards need an active state")
   assert.ok(feedback.includes("feedback-option-selected-marker"), "active card must show a selected marker")
-  // Issue #100：反馈改为选填，允许一条不填直接提交或跳过（校验用户可见文案）
-  assert.ok(feedback.includes("选填"), "feedback must be marked optional")
+  // P6-D4：Q1/post_state 必填；其余反馈仍可选，并保留整页跳过。
+  assert.ok(feedback.includes("选填"), "Q2-Q5 remain optional")
   assert.ok(template.includes("暂时跳过"), "must offer skipping feedback to home")
-  assert.ok(!template.includes("必填"), "change selection must no longer be required (user copy)")
+  assert.ok(template.includes("必填"), "Q1 change selection must be visibly required")
   assert.ok(feedback.includes("post_state"), "must submit post_state")
   assert.ok(feedback.includes("change_label"), "must include change_label field")
 })

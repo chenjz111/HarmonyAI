@@ -1,15 +1,22 @@
 <script>
 /**
- * V3.1 反馈页（feedback_v3.0，Issue #100：由必填改为选填）
+ * V3.1 反馈页（feedback_v3.0）
  * 合同依据：backend/app/schemas/v3/feedback.py（FeedbackV3 冻结契约）
  *          frontend-read-model-contract-v3.md §13 Feedback
+ *
+ * Sprint 6 Phase 6（Owner 决定 P6-D4：Q1 / post_state 必填，Q2–Q5 选填）
+ * - Q1（状态变化）必填：post_state 必须携带 change_label，不再发送 null
+ * - Q2（继续使用）/ Q3（喜欢的方面）/ Q4（希望调整）/ Q5（补充说明）选填
+ * - 空提交不产生任何请求（0 POST）：就地显示校验提示并滚动到 Q1
+ * - 服务端校验类错误（422）不直接暴露原始报文，转换为页面校验文案
+ * - 反馈仅用于后续偏好学习：不修改本次聆听的既有权威结果
+ * - 可跳过反馈返回首页
  *
  * - 状态变化与继续使用为单选插图卡片
  * - 喜欢的方面与下次调整为多选插图卡片
  * - 视觉调整项通过 ADJUSTMENT_PAYLOAD_MAP 映射为后端冻结枚举
  * - continue_use 单选：yes / maybe / no
  * - liked_features 多选；comment 选填（1-200 字，页面限制更严格）
- * - 全部可选填，可一条不填直接提交，也可跳过反馈返回首页
  * - 选中态统一为青绿色边框、浅绿色底与 ✓
  *
  * 视觉：共享水墨山水背景 + 宣纸卡片 + 青绿色主按钮
@@ -21,6 +28,21 @@ const ADJUSTMENT_PAYLOAD_MAP = {
   quieter_ambience: "adjust_ambient",
   more_natural_sound: "adjust_ambient",
   clearer_melody: "change_instruments",
+}
+
+const REQUIRED_QUESTION_MESSAGE = "请先选择听完这段音乐后的感受"
+
+/**
+ * 服务端校验类错误（HTTP 422 / validation）转换为页面级校验文案；
+ * 其余错误保留原提示。避免把原始 FastAPI 报文当作常规校验 UX。
+ */
+export function describeFeedbackSubmitError(error) {
+  const status = Number((error && (error.status || error.status_code || error.statusCode)) || 0)
+  const raw = String((error && error.message) || "")
+  if (status === 422 || status === 400 || /422|validation|unprocessable/i.test(raw)) {
+    return REQUIRED_QUESTION_MESSAGE + "，请检查后再试一次"
+  }
+  return raw || "提交失败，请重试"
 }
 
 export default {
@@ -58,11 +80,18 @@ export default {
       submitting: false,
       submitted: false,
       submitError: "",
+      // Q1 必填：未选择时不发请求，就地显示校验提示（0 POST）
+      showValidation: false,
+      requiredMessage: REQUIRED_QUESTION_MESSAGE,
     }
   },
   computed: {
     canSubmit() {
       return !this.submitting
+    },
+    // Q1 必填缺失：用于校验提示与卡片强调
+    q1Missing() {
+      return this.showValidation && !this.changeLabel
     },
   },
   methods: {
@@ -71,6 +100,10 @@ export default {
     },
     pickChange(value) {
       this.changeLabel = this.changeLabel === value ? "" : value
+      if (this.changeLabel) {
+        this.showValidation = false
+        this.submitError = ""
+      }
     },
     pickContinue(value) {
       this.continueUse = this.continueUse === value ? "" : value
@@ -91,13 +124,38 @@ export default {
       }
       this.adjustments.push(value)
     },
+    // 校验失败时就地引导回 Q1（能力缺失时静默降级，不影响提交拦截）
+    scrollToFirstQuestion() {
+      if (typeof uni === "undefined") return
+      if (typeof uni.pageScrollTo === "function") {
+        uni.pageScrollTo({ selector: "#feedback-q1", duration: 240 })
+        return
+      }
+      if (typeof uni.createSelectorQuery === "function") {
+        uni.createSelectorQuery().select("#feedback-q1").boundingClientRect((rect) => {
+          if (rect && typeof uni.pageScrollTo === "function") {
+            uni.pageScrollTo({ scrollTop: Math.max(0, rect.top - 24), duration: 240 })
+          }
+        }).exec()
+      }
+    },
     async submit() {
       if (!this.canSubmit) return
+      // Q1 必填：缺失时 0 POST，就地校验并滚动到 Q1
+      if (!this.changeLabel) {
+        this.showValidation = true
+        this.submitError = ""
+        this.scrollToFirstQuestion()
+        return
+      }
+      this.showValidation = false
       this.submitting = true
       this.submitError = ""
       try {
         await apiV3.submitFeedback({
-          post_state: this.changeLabel ? { change_label: this.changeLabel } : null,
+          // P6-D4：post_state 必填，携带 change_label，不再发送 null
+          post_state: { change_label: this.changeLabel },
+          // Q2–Q5 选填：未填写时不进入载荷
           continue_use: this.continueUse || undefined,
           favorite: null,
           liked_features: this.likedFeatures.slice(),
@@ -106,7 +164,7 @@ export default {
         })
         this.submitted = true
       } catch (e) {
-        this.submitError = e.message || "提交失败，请重试"
+        this.submitError = describeFeedbackSubmitError(e)
       } finally {
         this.submitting = false
       }
@@ -166,11 +224,19 @@ export default {
       </view>
 
       <view v-else>
-        <!-- 1. 状态变化 -->
-        <view class="feedback-section-card ink-fade-up">
+        <!-- 1. 状态变化（Q1 必填，P6-D4） -->
+        <view
+          id="feedback-q1"
+          class="feedback-section-card ink-fade-up"
+          :class="{ 'feedback-section-card--invalid': q1Missing }"
+        >
           <view class="feedback-section-head">
             <text class="feedback-index">1</text>
             <text class="feedback-question">听完这段音乐，你现在感觉怎么样？</text>
+            <text class="feedback-choice-note feedback-choice-note--required">（必填）</text>
+          </view>
+          <view v-if="q1Missing" class="feedback-validation-row" role="alert">
+            <text class="feedback-validation-text">{{ requiredMessage }}</text>
           </view>
           <view class="feedback-options feedback-options--4">
             <view
@@ -188,11 +254,12 @@ export default {
           </view>
         </view>
 
-        <!-- 2. 是否继续使用（单选） -->
+        <!-- 2. 是否继续使用（单选，选填） -->
         <view class="feedback-section-card ink-fade-up">
           <view class="feedback-section-head">
             <text class="feedback-index">2</text>
             <text class="feedback-question">之后还会继续使用吗？</text>
+            <text class="feedback-choice-note">（选填）</text>
           </view>
           <view class="feedback-options feedback-options--3">
             <view
@@ -539,6 +606,25 @@ export default {
   margin-bottom: 20rpx;
 }
 .error-text {
+  font-size: 26rpx;
+  color: var(--ink-seal);
+}
+
+/* ===== Q1 必填校验（Sprint 6 P6-D4） ===== */
+.feedback-choice-note--required {
+  color: var(--ink-seal);
+  font-weight: 600;
+}
+.feedback-section-card--invalid {
+  border-color: var(--ink-seal);
+  box-shadow: 0 3px 10px rgba(163, 61, 45, .14);
+}
+.feedback-validation-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12rpx;
+}
+.feedback-validation-text {
   font-size: 26rpx;
   color: var(--ink-seal);
 }

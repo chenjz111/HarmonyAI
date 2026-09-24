@@ -21,14 +21,6 @@
       "style": { "navigationBarTitleText": "状态问卷" }
     },
     {
-      "path": "pages/result/result",
-      "style": { "navigationBarTitleText": "状态评估结果" }
-    },
-    {
-      "path": "pages/player-v2/player-v2",
-      "style": { "navigationBarTitleText": "音乐调养" }
-    },
-    {
       "path": "pages/feedback-v2/feedback-v2",
       "style": { "navigationBarTitleText": "体验反馈" }
     },
@@ -49,10 +41,6 @@
       "style": { "navigationBarTitleText": "健康评估" }
     },
     {
-      "path": "pages/player/player",
-      "style": { "navigationBarTitleText": "疗愈播放" }
-    },
-    {
       "path": "pages/questionnaire-v2/questionnaire-v2",
       "style": { "navigationBarTitleText": "状态评估", "navigationStyle": "custom" }
     },
@@ -60,11 +48,6 @@
       "path": "pages/quick-state/quick-state",
       "style": { "navigationBarTitleText": "快速状态", "navigationStyle": "custom" }
     },
-    {
-      "path": "pages/assessment-result/assessment-result",
-      "style": { "navigationBarTitleText": "评估结果", "navigationStyle": "custom" }
-    },
-
     {
       "path": "pages/safety-support/safety-support",
       "style": { "navigationBarTitleText": "安全支持" }
