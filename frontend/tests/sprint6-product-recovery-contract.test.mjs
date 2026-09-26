@@ -41,6 +41,18 @@ test("PR-001 keeps exactly the two Owner entries and Home/My primary tabs", () =
   )
 })
 
+test("PR-002 through PR-005 keep material recognition and exact summary on one route", () => {
+  const page = readFrontend("pages/v3-material/v3-material.vue")
+  const flow = readFrontend("common/material-recovery-flow.js")
+
+  assert.doesNotMatch(page, /\/pages\/v3-summary\/v3-summary/)
+  assert.match(page, /createMaterialRecoveryFlow/)
+  assert.match(page, /apiV3\.getCaseSummary\(\)/)
+  assert.match(page, /materialFlow\.summaryReady\(summaryText\)/)
+  assert.match(flow, /SUMMARY_READY/)
+  assert.doesNotMatch(flow, /30%|60%|provider progress|Agent|RAG/)
+})
+
 test("PR-008 canonical questionnaire remains Q1-Q10, required, five pages of two", () => {
   const questionnaire = JSON.parse(readRepo("knowledge/v3/questionnaire-v3.0.1.json"))
   const page = readFrontend("pages/v3-questionnaire/v3-questionnaire.vue")
