@@ -58,8 +58,8 @@ test("picker still fills the remaining 1-3 document slots", () => {
   assert.match(body, /count:\s*remain/, "count must still request only the remaining slots")
   assert.match(
     body,
-    /if \(this\.state === "uploading" \|\| !this\.canAdd\) return/,
-    "in-flight/limit guard is unchanged",
+    /if \(!this\.isPicking \|\| !this\.canAdd\) return/,
+    "PR-002 single-page phase guard blocks selection outside PICKING",
   )
 })
 
@@ -77,7 +77,7 @@ test("selected images and the upload chain are unchanged", () => {
   // Upload / OCR / session flow untouched.
   assert.match(materialPage, /async startUpload\(\)/)
   assert.match(materialPage, /apiV3\.uploadDocument\(f\.path, f\.name\)/)
-  assert.match(materialPage, /removeFile\(idx\)/)
+  assert.match(materialPage, /removeFile\(index\)/)
   assert.match(materialPage, /\/pages\/v3-material-error\/v3-material-error\?type=ocr/)
   assert.match(materialPage, /\/pages\/v3-material-error\/v3-material-error\?type=network/)
 })

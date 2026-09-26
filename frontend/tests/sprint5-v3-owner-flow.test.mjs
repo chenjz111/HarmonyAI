@@ -135,7 +135,8 @@ test("V3.1: material page uploads 1-3 files; OCR failure routes to the standalon
   assert.ok(material.includes("count: remain"), "must allow adding up to the remaining slots")
   assert.ok(material.includes("MAX_FILES = 3"), "must cap the selection at 3 files")
   assert.ok(material.includes("removeFile"), "each thumbnail must be removable")
-  assert.ok(material.includes("识别并继续"), "bulk upload action")
+  // PR-002 replaces the old split-flow label with the explicit same-page start action.
+  assert.ok(material.includes("开始识别"), "bulk upload action")
   // 失败不再内嵌本页，统一跳独立异常页
   assert.ok(
     material.includes('/pages/v3-material-error/v3-material-error?type=ocr'),
@@ -1211,29 +1212,23 @@ test("safety deferred_v3 policy never routes to safety pages (Amendment 6)", asy
 
 // ===== Issue #100 复审修订 P8 剩余：依赖注记 + 多资料/补充近况依赖边界 =====
 
-test("V3.1: material page documents the multi-document ownership dependency without restoring legacy required rule", () => {
-  // 复审要求：与蔡子鑫对齐 DocumentSet/API **不擅自调用聚合端点**；本页头部必须明确记录该依赖
+test("PR-002/PR-003: material page uses the delivered DocumentSet flow and stays on one route", () => {
+  // Product Recovery replaces the obsolete pre-delivery dependency note with executable canonical wiring.
   const material = readPage("v3-material/v3-material.vue")
   assert.match(
     material,
-    /DocumentSet/,
-    "material page must name the DocumentSet dependency in its header",
+    /apiV3\.createDocumentSet\(documentIds\)/,
+    "material page must activate one canonical DocumentSet",
   )
   assert.match(
     material,
-    /owner-aware/,
-    "material page must surface the owner-aware upload dependency",
+    /apiV3\.getCaseSummary\(\)/,
+    "material page must read the real backend summary inline",
   )
-  assert.match(
+  assert.doesNotMatch(
     material,
-    /蔡子鑫/,
-    "material page must surface the alignment owner (蔡子鑫) in the header",
-  )
-  // 不允许擅自聚合 / 不允许伪造成功 —— 真实模式仍逐张失败跳转 v3-material-error
-  assert.match(
-    material,
-    /如实失败并跳转异常页/,
-    "material page must keep failing honestly in real mode",
+    /\/pages\/v3-summary\/v3-summary/,
+    "PR-003 forbids normal-success navigation to the legacy summary route",
   )
 })
 
