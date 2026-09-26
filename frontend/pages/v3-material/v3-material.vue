@@ -5,10 +5,6 @@
  */
 import {
   apiV3,
-  buildEvidenceChanges,
-  evidenceDecisionFor,
-  EVIDENCE_DECISION_KEEP,
-  EVIDENCE_DECISION_DROP,
 } from "../../common/api-v3.js"
 import { MATERIAL_PHASES, createMaterialRecoveryFlow } from "../../common/material-recovery-flow.js"
 import DocumentHeader from "../../components/v31/document-header.vue"
@@ -34,8 +30,6 @@ export default {
       summaryModel: null,
       editText: "",
       submitting: false,
-      evidence: [],
-      decisions: {},
       operationToken: 0,
     }
   },
@@ -70,9 +64,6 @@ export default {
       return presentation.summary || model.state_summary || model.summary || ""
     },
     summaryDisplayText() { return this.materialState.revealedText },
-    structuredChanges() {
-      return buildEvidenceChanges(this.evidence, this.decisions, "normalized_fact")
-    },
   },
   onLoad() {
     this.setupMaterialFlow()
@@ -178,11 +169,6 @@ export default {
         const summaryModel = await apiV3.getCaseSummary()
         if (!this.isCurrentRun(runToken)) return
         this.summaryModel = summaryModel
-        this.evidence = this.summaryModel.evidence_items || []
-        this.decisions = this.evidence.reduce((result, item) => {
-          result[item.item_id] = evidenceDecisionFor(item)
-          return result
-        }, {})
         const summaryText = this.resolvedSummaryText
         if (!summaryText || !this.materialFlow.summaryReady(summaryText)) {
           throw new Error("资料摘要尚未就绪，请稍后重试。")
@@ -198,24 +184,15 @@ export default {
       const runToken = ++this.operationToken
       await this.loadSummary(runToken)
     },
-    setEvidence(item, decision) {
-      if (!item || !item.item_id) return
-      this.decisions = { ...this.decisions, [item.item_id]: decision }
-    },
-    isKept(item) {
-      return (this.decisions[item.item_id] || EVIDENCE_DECISION_KEEP) === EVIDENCE_DECISION_KEEP
-    },
-    isDropped(item) { return this.decisions[item.item_id] === EVIDENCE_DECISION_DROP },
     async confirmOk() {
       if (this.submitting || !this.summaryModel) return
-      const changes = this.structuredChanges
       const runToken = this.operationToken
       this.submitting = true
       try {
         await apiV3.confirmUnderstanding({
           expected_revision: this.summaryModel.revision,
-          decision: changes.length ? "confirm_with_changes" : "confirm",
-          changes,
+          decision: "confirm",
+          changes: [],
         })
         if (!this.isCurrentRun(runToken)) return
         uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
@@ -247,7 +224,7 @@ export default {
         await apiV3.confirmUnderstanding({
           expected_revision: this.summaryModel.revision,
           decision: "confirm_with_changes",
-          changes: this.structuredChanges,
+          changes: [],
           edited_summary_text: text,
           reprocess_requested: true,
         })
@@ -273,8 +250,6 @@ export default {
       this.summaryModel = null
       this.editText = ""
       this.submitting = false
-      this.evidence = []
-      this.decisions = {}
     },
     reupload() { this.resetMaterialFlow() },
   },
@@ -327,20 +302,6 @@ export default {
           <text v-else class="summary-text">{{ summaryDisplayText }}</text>
         </view>
         <text v-if="isProcessing" class="summary-reveal-hint">生成资料摘要…</text>
-
-        <view v-if="(isSummaryReady || editing) && evidence.length" class="evidence-block">
-          <text class="evidence-title">以下条目会作为后续分析的依据</text>
-          <view class="evidence-list">
-            <view v-for="item in evidence" :key="item.item_id" class="evidence-item" :class="{ 'evidence-item--dropped': isDropped(item) }">
-              <text class="evidence-name">{{ item.display_name }}</text>
-              <view class="evidence-toggle">
-                <text role="button" class="evidence-choice" :class="{ 'evidence-choice--active': isKept(item) }" @click="setEvidence(item, 'confirmed')">保留</text>
-                <text role="button" class="evidence-choice" :class="{ 'evidence-choice--active': isDropped(item) }" @click="setEvidence(item, 'rejected')">不采用</text>
-              </view>
-            </view>
-          </view>
-          <text class="evidence-hint">只修改上面的文字不会改变条目的采纳状态。</text>
-        </view>
 
         <view v-if="editing" class="edit-notice"><text>请直接修改上方摘要，保存后继续。</text><text>{{ (editText || '').length }} / 2000</text></view>
         <view v-if="isSummaryReady" class="actions">
@@ -403,16 +364,6 @@ export default {
 .summary-body--editing { border-color: #438a71; box-shadow: 0 0 0 2px rgba(67,138,113,.08); }
 .edit-textarea { flex: 1; min-width: 0; width: 100%; min-height: 130px; padding: 0; font-size: 15px; line-height: 1.85; color: #283b2f; background: transparent; caret-color: #186c4f; }
 .edit-notice { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-top: 9px; font-size: 11px; color: #6a8272; }
-.evidence-block { margin-top: 18px; padding: 13px 11px; border: 1px solid #e3e9db; border-radius: 11px; background: rgba(247,249,243,.75); }
-.evidence-title { display: block; font-size: 13px; color: #3c4940; margin-bottom: 9px; }
-.evidence-list { display: flex; flex-direction: column; gap: 8px; }
-.evidence-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.evidence-name { flex: 1; min-width: 0; font-size: 14px; color: #283b2f; }
-.evidence-item--dropped .evidence-name { color: #9aa79c; text-decoration: line-through; }
-.evidence-toggle { display: flex; flex: 0 0 auto; gap: 6px; }
-.evidence-choice { min-width: 0; padding: 3px 9px; border: 1px solid #d5ded0; border-radius: 9px; font-size: 12px; color: #6a8272; }
-.evidence-choice--active { border-color: #438a71; background: #e5eddf; color: #1d5a42; }
-.evidence-hint { display: block; margin-top: 9px; font-size: 11px; color: #6a8272; }
 .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
 .material-error-card { margin-top: 40px; }
 .material-error-card .secondary-button { margin-top: 10px; }

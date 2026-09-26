@@ -1,12 +1,8 @@
 /**
- * Sprint 6 Phase 2（Option B）— Summary Authority 前端契约
+ * Sprint 6 Phase C — Summary Authority 前端 contract migration
  *
- * Owner 决定：
- *   D1 取消采纳 = 该条 rejected（条目本身仍保留、仍可见）
- *   D2 相反/被否定的证据在叙述编辑后依然保留
- *   D3 文本不能重新授权 rejected/unconfirmed 条目
- *   D6 旧的 full-text-only freeze 被取代：允许受限的“保留 / 不采用”两态控制
- *   D7 不做文本对账 / NLU / 否定解析
+ * PR-006/PR-007/PR-022 replace the former user-facing retention controls:
+ * users confirm or edit one summary; backend evidence remains provenance.
  *
  * 断言分两层：
  *   1. 运行时：api-v3.js 导出的纯函数按稳定身份构造 changes[]
@@ -199,44 +195,22 @@ test("前端不存在显示名子串匹配或否定解析", () => {
 
 // ---------------------------------------------------------------- 页面静态契约
 
-test("资料摘要页：两态控制 + 稳定 id + 叙述与结构化同请求", () => {
-  assert.match(documentMarkup, /v-for="item in evidence"/, "逐条渲染结构化事实")
-  assert.match(documentMarkup, /:key="item\.item_id"/, "以 fact_id 作为渲染身份")
-  assert.match(documentSummary, /buildEvidenceChanges\(this\.evidence, this\.decisions, "normalized_fact"\)/)
-  assert.match(documentSummary, /changes:\s*this\.structuredChanges/, "confirmOk 提交结构化决定")
-  assert.match(
-    documentSummary,
-    /decision:\s*"confirm_with_changes"[\s\S]{0,200}changes:\s*this\.structuredChanges[\s\S]{0,200}edited_summary_text:\s*text/,
-    "叙述与结构化决定可以在同一请求里提交",
-  )
-  assert.match(documentMarkup, /@click="setEvidence\(item, 'confirmed'\)"/, "保留控制")
-  assert.match(documentMarkup, /@click="setEvidence\(item, 'rejected'\)"/, "不采用控制")
-  assert.match(documentMarkup, /只修改上面的文字不会改变条目的采纳状态/, "明确叙述不改变采纳")
-  assert.doesNotMatch(documentMarkup, /:key="index"/, "不得用数组下标作为身份")
+test("PR-006: 资料摘要页只提交摘要确认或全文编辑", () => {
+  assert.doesNotMatch(documentMarkup, /保留|不采用|evidence-block|evidence-list/)
+  assert.doesNotMatch(documentSummary, /buildEvidenceChanges|structuredChanges|setEvidence/)
+  assert.match(documentSummary, /decision:\s*"confirm"[\s\S]{0,120}changes:\s*\[\]/)
+  assert.match(documentSummary, /edited_summary_text:\s*text/)
 })
 
-test("评估确认页：两态控制 + 稳定 id + 编辑期间保持可见", () => {
-  assert.match(questionnaireMarkup, /v-for="\(item, index\) in summaryItems"/, "条目渲染保持")
-  assert.match(questionnaireMarkup, /:key="item\.id \|\| item\.label"/, "以 fact_evidence_id 作为渲染身份")
-  assert.match(questionnaireSummary, /buildEvidenceChanges\(this\.evidenceList, this\.decisions, "fact_evidence"\)/)
-  assert.match(questionnaireSummary, /changes:\s*this\.structuredChanges/, "confirmOk 提交结构化决定")
-  assert.match(
-    questionnaireSummary,
-    /decision:\s*"confirm_with_changes"[\s\S]{0,200}changes:\s*this\.structuredChanges[\s\S]{0,200}edited_summary_text:\s*editedSummaryText/,
-    "叙述与结构化决定可以在同一请求里提交",
-  )
-  assert.match(questionnaireMarkup, /@click="setEvidence\(item\.id, 'confirmed'\)"/, "保留控制")
-  assert.match(questionnaireMarkup, /@click="setEvidence\(item\.id, 'rejected'\)"/, "不采用控制")
-  // 编辑期间条目必须仍然可见（不能用 editingMode === null 门控）
-  assert.match(questionnaireMarkup, /<view v-if="summaryItems\.length" class="summary-facts">/, "编辑期间条目保持可见")
-  assert.doesNotMatch(questionnaireMarkup, /v-if="editingMode === null && summaryItems\.length"/, "不得在编辑时隐藏条目")
-  assert.doesNotMatch(questionnaireSummary, /summaryItems\(\)[\s\S]{0,600}claim_code\s*===/, "不得在前端按 claim_code 推断结论")
+test("PR-007: 评估确认页只提交摘要确认或全文编辑", () => {
+  assert.doesNotMatch(questionnaireMarkup, /保留|不采用|summaryItems|summary-facts-list/)
+  assert.doesNotMatch(questionnaireSummary, /buildEvidenceChanges|structuredChanges|setEvidence/)
+  assert.match(questionnaireSummary, /decision:\s*"confirm"[\s\S]{0,120}changes:\s*\[\]/)
+  assert.match(questionnaireSummary, /edited_summary_text:\s*editedSummaryText/)
 })
 
-test("被标记“不采用”的条目仍渲染且状态可见", () => {
-  for (const [name, markup] of [["document", documentMarkup], ["questionnaire", questionnaireMarkup]]) {
-    assert.match(markup, /evidence-item--dropped/, `${name} 有独立的已排除样式`)
+test("PR-022: pages do not create a second user-facing evidence authority", () => {
+  for (const markup of [documentMarkup, questionnaireMarkup]) {
+    assert.doesNotMatch(markup, /evidence-item|evidence-choice|summary-fact/)
   }
-  assert.match(documentSummary, /isDropped\(item\)/, "document 页按条目状态渲染")
-  assert.match(questionnaireSummary, /isDropped\(item\.id\)/, "questionnaire 页按稳定 id 渲染")
 })

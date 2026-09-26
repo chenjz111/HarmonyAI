@@ -46,7 +46,7 @@ test("questionnaire summary renders and pre-fills authoritative text, never a ge
   )
 })
 
-test("both confirmation editors keep the narrative textarea and add the bounded hybrid evidence control", () => {
+test("PR-006/PR-007: both confirmation editors keep only the narrative textarea", () => {
   for (const [name, page, markup, draft] of [
     ["document", documentSummary, documentMarkup, "editText"],
     ["questionnaire", questionnaireSummary, questionnaireMarkup, "draftSummaryText"],
@@ -56,11 +56,11 @@ test("both confirmation editors keep the narrative textarea and add the bounded 
     assert.match(page, new RegExp(`const\\s+\\w+\\s*=\\s*\\(this\\.${draft}\\s*\\|\\|\\s*["']{2}\\)\\.trim\\(\\)`), `${name} trims before save`)
     assert.match(page, /if\s*\(!\w+\)\s*\{[\s\S]{0,180}uni\.showToast/, `${name} blocks an empty save locally`)
     assert.match(page, /edited_summary_text:\s*\w+/, `${name} submits the edited narrative`)
-    // Sprint 6 Phase 2 (D6 supersedes the full-text-only freeze): the bounded
-    // two-state evidence control is required and must be keyed by a stable id.
-    assert.match(markup, /保留[\s\S]*?不采用/, `${name} exposes the two-state evidence control`)
-    assert.match(markup, /:key="item\.(id|item_id)\b/, `${name} keys evidence items by a stable identity`)
-    assert.doesNotMatch(markup, /:key="index"/, `${name} never keys structured items by array index`)
+    // Product Recovery PR-006/PR-007: internal evidence remains backend
+    // provenance; the user-facing summary has no retention-control authority.
+    assert.doesNotMatch(markup, /保留|不采用|evidence-toggle|evidence-list/, `${name} has no retention control`)
+    assert.doesNotMatch(page, /buildEvidenceChanges|evidenceDecisionFor|structuredChanges|setEvidence/, `${name} has no second evidence state machine`)
+    assert.match(page, /changes:\s*\[\]/, `${name} submits no user-authored evidence changes`)
   }
 })
 

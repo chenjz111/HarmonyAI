@@ -208,6 +208,42 @@ def _v31_real_mode() -> bool:
     return get_v31_provider_config().real_agents
 
 
+def _edited_summary_override(
+    db: Session, assessment_revision: AssessmentRevisionV3
+) -> str | None:
+    """Return the user's final narrative when it supersedes structured state.
+
+    The assessment revision keeps structured evidence and its deterministic
+    ``state_summary`` for provenance/audit.  A different presentation summary
+    is the existing storage signal for ``edited_summary_text``; it becomes the
+    sole current-state context without deleting any evidence rows.
+    """
+
+    presentation = assessment_revision.presentation_json
+    if not isinstance(presentation, Mapping):
+        return None
+    edited = str(presentation.get("summary") or "").strip()
+    if not edited or assessment_revision.previous_revision is None:
+        return None
+    previous = (
+        db.query(AssessmentRevisionV3)
+        .filter(
+            AssessmentRevisionV3.assessment_id == assessment_revision.assessment_id,
+            AssessmentRevisionV3.revision == assessment_revision.previous_revision,
+        )
+        .one_or_none()
+    )
+    if previous is None:
+        return None
+    previous_presentation = previous.presentation_json
+    previous_summary = (
+        str(previous_presentation.get("summary") or "").strip()
+        if isinstance(previous_presentation, Mapping)
+        else ""
+    )
+    return edited if edited != previous_summary else None
+
+
 def _load_confirmed_user_state(
     db: Session,
     *,
@@ -303,6 +339,7 @@ def _load_confirmed_user_state(
     else:
         raise V31PipelineFailure("CONFIRMED_USER_STATE_INVALID")
 
+    edited_summary = _edited_summary_override(db, assessment_revision)
     projection: list[dict[str, object]] = []
     evidence_rows = (
         db.query(FactEvidenceRow)
@@ -314,7 +351,7 @@ def _load_confirmed_user_state(
         .order_by(FactEvidenceRow.fact_evidence_id)
         .all()
     )
-    for row in evidence_rows:
+    for row in ([] if edited_summary else evidence_rows):
         source_rows = (
             db.query(FactSourceRef)
             .filter(FactSourceRef.fact_row_id == row.normalized_fact_row_id)
@@ -345,7 +382,7 @@ def _load_confirmed_user_state(
         "final_confirmed_summary_ref": final_summary_ref,
         "questionnaire_result_ref": questionnaire_ref,
         "user_goal_ref": None,
-        "confirmed_state_text": assessment_revision.state_summary,
+        "confirmed_state_text": edited_summary or assessment_revision.state_summary,
         "normalized_projection": projection,
         "revision": assessment_revision.revision,
         "authority_status": "current",
@@ -376,7 +413,7 @@ def _build_v31_assessment_snapshot(
     manifest = getattr(deps.rag_store, "manifest", None)
     if manifest is None:
         raise V31ReadinessError("RAG_MANIFEST_NOT_READY")
-    evidence_rows = (
+    persisted_evidence_rows = (
         db.query(FactEvidenceRow)
         .filter(
             FactEvidenceRow.assessment_id == assessment.assessment_id,
@@ -386,6 +423,8 @@ def _build_v31_assessment_snapshot(
         .order_by(FactEvidenceRow.fact_evidence_id)
         .all()
     )
+    edited_summary = _edited_summary_override(db, assessment_revision)
+    evidence_rows = [] if edited_summary else persisted_evidence_rows
     facts = [
         {
             "fact_evidence_id": row.fact_evidence_id,
@@ -412,16 +451,27 @@ def _build_v31_assessment_snapshot(
         .all()
     }
     organ_profile = assessment_revision.organ_profile_json or {}
-    organ_codes.update(str(key) for key in (organ_profile.get("weights") or {}))
+    if edited_summary:
+        organ_codes = set()
+        organ_profile = {
+            "status": "insufficient",
+            "weights": None,
+            "score_semantics": "relative_evidence_distribution",
+        }
+    else:
+        organ_codes.update(str(key) for key in (organ_profile.get("weights") or {}))
     # Sprint 6 Phase 1B: one canonical aggregation pass over this revision's
     # confirmed evidence, handed to the dominance service. Nothing downstream
     # recomputes raw support or re-qualifies candidates.
-    revision_evidence, revision_links = load_revision_evidence(
-        db,
-        assessment_id=assessment.assessment_id,
-        revision=assessment_revision.revision,
-        confirmed_only=True,
-    )
+    if edited_summary:
+        revision_evidence, revision_links = [], []
+    else:
+        revision_evidence, revision_links = load_revision_evidence(
+            db,
+            assessment_id=assessment.assessment_id,
+            revision=assessment_revision.revision,
+            confirmed_only=True,
+        )
     try:
         organ_mapping = load_organ_mapping()
     except (OSError, ValueError, TypeError, KeyError) as error:
@@ -453,7 +503,7 @@ def _build_v31_assessment_snapshot(
         "input_revision": int(assessment_revision.input_revision or 1),
         "organ_aggregation": organ_aggregation,
         "organ_mapping": organ_mapping,
-        "confirmed_state_text": assessment_revision.state_summary,
+        "confirmed_state_text": edited_summary or assessment_revision.state_summary,
         "diagnosis_id": request.diagnosis_id,
         "request_id": f"diag_req_{request.diagnosis_id}",
         "prompt_version": "diagnosis_prompt_v3.1",
@@ -467,7 +517,7 @@ def _build_v31_assessment_snapshot(
         "supporting_fact_ids": supporting,
         "contradicting_fact_ids": contradicting,
         "facts": facts,
-        "conflicts": assessment_revision.conflicts_json or [],
+        "conflicts": [] if edited_summary else assessment_revision.conflicts_json or [],
         "missing_information": assessment_revision.missing_information_json or [],
         "knowledge_version": manifest.knowledge_version,
         "manifest_checksum": manifest.manifest_checksum,

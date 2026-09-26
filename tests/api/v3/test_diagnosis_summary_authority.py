@@ -5,7 +5,11 @@ import json
 import pytest
 
 from backend.app.models.v3.assessment import AssessmentV3, AssessmentRevisionV3
-from backend.app.services.v3.diagnosis_service import _build_v31_assessment_snapshot
+from backend.app.models import Session as SessionModel
+from backend.app.services.v3.diagnosis_service import (
+    _build_v31_assessment_snapshot,
+    _load_confirmed_user_state,
+)
 from backend.ai_engine.v3.diagnosis_pipeline import build_diagnosis_query, execute_diagnosis_provider
 from backend.ai_engine.v3.diagnosis_provider import DiagnosisProvider
 from tests.api.v3.test_assessment_summary_authority import create_summary_assessment, client, _v3_data
@@ -20,7 +24,7 @@ def test_actual_diagnosis_input_uses_current_persisted_summary(monkeypatch, db_s
         if mode == "questionnaire"
         else None
     )
-    headers, _, original = create_summary_assessment(
+    headers, session_id, original = create_summary_assessment(
         monkeypatch,
         db_session_factory,
         mode,
@@ -58,27 +62,39 @@ def test_actual_diagnosis_input_uses_current_persisted_summary(monkeypatch, db_s
             assessment=assessment, assessment_revision=revision, deps=SimpleNamespace(
                 rag_store=SimpleNamespace(manifest=_manifest(), approved_chunk_ids={"chunk_1"}),
                 diagnosis_provider=provider, medical_rule_version="test", allowed_syndrome_codes={"syndrome_1"}))
-    # Phase 2 (D4): the provider state text is the deterministic projection of
-    # the confirmed structured evidence — never the editable narrative.
-    assert snapshot["confirmed_state_text"] == current["state_summary"]
-    assert snapshot["confirmed_state_text"].startswith("已确认的近期状态：")
-    assert snapshot["confirmed_state_text"] != text
+        confirmed_state = _load_confirmed_user_state(
+            db, assessment=assessment, assessment_revision=revision,
+            session_row=db.query(SessionModel).filter_by(session_id=session_id).one(),
+        )
+    # PR-022: an edited confirmed summary is the downstream current-state
+    # authority. Persisted structured rows remain provenance, but they cannot
+    # override or reactivate state the user removed from the text.
+    assert snapshot["confirmed_state_text"] == (
+        text if edited else current["state_summary"]
+    )
     query = build_diagnosis_query(snapshot)
-    # Phase 2 (D3): a narrative-only edit never changes the structured
-    # population, so the diagnosis consumes every confirmed fact.
     expected_codes = (
         {"palpitation_at_rest", "postmeal_heaviness"}
         if mode == "questionnaire"
         else {"anger_tendency", "flank_discomfort"}
     )
-    assert set(query.claim_codes) == expected_codes
-    assert {f["claim_code"] for f in snapshot["facts"]} == expected_codes
+    active_codes = set() if edited else expected_codes
+    assert set(query.claim_codes) == active_codes
+    assert {f["claim_code"] for f in snapshot["facts"]} == active_codes
+    assert {
+        f.claim_code for f in confirmed_state.normalized_projection
+    } == {f["claim_code"] for f in snapshot["facts"]}
     active_ids = {f["fact_evidence_id"] for f in current["fact_evidence"]}
-    assert set(query.supporting_fact_ids) | set(query.contradicting_fact_ids) == active_ids
+    assert active_ids, "PR-022 keeps original evidence rows as provenance"
+    assert set(query.supporting_fact_ids) | set(query.contradicting_fact_ids) == (
+        set() if edited else active_ids
+    )
     execution = asyncio.run(execute_diagnosis_provider(provider=provider, request={"assessment_id": original["assessment_id"]},
         facts=snapshot["facts"], rag_result=_rag_result(), confirmed_state_text=snapshot["confirmed_state_text"]))
     assert execution.status == "success"
     assert captured[0]["confirmed_state_text"] == snapshot["confirmed_state_text"]
-    assert {f["claim_code"] for f in captured[0]["facts"]} == expected_codes
+    assert {f["claim_code"] for f in captured[0]["facts"]} == active_codes
     if edited:
-        assert text not in json.dumps(captured[0])
+        assert text in json.dumps(captured[0], ensure_ascii=False)
+        removed = "palpitation_at_rest" if mode == "questionnaire" else "anger_tendency"
+        assert removed not in json.dumps(captured[0])
