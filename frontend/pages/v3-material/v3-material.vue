@@ -91,6 +91,11 @@ export default {
       this.materialState = this.materialFlow.getState()
     },
     goHome() { uni.switchTab({ url: "/pages/entry/entry" }) },
+    handleBack() {
+      if (this.submitting) return
+      if (this.isPicking) this.goHome()
+      else this.reupload()
+    },
     chooseFiles() {
       if (!this.isPicking || !this.canAdd) return
       const remain = MAX_FILES - this.files.length
@@ -204,6 +209,7 @@ export default {
     async confirmOk() {
       if (this.submitting || !this.summaryModel) return
       const changes = this.structuredChanges
+      const runToken = this.operationToken
       this.submitting = true
       try {
         await apiV3.confirmUnderstanding({
@@ -211,11 +217,13 @@ export default {
           decision: changes.length ? "confirm_with_changes" : "confirm",
           changes,
         })
+        if (!this.isCurrentRun(runToken)) return
         uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (error) {
+        if (!this.isCurrentRun(runToken)) return
         uni.showToast({ title: (error && error.message) || "确认失败，请重试", icon: "none" })
       } finally {
-        this.submitting = false
+        if (this.isCurrentRun(runToken)) this.submitting = false
       }
     },
     startEdit() {
@@ -233,6 +241,7 @@ export default {
         uni.showToast({ title: "摘要不能超过 2000 字", icon: "none" })
         return
       }
+      const runToken = this.operationToken
       this.submitting = true
       try {
         await apiV3.confirmUnderstanding({
@@ -242,11 +251,13 @@ export default {
           edited_summary_text: text,
           reprocess_requested: true,
         })
+        if (!this.isCurrentRun(runToken)) return
         uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (error) {
+        if (!this.isCurrentRun(runToken)) return
         uni.showToast({ title: (error && error.message) || "保存失败，请重试", icon: "none" })
       } finally {
-        this.submitting = false
+        if (this.isCurrentRun(runToken)) this.submitting = false
       }
     },
     cancelEdit() {
@@ -273,7 +284,7 @@ export default {
 <template>
   <view class="doc-page material-page">
     <view class="doc-container">
-      <document-header :step="headerStep" :title="headerTitle" :quote="isPicking ? '用音乐\n陪伴更好的你' : '每一份资料\n都是走向更好的开始'" :subtitle="isPicking ? '可上传 1~3 张近期病历、检查报告或相关就诊记录。' : ''" @back="isPicking ? goHome() : reupload()" />
+      <document-header :step="headerStep" :title="headerTitle" :quote="isPicking ? '用音乐\n陪伴更好的你' : '每一份资料\n都是走向更好的开始'" :subtitle="isPicking ? '可上传 1~3 张近期病历、检查报告或相关就诊记录。' : ''" @back="handleBack" />
 
       <view v-if="isPicking" class="upload-area">
         <button role="button" v-if="files.length === 0" class="upload-card" @click="chooseFiles">
