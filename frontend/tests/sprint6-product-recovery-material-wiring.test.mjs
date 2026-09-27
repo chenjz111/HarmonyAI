@@ -114,8 +114,8 @@ test("complete backend summary enters presentation flow without frontend rewriti
 })
 
 test("confirmation and full-text edit preserve the existing API payload contract", () => {
-  assert.match(script, /confirmUnderstanding\(\{[\s\S]*?expected_revision:\s*this\.summaryModel\.revision,[\s\S]*?decision:\s*changes\.length\s*\?\s*"confirm_with_changes"\s*:\s*"confirm",[\s\S]*?changes,/)
-  assert.match(script, /confirmUnderstanding\(\{[\s\S]*?expected_revision:\s*this\.summaryModel\.revision,[\s\S]*?decision:\s*"confirm_with_changes",[\s\S]*?changes:\s*this\.structuredChanges,[\s\S]*?edited_summary_text:\s*text,[\s\S]*?reprocess_requested:\s*true,/)
+  assert.match(script, /confirmUnderstanding\(\{[\s\S]*?expected_revision:\s*this\.summaryModel\.revision,[\s\S]*?decision:\s*"confirm",[\s\S]*?changes:\s*\[\],/)
+  assert.match(script, /confirmUnderstanding\(\{[\s\S]*?expected_revision:\s*this\.summaryModel\.revision,[\s\S]*?decision:\s*"confirm_with_changes",[\s\S]*?changes:\s*\[\],[\s\S]*?edited_summary_text:\s*text,[\s\S]*?reprocess_requested:\s*true,/)
   assert.match(script, /if \(!text\)/)
   assert.match(script, /text\.length\s*>\s*2000/)
 })

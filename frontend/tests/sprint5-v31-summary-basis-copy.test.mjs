@@ -58,31 +58,29 @@ test("状态总结页不再用固定 generic 文案冒充个性化总结", () =>
   )
 })
 
-test("状态总结页渲染后端 read model 的真实字段", () => {
-  // presentation.summary → model.summary → model.state_summary 优先级
+test("状态总结页渲染后端 read model 的真实摘要字段", () => {
+  // presentation.summary → model.summary → model.state_summary 优先级；
+  // Phase C 不再把结构化 fact 列表复制成第二份用户确认清单。
   assert.ok(confirmPage.includes("presentation.summary"), "优先使用 presentation.summary")
   assert.ok(confirmPage.includes("model.state_summary"), "回退使用 state_summary")
-  // 真实条目：后端 fact_evidence 的 canonical 中文 display_name（mock 下为 sections.items）
-  assert.ok(confirmPage.includes("model.fact_evidence"), "必须渲染本次评估真实形成的事实条目")
-  assert.ok(confirmPage.includes("display_name"), "条目名称取后端 canonical display_name")
-  assert.ok(confirmPage.includes("model.sections"), "mock/hybrid 下取 sections 条目")
-  assert.match(confirmMarkup, /v-for="\(item, index\) in summaryItems"/, "条目需渲染到界面")
+  assert.match(confirmMarkup, /\{\{\s*summaryText\s*\}\}/, "用户确认对象是完整摘要文本")
+  assert.doesNotMatch(confirmMarkup, /fact_evidence|summaryItems|display_name/, "不得渲染重复结构化事实清单")
   // 前端不得在此推导证型 / 脏腑 / 调式（不做医学判断）
   assert.ok(!/claim_code\s*===/.test(confirmMarkup), "不得在前端按 claim_code 推导结论")
 })
 
-test("状态总结页保留原业务行为：全文编辑 + 两个冻结按钮 + 受控两态条目", () => {
+test("状态总结页保留全文编辑与两个冻结按钮，不提供结构化事实编辑", () => {
   assert.ok(confirmMarkup.includes("基本符合，继续"), "确认按钮保持")
   assert.ok(confirmMarkup.includes("有些地方不对，我要修改"), "修改入口保持")
   assert.ok(confirmPage.includes("edited_summary_text"), "V3.1 仍为完整文本 edited_summary_text")
   assert.ok(confirmPage.includes("decision: \"confirm_with_changes\""), "修改提交路径保持")
+  assert.match(confirmPage, /decision:\s*"confirm_with_changes"[\s\S]*?changes:\s*\[\]/, "全文编辑不提交结构化 changes")
   assert.ok(confirmPage.includes("apiV3.confirmAssessment("), "仍作用于 Assessment")
   // 不得恢复结构化逐项 severity 编辑
   assert.ok(!confirmMarkup.includes("severity-row"), "不得恢复结构化 severity 编辑行")
   assert.ok(!confirmMarkup.includes("allowed_values"), "不得恢复结构化可选值编辑")
-  // Sprint 6 Phase 2（D6 取代旧的 full-text-only freeze）：只允许受限的
-  // “保留 / 不采用”证据两态控制，仍然不是 severity 医学编辑器。
-  assert.ok(confirmMarkup.includes("保留") && confirmMarkup.includes("不采用"), "两态证据控制保持可见")
+  assert.ok(!confirmMarkup.includes("保留"), "不得显示证据保留控制")
+  assert.ok(!confirmMarkup.includes("不采用"), "不得显示证据不采用控制")
 })
 
 // ---------------------------------------------------------------- 问题 2

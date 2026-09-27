@@ -16,17 +16,12 @@
  *   - 内容卡改为宣纸卡片 + 角花
  *   - 主按钮改为朱砂印章按钮，次按钮改为水墨 ghost
  *
- * Sprint 6 Phase 2（Option B，Owner D1–D7）：
- *   - 结构化证据以稳定身份 fact_evidence_id 为准，逐条“保留 / 不采用”两态控制
- *   - 叙述文本只是展示：文本变化本身绝不改变任何条目的采纳状态
- *   - changes[] 只携带稳定 id；前端不做子串匹配、否定解析或任何语义推断
+ * Sprint 6 Phase C（PR-007 / PR-022）：
+ *   - 用户确认或编辑一段近期状态总结；结构化证据留在后端 provenance
+ *   - 全文编辑后的确认文本是 downstream 当前状态权威
  */
 import {
   apiV3,
-  buildEvidenceChanges,
-  evidenceDecisionFor,
-  EVIDENCE_DECISION_KEEP,
-  EVIDENCE_DECISION_DROP,
 } from "../../common/api-v3.js"
 
 export default {
@@ -41,7 +36,6 @@ export default {
       editingMode: null, // null | "text"
       draftSummaryText: "",
       summaryEditorFocused: false,
-      decisions: {},
     }
   },
   computed: {
@@ -53,47 +47,6 @@ export default {
       if (!model) return ""
       const presentation = model.presentation || {}
       return presentation.summary || model.state_summary || model.summary || ""
-    },
-    // 本次评估真实形成的条目：后端 fact_evidence 的 canonical 中文 display_name
-    // （mock/hybrid 下为 mock sections 的条目）。此处只做去重与截断展示，
-    // 不在前端推导证型、脏腑或调式。
-    // Phase 2：条目同时携带稳定身份 fact_evidence_id —— 那才是提交时的唯一依据。
-    evidenceList() {
-      const model = this.model
-      if (!model || !Array.isArray(model.evidence_items)) return []
-      return model.evidence_items
-    },
-    summaryItems() {
-      if (this.evidenceList.length) {
-        return this.evidenceList.map((item) => ({
-          id: item.item_id,
-          label: item.display_name,
-          structured: true,
-        }))
-      }
-      // 旧 read model 没有稳定身份：只读展示，永不提交结构化决定。
-      const model = this.model
-      if (!model) return []
-      const fromFacts = Array.isArray(model.fact_evidence)
-        ? model.fact_evidence.map((item) => (item && item.display_name) || "")
-        : []
-      const fromSections = Array.isArray(model.sections)
-        ? model.sections.flatMap((section) =>
-            section && Array.isArray(section.items) ? section.items : [],
-          )
-        : []
-      const items = [...fromFacts, ...fromSections]
-        .map((item) => String(item == null ? "" : item).trim())
-        .filter(Boolean)
-      return [...new Set(items)].slice(0, 8).map((label) => ({
-        id: null,
-        label,
-        structured: false,
-      }))
-    },
-    // 只提交与后端当前状态不同的结构化决定。
-    structuredChanges() {
-      return buildEvidenceChanges(this.evidenceList, this.decisions, "fact_evidence")
     },
   },
   onLoad() {
@@ -110,10 +63,6 @@ export default {
       try {
         this.model = await apiV3.getAssessment()
         this.simulated = !!apiV3.AGENT_SIMULATED
-        this.decisions = this.evidenceList.reduce((acc, item) => {
-          acc[item.item_id] = evidenceDecisionFor(item)
-          return acc
-        }, {})
       } catch (e) {
         if (e.agentPending) {
           this.agentPending = true
@@ -124,26 +73,14 @@ export default {
         this.loading = false
       }
     },
-    // 两态控制：只改这一条稳定 id 的采纳状态。
-    setEvidence(itemId, decision) {
-      if (!itemId) return
-      this.decisions = { ...this.decisions, [itemId]: decision }
-    },
-    isKept(itemId) {
-      return (this.decisions[itemId] || EVIDENCE_DECISION_KEEP) === EVIDENCE_DECISION_KEEP
-    },
-    isDropped(itemId) {
-      return !!itemId && this.decisions[itemId] === EVIDENCE_DECISION_DROP
-    },
     async confirmOk() {
       if (this.confirming) return
-      const changes = this.structuredChanges
       this.confirming = true
       try {
         await apiV3.confirmAssessment({
           expected_revision: this.model.revision,
-          decision: changes.length ? "confirm_with_changes" : "confirm",
-          changes,
+          decision: "confirm",
+          changes: [],
         })
         uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
       } catch (e) {
@@ -178,11 +115,10 @@ export default {
       this.confirming = true
       try {
         // 最终状态总结属于 Assessment；不得回写资料 Understanding。
-        // Phase 2：叙述文本与结构化决定同请求提交，但互不推断。
         await apiV3.confirmAssessment({
           expected_revision: this.model.revision,
           decision: "confirm_with_changes",
-          changes: this.structuredChanges,
+          changes: [],
           edited_summary_text: editedSummaryText,
         })
         uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
@@ -263,26 +199,6 @@ export default {
             :focus="summaryEditorFocused"
             :cursor="(draftSummaryText || '').length"
           />
-          <!-- 本次问卷真实形成的条目（后端 canonical 中文名称），不是固定文案。
-               Phase 2：稳定身份 fact_evidence_id 是唯一权威；文本编辑期间条目保持可见。 -->
-          <view v-if="summaryItems.length" class="summary-facts">
-            <text class="summary-facts-label">本次问卷中你确认的近期状态</text>
-            <view class="summary-facts-list">
-              <view
-                v-for="(item, index) in summaryItems"
-                :key="item.id || item.label"
-                class="summary-fact evidence-item"
-                :class="{ 'evidence-item--dropped': isDropped(item.id) }"
-              >
-                <text class="evidence-name">{{ item.label }}</text>
-                <view v-if="item.id" class="evidence-toggle">
-                  <text role="button" class="evidence-choice" :class="{ 'evidence-choice--active': isKept(item.id) }" @click="setEvidence(item.id, 'confirmed')">保留</text>
-                  <text role="button" class="evidence-choice" :class="{ 'evidence-choice--active': isDropped(item.id) }" @click="setEvidence(item.id, 'rejected')">不采用</text>
-                </view>
-              </view>
-            </view>
-            <text class="evidence-hint">只修改上面的文字不会改变条目的采纳状态。</text>
-          </view>
         </view>
 
         <view v-if="editingMode === null" class="actions confirm-actions">
@@ -844,18 +760,6 @@ export default {
 .confirm-page .summary-box { box-sizing:border-box; margin:0; padding:15px 14px; border:1px solid rgba(63,112,96,.10); border-radius:10px; background:rgba(239,246,237,.54); }
 .confirm-page .summary-title { display:none; }
 .confirm-page .summary-text { color:#164e57; font-size:15px; line-height:1.9; }
-.confirm-page .summary-facts { margin-top:16px; }
-.confirm-page .summary-facts-label { display:block; margin-bottom:9px; color:#55746f; font-size:12px; letter-spacing:.5px; }
-.confirm-page .summary-facts-list { display:flex; flex-direction:column; gap:6px; }
-.confirm-page .summary-fact { max-width:100%; padding:4px 10px; border-radius:12px; background:rgba(36,105,94,.08); color:#15565a; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
-.confirm-page .evidence-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:5px 10px; }
-.confirm-page .evidence-item--dropped { background:rgba(120,120,110,.10); }
-.confirm-page .evidence-item--dropped .evidence-name { color:#8d968f; text-decoration:line-through; }
-.confirm-page .evidence-name { flex:1; min-width:0; overflow-wrap:anywhere; }
-.confirm-page .evidence-toggle { display:flex; flex:0 0 auto; gap:6px; }
-.confirm-page .evidence-choice { padding:2px 8px; border:1px solid #d5ded0; border-radius:9px; color:#6a8272; font-size:11px; }
-.confirm-page .evidence-choice--active { border-color:#438a71; background:#e5eddf; color:#1d5a42; }
-.confirm-page .evidence-hint { display:block; margin-top:8px; color:#6a8272; font-size:11px; }
 .confirm-page .inline-summary-editor { width:100%; min-height:150px; box-sizing:border-box; padding:0; border:0; background:transparent; color:#164e57; font-family:inherit; font-size:15px; line-height:1.9; }
 .confirm-page .inline-summary-editor :deep(textarea) { padding:0; color:#164e57; font-family:inherit; font-size:15px; line-height:1.9; }
 .confirm-page .confirm-actions { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:20px; }
