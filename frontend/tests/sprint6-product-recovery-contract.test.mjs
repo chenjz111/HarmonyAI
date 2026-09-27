@@ -78,10 +78,14 @@ test("PR-019 feedback keeps Q1 required, Q2-Q5 optional, skip, and approved Q4",
 
 test("PR-023 and PR-024 retain presentation/session/controller authority boundaries", () => {
   const basis = readFrontend("pages/v3-basis/v3-basis.vue")
+  const generation = readFrontend("pages/v3-generation/v3-generation.vue")
+  const flow = readFrontend("common/music-generation-flow.js")
   const player = readFrontend("pages/v3-player/v3-player.vue")
   const toneTheme = readFrontend("common/v31-tone-theme.js")
 
-  assert.match(basis, /createMusicGenerationSession/)
+  assert.match(generation, /createMusicGenerationFlow/)
+  assert.match(flow, /createMusicGenerationSession/)
+  assert.doesNotMatch(basis, /createMusicGenerationSession/)
   assert.match(basis, /buildAnalysisViewModel/)
   assert.doesNotMatch(basis, /v31-tone-theme/)
   assert.match(player, /createPlayerController/)

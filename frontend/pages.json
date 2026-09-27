@@ -81,6 +81,10 @@
       "style": { "navigationBarTitleText": "状态确认", "navigationStyle": "custom" }
     },
     {
+      "path": "pages/v3-generation/v3-generation",
+      "style": { "navigationBarTitleText": "生成音乐", "navigationStyle": "custom" }
+    },
+    {
       "path": "pages/v3-basis/v3-basis",
       "style": { "navigationBarTitleText": "音乐生成", "navigationStyle": "custom" }
     },

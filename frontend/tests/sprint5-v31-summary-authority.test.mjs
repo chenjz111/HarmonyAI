@@ -69,10 +69,11 @@ test("document edits keep the frozen request shape without exposing provider fai
   assert.doesNotMatch(documentSummary, /FACT_EXTRACTION_UNAVAILABLE|重新解析/, "document editor must not show re-parse-unavailable copy")
 })
 
-test("document-only creates and confirms once before going directly to analysis", () => {
+test("PR-009/PR-010: document-only confirms once, then visits optional goal and generation", () => {
   assert.match(supplement, /apiV3\.createAssessment\(\)/)
   assert.match(supplement, /apiV3\.confirmAssessment\(/)
-  assert.match(supplement, /pages\/v3-basis\/v3-basis/)
+  assert.match(supplement, /pages\/v3-goal\/v3-goal\?next=generation/)
+  assert.doesNotMatch(supplement, /pages\/v3-basis\/v3-basis/)
   assert.doesNotMatch(supplement, /url:\s*["']\/pages\/v3-confirm\/v3-confirm/, "document-only must not open a second confirmation page")
 })
 

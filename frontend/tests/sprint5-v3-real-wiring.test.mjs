@@ -81,11 +81,13 @@ test("real questionnaire through player and feedback uses server resources in or
   assert.deepEqual(calls.find((c) => new URL(c.url).pathname === "/api/v3/music/generations").data.generation_spec, spec)
 })
 
-test("basis page sends an immediately successful generation directly to Player", () => {
-  const page = readFileSync(resolve(import.meta.dirname, "../pages/v3-basis/v3-basis.vue"), "utf8")
-  assert.match(page, /snapshot\.state === GENERATION_STATES\.PLAYABLE/)
-  assert.match(page, /snapshot\.state === GENERATION_STATES\.MATCHED_FALLBACK/)
-  assert.match(page, /this\.goPlayer\(\)/)
+test("PR-029: orchestration sends only a playable session result to Player", () => {
+  const flow = readFileSync(resolve(import.meta.dirname, "../common/music-generation-flow.js"), "utf8")
+  const page = readFileSync(resolve(import.meta.dirname, "../pages/v3-generation/v3-generation.vue"), "utf8")
+  assert.match(flow, /snapshot\.state === GENERATION_STATES\.PLAYABLE/)
+  assert.match(flow, /snapshot\.state === GENERATION_STATES\.MATCHED_FALLBACK/)
+  assert.match(page, /snapshot\.asset\.music_ref\.music_id/)
+  assert.match(page, /pages\/v3-player\/v3-player/)
 })
 
 // P0 regression: Frozen Contract §3 requires the session read model to carry the server-owned
