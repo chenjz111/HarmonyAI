@@ -209,7 +209,9 @@ def _v31_real_mode() -> bool:
 
 
 def _edited_summary_override(
-    db: Session, assessment_revision: AssessmentRevisionV3
+    db: Session,
+    assessment: AssessmentV3,
+    assessment_revision: AssessmentRevisionV3,
 ) -> str | None:
     """Return the user's final narrative when it supersedes structured state.
 
@@ -223,25 +225,68 @@ def _edited_summary_override(
     if not isinstance(presentation, Mapping):
         return None
     edited = str(presentation.get("summary") or "").strip()
-    if not edited or assessment_revision.previous_revision is None:
+    if not edited:
         return None
-    previous = (
-        db.query(AssessmentRevisionV3)
+    if assessment_revision.previous_revision is not None:
+        previous = (
+            db.query(AssessmentRevisionV3)
+            .filter(
+                AssessmentRevisionV3.assessment_id
+                == assessment_revision.assessment_id,
+                AssessmentRevisionV3.revision
+                == assessment_revision.previous_revision,
+            )
+            .one_or_none()
+        )
+        if previous is None:
+            return None
+        previous_presentation = previous.presentation_json
+        previous_summary = (
+            str(previous_presentation.get("summary") or "").strip()
+            if isinstance(previous_presentation, Mapping)
+            else ""
+        )
+        return edited if edited != previous_summary else None
+
+    # A document-only full-text edit happens one stage earlier, on the linked
+    # Understanding.  Its Assessment starts at revision 1, so there is no prior
+    # Assessment revision to compare.  Recognize only the persisted narrative
+    # edit marker on that exact confirmed Understanding revision; structured
+    # confirmation and questionnaire-bearing assessments keep their existing
+    # fact authority.
+    if (
+        assessment.questionnaire_submission_id is not None
+        or assessment.understanding_id is None
+        or assessment.understanding_revision is None
+    ):
+        return None
+    understanding_revision = (
+        db.query(UnderstandingRevision)
         .filter(
-            AssessmentRevisionV3.assessment_id == assessment_revision.assessment_id,
-            AssessmentRevisionV3.revision == assessment_revision.previous_revision,
+            UnderstandingRevision.understanding_id == assessment.understanding_id,
+            UnderstandingRevision.revision == assessment.understanding_revision,
+            UnderstandingRevision.status == "confirmed",
         )
         .one_or_none()
     )
-    if previous is None:
+    if understanding_revision is None:
         return None
-    previous_presentation = previous.presentation_json
-    previous_summary = (
-        str(previous_presentation.get("summary") or "").strip()
-        if isinstance(previous_presentation, Mapping)
-        else ""
+    upstream_presentation = understanding_revision.presentation_json
+    applied_changes = (
+        list(upstream_presentation.get("applied_changes") or [])
+        if isinstance(upstream_presentation, Mapping)
+        else []
     )
-    return edited if edited != previous_summary else None
+    upstream_summary = str(
+        (understanding_revision.case_summary_json or {}).get("summary") or ""
+    ).strip()
+    if (
+        understanding_revision.confirmation_decision == "confirm_with_changes"
+        and "chg_summary_edit" in applied_changes
+        and upstream_summary == edited
+    ):
+        return edited
+    return None
 
 
 def _load_confirmed_user_state(
@@ -339,7 +384,7 @@ def _load_confirmed_user_state(
     else:
         raise V31PipelineFailure("CONFIRMED_USER_STATE_INVALID")
 
-    edited_summary = _edited_summary_override(db, assessment_revision)
+    edited_summary = _edited_summary_override(db, assessment, assessment_revision)
     projection: list[dict[str, object]] = []
     evidence_rows = (
         db.query(FactEvidenceRow)
@@ -423,7 +468,7 @@ def _build_v31_assessment_snapshot(
         .order_by(FactEvidenceRow.fact_evidence_id)
         .all()
     )
-    edited_summary = _edited_summary_override(db, assessment_revision)
+    edited_summary = _edited_summary_override(db, assessment, assessment_revision)
     evidence_rows = [] if edited_summary else persisted_evidence_rows
     facts = [
         {
@@ -509,7 +554,7 @@ def _build_v31_assessment_snapshot(
         "prompt_version": "diagnosis_prompt_v3.1",
         "medical_rule_version": deps.medical_rule_version,
         "organ_profile": organ_profile,
-        "organ_weights": organ_profile.get("weights"),
+        "organ_weights": {} if edited_summary else organ_profile.get("weights"),
         "organ_codes": sorted(organ_codes),
         "approved_organ_codes": [item.value for item in OrganCode],
         "claim_codes": sorted({item["claim_code"] for item in facts}),
