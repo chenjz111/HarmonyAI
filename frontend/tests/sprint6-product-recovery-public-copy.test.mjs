@@ -78,3 +78,36 @@ test("PR-016: public projection has no technical fallback literals", () => {
   assert.doesNotMatch(JSON.stringify(publicModel), /FACT_EXTRACTION|TokenHub|Minimax/i)
   assert.match(source, /presentPublic/)
 })
+
+test("F-R1: combined, suffixed, versioned, and CamelCase technical identifiers are suppressed", () => {
+  const technicalVariants = ["Agent2", "AgentV3", "DiagnosisProvider", "Qwen3.8", "Qwen3_8", "Qwen3-8", "TokenHubMinimaxMusicProvider", "RAG_EMPTY", "rag-empty", "EmbeddingV4", "MinimaxMusicProvider", "MusicProvider"]
+
+  for (const value of technicalVariants) {
+    const model = buildAnalysisViewModel({ state_tendency: value })
+    assert.equal(model.tendency.hasText, false, `${value} must not reach public tendency`)
+    assert.equal(model.sections.interpretation.hasContent, false, `${value} must not make a section visible`)
+    assert.equal(model.hasContent, false, `${value} must not make analysis visible`)
+  }
+})
+
+test("F-R1: legitimate product copy survives the public-copy firewall", () => {
+  const safeCopy = ["这段音乐根据你当前的状态生成", "音乐设计以柔和、安静的氛围为主", "当前没有形成明确的状态倾向", "你可以根据自己的感受决定是否继续聆听"]
+
+  for (const value of safeCopy) {
+    const model = buildAnalysisViewModel({ state_tendency: value })
+    assert.equal(model.tendency.text, value)
+    assert.equal(model.sections.interpretation.hasContent, true)
+    assert.equal(model.hasContent, true)
+  }
+})
+
+test("F-R1: mixed rationale list drops only technical children", () => {
+  const safeText = "依据已确认的近期状态安排本次音乐。"
+  const model = buildAnalysisViewModel({
+    analysis_rationales: [{ summary: "TokenHubMinimaxMusicProvider" }, { summary: safeText }, { summary: "DiagnosisProvider" }],
+  })
+
+  assert.deepEqual(model.rationales.rows.map(item => item.text), [safeText])
+  assert.equal(model.sections.rationales.hasContent, true)
+  assert.equal(model.hasContent, true)
+})

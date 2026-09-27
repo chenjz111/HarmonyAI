@@ -58,6 +58,9 @@ export default {
     failurePresentation() {
       return this.loadFailure ? buildMusicPresentation({ failure: this.loadFailure }) : { isFailure: false }
     },
+    analysisVisible() {
+      return this.playerPresentation.analysis.hasContent
+    },
     playing() {
       return !!this.playerState.playing
     },
@@ -267,7 +270,7 @@ export default {
           </view>
         </view>
 
-        <view class="analysis-card">
+        <view v-if="analysisVisible" class="analysis-card">
           <view
             class="analysis-toggle"
             role="button"
@@ -282,7 +285,7 @@ export default {
             <view class="analysis-chevron" :class="{ 'analysis-chevron--expanded': analysisExpanded }" />
           </view>
 
-          <view v-if="analysisExpanded" class="analysis-details">
+          <view v-if="analysisVisible && analysisExpanded" class="analysis-details">
             <view v-if="playerPresentation.analysis.sections.recentState.hasContent" class="analysis-section">
               <text class="analysis-section-title">近期状态</text>
               <text class="analysis-section-text">{{ playerPresentation.analysis.stateSummary.text }}</text>

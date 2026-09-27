@@ -70,7 +70,20 @@ const TEXT_LIMITS = Object.freeze({
 })
 
 /** Internal audit/runtime vocabulary must never leak into end-user explanations. */
-const TECHNICAL_PUBLIC_COPY_PATTERN = /(?:\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\b(?:RAG|EMBEDDING|AGENT|PROVIDER|QWEN|TOKENHUB|MINIMAX|CHROMA|DIAGNOSIS|PRESCRIPTION)\b|approved\s+chunk|检索证据|向量检索|知识索引|未检索到引用|医学性暂缓|证据不足[^。；]*证型)/i
+const TECHNICAL_PUBLIC_COPY_PATTERN = /(?:\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|approved\s+chunk|检索证据|向量检索|知识索引|未检索到引用|医学性暂缓|证据不足[^。；]*证型)/i
+const TECHNICAL_IDENTIFIER_PATTERNS = Object.freeze([
+  /^rag(?:empty)?$/,
+  /^agent(?:v?\d[a-z0-9]*)?$/,
+  /^diagnosis(?:provider(?:v?\d[a-z0-9]*)?)?$/,
+  /^prescription(?:provider(?:v?\d[a-z0-9]*)?)?$/,
+  /^embedding(?:v?\d[a-z0-9]*)?$/,
+  /^qwen(?:v?\d[a-z0-9]*)?$/,
+  /^minimax(?:music)?(?:provider(?:v?\d[a-z0-9]*)?)?$/,
+  /^tokenhub(?:provider|(?:minimax)?musicprovider)?$/,
+  /^musicprovider$/,
+  /^provider$/,
+  /^chroma(?:v?\d[a-z0-9]*)?$/,
+])
 
 // ------------------------------------------------------------------ 基础工具
 
@@ -104,13 +117,21 @@ export function presentText(value, { maxLength = 0 } = {}) {
   return { hasText: !!text, text, displayText: text || NEUTRAL_DISPLAY }
 }
 
+function containsTechnicalIdentifier(value) {
+  const identifiers = toPlainText(value).match(/[A-Za-z][A-Za-z0-9._-]*/g) || []
+  return identifiers.some((identifier) => {
+    const normalized = identifier.toLowerCase().replace(/[._-]/g, "")
+    return TECHNICAL_IDENTIFIER_PATTERNS.some(pattern => pattern.test(normalized))
+  })
+}
+
 /**
  * Public-copy projection for backend-derived explanation text.
  * Technical audit wording is omitted rather than rewritten into a medical claim.
  */
 export function presentPublicText(value, options) {
   const presented = presentText(value, options)
-  if (!presented.hasText || TECHNICAL_PUBLIC_COPY_PATTERN.test(presented.text)) {
+  if (!presented.hasText || TECHNICAL_PUBLIC_COPY_PATTERN.test(presented.text) || containsTechnicalIdentifier(presented.text)) {
     return presentText("", options)
   }
   return presented
