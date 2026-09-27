@@ -127,10 +127,10 @@ test("五音解析页用户可见解释不含已知英文 fixture，且不做逐
 
 // ---------------------------------------------------------------- 问题 3
 
-test("音乐设计：四张卡片各自只有 图标 + 数值 + 名称，无辅助重复文案", () => {
+test("音乐设计：三张事实卡片各自只有 图标 + 数值 + 名称，无推荐时长或辅助文案", () => {
   const design = basisMarkup.slice(basisMarkup.indexOf("<!-- 音乐设计 -->"), basisMarkup.indexOf("<!-- 生成中"))
   const cards = [...design.matchAll(/<view class="design-card">([\s\S]*?)<\/view>/g)].map((m) => m[1])
-  assert.equal(cards.length, 4, "音乐设计固定四张卡片")
+  assert.equal(cards.length, 3, "音乐设计只保留节奏、乐器、氛围三张事实卡片")
   for (const card of cards) {
     assert.equal((card.match(/param-value/g) || []).length, 1, "每张卡一个数值")
     assert.equal((card.match(/param-label/g) || []).length, 1, "每张卡一个名称")
@@ -140,16 +140,16 @@ test("音乐设计：四张卡片各自只有 图标 + 数值 + 名称，无辅�
   assert.ok(!basisPage.includes("param-reason"), "param-reason 样式与用法必须移除")
 })
 
-test("音乐设计：不存在重复的 BPM·乐器·时长行，也不存在“由服务端处方生成。”", () => {
+test("音乐设计：不存在推荐时长、重复参数行或“由服务端处方生成。”", () => {
   assert.ok(
     !/BPM\s*·/.test(basisMarkup),
     "第一张卡不得再出现“60 BPM · 古琴 · 180秒”这类拼接行",
   )
-  assert.ok(!basisPage.includes("由服务端处方生成"), "2/3/4 张卡不得出现“由服务端处方生成。”")
+  assert.ok(!basisPage.includes("由服务端处方生成"), "音乐设计卡不得出现“由服务端处方生成。”")
   // 数值与名称保持不变（数据来源不变）
   assert.match(basisMarkup, /\{\{\s*analysisPresentation\.parameters\.bpm\.displayText\s*\}\}/)
   assert.ok(basisMarkup.includes("舒缓节奏"))
-  assert.ok(basisMarkup.includes("时长"))
+  assert.ok(!basisMarkup.includes("时长"), "Generation Spec 时长不得作为公共推荐展示")
   assert.ok(basisMarkup.includes("主要乐器"))
   assert.ok(basisMarkup.includes("音乐氛围"))
 })

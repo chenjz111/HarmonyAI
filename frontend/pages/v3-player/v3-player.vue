@@ -283,17 +283,17 @@ export default {
           </view>
 
           <view v-if="analysisExpanded" class="analysis-details">
-            <view v-if="playerPresentation.analysis.stateSummary.hasText" class="analysis-section">
+            <view v-if="playerPresentation.analysis.sections.recentState.hasContent" class="analysis-section">
               <text class="analysis-section-title">近期状态</text>
               <text class="analysis-section-text">{{ playerPresentation.analysis.stateSummary.text }}</text>
             </view>
 
-            <view v-if="playerPresentation.analysis.tendency.hasText" class="analysis-section">
+            <view v-if="playerPresentation.analysis.sections.interpretation.hasContent" class="analysis-section">
               <text class="analysis-section-title">状态解析</text>
               <text class="analysis-section-text">{{ playerPresentation.analysis.tendency.text }}</text>
             </view>
 
-            <view v-if="playerPresentation.analysis.rationales.hasRows" class="analysis-section">
+            <view v-if="playerPresentation.analysis.sections.rationales.hasContent" class="analysis-section">
               <text class="analysis-section-title">调适依据</text>
               <text
                 v-for="item in playerPresentation.analysis.rationales.rows"
@@ -303,7 +303,7 @@ export default {
             </view>
 
             <view
-              v-if="playerPresentation.analysis.modeLabel || playerPresentation.analysis.hasPrimaryTone || playerPresentation.analysis.secondaryTone.hasTone || playerPresentation.analysis.toneWeights.hasWeights"
+              v-if="playerPresentation.analysis.sections.toneConfiguration.hasContent"
               class="analysis-section"
             >
               <text class="analysis-section-title">本次五音配置</text>
@@ -316,7 +316,7 @@ export default {
             </view>
 
             <view
-              v-if="playerPresentation.analysis.parameters.bpm.hasValue || playerPresentation.analysis.parameters.instruments.hasValues || playerPresentation.analysis.parameters.ambience.hasValues"
+              v-if="playerPresentation.analysis.sections.musicDesign.hasContent"
               class="analysis-section"
             >
               <text class="analysis-section-title">音乐设计</text>

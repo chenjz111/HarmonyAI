@@ -705,9 +705,9 @@ def _diagnosis_from_v31_pipeline(
             ),
             degradation=Degradation(active=True, reason_codes=[reason_code]),
             presentation=DiagnosisPresentation(
-                title="辨证分析",
+                title="本次未形成明确的状态倾向",
                 primary_tendency=None,
-                basis_summaries=["当前检索证据不足以形成证型倾向，已安全保留为医学性暂缓结果。"],
+                basis_summaries=[],
                 knowledge_references=rag_refs,
                 disclaimer="本结果不构成医学诊断或治疗建议。",
             ),
@@ -1338,12 +1338,9 @@ def run_diagnosis(
                 ),
                 degradation=rag_degraded,
                 presentation=DiagnosisPresentation(
-                    title="辨证分析",
+                    title="本次未形成明确的状态倾向",
                     primary_tendency=None,
-                    basis_summaries=[
-                        "当前证据不足以形成证型倾向。",
-                        "RAG 知识索引尚未获得医学批准，未检索到引用。",
-                    ],
+                    basis_summaries=[],
                     knowledge_references=[],
                     disclaimer="本结果不构成医学诊断或治疗建议。",
                 ),

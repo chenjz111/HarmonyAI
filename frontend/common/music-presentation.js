@@ -69,6 +69,9 @@ const TEXT_LIMITS = Object.freeze({
   state: 200,
 })
 
+/** Internal audit/runtime vocabulary must never leak into end-user explanations. */
+const TECHNICAL_PUBLIC_COPY_PATTERN = /(?:\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\b(?:RAG|EMBEDDING|AGENT|PROVIDER|QWEN|TOKENHUB|MINIMAX|CHROMA|DIAGNOSIS|PRESCRIPTION)\b|approved\s+chunk|检索证据|向量检索|知识索引|未检索到引用|医学性暂缓|证据不足[^。；]*证型)/i
+
 // ------------------------------------------------------------------ 基础工具
 
 /** 只把真正可读的标量转成文本；对象 / 数组 / NaN 一律视为缺失。 */
@@ -99,6 +102,18 @@ export function presentText(value, { maxLength = 0 } = {}) {
     text = `${text.slice(0, maxLength).trimEnd()}…`
   }
   return { hasText: !!text, text, displayText: text || NEUTRAL_DISPLAY }
+}
+
+/**
+ * Public-copy projection for backend-derived explanation text.
+ * Technical audit wording is omitted rather than rewritten into a medical claim.
+ */
+export function presentPublicText(value, options) {
+  const presented = presentText(value, options)
+  if (!presented.hasText || TECHNICAL_PUBLIC_COPY_PATTERN.test(presented.text)) {
+    return presentText("", options)
+  }
+  return presented
 }
 
 /** 该文本是否属于前端伪造的"依据解释"（应被抑制，不作为解释展示）。 */
@@ -466,6 +481,17 @@ export function presentRationales(items) {
   return { hasRows: rows.length > 0, rows }
 }
 
+export function presentPublicRationales(items) {
+  const rows = []
+  for (const item of Array.isArray(items) ? items : []) {
+    const raw = item && typeof item === "object" ? (item.summary !== undefined ? item.summary : item.text) : item
+    const text = presentPublicText(raw, { maxLength: TEXT_LIMITS.rationale })
+    if (!text.hasText) continue
+    rows.push({ index: rows.length + 1, text: text.text })
+  }
+  return { hasRows: rows.length > 0, rows }
+}
+
 /**
  * "为什么是这首音乐？"折叠视图模型（P6-D1 / MP-T15）：默认折叠，用户想看再展开。
  * 全部内容来自后端 read model；缺失项保持中性空状态。
@@ -477,6 +503,26 @@ export function buildAnalysisViewModel(basis) {
   const secondaryTone = presentSecondaryTone(mode.mode, source.secondary_tone)
   const parameterInstruments = source.instruments ? source.instruments.values : null
   const parameterAmbience = source.ambience ? source.ambience.values : null
+  const stateSummary = presentText(source.confirmed_state, { maxLength: TEXT_LIMITS.state })
+  const tendency = presentPublicText(source.state_tendency, { maxLength: TEXT_LIMITS.state })
+  const rationales = presentPublicRationales(source.analysis_rationales)
+  const toneWeights = presentToneWeights(source.tone_weights)
+  const parameters = {
+    bpm: presentBpm(source.bpm),
+    instruments: presentInstruments(parameterInstruments, { source: "basis" }),
+    ambience: presentAmbience(parameterAmbience, { source: "basis" }),
+  }
+  const sections = {
+    recentState: { hasContent: stateSummary.hasText },
+    interpretation: { hasContent: tendency.hasText },
+    rationales: { hasContent: rationales.hasRows },
+    toneConfiguration: {
+      hasContent: !!mode.label || primaryTone.hasTone || secondaryTone.hasTone || toneWeights.hasWeights,
+    },
+    musicDesign: {
+      hasContent: parameters.bpm.hasValue || parameters.instruments.hasValues || parameters.ambience.hasValues,
+    },
+  }
   return {
     collapsed: true,
     title: ANALYSIS_TITLE,
@@ -486,15 +532,13 @@ export function buildAnalysisViewModel(basis) {
     hasPrimaryTone: primaryTone.hasTone,
     primaryTone,
     secondaryTone,
-    toneWeights: presentToneWeights(source.tone_weights),
-    stateSummary: presentText(source.confirmed_state, { maxLength: TEXT_LIMITS.state }),
-    tendency: presentText(source.state_tendency, { maxLength: TEXT_LIMITS.state }),
-    rationales: presentRationales(source.analysis_rationales),
-    parameters: {
-      bpm: presentBpm(source.bpm),
-      instruments: presentInstruments(parameterInstruments, { source: "basis" }),
-      ambience: presentAmbience(parameterAmbience, { source: "basis" }),
-    },
+    toneWeights,
+    stateSummary,
+    tendency,
+    rationales,
+    parameters,
+    sections,
+    hasContent: Object.values(sections).some(section => section.hasContent),
     disclaimer: presentDisclaimer(source.disclaimer),
   }
 }
