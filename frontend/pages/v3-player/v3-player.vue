@@ -38,6 +38,7 @@ export default {
       favorite: false,
       favBusy: false,
       simulated: false,
+      analysisExpanded: false,
     }
   },
   computed: {
@@ -137,6 +138,9 @@ export default {
     seekToRatio(ratio) {
       if (!this.playerController) return false
       return this.playerController.seek(ratio)
+    },
+    toggleAnalysis() {
+      this.analysisExpanded = !this.analysisExpanded
     },
     async toggleFavorite() {
       if (this.favBusy) return
@@ -261,6 +265,68 @@ export default {
           <view class="player-action end-action" @click="exitSession">
             <view class="action-icon"><view class="stop-square" /></view>
             <view class="action-copy"><text class="action-title">结束本次聆听</text><text class="action-subtitle">愿你身心安宁</text></view>
+          </view>
+        </view>
+
+        <view class="analysis-card">
+          <view
+            class="analysis-toggle"
+            role="button"
+            :aria-expanded="analysisExpanded"
+            @click="toggleAnalysis"
+          >
+            <view class="analysis-icon">析</view>
+            <view class="analysis-heading-copy">
+              <text class="analysis-title">为什么是这首音乐？</text>
+              <text class="analysis-subtitle">查看本次音乐的生成依据</text>
+            </view>
+            <view class="analysis-chevron" :class="{ 'analysis-chevron--expanded': analysisExpanded }" />
+          </view>
+
+          <view v-if="analysisExpanded" class="analysis-details">
+            <view v-if="playerPresentation.analysis.stateSummary.hasText" class="analysis-section">
+              <text class="analysis-section-title">近期状态</text>
+              <text class="analysis-section-text">{{ playerPresentation.analysis.stateSummary.text }}</text>
+            </view>
+
+            <view v-if="playerPresentation.analysis.tendency.hasText" class="analysis-section">
+              <text class="analysis-section-title">状态解析</text>
+              <text class="analysis-section-text">{{ playerPresentation.analysis.tendency.text }}</text>
+            </view>
+
+            <view v-if="playerPresentation.analysis.rationales.hasRows" class="analysis-section">
+              <text class="analysis-section-title">调适依据</text>
+              <text
+                v-for="item in playerPresentation.analysis.rationales.rows"
+                :key="item.index"
+                class="analysis-section-text"
+              >{{ item.text }}</text>
+            </view>
+
+            <view
+              v-if="playerPresentation.analysis.modeLabel || playerPresentation.analysis.hasPrimaryTone || playerPresentation.analysis.secondaryTone.hasTone || playerPresentation.analysis.toneWeights.hasWeights"
+              class="analysis-section"
+            >
+              <text class="analysis-section-title">本次五音配置</text>
+              <view class="analysis-fact-list">
+                <text v-if="playerPresentation.analysis.modeLabel" class="analysis-fact">调适方式：{{ playerPresentation.analysis.modeDisplayLabel }}</text>
+                <text v-if="playerPresentation.analysis.hasPrimaryTone" class="analysis-fact">主音：{{ playerPresentation.analysis.primaryTone.displayName }}</text>
+                <text v-if="playerPresentation.analysis.secondaryTone.hasTone" class="analysis-fact">辅音：{{ playerPresentation.analysis.secondaryTone.displayName }}</text>
+                <text v-if="playerPresentation.analysis.toneWeights.hasWeights" class="analysis-fact">五音配比：{{ playerPresentation.analysis.toneWeights.displayText }}</text>
+              </view>
+            </view>
+
+            <view
+              v-if="playerPresentation.analysis.parameters.bpm.hasValue || playerPresentation.analysis.parameters.instruments.hasValues || playerPresentation.analysis.parameters.ambience.hasValues"
+              class="analysis-section"
+            >
+              <text class="analysis-section-title">音乐设计</text>
+              <view class="analysis-fact-list">
+                <text v-if="playerPresentation.analysis.parameters.bpm.hasValue" class="analysis-fact">节奏：{{ playerPresentation.analysis.parameters.bpm.text }}</text>
+                <text v-if="playerPresentation.analysis.parameters.instruments.hasValues" class="analysis-fact">乐器：{{ playerPresentation.analysis.parameters.instruments.text }}</text>
+                <text v-if="playerPresentation.analysis.parameters.ambience.hasValues" class="analysis-fact">氛围：{{ playerPresentation.analysis.parameters.ambience.text }}</text>
+              </view>
+            </view>
           </view>
         </view>
         <text class="player-disclaimer">{{ playerPresentation.disclaimer.displayText }}</text>
@@ -851,6 +917,20 @@ export default {
 .action-title { font-family:'KaiTi','STKaiti',serif; font-size:16px; font-weight:700; line-height:1.2; }
 .action-subtitle { margin-top:2px; font-size:8px; opacity:.82; }
 .action-arrow { font-size:22px; }
+.analysis-card { width:100%; margin-top:14px; box-sizing:border-box; border:1px solid rgba(84,92,80,.12); border-radius:14px; background:rgba(255,255,250,.88); box-shadow:0 4px 15px rgba(62,74,65,.10); overflow:hidden; }
+.analysis-toggle { display:grid; grid-template-columns:38px minmax(0,1fr) 18px; align-items:center; gap:10px; min-height:68px; padding:10px 14px; box-sizing:border-box; }
+.analysis-icon { display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%; color:var(--tone-accent); background:rgba(221,229,215,.82); font-family:'KaiTi','STKaiti',serif; font-size:17px; font-weight:800; }
+.analysis-heading-copy { display:flex; flex-direction:column; min-width:0; }
+.analysis-title { color:#21423e; font-family:'KaiTi','STKaiti',serif; font-size:18px; font-weight:800; line-height:1.3; }
+.analysis-subtitle { margin-top:2px; color:#657a75; font-size:10px; line-height:1.4; }
+.analysis-chevron { width:8px; height:8px; border-right:2px solid #285c59; border-bottom:2px solid #285c59; transform:rotate(45deg) translateY(-2px); transition:transform .2s ease; }
+.analysis-chevron--expanded { transform:rotate(225deg) translate(-2px,-2px); }
+.analysis-details { padding:0 14px 4px 62px; }
+.analysis-section { display:flex; flex-direction:column; padding:11px 0; border-top:1px solid rgba(80,90,82,.12); }
+.analysis-section-title { color:#24504b; font-family:'KaiTi','STKaiti',serif; font-size:15px; font-weight:800; line-height:1.4; }
+.analysis-section-text { margin-top:5px; color:#526863; font-size:11px; line-height:1.7; }
+.analysis-fact-list { display:flex; flex-direction:column; gap:4px; margin-top:5px; }
+.analysis-fact { color:#526863; font-size:11px; line-height:1.55; overflow-wrap:anywhere; }
 .player-disclaimer { margin-top:10px; color:#637773; font-size:8px; text-align:center; }
 .tone-player-page .page-motto { margin-top:13px; color:#496c67; font-family:'KaiTi','STKaiti',serif; font-size:10px; letter-spacing:1px; }
 .tone-player-page .loading-wrap,.tone-player-page .error-wrap { min-height:600px; padding:120px 20px; box-sizing:border-box; }
