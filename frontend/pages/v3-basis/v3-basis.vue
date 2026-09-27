@@ -1,214 +1,53 @@
 <script>
 /**
- * V3.1 五音调适解析页（Issue #100：升级自"音乐生成依据"，删除生成完成中间步骤）
- * 合同依据：frontend-read-model-contract-v3.md §10 / §11
- *          harmonyai-v3-owner-flow-amendment-001.md §2
+ * Compatibility-only analysis page.
  *
- * - 展示五音倾向、解析依据与调适参数（PUBLIC 提示，不显示分数/规则ID）
- * - 生成状态：queued | running | succeeded | matched_fallback | failed | cancelled
- * - Provider 未报告真实进度时显示不定进度，不伪造百分比
- * - 生成成功后直接切到播放器（无独立完成卡），失败/取消可重试
- * - 不显示候选分数、规则 ID 或任何目标类字段（该概念已在 V3 删除）
- * - real 模式调用真实辨证、处方与生成接口；失败显式提示且不回退示例音乐
- *
- * 视觉（重水墨国风）：han-page 山水底纹 + 左侧印章导航 + 宣纸卡片 + 朱砂主按钮
+ * Phase D removes this route from the normal flow. Direct entry is read-only:
+ * it may render an already cached analysis but never creates medical artifacts,
+ * starts a generation task, or owns task lifecycle state.
  */
 import { apiV3 } from "../../common/api-v3.js"
-import {
-  createMusicGenerationSession,
-  GENERATION_STATES,
-} from "../../common/music-generation-session.js"
-import {
-  buildAnalysisViewModel,
-  presentFailureDisplay,
-} from "../../common/music-presentation.js"
+import { buildAnalysisViewModel } from "../../common/music-presentation.js"
 
 export default {
   data() {
-    return {
-      phase: "loading", // loading | basis | generating | cancelled | pending
-      error: "",
-      basis: null,
-      task: null,
-      generationSession: null,
-      unsubscribeGeneration: null,
-      generationSnapshot: null,
-      playerNavigationStarted: false,
-      simulated: false, // hybrid：演示数据标识
-    }
+    return { phase: "loading", error: "", basis: null }
   },
   computed: {
     stateTags() {
       const summary = this.analysisPresentation.stateSummary.text
       if (!summary) return []
-      return summary
-        .split(/[，、。；;]/)
-        .map(item => item.trim().replace(/^近期/, ""))
-        .filter(Boolean)
-        .slice(0, 5)
+      return summary.split(/[，、。；;]/).map(item => item.trim().replace(/^近期/, "")).filter(Boolean).slice(0, 5)
     },
-    rationaleRows() {
-      return this.analysisPresentation.rationales.rows
-    },
-    analysisPresentation() {
-      return buildAnalysisViewModel(this.basis)
-    },
+    rationaleRows() { return this.analysisPresentation.rationales.rows },
+    analysisPresentation() { return buildAnalysisViewModel(this.basis) },
     toneOptions() {
-      // Sprint 6：主音/辅音角色只在后端明确 personalized_five_tone 时标注；
-      // integrated / basic / 未知 mode 绝不标记任何音为主音。
       const primary = this.hasPrimaryTone ? this.analysisPresentation.primaryTone.code : ""
       const secondary = this.isPersonalized ? this.analysisPresentation.secondaryTone.code : ""
-      // code 必须是后端权威拼写（gong/shang/jiao/zhi/yu），否则主音无法被标记出来
       return [
-        { code: "gong", label: "宫" },
-        { code: "shang", label: "商" },
-        { code: "jiao", label: "角" },
-        { code: "zhi", label: "徵" },
-        { code: "yu", label: "羽" },
-      ].map(item => ({
-        ...item,
-        role: item.code === primary ? "primary" : (item.code === secondary ? "secondary" : ""),
-      }))
+        { code: "gong", label: "宫" }, { code: "shang", label: "商" },
+        { code: "jiao", label: "角" }, { code: "zhi", label: "徵" }, { code: "yu", label: "羽" },
+      ].map(item => ({ ...item, role: item.code === primary ? "primary" : (item.code === secondary ? "secondary" : "") }))
     },
-    // 后端权威 mode：缺失/未知一律为 ""（前端绝不从主音或权重推断 mode）
-    regulationMode() {
-      return this.analysisPresentation.mode
-    },
-    isPersonalized() {
-      return this.regulationMode === "personalized_five_tone"
-    },
-    modeLabel() {
-      return this.analysisPresentation.modeLabel
-    },
-    hasPrimaryTone() {
-      return this.analysisPresentation.hasPrimaryTone
-    },
-    // 非个性化模式的中性说明：不主张五音主音，也不使用"主音未定"这类技术兜底措辞
-    modeCopy() {
-      return { title: this.analysisPresentation.modeDisplayLabel, body: "" }
-    },
-    statusText() {
-      return this.generationSnapshot ? this.generationSnapshot.copy : ""
-    },
-    progressPercent() {
-      if (!this.task || !this.task.progress) return 0
-      if (this.task.progress.indeterminate) return null
-      return this.task.progress.value
-    },
-    terminalNotice() {
-      const snapshot = this.generationSnapshot
-      if (!snapshot) return ""
-      if (snapshot.state === GENERATION_STATES.FAILED || snapshot.state === GENERATION_STATES.SYNC_ERROR) {
-        return presentFailureDisplay(
-          { code: snapshot.errorCode, message: snapshot.copy },
-          { taskStatus: snapshot.status, canResume: snapshot.retryKind === "resume", terminal: snapshot.state === GENERATION_STATES.FAILED },
-        ).message
-      }
-      return snapshot.copy
-    },
+    regulationMode() { return this.analysisPresentation.mode },
+    isPersonalized() { return this.regulationMode === "personalized_five_tone" },
+    hasPrimaryTone() { return this.analysisPresentation.hasPrimaryTone },
+    modeCopy() { return { title: this.analysisPresentation.modeDisplayLabel, body: "" } },
   },
-  onLoad() {
-    this.load()
-  },
-  onHide() {
-    if (this.generationSession) this.generationSession.onHide()
-  },
-  onShow() {
-    if (this.generationSession) void this.generationSession.onShow()
-  },
-  onUnload() {
-    if (this.unsubscribeGeneration) this.unsubscribeGeneration()
-    if (this.generationSession) this.generationSession.dispose()
-    this.unsubscribeGeneration = null
-    this.generationSession = null
-  },
+  onLoad() { this.load() },
   methods: {
-    back() {
-      uni.navigateBack()
-    },
+    back() { uni.navigateBack() },
     async load() {
       this.phase = "loading"
       this.error = ""
       try {
-        // Phase 6 (R7): this page is still the generation step, so it is the only caller allowed to
-        // create the server-side analysis artifacts when the local cache is incomplete.
-        this.basis = await apiV3.getMusicBasis({ allowCreate: true })
-        this.simulated = !!apiV3.AGENT_SIMULATED
-        this.setupGenerationSession()
+        this.basis = await apiV3.getMusicBasis()
         this.phase = "basis"
-      } catch (e) {
-        if (e.agentPending) {
-          // real 模式：辨证能力未接入，明确等待，不伪造依据
-          this.phase = "pending"
-        } else {
-          this.error = e.message || "加载失败，请重试"
-          this.phase = "basis"
-          this.basis = null
-        }
+      } catch (error) {
+        this.basis = null
+        this.error = "本次音乐解析尚未准备好，请从正常流程继续。"
+        this.phase = "unavailable"
       }
-    },
-    setupGenerationSession() {
-      if (this.unsubscribeGeneration) this.unsubscribeGeneration()
-      if (this.generationSession) this.generationSession.dispose()
-      this.playerNavigationStarted = false
-      this.generationSession = createMusicGenerationSession({
-        api: {
-          startGeneration: ({ requestId }) => apiV3.startMusicGeneration({ requestId }),
-          syncTask: taskId => apiV3.pollMusicGeneration(taskId),
-          cancelTask: taskId => apiV3.cancelMusicGeneration(taskId),
-        },
-      })
-      this.unsubscribeGeneration = this.generationSession.subscribe(snapshot => {
-        this.applyGenerationSnapshot(snapshot)
-      })
-      this.generationSession.ready()
-    },
-    applyGenerationSnapshot(snapshot) {
-      this.generationSnapshot = snapshot
-      this.task = snapshot.task
-      if (snapshot.state === GENERATION_STATES.PLAYABLE || snapshot.state === GENERATION_STATES.MATCHED_FALLBACK) {
-        if (!this.playerNavigationStarted) {
-          this.playerNavigationStarted = true
-          this.goPlayer()
-        }
-        return
-      }
-      if (snapshot.state === GENERATION_STATES.SYNC_ERROR && !snapshot.taskId) {
-        // POST 结果未知且尚无 task identity：显示 retry，由 session 复用原 request id。
-        this.phase = "cancelled"
-        return
-      }
-      if (
-        snapshot.state === GENERATION_STATES.CREATING ||
-        snapshot.state === GENERATION_STATES.QUEUED ||
-        snapshot.state === GENERATION_STATES.RUNNING ||
-        snapshot.state === GENERATION_STATES.SYNC_ERROR
-      ) {
-        this.phase = "generating"
-        return
-      }
-      if (snapshot.state === GENERATION_STATES.FAILED || snapshot.state === GENERATION_STATES.CANCELLED) {
-        this.phase = "cancelled"
-        return
-      }
-      if (snapshot.state === GENERATION_STATES.READY_TO_GENERATE) this.phase = "basis"
-    },
-    // 发起生成
-    async generate() {
-      if (!this.generationSession) return
-      await this.generationSession.ensureGeneration()
-    },
-    async cancel() {
-      if (!this.generationSession) return
-      await this.generationSession.cancel()
-    },
-    async retry() {
-      if (!this.generationSession) return
-      await this.generationSession.retry()
-    },
-    goPlayer() {
-      // Owner 2026-09-11: bottom tab is Home/Profile; Player is a normal flow page.
-      uni.redirectTo({ url: "/pages/v3-player/v3-player" })
     },
   },
 }
@@ -248,24 +87,8 @@ export default {
         </view>
       </view>
 
-      <!-- real 模式：音乐服务未接入，明确等待状态，不伪造依据与生成（P1-2：稳定用户文案） -->
-      <view v-else-if="phase === 'pending'" class="surface-card pending-card ink-fade-in">
-        <view class="pending-seal">
-          <text class="pending-seal-text">候</text>
-        </view>
-        <text class="pending-title">正在等待音乐服务接入</text>
-        <text class="pending-desc">音乐生成服务正在升级维护中，暂时无法查看依据或发起生成。服务恢复后即可继续，你的评估结果已保存。</text>
-        <view class="han-btn han-btn-ghost btn-back" @click="load">
-          <text class="btn-back-text">重新加载</text>
-        </view>
-      </view>
-
-      <!-- 解析页（冻结 FiveToneAnalysisReadModel，flow_v31.py） -->
-      <view v-else-if="phase === 'basis' || phase === 'generating' || phase === 'cancelled'" class="basis-content ink-fade-up">
-        <!-- hybrid 演示标识 -->
-        <view v-if="simulated" class="demo-banner">
-          <text class="demo-banner-text">演示模式：以下解析与生成过程为模拟数据</text>
-        </view>
+      <!-- 兼容入口只显示已缓存解析；正常生成流程不经过本页。 -->
+      <view v-else-if="phase === 'basis'" class="basis-content ink-fade-up">
 
         <!-- 近期状态 -->
         <view class="basis-section-card state-section">
@@ -365,24 +188,6 @@ export default {
           </view>
         </view>
 
-        <!-- 生成中 / 发起前 / 取消后 -->
-        <view v-if="phase === 'generating'" class="gen-box">
-          <text class="gen-label">音乐生成中</text>
-          <view class="gen-ring" :class="{ 'gen-indeterminate': progressPercent === null }">
-            <text v-if="progressPercent !== null" class="gen-percent">{{ progressPercent }}%</text>
-          </view>
-          <text class="gen-status">{{ statusText }}</text>
-          <view class="gen-cancel" @click="cancel"><text class="gen-cancel-text">取消生成</text></view>
-        </view>
-
-        <view v-else class="actions">
-          <view v-if="phase === 'cancelled'" class="cancel-note">
-            <text class="cancel-note-text">{{ terminalNotice }}</text>
-          </view>
-          <view class="generate-button" @click="phase === 'cancelled' ? retry() : generate()">
-            <text>{{ phase === 'cancelled' ? "重新生成" : "生成我的音乐" }}</text><text class="button-arrow">→</text>
-          </view>
-        </view>
         <text class="basis-disclaimer">{{ analysisPresentation.disclaimer.displayText }}</text>
       </view>
       <view class="page-motto"><text>—　五音和鸣 · 乐养身心　—</text></view>

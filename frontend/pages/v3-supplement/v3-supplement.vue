@@ -53,7 +53,7 @@ export default {
           decision: "confirm",
           changes: [],
         })
-        uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
+        uni.redirectTo({ url: "/pages/v3-goal/v3-goal?next=generation" })
       } catch (e) {
         if (e && e.agentPending) {
           this.agentPending = true

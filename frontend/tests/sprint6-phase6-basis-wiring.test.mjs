@@ -4,19 +4,11 @@ import { readFileSync } from "node:fs"
 
 const source = readFileSync(new URL("../pages/v3-basis/v3-basis.vue", import.meta.url), "utf8")
 
-test("v3-basis delegates generation lifecycle to music-generation-session", () => {
-  assert.match(source, /createMusicGenerationSession/)
-  assert.match(source, /generationSession\.ensureGeneration\(\)/)
-  assert.match(source, /generationSession\.retry\(\)/)
-  assert.match(source, /generationSession\.cancel\(\)/)
-  assert.match(source, /generationSession\.onHide\(\)/)
-  assert.match(source, /generationSession\.onShow\(\)/)
-  assert.match(source, /generationSession\.dispose\(\)/)
-
-  assert.doesNotMatch(source, /\bpollTimer\b/)
-  assert.doesNotMatch(source, /\bschedulePoll\b/)
-  assert.doesNotMatch(source, /\bstopPoll\b/)
-  assert.doesNotMatch(source, /\bsetInterval\s*\(/)
+test("PR-031: v3-basis is a cached, read-only compatibility page", () => {
+  assert.match(source, /apiV3\.getMusicBasis\(\)/)
+  assert.doesNotMatch(source, /allowCreate\s*:\s*true/)
+  assert.doesNotMatch(source, /createMusicGenerationSession/)
+  assert.doesNotMatch(source, /ensureGeneration|startMusicGeneration|pollMusicGeneration|cancelMusicGeneration/)
 })
 
 test("v3-basis delegates read-model presentation and reads no theme facts", () => {
@@ -28,15 +20,7 @@ test("v3-basis delegates read-model presentation and reads no theme facts", () =
   assert.doesNotMatch(source, /作为本次调适依据/)
 })
 
-test("v3-basis keeps task progress and terminal navigation driven by session snapshots", () => {
-  assert.match(source, /generationSession\.subscribe/)
-  assert.match(source, /GENERATION_STATES\.PLAYABLE/)
-  assert.match(source, /GENERATION_STATES\.MATCHED_FALLBACK/)
-  assert.match(source, /snapshot\.task/)
-  assert.match(source, /snapshot\.copy/)
-  assert.match(
-    source,
-    /snapshot\.state === GENERATION_STATES\.SYNC_ERROR && !snapshot\.taskId[\s\S]*?this\.phase = "cancelled"/,
-    "a POST with an unknown outcome must expose the session retry that reuses its request id",
-  )
+test("PR-031: v3-basis owns no task progress, retry, cancel, or Player navigation", () => {
+  assert.doesNotMatch(source, /GENERATION_STATES|generationSnapshot|taskId|requestId/)
+  assert.doesNotMatch(source, /\.retry\s*\(|\.cancel\s*\(|v3-player/)
 })

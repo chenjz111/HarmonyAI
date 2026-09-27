@@ -82,7 +82,7 @@ export default {
           decision: "confirm",
           changes: [],
         })
-        uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
+        uni.redirectTo({ url: "/pages/v3-generation/v3-generation" })
       } catch (e) {
         uni.showToast({ title: e.message || "确认失败，请重试", icon: "none" })
       } finally {
@@ -121,7 +121,7 @@ export default {
           changes: [],
           edited_summary_text: editedSummaryText,
         })
-        uni.redirectTo({ url: "/pages/v3-basis/v3-basis" })
+        uni.redirectTo({ url: "/pages/v3-generation/v3-generation" })
       } catch (e) {
         uni.showToast({ title: e.message || "提交失败，请重试", icon: "none" })
       } finally {

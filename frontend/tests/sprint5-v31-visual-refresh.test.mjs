@@ -118,15 +118,16 @@ test("both summaries edit inline and the document-only path skips duplicate conf
   assert.match(summary, /inline-summary-editor/)
   assert.match(confirm, /inline-summary-editor/)
   assert.match(supplement, /直接进入分析/)
-  assert.match(supplement, /pages\/v3-basis\/v3-basis/)
+  assert.match(supplement, /pages\/v3-goal\/v3-goal\?next=generation/)
+  assert.doesNotMatch(supplement, /pages\/v3-basis\/v3-basis/)
 })
 
-test("Five-Tone analysis generates on-page and transitions directly to Player", () => {
-  const basis = read("pages/v3-basis/v3-basis.vue")
-  assert.match(basis, /生成我的音乐/)
-  assert.match(basis, /音乐生成中/)
-  assert.match(basis, /pages\/v3-player\/v3-player/)
-  assert.doesNotMatch(basis, /音乐已生成完成|开始试听/)
+test("PR-029 visible generation page transitions to Player after a playable asset", () => {
+  const generation = read("pages/v3-generation/v3-generation.vue")
+  assert.match(generation, /正在准备你的音乐/)
+  assert.match(generation, /正在生成你的音乐/)
+  assert.match(generation, /pages\/v3-player\/v3-player/)
+  assert.doesNotMatch(generation, /音乐已生成完成|开始试听/)
 })
 
 test("one player uses five data-driven themes and real duration", () => {

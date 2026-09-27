@@ -56,6 +56,7 @@ test("V3 owner-flow pages are all registered", () => {
     "pages/v3-questionnaire/v3-questionnaire",
     "pages/v3-goal/v3-goal",
     "pages/v3-confirm/v3-confirm",
+    "pages/v3-generation/v3-generation",
     "pages/v3-basis/v3-basis",
     "pages/v3-player/v3-player",
     "pages/v3-feedback/v3-feedback",
@@ -205,6 +206,7 @@ test("V3 pages do not leak internal fields to users", () => {
     "v3-supplement/v3-supplement.vue",
     "v3-goal/v3-goal.vue",
     "v3-confirm/v3-confirm.vue",
+    "v3-generation/v3-generation.vue",
     "v3-basis/v3-basis.vue",
     "v3-player/v3-player.vue",
     "v3-feedback/v3-feedback.vue",
@@ -234,12 +236,12 @@ test("P1-3: tabBar keeps Home/My and feedback returns to V3 home", () => {
   assert.ok(feedback.includes('"/pages/entry/entry"'), "feedback goHome must reLaunch to V3 entry")
   assert.ok(!feedback.includes("/pages/index/index"), "feedback must not route back to Sprint 3 home")
 
-  // 首页仍是 tab 页面；播放器已从 tabBar 移除，生成成功后使用普通页面导航。
+  // PR-029：首页仍是 tab 页面；可见生成页在资产可播放后进入普通 Player 页面。
   const welcome = readPage("welcome/welcome.vue")
   assert.ok(welcome.includes("reLaunch"), "welcome must use reLaunch to open the tab page entry")
-  const basis = readPage("v3-basis/v3-basis.vue")
-  assert.ok(basis.includes("redirectTo"), "basis must redirect to the non-tab V3 player")
-  assert.ok(!basis.includes("switchTab"), "basis must not treat the player as a tab page")
+  const generation = readPage("v3-generation/v3-generation.vue")
+  assert.ok(generation.includes("redirectTo"), "generation must redirect to the non-tab V3 player")
+  assert.ok(!generation.includes("switchTab"), "generation must not treat the player as a tab page")
 
   // 安全旧页面仍注册；unsafe player 只保留源码，不再注册。
   assert.ok(routes.includes("pages/index/index"), "legacy home page remains for compatibility")
@@ -349,6 +351,7 @@ test("P1-2: V3 pages and API errors use stable user copy without internal dev in
     "v3-goal/v3-goal.vue",
     "v3-questionnaire/v3-questionnaire.vue",
     "v3-confirm/v3-confirm.vue",
+    "v3-generation/v3-generation.vue",
     "v3-basis/v3-basis.vue",
     "v3-player/v3-player.vue",
     "v3-feedback/v3-feedback.vue",
@@ -389,6 +392,7 @@ test("no music goal wording or fields in V3 flow", () => {
     "v3-goal/v3-goal.vue",
     "v3-questionnaire/v3-questionnaire.vue",
     "v3-confirm/v3-confirm.vue",
+    "v3-generation/v3-generation.vue",
     "v3-basis/v3-basis.vue",
     "v3-player/v3-player.vue",
     "v3-feedback/v3-feedback.vue",
@@ -465,7 +469,7 @@ test("V3.1 freeze: questionnaire has no skip exit; Q1-Q10 are all mandatory (fre
     "skip() method must be removed from the questionnaire",
   )
   assert.ok(!questionnaire.includes("跳过问卷"), "no skip wording in the questionnaire UI")
-  // 完成路径：提交 → 评估 → 疗愈诉求 → 近期状态总结
+  // PR-009/PR-029：完成路径为提交 → 评估 → 疗愈诉求 → 近期状态总结 → 可见生成页
   assert.ok(
     questionnaire.includes('"/pages/v3-goal/v3-goal"'),
     "submit path must route to the goal page",
@@ -481,10 +485,10 @@ test("V3.1 freeze: questionnaire has no skip exit; Q1-Q10 are all mandatory (fre
     supplement.includes('"/pages/v3-questionnaire/v3-questionnaire"'),
     "choice: fill questionnaire routes to v3-questionnaire",
   )
-  assert.ok(
-    supplement.includes('"/pages/v3-basis/v3-basis"'),
-    "choice: continue-directly routes to v3-basis (document_only, no second confirmation)",
-  )
+  assert.ok(supplement.includes('"/pages/v3-goal/v3-goal?next=generation"'),
+    "PR-009: document-only direct continue still encounters optional UserGoal")
+  assert.ok(!supplement.includes('"/pages/v3-basis/v3-basis"'),
+    "PR-010: normal document flow never enters the compatibility basis page")
   // document_only：直接继续不经过 近期状态总结（v3-confirm）
   assert.ok(
     !supplement.includes('"/pages/v3-confirm/v3-confirm"'),
@@ -725,18 +729,14 @@ test("V3.1 review: v3-goal.vue 不再使用已弃用字段名 primary/secondary/
   assert.ok(HEALING_INTENT_REASON_MESSAGE.custom_too_long, "reason 文案映射必须含 custom_too_long")
 })
 
-test("V3.1: basis page is 五音调适解析 without a Generation Complete stopover", () => {
+test("PR-010/PR-029: visible generation page replaces basis-owned generation", () => {
+  const generation = readPage("v3-generation/v3-generation.vue")
   const basis = readPage("v3-basis/v3-basis.vue")
-  // Issue #100：依据页升级为"五音调适解析"，随近期状态总结生成解析与方案
-  assert.ok(basis.includes("五音调适解析"), "Issue #100: page title must be 五音调适解析")
-  assert.ok(basis.includes("生成本次调适的解析与方案"), "subtitle must frame generation output")
-  // 生成成功后直接进入播放器，删除独立"生成完成"中间步骤
-  assert.ok(basis.includes("goPlayer()"), "must still have the goPlayer method")
-  assert.ok(basis.includes("redirectTo"), "must redirect to the non-tab v3-player page")
-  const template = (basis.match(/<template>[\s\S]*?<\/template>/) || [""])[0]
-  assert.ok(!template.includes("生成完成"), "template must not show a Generation Complete stopover")
-  assert.ok(!template.includes("done-card") && !template.includes("done-icon"), "done card markup removed")
-  assert.ok(!template.includes('phase === "done"') && !basis.includes("phase === 'done'"), "done phase removed")
+  assert.ok(generation.includes("正在准备你的音乐"), "visible preparation state")
+  assert.ok(generation.includes("正在生成你的音乐"), "visible generation state")
+  assert.ok(generation.includes('"/pages/v3-player/v3-player"'), "playable state enters Player")
+  assert.ok(!basis.includes("createMusicGenerationSession"), "PR-031: compatibility basis owns no generation session")
+  assert.ok(!basis.includes("startMusicGeneration"), "PR-031: compatibility basis starts no task")
 })
 
 test("player only renders backend-provided asset, wires favorites and V3 feedback", () => {
@@ -1249,10 +1249,10 @@ test("V3.1 freeze: supplement page is the lightweight questionnaire choice page 
     !supplement.includes("apiV3.submitNarrative"),
     "choice page must not call narrative submission",
   )
-  // 直接继续 = document_only：先创建评估（内部分析）再进五音调适解析
+  // PR-009：直接继续 = document_only，先创建评估，再进入可选 UserGoal。
   assert.ok(
     supplement.includes("apiV3.createAssessment"),
-    "continue-directly must create the assessment (internal analysis) before v3-basis",
+    "continue-directly must create the assessment before optional UserGoal",
   )
   assert.ok(
     supplement.includes("apiV3.confirmAssessment"),

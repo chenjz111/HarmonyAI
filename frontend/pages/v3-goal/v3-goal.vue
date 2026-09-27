@@ -94,9 +94,11 @@ export default {
       secondary_goal: null,
       custom_goal_text: "",
       submitting: false,
+      nextStep: "confirm",
     }
   },
-  onLoad() {
+  onLoad(options = {}) {
+    this.nextStep = options.next === "generation" ? "generation" : "confirm"
     apiV3.getSession()
       .then((s) => {
         this.withDocument = s.input_mode === "with_document"
@@ -160,7 +162,7 @@ export default {
       try {
         // 提交 payload 使用合同权威字段名（primary_goal / secondary_goal / custom_goal_text）
         await apiV3.submitHealingIntent(decision.payload)
-        uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
+        uni.redirectTo({ url: this.nextStep === "generation" ? "/pages/v3-generation/v3-generation" : "/pages/v3-confirm/v3-confirm" })
       } catch (e) {
         uni.showToast({ title: (e && e.message) || "保存失败，请稍后重试", icon: "none" })
       } finally {
@@ -169,7 +171,7 @@ export default {
     },
     skip() {
       // 整步跳过：不保存任何偏好、不伪造默认值
-      uni.redirectTo({ url: "/pages/v3-confirm/v3-confirm" })
+      uni.redirectTo({ url: this.nextStep === "generation" ? "/pages/v3-generation/v3-generation" : "/pages/v3-confirm/v3-confirm" })
     },
   },
 }
