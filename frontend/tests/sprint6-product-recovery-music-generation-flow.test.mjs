@@ -194,6 +194,145 @@ test("dispose during preparation ignores stale completion and never creates a ta
   assert.equal(flow.snapshot().disposed, true)
 })
 
+test("D-R1: hidden pending preparation cannot start a task and show resumes exactly once", async () => {
+  const preparation = deferred()
+  let ensureCalls = 0
+  let sessionCreations = 0
+  let startCalls = 0
+  const flow = createMusicGenerationFlow({
+    api: {
+      findPersistedTask: async () => null,
+      ensureMusicBasis: () => {
+        ensureCalls += 1
+        return preparation.promise
+      },
+      startGeneration: async () => {
+        startCalls += 1
+        return playableTask()
+      },
+      syncTask: async () => playableTask(),
+      cancelTask: async () => null,
+    },
+    createSession(options) {
+      sessionCreations += 1
+      return sessionFactory(options)
+    },
+  })
+
+  const pending = flow.start()
+  while (ensureCalls === 0) await Promise.resolve()
+  flow.onHide()
+  preparation.resolve({ generation: { status: "ready" } })
+  await pending
+
+  assert.equal(ensureCalls, 1)
+  assert.equal(startCalls, 0, "hidden preparation completion must not create a task")
+
+  await flow.onShow()
+  assert.equal(ensureCalls, 1, "show must reuse the completed preparation")
+  assert.equal(sessionCreations, 1, "show must reuse the same session")
+  assert.equal(startCalls, 1, "show resumes one logical task")
+  assert.equal(flow.snapshot().taskId, "task_phase_d")
+})
+
+test("D-R1: hidden playable and failure snapshots are retained but not emitted until show", async () => {
+  let sessionListener = () => {}
+  let current = {
+    state: GENERATION_STATES.RUNNING,
+    taskId: "task_hidden",
+    task: { task_id: "task_hidden", status: "running" },
+    asset: null,
+    copy: "生成",
+    playable: false,
+  }
+  const fakeSession = {
+    snapshot: () => current,
+    subscribe(fn) { sessionListener = fn; fn(current); return () => {} },
+    ready() {},
+    ensureGeneration: async () => current,
+    retry: async () => current,
+    cancel: async () => current,
+    onHide() {},
+    onShow: async () => current,
+    dispose() {},
+  }
+  const flow = createMusicGenerationFlow({
+    api: {
+      findPersistedTask: async () => null,
+      ensureMusicBasis: async () => ({}),
+      startGeneration: async () => current.task,
+      syncTask: async () => current.task,
+    },
+    createSession: () => fakeSession,
+  })
+  const observed = []
+  flow.subscribe(value => observed.push(value.phase))
+  await flow.start()
+
+  flow.onHide()
+  const beforeHiddenEvents = observed.length
+  current = {
+    state: GENERATION_STATES.PLAYABLE,
+    taskId: "task_hidden",
+    task: playableTask({ task_id: "task_hidden" }),
+    asset: playableTask({ task_id: "task_hidden" }).audio_asset,
+    copy: "完成",
+    playable: true,
+  }
+  sessionListener(current)
+  assert.equal(observed.length, beforeHiddenEvents, "hidden playable must not reach active-page listeners")
+
+  await flow.onShow()
+  assert.equal(observed.filter(phase => phase === MUSIC_GENERATION_FLOW_PHASES.PLAYABLE).length, 1)
+  assert.equal(flow.snapshot().taskId, "task_hidden")
+
+  flow.onHide()
+  const beforeFailure = observed.length
+  current = {
+    state: GENERATION_STATES.FAILED,
+    taskId: "task_hidden",
+    task: { task_id: "task_hidden", status: "failed" },
+    asset: null,
+    copy: "失败",
+    playable: false,
+  }
+  sessionListener(current)
+  assert.equal(observed.length, beforeFailure, "hidden failure must not reach active-page listeners")
+
+  await flow.onShow()
+  assert.equal(observed.at(-1), MUSIC_GENERATION_FLOW_PHASES.FAILED)
+})
+
+test("D-R1: existing persisted task keeps its identity across hide and show", async () => {
+  const calls = { starts: 0, syncs: 0 }
+  const persisted = { task_id: "task_existing", status: "running" }
+  const flow = createMusicGenerationFlow({
+    api: {
+      findPersistedTask: async () => persisted,
+      ensureMusicBasis: async () => ({}),
+      startGeneration: async () => {
+        calls.starts += 1
+        return playableTask({ task_id: "task_replacement" })
+      },
+      syncTask: async taskId => {
+        calls.syncs += 1
+        assert.equal(taskId, persisted.task_id)
+        return { task_id: persisted.task_id, status: "running" }
+      },
+      cancelTask: async () => null,
+    },
+    createSession: sessionFactory,
+  })
+
+  await flow.start()
+  flow.onHide()
+  await flow.onShow()
+
+  assert.equal(flow.snapshot().taskId, persisted.task_id)
+  assert.equal(calls.starts, 0)
+  assert.equal(calls.syncs, 2, "show resumes the existing task instead of replacing it")
+})
+
 test("hide/show are delegated and session snapshots remain task-lifecycle authority", async () => {
   const calls = { hide: 0, show: 0 }
   let listener = () => {}

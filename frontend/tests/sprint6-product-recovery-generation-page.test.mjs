@@ -30,6 +30,14 @@ test("generation page exposes no internal/provider terminology and owns no task 
   assert.doesNotMatch(generation, /setInterval\s*\(|pollTimer|requestId|idempotency/i)
 })
 
+test("D-R1: generation page disables navigation while hidden and replays current state on show", () => {
+  assert.match(generation, /onHide\(\)\s*\{\s*this\.pageActive\s*=\s*false\s+if\s*\(this\.generationFlow\)\s*this\.generationFlow\.onHide\(\)/)
+  assert.match(generation, /async onShow\(\)\s*\{\s*this\.pageActive\s*=\s*true/)
+  assert.match(generation, /const snapshot\s*=\s*await this\.generationFlow\.onShow\(\)/)
+  assert.match(generation, /this\.applyFlowSnapshot\(snapshot\)/)
+  assert.match(generation, /applyFlowSnapshot\(snapshot\)\s*\{\s*if\s*\(!this\.pageActive\)\s*return/)
+})
+
 test("PR-009: document and questionnaire navigation use explicit goal continuation", () => {
   assert.match(supplement, /\/pages\/v3-goal\/v3-goal\?next=generation/)
   assert.doesNotMatch(supplement, /\/pages\/v3-basis\/v3-basis/)

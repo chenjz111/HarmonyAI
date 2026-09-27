@@ -81,6 +81,7 @@ export function createMusicGenerationFlow(options = {}) {
   let startInFlight = null
   let operationToken = 0
   let sessionLifecycleStarted = false
+  let foreground = true
 
   function snapshot() {
     const sessionSnapshot = internal.session
@@ -102,6 +103,7 @@ export function createMusicGenerationFlow(options = {}) {
 
   function emit() {
     const value = snapshot()
+    if (!foreground) return value
     for (const listener of listeners) {
       try { listener(value) } catch (e) { /* listeners cannot break orchestration */ }
     }
@@ -157,7 +159,7 @@ export function createMusicGenerationFlow(options = {}) {
 
     try {
       const persistedTask = await findPersistedTask()
-      if (internal.disposed || token !== operationToken) return snapshot()
+      if (internal.disposed || token !== operationToken || !foreground) return snapshot()
 
       const currentSession = connectSession()
       if (persistedTask && persistedTask.task_id) {
@@ -170,8 +172,8 @@ export function createMusicGenerationFlow(options = {}) {
         return snapshot()
       }
 
-      internal.basis = await api.ensureMusicBasis()
-      if (internal.disposed || token !== operationToken) return snapshot()
+      if (!internal.basis) internal.basis = await api.ensureMusicBasis()
+      if (internal.disposed || token !== operationToken || !foreground) return snapshot()
 
       currentSession.ready()
       sessionLifecycleStarted = true
@@ -181,7 +183,7 @@ export function createMusicGenerationFlow(options = {}) {
       await currentSession.ensureGeneration()
       return snapshot()
     } catch (error) {
-      if (internal.disposed || token !== operationToken) return snapshot()
+      if (internal.disposed || token !== operationToken || !foreground) return snapshot()
       // Once task lifecycle has started, the session owns all task failures and retries.
       if (sessionLifecycleStarted && session) return snapshot()
       internal.phase = MUSIC_GENERATION_FLOW_PHASES.FAILED
@@ -199,7 +201,7 @@ export function createMusicGenerationFlow(options = {}) {
       return () => listeners.delete(listener)
     },
     start() {
-      if (internal.disposed) return Promise.resolve(snapshot())
+      if (internal.disposed || !foreground) return Promise.resolve(snapshot())
       if (startInFlight) return startInFlight
       if (sessionLifecycleStarted && session) return Promise.resolve(snapshot())
       const token = ++operationToken
@@ -220,12 +222,16 @@ export function createMusicGenerationFlow(options = {}) {
       return session.cancel()
     },
     onHide() {
+      foreground = false
       if (session) session.onHide()
       return snapshot()
     },
-    onShow() {
-      if (!session) return Promise.resolve(snapshot())
-      return session.onShow()
+    async onShow() {
+      if (internal.disposed) return snapshot()
+      foreground = true
+      if (!sessionLifecycleStarted || !session) return flow.start()
+      await session.onShow()
+      return emit()
     },
     dispose() {
       if (internal.disposed) return snapshot()

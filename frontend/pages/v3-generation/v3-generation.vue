@@ -74,10 +74,15 @@ export default {
     void this.generationFlow.start()
   },
   onHide() {
+    this.pageActive = false
     if (this.generationFlow) this.generationFlow.onHide()
   },
-  onShow() {
-    if (this.generationFlow) void this.generationFlow.onShow()
+  async onShow() {
+    this.pageActive = true
+    if (this.generationFlow) {
+      const snapshot = await this.generationFlow.onShow()
+      this.applyFlowSnapshot(snapshot)
+    }
   },
   onUnload() {
     this.pageActive = false
