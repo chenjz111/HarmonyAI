@@ -251,7 +251,6 @@ export default {
           <view class="music-summary-grid">
             <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.primaryTone.displayText || playerPresentation.modeDisplayLabel }}</text><text class="summary-label">{{ toneSummaryLabel }}</text></view>
             <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.analysis.parameters.bpm.displayText }}</text><text class="summary-label">舒缓节奏</text></view>
-            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.duration.minutesText }}</text><text class="summary-label">聆听时长</text></view>
             <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.instruments.displayText }}</text><text class="summary-label">主要乐器</text></view>
             <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.ambience.displayText }}</text><text class="summary-label">音乐氛围</text></view>
           </view>
@@ -901,7 +900,7 @@ export default {
 .music-summary-card { width:100%; padding:12px 10px 13px; box-sizing:border-box; border:1px solid rgba(84,92,80,.12); border-radius:13px; background:rgba(255,255,250,.84); box-shadow:0 3px 12px rgba(62,74,65,.10); }
 .summary-heading { display:flex; align-items:center; gap:8px; margin-bottom:9px; color:#233e3a; font-family:'KaiTi','STKaiti',serif; font-size:17px; font-weight:800; }
 .summary-note { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:rgba(221,229,215,.9); color:var(--tone-accent); font-size:18px; }
-.music-summary-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); }
+.music-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
 .music-summary-cell { display:flex; flex-direction:column; align-items:center; min-width:0; min-height:54px; padding:4px 3px; box-sizing:border-box; border-right:1px solid rgba(80,90,82,.12); text-align:center; }
 .music-summary-cell:last-child { border-right:0; }
 .summary-value { max-width:100%; color:#2d3f3b; font-family:'KaiTi','STKaiti',serif; font-size:10px; font-weight:750; line-height:1.35; overflow-wrap:anywhere; }

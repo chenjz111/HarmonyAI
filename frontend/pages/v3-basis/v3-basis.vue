@@ -171,11 +171,6 @@ export default {
               <text class="param-label">舒缓节奏</text>
             </view>
             <view class="design-card">
-              <image class="basis-icon-image design-icon" src="/static/v31-basis/duration.png" mode="aspectFit" />
-              <text class="param-value">{{ analysisPresentation.parameters.duration.displayText }}</text>
-              <text class="param-label">时长</text>
-            </view>
-            <view class="design-card">
               <image class="basis-icon-image design-icon" src="/static/v31-basis/instrument.png" mode="aspectFit" />
               <text class="param-value">{{ analysisPresentation.parameters.instruments.displayText }}</text>
               <text class="param-label">主要乐器</text>

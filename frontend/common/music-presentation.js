@@ -477,7 +477,6 @@ export function buildAnalysisViewModel(basis) {
   const secondaryTone = presentSecondaryTone(mode.mode, source.secondary_tone)
   const parameterInstruments = source.instruments ? source.instruments.values : null
   const parameterAmbience = source.ambience ? source.ambience.values : null
-  const parameterDuration = source.duration ? source.duration.seconds : null
   return {
     collapsed: true,
     title: ANALYSIS_TITLE,
@@ -495,7 +494,6 @@ export function buildAnalysisViewModel(basis) {
       bpm: presentBpm(source.bpm),
       instruments: presentInstruments(parameterInstruments, { source: "basis" }),
       ambience: presentAmbience(parameterAmbience, { source: "basis" }),
-      duration: presentDuration(parameterDuration),
     },
     disclaimer: presentDisclaimer(source.disclaimer),
   }
