@@ -73,6 +73,7 @@ test("material flow keeps explicit 1-3 upload interaction and standalone error b
 
 test("material error page uses the approved immersive failure artwork without changing routing", () => {
   const error = read("pages/v3-material-error/v3-material-error.vue")
+  const safeAreaShell = read("common/v31-page-shell.scss")
   const template = error.match(/<template>[\s\S]*?<\/template>/)?.[0] || ""
 
   assert.match(template, /material-error-brand/)
@@ -83,8 +84,9 @@ test("material error page uses the approved immersive failure artwork without ch
   assert.match(template, /material-error-secondary/)
   assert.match(template, /material-error-note-line/)
   assert.match(error, /max-width:\s*430px/)
-  assert.match(error, /env\(safe-area-inset-top\)/)
-  assert.match(error, /env\(safe-area-inset-bottom\)/)
+  assert.match(template, /material-error-container v31-page-shell/)
+  assert.match(safeAreaShell, /env\(safe-area-inset-top,\s*0px\)/)
+  assert.match(safeAreaShell, /env\(safe-area-inset-bottom,\s*0px\)/)
   assert.ok(existsSync(resolve(root, "static/v31-material/material-error-background.png")))
   assert.ok(existsSync(resolve(root, "static/v31-material/upload-failed-illustration.png")))
   assert.match(error, /uni\.redirectTo\(\{ url: "\/pages\/v3-material\/v3-material" \}\)/)

@@ -1,6 +1,6 @@
 <template>
   <view class="goal-page v31-scroll-page">
-    <view class="goal-container">
+    <view class="goal-container v31-page-shell">
       <view class="brand-row">
         <button class="back-button" role="button" aria-label="返回" @click="back"><view class="back-chevron" /></button>
         <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
@@ -419,7 +419,7 @@ export default {
   background: #f8f8f1 url('/static/v31-questionnaire/questionnaire-background-q34.png') center top / 100% 100% no-repeat;
   font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
-.goal-container { min-height:100vh; box-sizing:border-box; padding:calc(12px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); }
+.goal-container { --v31-page-top-base:12px; --v31-page-bottom-base:24px; min-height:100vh; box-sizing:border-box; padding-left:16px; padding-right:16px; }
 .goal-page .brand-row { display:flex; align-items:center; min-height:46px; gap:8px; }
 .goal-page .back-button { display:flex; align-items:center; justify-content:center; width:28px; height:40px; margin:0; padding:0; border:0; background:transparent; }
 .goal-page .back-button::after { border:0; }
