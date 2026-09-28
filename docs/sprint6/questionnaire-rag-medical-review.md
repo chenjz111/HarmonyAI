@@ -1,6 +1,7 @@
 # Sprint 6 Product Recovery — Questionnaire RAG Medical Review Pack
 
-Status: **PROPOSED — NOT APPROVED — NOT ACTIVE**
+Status: **MEDICAL / OWNER APPROVED OFFLINE PACK — NOT RUNTIME ACTIVE**
+Approval authority: Owner's 2026-09-28 takeover authorization records MR-01–MR-13 and OD-01–OD-07. MR-06 correction below is required before G2. Proposed corpus additions remain **PROPOSED — NOT APPROVED — NOT ACTIVE**.
 Scope: Phase G1 offline acceptance only. No runtime, corpus, index, provider, schema, migration, or frontend behavior is changed by this pack.
 
 ## 1. Current production authority snapshot
@@ -38,8 +39,8 @@ The machine-readable complete 32-claim matrix is in `knowledge/v3/questionnaire-
 
 | Scope | DIRECT_SUPPORT | BOUNDARY_SUPPORT | UNSUPPORTED | Total |
 | --- | ---: | ---: | ---: | ---: |
-| Full approved claim dictionary | 14 | 9 | 9 | 32 |
-| Current questionnaire Q1–Q10 claims | 13 | 8 | 3 | 24 |
+| Full approved claim dictionary | 13 | 10 | 9 | 32 |
+| Current questionnaire Q1–Q10 claims | 12 | 9 | 3 | 24 |
 
 Direct means an approved chunk explicitly supports the claim wording/domain. Boundary means approved background exists but does not directly state the claim. Unsupported means no current approved chunk may be presented as support.
 
@@ -49,7 +50,7 @@ Direct means an approved chunk explicitly supports the claim wording/domain. Bou
 | Liver/body | `flank_discomfort`, `tendon_stiffness`, `muscle_cramp`, `eye_discomfort` | direct except `flank_discomfort` unsupported |
 | Heart signals | three palpitation claims, `tongue_tip_discomfort` | boundary only |
 | Appetite/digestion | `poor_appetite`, `postmeal_bloating`, `loose_stool`, `postmeal_heaviness` | direct for bloating/loose stool; poor appetite boundary; heaviness unsupported |
-| Respiratory | `throat_cough`, `exertional_breathlessness`, `nasal_discomfort`, `voice_change` | direct except throat/cough boundary |
+| Respiratory | `throat_cough`, `exertional_breathlessness`, `nasal_discomfort`, `voice_change` | throat/cough and exertional breathlessness boundary; nasal/voice direct |
 | Kidney | `lower_back_knee_weakness`, `tinnitus`, `nocturia` | direct for weakness/tinnitus; nocturia unsupported |
 
 The three specifically audited claims remain: `flank_discomfort` = **UNSUPPORTED**, `postmeal_heaviness` = **UNSUPPORTED**, `nocturia` = **UNSUPPORTED**.
@@ -83,7 +84,7 @@ All texts are synthetic labels created for this acceptance pack. No production/u
 
 ## 6. Proposed focused query groups
 
-These groups are derived only from approved `organ-mapping-v3.0.json` single mappings. They are **PROPOSED — NOT APPROVED — NOT ACTIVE**.
+These groups retain approved `organ-mapping-v3.0.json` mappings with the explicit MR-06 reviewed exception: `exertional_breathlessness` activates both `focus_lung` and `focus_kidney`. Primary provenance is lung; secondary provenance is kidney. It is BOUNDARY_SUPPORT in both, never direct evidence. Existing src 08/12 references are retained as boundary references; no new chunk is approved. Group status is **APPROVED_OFFLINE_NOT_ACTIVE**.
 
 | Group | Approved mapping-derived claims | Existing approved support | Unsupported |
 | --- | --- | --- | --- |
@@ -91,13 +92,13 @@ These groups are derived only from approved `organ-mapping-v3.0.json` single map
 | `focus_heart` | agitation, three palpitation claims, tongue-tip discomfort | src 01/04/11 boundary/background | none classified unsupported; several boundary-only |
 | `focus_spleen` | overthinking, poor appetite, postmeal bloating, loose stool, postmeal heaviness | src 01/04/09/11 | postmeal heaviness |
 | `focus_lung` | sadness, throat/cough, breathlessness, nasal discomfort, voice change | src 01/06/08/11/12 | none classified unsupported; some boundary-only |
-| `focus_kidney` | fear, lower-back/knee weakness, tinnitus, nocturia | src 01/05/06/11/13 | nocturia |
+| `focus_kidney` | fear, lower-back/knee weakness, tinnitus, nocturia, exertional breathlessness (MR-06 secondary) | src 01/05/06/11/13; MR-06 boundary provenance retained separately | nocturia |
 
 Expected projection: include approved Chinese claim display names and the approved organ display name for **active confirmed claims only**. No group is activated by a historical/raw fact alone.
 
 ## 7. Unsupported and boundary claims
 
-Boundary claims may retrieve approved background but must not be described as directly proven by that background. Unsupported claims must not receive a fabricated positive label or forced low-score hit. Full lists are frozen in the Gold asset; the present production questionnaire has 8 boundary and 3 unsupported claims.
+Boundary claims may retrieve approved background but must not be described as directly proven by that background. Unsupported claims must not receive a fabricated positive label or forced low-score hit. Full lists are frozen in the Gold asset; the present production questionnaire has 9 boundary and 3 unsupported claims. `postmeal_heaviness` means “超出当前语料覆盖”, not “无医学关联”.
 
 The `flank_discomfort` item also has a known wording conflict between the questionnaire phrase and claim dictionary display name. Medical/Owner review must resolve that conflict before any new active corpus text is approved.
 
@@ -154,34 +155,33 @@ This is design material only. No G2 runtime code exists in this phase.
 
 ## 14. Medical Review decision table
 
-Medical Review must mark each row APPROVE or REJECT; all are currently **PENDING**.
+Medical decisions received through the Owner takeover authorization:
 
 | Decision | Item | Status |
 | --- | --- | --- |
-| A | Gold profile set and positive/negative medical labels | PENDING |
-| B | Five focused groups and their medical/domain rationale | PENDING |
-| C | Claim-to-group mappings derived from approved organ mapping | PENDING |
-| D1 | `proposed_qrag_flank_001` exact wording and source | PENDING |
-| D2 | `proposed_qrag_postmeal_heaviness_001` exact wording and source | PENDING |
-| D3 | `proposed_qrag_nocturia_001` exact wording and source | PENDING |
-| E | Unsupported/no-answer expectations, including gq 14/15/17 | PENDING |
-| F | Preserve thresholds unchanged | PENDING |
-| G | Medical permission for G2 design to proceed | PENDING |
-| H | Medical assessment whether G3 is necessary | PENDING |
+| MR-01/02 | Gold / coverage acceptance pack | Signed; received through Owner |
+| MR-03 | focus_liver | APPROVE |
+| MR-04 | focus_heart | APPROVE |
+| MR-05 | focus_spleen | APPROVE; heaviness remains outside current corpus coverage |
+| MR-06 | focus_lung / exertional_breathlessness | REVISE: lung primary + kidney secondary, BOUNDARY_SUPPORT |
+| MR-07 | focus_kidney | APPROVE plus MR-06 reachability |
+| MR-08/09/10 | flank/heaviness/nocturia unsupported classification | APPROVE no-answer only; proposed chunks NOT approved |
+| MR-11 | thresholds | APPROVE 0.65 / 0.740741 |
+| MR-12 | G2 | CONDITIONAL APPROVE after offline MR-06 correction passes |
+| MR-13 | future G3 | useful future expansion; Owner execution NOT authorized |
 
 ## 15. Owner decision table
 
-Owner must mark each row APPROVE or REJECT after Medical Review; all are currently **PENDING**.
+Owner decisions received (no new corpus or index authorization):
 
 | Decision | Item | Status |
 | --- | --- | --- |
-| A | Freeze Gold profile set as Product Recovery acceptance authority | PENDING |
-| B | Approve focused query groups | PENDING |
-| C | Approve claim-to-group mappings | PENDING |
-| D | Approve/reject each proposed new chunk after Medical Review | PENDING |
-| E | Freeze negative/no-answer safety expectations | PENDING |
-| F | Confirm threshold remains unchanged | PENDING |
-| G | Authorize Phase G2 | PENDING |
-| H | Decide whether Phase G3 is necessary; any index build remains separately unauthorized | PENDING |
+| OD-01 | Freeze Gold benchmark | APPROVE |
+| OD-02 | Preserve 0.65 / 0.740741 | APPROVE |
+| OD-03 | Preserve Top-K 5 | APPROVE |
+| OD-04 | Preserve unsupported-only and gq_14/15/17 empty | APPROVE |
+| OD-05 | Confirmed-state authority | APPROVE |
+| OD-06 | G2 | APPROVE WITH CONDITION: MR-06 verified; no boundary/unsupported promotion |
+| OD-07 | G3 deferred | APPROVE; new corpus/embedding/index NOT authorized |
 
-Until both decision tables are resolved, G2 and G3 remain blocked. Phase H has not started.
+G2 may proceed only after the MR-06 offline correction and all safety gates pass. G3 remains unauthorized. Phase H engineering merged separately in PR #142; Android real-device acceptance remains pending. This pack changes no runtime, index or corpus.

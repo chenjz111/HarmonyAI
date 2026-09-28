@@ -91,14 +91,14 @@ def test_coverage_classifies_every_claim_and_questionnaire_claim_exactly_once():
         "BOUNDARY_SUPPORT",
         "UNSUPPORTED",
     }
-    assert sum(item["support_class"] == "DIRECT_SUPPORT" for item in coverage) == 14
-    assert sum(item["support_class"] == "BOUNDARY_SUPPORT" for item in coverage) == 9
+    assert sum(item["support_class"] == "DIRECT_SUPPORT" for item in coverage) == 13
+    assert sum(item["support_class"] == "BOUNDARY_SUPPORT" for item in coverage) == 10
     assert sum(item["support_class"] == "UNSUPPORTED" for item in coverage) == 9
     assert {item["claim_code"] for item in coverage if item["questionnaire_active"]} == questionnaire_codes
     q_items = [item for item in coverage if item["questionnaire_active"]]
     assert len(q_items) == 24
-    assert sum(item["support_class"] == "DIRECT_SUPPORT" for item in q_items) == 13
-    assert sum(item["support_class"] == "BOUNDARY_SUPPORT" for item in q_items) == 8
+    assert sum(item["support_class"] == "DIRECT_SUPPORT" for item in q_items) == 12
+    assert sum(item["support_class"] == "BOUNDARY_SUPPORT" for item in q_items) == 9
     assert sum(item["support_class"] == "UNSUPPORTED" for item in q_items) == 3
     for code in ("flank_discomfort", "postmeal_heaviness", "nocturia"):
         assert by_code[code]["support_class"] == "UNSUPPORTED"
@@ -176,7 +176,7 @@ def test_proposed_groups_are_mapping_derived_and_do_not_activate_history():
         "focus_lung",
         "focus_kidney",
     }
-    assert all(item["status"] == "PROPOSED_NOT_APPROVED_NOT_ACTIVE" for item in groups)
+    assert all(item["status"] == "APPROVED_OFFLINE_NOT_ACTIVE" for item in groups)
     assert all(item["activation_rule"] == "ACTIVE_CONFIRMED_CLAIMS_ONLY" for item in groups)
     mapped = [code for item in groups for code in item["included_claim_codes"]]
     questionnaire_codes = {
@@ -184,11 +184,13 @@ def test_proposed_groups_are_mapping_derived_and_do_not_activate_history():
         for item in gold["claim_coverage"]
         if item["questionnaire_active"]
     }
-    assert len(mapped) == len(set(mapped))
+    assert len(mapped) == len(set(mapped)) + 1
+    assert {code for code in mapped if mapped.count(code) > 1} == {"exertional_breathlessness"}
     assert set(mapped) == questionnaire_codes
     for group in groups:
         assert all(
             approved_mapping[code] == group["organ_code"]
+            or (code == "exertional_breathlessness" and group["organ_code"] == "kidney")
             for code in group["included_claim_codes"]
         )
 
@@ -273,4 +275,19 @@ def test_medical_review_document_contains_all_required_decision_sections():
     assert document.count("PROPOSED — NOT APPROVED — NOT ACTIVE") >= 2
     assert "merge key:" in document
     assert "retain the highest valid score" in document
-    assert "Phase H has not started" in document
+    assert "MR-06" in document
+
+
+def test_mr06_breathlessness_is_boundary_in_both_approved_groups():
+    gold = _gold()
+    item = next(row for row in gold["claim_coverage"] if row["claim_code"] == "exertional_breathlessness")
+    assert item["support_class"] == "BOUNDARY_SUPPORT"
+    assert item["supporting_chunk_ids"] == []
+    assert item["boundary_chunk_ids"] == ["v31_src_08_scope_001", "v31_src_12_scope_001"]
+    assert item["organ_provenance"] == {"primary": "lung", "secondary": ["kidney"], "review_ref": "MR-06"}
+    groups = [row["group_id"] for row in gold["proposed_focused_query_groups"] if item["claim_code"] in row["included_claim_codes"]]
+    assert groups == ["focus_lung", "focus_kidney"]
+    respiratory = next(row for row in gold["profiles"] if row["profile_id"] == "qrag_positive_respiratory")
+    assert "v31_src_08_scope_001" not in respiratory["expected_positive_chunk_ids"]
+    assert {"v31_src_08_scope_001", "v31_src_12_scope_001"} <= set(respiratory["allowed_boundary_chunk_ids"])
+    assert _fixture()["medical_review"]["exertional_breathlessness"] == item["organ_provenance"] | {"support_class": "BOUNDARY_SUPPORT"}
