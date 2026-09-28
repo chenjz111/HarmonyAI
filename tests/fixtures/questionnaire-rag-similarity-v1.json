@@ -1,0 +1,119 @@
+{
+  "schema_id": "questionnaire_rag_similarity_fixture",
+  "schema_version": "1.0.0",
+  "fixture_version": "questionnaire-rag-similarity-v1",
+  "fixture_checksum": "sha256:71ed042a71f37b77dfeddde54cc1ac292c28dc96c57637812360629109c5a1e9",
+  "provenance": {
+    "mode": "SYNTHETIC_OFFLINE_NOT_LIVE_MEASUREMENT",
+    "purpose": "Deterministic threshold/filter and semantic-dilution acceptance architecture; values are review fixtures, not measured provider output.",
+    "runtime_active": false,
+    "real_embedding_calls": 0,
+    "query_policy_version": "rag-query-policy-v3.2-r1",
+    "query_builder_version": "diagnosis_query_v3.2",
+    "corpus_version": "medical_v3.1-approved.1",
+    "corpus_checksum": "sha256:fbf2207de75b963d316fc4bc54cb3e8e6c91f475d7766d4b27adec237101961a",
+    "manifest_checksum": "sha256:4ffef480fd66d38cd8f3cecc96ccce4e1135869cdccbbf7b2162cbf9139a8f76",
+    "embedding_model": "text-embedding-v4",
+    "embedding_dimension": 1024,
+    "distance_metric": "cosine",
+    "source_cosine_threshold": 0.65,
+    "minimum_normalized_score": 0.740741,
+    "score_conversion": "normalized_similarity = 1 / (2 - cosine)",
+    "score_origin": "synthetic boundary values selected only to exercise frozen gates"
+  },
+  "profile_results": [
+    {
+      "profile_id": "qrag_positive_anger_liver",
+      "query_identity": "fixture:combined:qrag_positive_anger_liver:v1",
+      "baseline_observation": "supported profile represented above the preserved threshold",
+      "candidates": [
+        {"chunk_id":"v31_src_01_scope_001","normalized_score":0.790000,"filter_reason":"APPROVED"},
+        {"chunk_id":"v31_src_02_scope_001","normalized_score":0.770000,"filter_reason":"APPROVED"},
+        {"chunk_id":"v31_src_07_scope_001","normalized_score":0.700000,"filter_reason":"BELOW_MINIMUM_SCORE"}
+      ]
+    },
+    {
+      "profile_id": "qrag_positive_appetite_digestion",
+      "query_identity": "fixture:combined:qrag_positive_appetite_digestion:v1",
+      "baseline_observation": "direct digestion support represented above the preserved threshold",
+      "candidates": [
+        {"chunk_id":"v31_src_11_scope_001","normalized_score":0.800000,"filter_reason":"APPROVED"},
+        {"chunk_id":"v31_src_04_scope_001","normalized_score":0.745000,"filter_reason":"APPROVED"},
+        {"chunk_id":"v31_src_10_scope_001","normalized_score":0.690000,"filter_reason":"BELOW_MINIMUM_SCORE"}
+      ]
+    },
+    {
+      "profile_id": "qrag_positive_respiratory",
+      "query_identity": "fixture:combined:qrag_positive_respiratory:v1",
+      "baseline_observation": "respiratory support represented above the preserved threshold",
+      "candidates": [
+        {"chunk_id":"v31_src_08_scope_001","normalized_score":0.790000,"filter_reason":"APPROVED"},
+        {"chunk_id":"v31_src_06_scope_001","normalized_score":0.770000,"filter_reason":"APPROVED"},
+        {"chunk_id":"v31_src_11_scope_001","normalized_score":0.760000,"filter_reason":"APPROVED"}
+      ]
+    },
+    {
+      "profile_id": "qrag_positive_kidney",
+      "query_identity": "fixture:combined:qrag_positive_kidney:v1",
+      "baseline_observation": "supported kidney claims remain retrievable despite one unsupported active claim",
+      "candidates": [
+        {"chunk_id":"v31_src_13_scope_001","normalized_score":0.800000,"filter_reason":"APPROVED"},
+        {"chunk_id":"v31_src_05_scope_001","normalized_score":0.780000,"filter_reason":"APPROVED"},
+        {"chunk_id":"v31_src_11_scope_001","normalized_score":0.750000,"filter_reason":"APPROVED"}
+      ]
+    },
+    {
+      "profile_id": "qrag_mixed_10_claims",
+      "query_identity": "fixture:current-combined:qrag_mixed_10_claims:v1",
+      "baseline_observation": "synthetic representation of semantic dilution: all combined-query candidates fall below the preserved threshold",
+      "candidates": [
+        {"chunk_id":"v31_src_01_scope_001","normalized_score":0.731000,"filter_reason":"BELOW_MINIMUM_SCORE"},
+        {"chunk_id":"v31_src_11_scope_001","normalized_score":0.724000,"filter_reason":"BELOW_MINIMUM_SCORE"},
+        {"chunk_id":"v31_src_08_scope_001","normalized_score":0.712000,"filter_reason":"BELOW_MINIMUM_SCORE"},
+        {"chunk_id":"v31_src_13_scope_001","normalized_score":0.704000,"filter_reason":"BELOW_MINIMUM_SCORE"}
+      ]
+    },
+    {
+      "profile_id": "qrag_negative_unsupported_only",
+      "query_identity": "fixture:combined:qrag_negative_unsupported_only:v1",
+      "baseline_observation": "unsupported-only profile must remain empty",
+      "candidates": [
+        {"chunk_id":"v31_src_11_scope_001","normalized_score":0.710000,"filter_reason":"BELOW_MINIMUM_SCORE"},
+        {"chunk_id":"v31_src_05_scope_001","normalized_score":0.690000,"filter_reason":"BELOW_MINIMUM_SCORE"}
+      ]
+    },
+    {
+      "profile_id": "qrag_negative_gq14",
+      "query_identity": "historical-gold:gq_14",
+      "baseline_observation": "historical offline analysis reports source cosine 0.6184 for src_10, below 0.65; normalized score here is the documented conversion",
+      "candidates": [
+        {"chunk_id":"v31_src_10_scope_001","source_cosine":0.618400,"normalized_score":0.723799,"filter_reason":"BELOW_MINIMUM_SCORE"}
+      ]
+    },
+    {
+      "profile_id": "qrag_negative_gq15",
+      "query_identity": "historical-gold:gq_15",
+      "baseline_observation": "historical offline analysis found no eligible candidate; sentinel candidate remains below threshold for deterministic fixture validation",
+      "candidates": [
+        {"chunk_id":"v31_src_01_scope_001","normalized_score":0.600000,"filter_reason":"BELOW_MINIMUM_SCORE"}
+      ]
+    },
+    {
+      "profile_id": "qrag_negative_gq17",
+      "query_identity": "historical-gold:gq_17",
+      "baseline_observation": "historical offline analysis reports source cosine 0.6343 for src_11, below 0.65; normalized score here is the documented conversion",
+      "candidates": [
+        {"chunk_id":"v31_src_11_scope_001","source_cosine":0.634300,"normalized_score":0.732225,"filter_reason":"BELOW_MINIMUM_SCORE"}
+      ]
+    },
+    {
+      "profile_id": "qrag_confirmed_edit_removes_anger",
+      "query_identity": "fixture:active-confirmed-only:qrag_confirmed_edit_removes_anger:v1",
+      "baseline_observation": "removed anger fact is absent from query identity and candidates; active digestion fact remains",
+      "candidates": [
+        {"chunk_id":"v31_src_11_scope_001","normalized_score":0.790000,"filter_reason":"APPROVED"},
+        {"chunk_id":"v31_src_04_scope_001","normalized_score":0.745000,"filter_reason":"APPROVED"}
+      ]
+    }
+  ]
+}
