@@ -23,13 +23,15 @@ test("v3-player delegates every audio lifecycle action to player-controller", ()
   assert.doesNotMatch(source, /\baudioCtx\b|resolvedAudioSrc|resolvedAudioStreamUrl/)
 })
 
-test("v3-player renders music facts, duration, progress, and failure through music-presentation", () => {
+test("v3-player renders music facts, actual playback progress, and failure through music-presentation", () => {
   assert.match(source, /buildMusicPresentation/)
   assert.match(source, /presentProgress/)
   assert.match(source, /playerPresentation\.title\.displayText/)
   assert.match(source, /playerPresentation\.instruments\.displayText/)
   assert.match(source, /playerPresentation\.ambience\.displayText/)
-  assert.match(source, /playerPresentation\.duration\.minutesText/)
+  assert.match(source, /totalSeconds:\s*this\.playerPresentation\.duration\.seconds/)
+  assert.doesNotMatch(source, /playerPresentation\.duration\.minutesText/)
+  assert.doesNotMatch(source, /聆听时长|推荐时长|建议时长|调适时长/)
   assert.match(source, /progressPresentation\.currentText/)
   assert.match(source, /progressPresentation\.totalText/)
   assert.match(source, /failurePresentation\.failure\.message/)

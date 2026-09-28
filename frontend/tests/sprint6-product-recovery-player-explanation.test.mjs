@@ -127,7 +127,58 @@ test("PR-011/PR-012: Player exposes the approved explanation entry and starts co
   assert.equal(page.analysisExpanded, false)
   assert.match(playerSource, /为什么是这首音乐？/)
   assert.match(playerSource, /查看本次音乐的生成依据/)
-  assert.match(playerSource, /v-if="analysisExpanded"/)
+  assert.match(playerSource, /v-if="analysisVisible"\s+class="analysis-card"/)
+  assert.match(playerSource, /v-if="analysisVisible && analysisExpanded"/)
+})
+
+test("F-R2: all-empty analysis hides the explanation card and details", () => {
+  const harness = createHarness()
+  const page = instantiatePage(loadPlayerPage(harness))
+  page.music = harness.music
+  page.basis = {}
+
+  assert.equal(page.playerPresentation.analysis.hasContent, false)
+  assert.equal(page.analysisVisible, false)
+  assert.equal(page.analysisExpanded, false)
+})
+
+test("F-R2: one valid section shows a collapsed explanation with only that section", () => {
+  const harness = createHarness()
+  const page = instantiatePage(loadPlayerPage(harness))
+  page.music = harness.music
+  page.basis = { confirmed_state: "近期睡眠欠佳。" }
+
+  assert.equal(page.analysisVisible, true)
+  assert.equal(page.analysisExpanded, false)
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(page.playerPresentation.analysis.sections).map(([key, section]) => [key, section.hasContent])),
+    {
+      recentState: true,
+      interpretation: false,
+      rationales: false,
+      toneConfiguration: false,
+      musicDesign: false,
+    },
+  )
+
+  page.toggleAnalysis()
+  assert.equal(page.analysisExpanded, true)
+})
+
+test("F-R2: multiple valid sections keep only their independent visibility", () => {
+  const harness = createHarness()
+  const page = instantiatePage(loadPlayerPage(harness))
+  page.music = harness.music
+  page.basis = {
+    confirmed_state: "近期睡眠欠佳。",
+    analysis_rationales: [{ summary: "依据已确认信息安排本次音乐。" }],
+    state_tendency: "Qwen3.8",
+  }
+
+  assert.equal(page.analysisVisible, true)
+  assert.equal(page.playerPresentation.analysis.sections.recentState.hasContent, true)
+  assert.equal(page.playerPresentation.analysis.sections.rationales.hasContent, true)
+  assert.equal(page.playerPresentation.analysis.sections.interpretation.hasContent, false)
 })
 
 test("PR-013: repeated explanation toggles execute page behavior without changing playback authorities", async () => {
@@ -135,6 +186,7 @@ test("PR-013: repeated explanation toggles execute page behavior without changin
   const options = loadPlayerPage(harness)
   const page = instantiatePage(options)
   await page.load()
+  assert.equal(page.analysisVisible, true)
 
   const before = {
     api: [harness.calls.getMusic, harness.calls.getMusicBasis],

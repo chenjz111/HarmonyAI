@@ -91,7 +91,7 @@ export default {
       <view v-else-if="phase === 'basis'" class="basis-content ink-fade-up">
 
         <!-- 近期状态 -->
-        <view class="basis-section-card state-section">
+        <view v-if="analysisPresentation.sections.recentState.hasContent" class="basis-section-card state-section">
           <view class="section-head">
             <view class="section-icon-shell leaf-shell"><image class="section-leaf-image" src="/static/v31-goal/intent-2.png" mode="aspectFit" /></view>
             <text class="section-title">近期状态</text>
@@ -102,7 +102,7 @@ export default {
         </view>
 
         <!-- 状态解读 -->
-        <view class="basis-section-card interpretation-section">
+        <view v-if="analysisPresentation.sections.interpretation.hasContent" class="basis-section-card interpretation-section">
           <view class="section-head">
             <view class="section-icon-shell"><image class="basis-icon-image" src="/static/v31-basis/status.png" mode="aspectFit" /></view>
             <text class="section-title">状态解读</text>
@@ -113,7 +113,7 @@ export default {
         </view>
 
         <!-- 调适依据 -->
-        <view class="basis-section-card rationale-section">
+        <view v-if="analysisPresentation.sections.rationales.hasContent" class="basis-section-card rationale-section">
           <view class="section-head">
             <view class="section-icon-shell"><image class="basis-icon-image" src="/static/v31-basis/basis.png" mode="aspectFit" /></view>
             <text class="section-title">调适依据</text>
@@ -127,7 +127,7 @@ export default {
         </view>
 
         <!-- 五音配置 -->
-        <view class="basis-section-card tone-section">
+        <view v-if="analysisPresentation.sections.toneConfiguration.hasContent" class="basis-section-card tone-section">
           <view class="section-head section-head-spread">
             <view class="section-heading-main">
               <view class="section-icon-shell"><image class="basis-icon-image" src="/static/v31-basis/tone.png" mode="aspectFit" /></view>
@@ -156,7 +156,7 @@ export default {
         </view>
 
         <!-- 音乐设计 -->
-        <view class="basis-section-card design-section">
+        <view v-if="analysisPresentation.sections.musicDesign.hasContent" class="basis-section-card design-section">
           <view class="section-head section-head-spread">
             <view class="section-heading-main">
               <view class="section-icon-shell section-icon-note"><text>♫</text></view>
@@ -169,11 +169,6 @@ export default {
               <image class="basis-icon-image design-icon" src="/static/v31-basis/bpm.png" mode="aspectFit" />
               <text class="param-value">{{ analysisPresentation.parameters.bpm.displayText }}</text>
               <text class="param-label">舒缓节奏</text>
-            </view>
-            <view class="design-card">
-              <image class="basis-icon-image design-icon" src="/static/v31-basis/duration.png" mode="aspectFit" />
-              <text class="param-value">{{ analysisPresentation.parameters.duration.displayText }}</text>
-              <text class="param-label">时长</text>
             </view>
             <view class="design-card">
               <image class="basis-icon-image design-icon" src="/static/v31-basis/instrument.png" mode="aspectFit" />

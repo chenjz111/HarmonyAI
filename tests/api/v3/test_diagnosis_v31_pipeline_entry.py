@@ -432,7 +432,18 @@ def test_formal_router_persists_abstained_retrieval_audit(
     )
 
     assert response.status_code == 201, response.text
-    assert response.json()["data"]["status"] == "abstained"
+    response_data = response.json()["data"]
+    assert response_data["status"] == "abstained"
+    assert response_data["abstain_reason"] == "RAG_EMPTY"
+    assert response_data["degradation"]["reason_codes"] == ["RAG_EMPTY"]
+    public_presentation = response_data["presentation"]
+    assert public_presentation["title"] == "本次未形成明确的状态倾向"
+    assert public_presentation["primary_tendency"] is None
+    assert public_presentation["basis_summaries"] == []
+    public_copy = str(public_presentation)
+    assert "RAG" not in public_copy
+    assert "检索证据" not in public_copy
+    assert "医学性暂缓" not in public_copy
     audit_db = db_session_factory()
     try:
         diagnosis = audit_db.query(DiagnosisRun).one()
