@@ -62,7 +62,7 @@ export default {
 
 <template>
   <view class="material-error-page">
-    <view class="material-error-container">
+    <view class="material-error-container v31-page-shell">
       <view class="material-error-brand">
         <image class="material-error-logo" src="/static/v31-document/leaf.svg" mode="aspectFit" />
         <view class="material-error-brand-copy">
@@ -253,16 +253,16 @@ export default {
   background: #edf3ed;
 }
 .material-error-container {
+  --v31-page-top-base: 18px;
+  --v31-page-bottom-base: 25px;
   display: flex;
   width: 100%;
   max-width: 430px;
   min-height: 100vh;
   min-height: 100svh;
   margin: 0 auto;
-  padding:
-    max(18px, env(safe-area-inset-top))
-    14px
-    max(25px, env(safe-area-inset-bottom));
+  padding-left: 14px;
+  padding-right: 14px;
   box-sizing: border-box;
   flex-direction: column;
   align-items: center;

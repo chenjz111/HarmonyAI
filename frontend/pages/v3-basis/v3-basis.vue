@@ -55,7 +55,7 @@ export default {
 
 <template>
   <view class="basis-page v31-scroll-page">
-    <view class="basis-container">
+    <view class="basis-container v31-page-shell">
       <view class="brand-row">
         <button class="back-button" role="button" aria-label="返回" @click="back"><view class="back-chevron" /></button>
         <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
@@ -600,11 +600,14 @@ export default {
   background: #edf7f3;
 }
 .basis-container {
+  --v31-page-top-base: 14px;
+  --v31-page-bottom-base: 34px;
   width: 100%;
   max-width: 430px;
   min-height: 100vh;
   margin: 0 auto;
-  padding: 14px 14px 34px;
+  padding-left: 14px;
+  padding-right: 14px;
   box-sizing: border-box;
   background-color: #fbfcf7;
   background-image: linear-gradient(rgba(255,255,252,.12),rgba(255,255,252,.12)), url('/static/v31-questionnaire/questionnaire-background-q34.png');

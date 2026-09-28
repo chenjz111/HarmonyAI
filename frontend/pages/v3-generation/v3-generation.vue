@@ -1,6 +1,6 @@
 <template>
   <view class="generation-page">
-    <view class="generation-shell">
+    <view class="generation-shell v31-page-shell">
       <view class="brand-row">
         <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
         <view class="brand-copy">
@@ -138,12 +138,15 @@ export default {
   background: #edf7f3;
 }
 .generation-shell {
+  --v31-page-top-base: 14px;
+  --v31-page-bottom-base: 36px;
   box-sizing: border-box;
   width: 100%;
   max-width: 430px;
   min-height: 100vh;
   margin: 0 auto;
-  padding: 14px 18px 36px;
+  padding-left: 18px;
+  padding-right: 18px;
   background-color: #fbfcf7;
   background-image: linear-gradient(rgba(255,255,252,.18),rgba(255,255,252,.18)), url('/static/v31-questionnaire/questionnaire-background-q34.png');
   background-repeat: no-repeat;

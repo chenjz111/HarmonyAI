@@ -13,6 +13,8 @@ export default {
 </script>
 
 <style>
+@import "./common/v31-page-shell.scss";
+
 /* ===== HarmonyAI 全局样式 — 中式水墨 · 茶空间 · 宣纸（v2） =====
  * 参考 han-design tea/ink 主题 + shuimo-ui 山水留白意境
  */
