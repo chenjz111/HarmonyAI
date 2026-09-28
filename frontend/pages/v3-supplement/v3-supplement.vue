@@ -69,7 +69,7 @@ export default {
 </script>
 <template>
   <view class="supplement-page">
-    <view class="supplement-content">
+    <view class="supplement-content v31-page-shell">
       <view class="brand-row">
         <button class="back-button" role="button" aria-label="返回资料摘要" :disabled="navigating || analyzing" @click="backToSummary"><view class="back-chevron" /></button>
         <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
@@ -110,7 +110,7 @@ export default {
 
 <style scoped>
 .supplement-page { width:100%; max-width:430px; min-height:100vh; margin:0 auto; color:#064c50; background:#f7f8f1 url('/static/v31-supplement/background.png') center top / 100% 100% no-repeat; font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
-.supplement-content { box-sizing:border-box; padding:calc(16px + env(safe-area-inset-top)) 22px calc(150px + env(safe-area-inset-bottom)); }
+.supplement-content { --v31-page-top-base:16px; --v31-page-bottom-base:150px; box-sizing:border-box; padding-left:22px; padding-right:22px; }
 .brand-row { display:flex; align-items:center; gap:9px; }
 .back-button { display:flex; align-items:center; justify-content:center; width:36px; height:44px; flex-shrink:0; margin:0 0 0 -10px; padding:0; background:transparent; border:0; }
 .back-button::after,.choice-button::after { border:0; }

@@ -220,7 +220,7 @@ export default {
 
 <template>
   <view class="questionnaire-page v31-scroll-page" :class="{ 'questionnaire-page-q34': current === 1, 'questionnaire-page-q56': current === 2, 'questionnaire-page-q78': current === 3, 'questionnaire-page-q910': current === 4 }">
-    <view class="container">
+    <view class="container v31-page-shell">
       <view class="brand-row">
         <button class="back-button" role="button" aria-label="返回" @click="back"><view class="back-chevron" /></button>
         <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
@@ -360,7 +360,6 @@ export default {
 <style scoped>
 .container {
   min-height: 100vh;
-  padding: 70rpx 48rpx 60rpx;
   box-sizing: border-box;
 }
 
@@ -707,7 +706,7 @@ export default {
 .questionnaire-page-q56 { background-image:url('/static/v31-questionnaire/questionnaire-background-q34.png'); }
 .questionnaire-page-q78 { background-image:url('/static/v31-questionnaire/questionnaire-background-q34.png'); }
 .questionnaire-page-q910 { background-image:url('/static/v31-questionnaire/questionnaire-background-q34.png'); }
-.questionnaire-page .container { min-height:100vh; padding:calc(12px + env(safe-area-inset-top)) 8px calc(24px + env(safe-area-inset-bottom)); }
+.questionnaire-page .container { --v31-page-top-base:12px; --v31-page-bottom-base:24px; min-height:100vh; padding-left:8px; padding-right:8px; }
 .brand-row { display:flex; align-items:center; min-height:42px; gap:7px; padding:0 5px; }
 .back-button { display:flex; align-items:center; justify-content:center; width:30px; height:40px; margin:0; padding:0; border:0; background:transparent; flex-shrink:0; }
 .back-button::after { border:0; }

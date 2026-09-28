@@ -183,7 +183,7 @@ export default {
 
 <template>
   <view class="tone-player-page" :style="playerStyle">
-    <view class="player-shell">
+    <view class="player-shell v31-page-shell">
       <view class="brand-row">
         <button class="back-button" role="button" aria-label="返回" @click="exitSession"><view class="back-chevron" /></button>
         <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
@@ -859,7 +859,7 @@ export default {
   background-position:center top;
   background-size:100% 100%;
 }
-.player-shell { min-height:100vh; padding:14px 16px 26px; box-sizing:border-box; }
+.player-shell { --v31-page-top-base:14px; --v31-page-bottom-base:26px; min-height:100vh; padding-left:16px; padding-right:16px; box-sizing:border-box; }
 .tone-player-page .brand-row { display:flex; align-items:center; min-height:46px; gap:8px; }
 .tone-player-page .back-button { display:flex; align-items:center; justify-content:center; width:28px; height:40px; margin:0; padding:0; border:0; background:transparent; }
 .tone-player-page .back-button::after { border:0; }

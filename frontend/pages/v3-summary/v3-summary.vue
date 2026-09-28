@@ -129,7 +129,7 @@ export default {
 
 <template>
   <view class="doc-page summary-page">
-    <view class="doc-container">
+    <view class="doc-container v31-page-shell">
       <document-header :step="2" title="请确认资料摘要" :quote="'每一份资料\n都是走向更好的开始'" @back="reupload" />
       <view v-if="loading" class="loading-wrap"><view class="loading-ring"></view><text class="loading-text">正在整理资料摘要…</text></view>
       <view v-else-if="error" class="error-card"><text class="error-title">暂时无法加载</text><text class="error-text">{{ error }}</text><button role="button" class="primary-button" @click="load">重试</button></view>

@@ -258,7 +258,7 @@ export default {
 
 <template>
   <view class="doc-page material-page">
-    <view class="doc-container">
+    <view class="doc-container v31-page-shell">
       <document-header :step="headerStep" :title="headerTitle" :quote="isPicking ? '用音乐\n陪伴更好的你' : '每一份资料\n都是走向更好的开始'" :subtitle="isPicking ? '可上传 1~3 张近期病历、检查报告或相关就诊记录。' : ''" @back="handleBack" />
 
       <view v-if="isPicking" class="upload-area">

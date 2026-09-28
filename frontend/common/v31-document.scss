@@ -4,7 +4,7 @@
   color: #173f35;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
-.doc-container { display: flex; flex-direction: column; min-height: 100vh; padding: env(safe-area-inset-top) 18px calc(24px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.doc-container { --v31-page-top-base: 16px; --v31-page-bottom-base: 24px; display: flex; flex-direction: column; min-height: 100vh; padding-left: 18px; padding-right: 18px; box-sizing: border-box; }
 .doc-footer { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: auto; padding-top: 54px; min-height: 52px; }
 .doc-footer text { color: #65978a; font-size: 8px; letter-spacing: .3em; text-align: center; }
 .doc-footer::before,.doc-footer::after { content: ''; width: 16px; height: 1px; background: #a5c9ba; }

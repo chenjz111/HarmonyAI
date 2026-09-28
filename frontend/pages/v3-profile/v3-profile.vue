@@ -1,5 +1,5 @@
 <template>
-  <view class="profile-page v31-mobile-page">
+  <view class="profile-page v31-mobile-page v31-page-shell">
     <view class="profile-orb"><text class="profile-glyph">和</text></view>
     <text class="profile-brand">HarmonyAI</text>
     <text class="profile-title">功能升级中</text>
@@ -20,9 +20,12 @@ export default {
 
 <style scoped>
 .profile-page {
+  --v31-page-top-base: 160rpx;
+  --v31-page-bottom-base: 180rpx;
   min-height: 100vh;
   box-sizing: border-box;
-  padding: calc(160rpx + env(safe-area-inset-top)) 48rpx 180rpx;
+  padding-left: 48rpx;
+  padding-right: 48rpx;
   display: flex;
   flex-direction: column;
   align-items: center;

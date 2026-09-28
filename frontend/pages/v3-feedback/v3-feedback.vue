@@ -179,7 +179,7 @@ export default {
 
 <template>
   <view class="feedback-page v31-scroll-page" :class="{ 'feedback-page--success': submitted }">
-    <view class="feedback-container" :class="{ 'feedback-container--success': submitted }">
+    <view class="feedback-container v31-page-shell" :class="{ 'feedback-container--success': submitted }">
       <view class="brand-row">
         <button class="back-button" role="button" aria-label="返回" @click="back"><view class="back-chevron" /></button>
         <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
@@ -641,7 +641,6 @@ export default {
   display: flex;
   min-height: 100vh;
   min-height: 100svh;
-  padding-bottom: max(24px, env(safe-area-inset-bottom));
   flex-direction: column;
   overflow: hidden;
   background-color: #f7f4ea;
@@ -820,7 +819,7 @@ export default {
 /* ===== Owner V3.1 聆听反馈视觉稿 ===== */
 .feedback-page { min-height:100vh; color:#0b4f51; background:#e7f3ef; }
 .feedback-container {
-  width:100%; max-width:430px; min-height:100vh; margin:0 auto; padding:14px 12px 34px; box-sizing:border-box;
+  --v31-page-top-base:14px; --v31-page-bottom-base:34px; width:100%; max-width:430px; min-height:100vh; margin:0 auto; padding-left:12px; padding-right:12px; box-sizing:border-box;
   background-color:#fbfcf7;
   background-image:linear-gradient(rgba(255,255,252,.10),rgba(255,255,252,.10)),url('/static/v31-questionnaire/questionnaire-background-q34.png');
   background-repeat:no-repeat; background-position:center top; background-size:100% 100%;
@@ -869,7 +868,6 @@ export default {
 .feedback-page--success .brand-row {
   position: relative;
   z-index: 2;
-  padding-top: max(0px, env(safe-area-inset-top));
 }
 @media (max-width:350px) {
   .feedback-container { padding-left:8px; padding-right:8px; }
