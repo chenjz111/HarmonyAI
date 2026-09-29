@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[3]
 GOLD_PATH = ROOT / "knowledge/v3/questionnaire-rag-gold-profiles-v1.json"
@@ -291,3 +293,75 @@ def test_mr06_breathlessness_is_boundary_in_both_approved_groups():
     assert "v31_src_08_scope_001" not in respiratory["expected_positive_chunk_ids"]
     assert {"v31_src_08_scope_001", "v31_src_12_scope_001"} <= set(respiratory["allowed_boundary_chunk_ids"])
     assert _fixture()["medical_review"]["exertional_breathlessness"] == item["organ_provenance"] | {"support_class": "BOUNDARY_SUPPORT"}
+
+
+def _offline_active_groups(active, removed=(), confirmed=True):
+    """Interpret the G1 eligibility asset only; this does not exercise G2 runtime."""
+    groups = _gold()["proposed_focused_query_groups"]
+    assert all("retrieval_activation" in group for group in groups), "missing retrieval eligibility contract"
+    current = set(active) - set(removed) if confirmed else set()
+    return [
+        group["group_id"] for group in groups
+        if current.intersection(group["retrieval_activation"]["eligible_claim_codes"])
+    ]
+
+
+@pytest.mark.parametrize("active,removed,confirmed,expected", [
+    (["flank_discomfort", "postmeal_heaviness", "nocturia"], [], True, []),
+    (["flank_discomfort", "eye_discomfort"], [], True, ["focus_liver"]),
+    (["postmeal_heaviness", "poor_appetite"], [], True, ["focus_spleen"]),
+    (["nocturia", "tinnitus"], [], True, ["focus_kidney"]),
+    (["exertional_breathlessness"], [], True, ["focus_lung", "focus_kidney"]),
+    (["anger_tendency", "postmeal_bloating"], ["anger_tendency"], True, ["focus_spleen"]),
+    (["exertional_breathlessness"], ["exertional_breathlessness"], True, []),
+    ([], ["exertional_breathlessness"], True, []),
+    (["eye_discomfort"], [], False, []),
+])
+def test_offline_retrieval_activation_matrix(active, removed, confirmed, expected):
+    assert _offline_active_groups(active, removed, confirmed) == expected
+
+
+def test_membership_and_retrieval_eligibility_are_distinct_and_complete():
+    gold = _gold()
+    coverage = {row["claim_code"]: row["support_class"] for row in gold["claim_coverage"]}
+    for group in gold["proposed_focused_query_groups"]:
+        rule = group.get("retrieval_activation", {})
+        assert rule.get("requires_confirmed_active") is True
+        assert rule.get("exclude_removed_or_contradicted") is True
+        assert rule.get("minimum_eligible_claims") == 1
+        assert rule.get("allowed_support_classes") == ["DIRECT_SUPPORT", "BOUNDARY_SUPPORT"]
+        eligible = rule["eligible_claim_codes"]
+        assert len(eligible) == len(set(eligible))
+        assert set(eligible) == {
+            code for code in group["included_claim_codes"]
+            if coverage[code] in {"DIRECT_SUPPORT", "BOUNDARY_SUPPORT"}
+        }
+        assert set(group["unsupported_claim_codes"]).isdisjoint(eligible)
+    negative = next(p for p in gold["profiles"] if p["profile_id"] == "qrag_negative_unsupported_only")
+    assert negative.get("expected_retrieval_active_group_ids") == []
+    assert _offline_active_groups(negative["active_claim_codes"]) == []
+    assert negative["expected_result"] == "EMPTY"
+
+
+def test_mixed_baseline_failure_is_separate_from_pending_post_g2_target():
+    gold = _gold()
+    mixed = next(p for p in gold["profiles"] if p["profile_id"] == "qrag_mixed_10_claims")
+    baseline = next(p for p in _fixture()["profile_results"] if p["profile_id"] == mixed["profile_id"])
+    assert mixed.get("expected_result_stage") == "POST_G2_FOCUSED_RETRIEVAL_TARGET"
+    assert mixed["expected_result"] == "POSITIVE"
+    assert mixed.get("target_verification_status") == "PENDING_G2"
+    assert baseline.get("evaluation_stage") == "CURRENT_COMBINED_QUERY_BASELINE"
+    assert baseline.get("expected_baseline_result") == "EMPTY_DILUTED"
+    assert all(c["normalized_score"] + 1e-6 < gold["authority_snapshot"]["minimum_score"] for c in baseline["candidates"])
+    assert _fixture().get("focused_retrieval_scores_available") is False
+    assert "focused_candidates" not in baseline
+
+
+def test_frozen_thresholds_top_k_and_zero_provider_contract():
+    authority = _gold()["authority_snapshot"]
+    assert (authority["source_cosine_threshold"], authority["minimum_score"], authority["top_k"]) == (0.65, 0.740741, 5)
+    provenance = _fixture()["provenance"]
+    assert provenance.get("routine_provider_counts") == {
+        "Qwen": 0, "Embedding": 0, "TokenHub": 0, "Minimax": 0,
+        "Music Provider": 0, "generation task": 0, "MP3": 0,
+    }

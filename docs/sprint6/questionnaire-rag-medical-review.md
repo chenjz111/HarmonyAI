@@ -63,7 +63,7 @@ The three specifically audited claims remain: `flank_discomfort` = **UNSUPPORTED
 | `qrag_positive_appetite_digestion` | positive | 3 | approved digestion evidence |
 | `qrag_positive_respiratory` | positive | 4 | approved respiratory evidence |
 | `qrag_positive_kidney` | positive + unsupported boundary | 3 | existing kidney evidence; no invented nocturia support |
-| `qrag_mixed_10_claims` | production-style positive | 10 | supported domains should remain retrievable; current combined query may dilute |
+| `qrag_mixed_10_claims` | post-G2 target positive | 10 | POSITIVE target pending G2; current combined-query fixture is EMPTY/DILUTED |
 | `qrag_negative_unsupported_only` | negative | 3 | empty |
 | `qrag_negative_gq14` | Gold no-answer | 0 | empty |
 | `qrag_negative_gq15` | Gold no-answer | 0 | empty |
@@ -82,6 +82,8 @@ All texts are synthetic labels created for this acceptance pack. No production/u
 - Historical Owner matrix evidence remains authoritative for existing Gold queries: at cosine `0.65`, relevant recall was 15/18 and all three no-answer queries were empty. `gq_14` had irrelevant `src_10` cosine `0.6184`; `gq_17` had irrelevant `src_11` cosine `0.6343`; both must remain filtered.
 - Current observed production symptom—distinct questionnaire states with distinct hashes but zero approved hits—is consistent with the combined-query dilution hypothesis, but G1 does not alter runtime or claim causal proof from simulated values.
 
+The mixed profile has two separate acceptance concepts: Gold `expected_result: POSITIVE` is the `POST_G2_FOCUSED_RETRIEVAL_TARGET`, with `target_verification_status: PENDING_G2`. The existing all-below-threshold fixture is the `CURRENT_COMBINED_QUERY_BASELINE`, with `expected_baseline_result: EMPTY_DILUTED`. It does not satisfy the future target. No focused similarity scores are available or invented. Fixture `routine_provider_counts` records the provider-free offline pack contract (all seven counters zero), not runtime telemetry or evidence of a live evaluation.
+
 ## 6. Proposed focused query groups
 
 These groups retain approved `organ-mapping-v3.0.json` mappings with the explicit MR-06 reviewed exception: `exertional_breathlessness` activates both `focus_lung` and `focus_kidney`. Primary provenance is lung; secondary provenance is kidney. It is BOUNDARY_SUPPORT in both, never direct evidence. Existing src 08/12 references are retained as boundary references; no new chunk is approved. Group status is **APPROVED_OFFLINE_NOT_ACTIVE**.
@@ -94,7 +96,9 @@ These groups retain approved `organ-mapping-v3.0.json` mappings with the explici
 | `focus_lung` | sadness, throat/cough, breathlessness, nasal discomfort, voice change | src 01/06/08/11/12 | none classified unsupported; some boundary-only |
 | `focus_kidney` | fear, lower-back/knee weakness, tinnitus, nocturia, exertional breathlessness (MR-06 secondary) | src 01/05/06/11/13; MR-06 boundary provenance retained separately | nocturia |
 
-Expected projection: include approved Chinese claim display names and the approved organ display name for **active confirmed claims only**. No group is activated by a historical/raw fact alone.
+Group membership and retrieval activation eligibility are distinct. `included_claim_codes` preserves approved membership and provenance, including unsupported claims. The additional `retrieval_activation` rule requires at least one confirmed active `DIRECT_SUPPORT` or `BOUNDARY_SUPPORT` member; its `eligible_claim_codes` excludes all `UNSUPPORTED` members. Removed/contradicted facts and unconfirmed facts cannot activate a group. Unsupported claims mixed with eligible claims do not suppress that group. Unsupported-only activates zero retrieval groups and remains EMPTY/NO_ANSWER.
+
+Expected projection: include approved Chinese claim display names and the approved organ display name for **eligible active confirmed claims only**. Unsupported members retain provenance and cannot supply retrieval evidence. No group is activated by a historical/raw fact alone. MR-06 breathlessness remains eligible in both lung and kidney groups as boundary support, with lung primary and kidney secondary.
 
 ## 7. Unsupported and boundary claims
 
@@ -118,7 +122,7 @@ No source is self-approved here; exact wording and source passage must be accept
 
 | Case | Required outcome | Prohibited behavior |
 | --- | --- | --- |
-| Unsupported-only (`flank_discomfort`, `postmeal_heaviness`, `nocturia`) | EMPTY | force-recalling organ background as direct support |
+| Unsupported-only (`flank_discomfort`, `postmeal_heaviness`, `nocturia`) | zero retrieval-active groups; EMPTY/NO_ANSWER | force-recalling organ background as direct support |
 | `gq_14` generation rules | NO_ANSWER | returning five-tone background as generation-rule evidence |
 | `gq_15` questionnaire scoring | NO_ANSWER | returning five-organ theory as scoring evidence |
 | `gq_17` unsupported syndrome detail | NO_ANSWER | returning generic heart/spleen background as syndrome detail |
@@ -144,7 +148,7 @@ Proposed merge contract:
 - duplicates: retain the highest valid score;
 - provenance: retain stable focused-query source order;
 - approval, version, checksum, collection identity, and threshold validation: unchanged;
-- unsupported-only groups: no forced query result;
+- unsupported-only groups: zero focused queries and EMPTY/NO_ANSWER;
 - raw/provenance-only facts: never activate groups.
 
 This is design material only. No G2 runtime code exists in this phase.

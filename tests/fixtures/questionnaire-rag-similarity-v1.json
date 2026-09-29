@@ -5,8 +5,10 @@
   "medical_review": {
     "exertional_breathlessness": {"primary":"lung","secondary":["kidney"],"review_ref":"MR-06","support_class":"BOUNDARY_SUPPORT"}
   },
-  "fixture_checksum": "sha256:82847d9f0befc74a6297117f99ec38d8562424178ac890eda1259447b73fe634",
+  "fixture_checksum": "sha256:59023311d312077c32ef2c13e7cf8a06e3838577b3b7c1939c963a7c3821f8af",
+  "focused_retrieval_scores_available": false,
   "provenance": {
+    "routine_provider_counts": {"Qwen":0,"Embedding":0,"TokenHub":0,"Minimax":0,"Music Provider":0,"generation task":0,"MP3":0},
     "mode": "SYNTHETIC_OFFLINE_NOT_LIVE_MEASUREMENT",
     "purpose": "Deterministic threshold/filter and semantic-dilution acceptance architecture; values are review fixtures, not measured provider output.",
     "runtime_active": false,
@@ -67,6 +69,8 @@
     },
     {
       "profile_id": "qrag_mixed_10_claims",
+      "evaluation_stage": "CURRENT_COMBINED_QUERY_BASELINE",
+      "expected_baseline_result": "EMPTY_DILUTED",
       "query_identity": "fixture:current-combined:qrag_mixed_10_claims:v1",
       "baseline_observation": "synthetic representation of semantic dilution: all combined-query candidates fall below the preserved threshold",
       "candidates": [
