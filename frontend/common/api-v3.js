@@ -1106,19 +1106,42 @@ function mockBasis() {
 // ---- mock: 播放器（冻结 §9：不再展示"AI生成音乐/宫音为主/本次"等重复文案） ----
 // music_ref.source_type 区分 generated 与 matched_fallback（数据层区分，不伪装实时生成），
 // 但不在用户界面上重复展示来源/主音标签。
+// Verified from frontend/static/music/jiao-demo.wav: 2,684,880 frames / 44,100 Hz.
+const MOCK_FIXTURE_DURATION_SECONDS = 60.881632653061224
+
 function mockMusic(sourceType) {
   return {
     page: "player",
     music_ref: { music_id: "asset_mock_001", source_type: sourceType || "generated" },
     title: "静水流深",
     stream_url: "/static/music/jiao-demo.wav", // mock：本地示例音频（仅显式 mock/hybrid 模式）
-    duration_seconds: 300,
+    // Playback duration is the tracked demo WAV's verified duration. The
+    // generation basis keeps its planned 300 second specification separately.
+    duration_seconds: MOCK_FIXTURE_DURATION_SECONDS,
     instrument_labels: ["古琴", "洞箫"],
     // mock 为明确 personalized 资产（真实模式由后端 tone_profile.regulation_mode 决定）
     regulation_mode: "personalized_five_tone",
     tone_code: "gong",
     favorite: false,
     disclaimer: "音乐调养不能替代专业医疗或心理帮助。",
+  }
+}
+
+function mockAudioAsset() {
+  const music = mockMusic("generated")
+  return {
+    music_ref: music.music_ref,
+    title: music.title,
+    stream_url: music.stream_url,
+    duration_seconds: music.duration_seconds,
+    format: "wav",
+    checksum: "sha256:bb530dc966425af4bd718ec7a1d1e6e91b22cea7b65968101b6aca2de46e2278",
+    tone_profile: {
+      regulation_mode: music.regulation_mode,
+      primary_tone: music.tone_code,
+    },
+    bpm: 58,
+    instruments: music.instrument_labels,
   }
 }
 
@@ -1486,7 +1509,18 @@ const mockApi = {
     } else {
       t.status = "succeeded"
       t.progress = { value: 100, indeterminate: false }
-      MOCK.music = mockMusic("generated")
+      const audioAsset = mockAudioAsset()
+      t.audio_asset = audioAsset
+      MOCK.music = {
+        ...mockMusic("generated"),
+        music_ref: audioAsset.music_ref,
+        title: audioAsset.title,
+        stream_url: audioAsset.stream_url,
+        duration_seconds: audioAsset.duration_seconds,
+        instrument_labels: audioAsset.instruments,
+        regulation_mode: audioAsset.tone_profile.regulation_mode,
+        tone_code: audioAsset.tone_profile.primary_tone,
+      }
     }
     return clone(stripInternal(t))
   },
