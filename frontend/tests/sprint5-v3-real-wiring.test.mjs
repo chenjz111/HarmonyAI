@@ -22,6 +22,7 @@ const assessment = {
 }
 const toneProfile = { schema_version: "tone_profile_v3.2", regulation_mode: "personalized_five_tone", primary_tone: "gong", secondary_tone: null, mapping_version: "five_tone_mapping_v3.0" }
 const spec = { schema_version: "generation_spec_v3.0", tone_profile: toneProfile, bpm: 58, duration_seconds: 300, instruments: ["古琴"], ambient_sounds: ["流水"], structure: { intro_seconds: 30, main_seconds: 240, outro_seconds: 30 }, energy_curve: "calm", forbidden_constraints: [], fallback_policy: { allow_local_matching: false } }
+const readModel = { page: "five_tone_analysis", schema_version: "five_tone_analysis_read_model_v3.2", regulation_mode: "personalized_five_tone", confirmed_state: "近期思虑偏多。", state_tendency: "思虑偏多", analysis_rationales: [{ summary: "思虑偏多", evidence_refs: ["fact_1"] }], tone_weights: { gong: 0.7, jiao: 0.1, zhi: 0.1, shang: 0.05, yu: 0.05 }, primary_tone: { tone: "gong", explanation: "主音依据" }, secondary_tone: null, bpm: { value: 58, explanation: "舒缓节奏" }, instruments: { values: ["古琴"], explanation: "乐器依据" }, ambience: { values: ["流水"], explanation: "氛围依据" }, duration: { seconds: 300, explanation: "方案时长" }, generation: { status: "ready", message: "可以开始生成本次音乐。" }, disclaimer: "仅用于音乐调养参考。" }
 
 globalThis.uni = {
   getStorageSync(key) { return storage.get(key) ?? "" },
@@ -40,6 +41,7 @@ globalThis.uni = {
     else if (path === "/api/v3/assessments/asmt_real") data = assessment
     else if (path.endsWith("/confirmations")) data = { ...assessment, status: "confirmed", requires_user_confirmation: false }
     else if (path === "/api/v3/diagnoses") data = { schema_version: "diagnosis_v3.0", diagnosis_id: "diag_real", status: "success", presentation: { title: "辨证分析", primary_tendency: "思虑偏多", basis_summaries: ["思虑偏多"], knowledge_references: [], disclaimer: "仅用于音乐调养参考，不构成医学诊断。" }, candidate_tendencies: [], element_profile: { status: "available", weights: { wood: 0, fire: 0, earth: 1, metal: 0, water: 0 }, score_semantics: "relative_evidence_distribution" } }
+    else if (path === "/api/v3/diagnoses/diag_real/five-tone-analysis") data = readModel
     else if (path === "/api/v3/prescriptions") data = { schema_version: "prescription_v3.0", prescription_id: "rx_real", diagnosis_id: "diag_real", status: "success", generation_spec: spec, presentation: { title: "五音调适解析", tone_summary: "本次以宫音为主。", parameter_summaries: ["舒缓节奏"], personalization_summary: "未应用历史偏好。" } }
     else if (path.endsWith("/user-goal")) data = { user_goal: options.data?.user_goal ?? null }
     else if (path === "/api/v3/music/generations") data = { task_id: "task_real", status: "succeeded", message: "完成", progress: { value: 100, semantics: "provider_reported", indeterminate: false }, poll_after_ms: null, fallback: { applied: false, reason_code: null }, error_code: null, audio_asset: { music_ref: { music_id: "music_real", source_type: "generated" }, title: "静水流深", stream_url: "/api/v3/music/assets/music_real/stream", duration_seconds: 297, format: "mp3", checksum: "sha256:abc", tone_profile: toneProfile, bpm: 58, instruments: ["古琴"] } }
@@ -76,7 +78,7 @@ test("real questionnaire through player and feedback uses server resources in or
     "/api/v3/auth/guest", "/api/v3/sessions", "/api/v3/sessions/sess_real/input-transitions",
     "/api/v3/sessions/sess_real/questionnaire", "/api/v3/assessments", "/api/v3/assessments/asmt_real",
     "/api/v3/sessions/sess_real/user-goal", "/api/v3/assessments/asmt_real/confirmations",
-    "/api/v3/diagnoses", "/api/v3/prescriptions", "/api/v3/music/generations", "/api/v3/feedback",
+    "/api/v3/diagnoses", "/api/v3/prescriptions", "/api/v3/diagnoses/diag_real/five-tone-analysis", "/api/v3/music/generations", "/api/v3/feedback",
   ])
   assert.deepEqual(calls.find((c) => new URL(c.url).pathname === "/api/v3/music/generations").data.generation_spec, spec)
 })

@@ -503,6 +503,10 @@ test("MP-T13 失败文案以权威信息为先，且技术失败不伪装成基�
   assert.equal(model.hasPrimaryTone, false)
   assert.doesNotMatch(JSON.stringify(model), /古琴|本次音乐/)
   assert.equal(model.failure.message, "服务不可用")
+
+  const technical = presentFailureDisplay({ message: "TypeError: Cannot read properties of undefined (reading 'musicStreamUrl')" })
+  assert.equal(technical.messageSource, "neutral")
+  assert.equal(technical.message, FAILURE_NEUTRAL_MESSAGE)
 })
 
 // ------------------------------------------------------------------ MP-T14
@@ -600,6 +604,36 @@ test("MP-T15 解析视图默认折叠，且空 / integrated 下不发明事实",
   assert.equal(none.stateSummary.displayText, NEUTRAL_DISPLAY)
   assert.equal(none.rationales.hasRows, false)
   assert.doesNotMatch(JSON.stringify(none), /NaN|[宫商角徵羽]/)
+})
+
+test("MP-T16 persisted read-model explanations stay independent and mode-aware", () => {
+  const personalized = buildAnalysisViewModel({
+    regulation_mode: "personalized_five_tone",
+    primary_tone: { tone: "jiao", explanation: "主音解释" },
+    secondary_tone: { tone: "zhi", explanation: "辅音解释" },
+    bpm: { value: 60, explanation: "节奏解释" },
+    instruments: { values: ["古琴"], explanation: "乐器解释" },
+    ambience: { values: ["流水"], explanation: "氛围解释" },
+    confirmed_state: "已确认状态",
+    disclaimer: "免责声明",
+  })
+  assert.equal(personalized.primaryTone.explanation.text, "主音解释")
+  assert.equal(personalized.secondaryTone.explanation.text, "辅音解释")
+  assert.equal(personalized.parameters.bpm.explanation.text, "节奏解释")
+  assert.equal(personalized.parameters.instruments.explanation.text, "乐器解释")
+  assert.equal(personalized.parameters.ambience.explanation.text, "氛围解释")
+
+  const integrated = buildAnalysisViewModel({
+    regulation_mode: "integrated_regulation",
+    tone_weights: { jiao: 0.2, zhi: 0.2, gong: 0.2, shang: 0.2, yu: 0.2 },
+  })
+  assert.equal(integrated.hasPrimaryTone, false)
+  assert.equal(integrated.hasSecondaryTone, false)
+
+  const basic = buildAnalysisViewModel({ regulation_mode: "basic_wellness" })
+  assert.equal(basic.hasPrimaryTone, false)
+  assert.equal(basic.hasSecondaryTone, false)
+  assert.equal(basic.toneWeights.hasWeights, false)
 })
 
 // ------------------------------------------------------------------ 静态护栏

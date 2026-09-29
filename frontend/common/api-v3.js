@@ -723,7 +723,15 @@ const realInputApi = {
     const cachedPrescription =
       state.prescription && state.prescription.generation_spec ? state.prescription : null
     if (state.diagnosis && cachedPrescription) {
-      return musicBasisModel(assessment, state.diagnosis, cachedPrescription)
+      if (state.diagnosis.five_tone_read_model) {
+        return musicBasisModel(assessment, state.diagnosis, cachedPrescription)
+      }
+      const readModel = await realRequest(
+        "/api/v3/diagnoses/" + encodeURIComponent(state.diagnosis.diagnosis_id) + "/five-tone-analysis",
+      )
+      const diagnosisWithReadModel = Object.assign({}, state.diagnosis, { five_tone_read_model: readModel })
+      saveFlowState({ diagnosis: diagnosisWithReadModel })
+      return musicBasisModel(assessment, diagnosisWithReadModel, cachedPrescription)
     }
     if (!allowCreate) {
       // Cache-first read: the caller renders its own "not ready" state. Never re-create.
@@ -755,8 +763,12 @@ const realInputApi = {
       headers: { "Idempotency-Key": idempotencyKey() },
     })
     if (!prescription.generation_spec) throw apiError("暂时无法生成音乐方案", "PRESCRIPTION_NOT_READY")
-    saveFlowState({ diagnosis, prescription, prescription_id: prescription.prescription_id, generation_spec: prescription.generation_spec })
-    return musicBasisModel(assessment, diagnosis, prescription)
+    const readModel = await realRequest(
+      "/api/v3/diagnoses/" + encodeURIComponent(diagnosis.diagnosis_id) + "/five-tone-analysis",
+    )
+    const diagnosisWithReadModel = Object.assign({}, diagnosis, { five_tone_read_model: readModel })
+    saveFlowState({ diagnosis: diagnosisWithReadModel, prescription, prescription_id: prescription.prescription_id, generation_spec: prescription.generation_spec })
+    return musicBasisModel(assessment, diagnosisWithReadModel, prescription)
   },
 
   // 音乐生成：requestId 由调用方（music-generation-session）持有，使同一请求的重试复用同一
@@ -882,6 +894,9 @@ const TONE_NAMES = { jiao: "角音", zhi: "徵音", gong: "宫音", shang: "商�
 
 function musicBasisModel(assessment, diagnosis, prescription) {
   const spec = prescription.generation_spec
+  if (diagnosis && diagnosis.five_tone_read_model) {
+    return Object.assign({ page: "five_tone_analysis" }, diagnosis.five_tone_read_model)
+  }
   const toneProfile = spec.tone_profile || {}
   // Sprint 6：mode 是后端权威；前端只读，绝不从主音/权重/argmax 推断。
   // 未知或缺失 mode 一律保留为 null，交由页面走中性不可用态，绝不在前端发明 mode。
@@ -900,8 +915,11 @@ function musicBasisModel(assessment, diagnosis, prescription) {
     confirmed_state: assessment.state_summary,
     state_tendency: diagnosis.presentation.primary_tendency || diagnosis.presentation.title,
     analysis_rationales: (diagnosis.presentation.basis_summaries || []).map((summary) => ({ summary, evidence_refs: [] })),
-    primary_tone: primary ? { tone: primary, display_name: TONE_NAMES[primary] || primary, explanation: prescription.presentation.tone_summary } : null,
-    secondary_tone: secondary ? { tone: secondary, display_name: TONE_NAMES[secondary] || secondary, explanation: prescription.presentation.tone_summary } : null,
+    // Legacy cached payloads do not carry independent explanation fields. Do
+    // not split one presentation string across primary and secondary tones;
+    // only the persisted read model may provide those explanations.
+    primary_tone: primary ? { tone: primary, display_name: TONE_NAMES[primary] || primary, explanation: "" } : null,
+    secondary_tone: secondary ? { tone: secondary, display_name: TONE_NAMES[secondary] || secondary, explanation: "" } : null,
     bpm: { value: spec.bpm, explanation: (prescription.presentation.parameter_summaries || [])[0] || "" },
     instruments: { values: spec.instruments, explanation: "" },
     ambience: { values: Array.isArray(spec.ambient_sounds) ? spec.ambient_sounds : [], explanation: "" },
@@ -910,6 +928,11 @@ function musicBasisModel(assessment, diagnosis, prescription) {
     disclaimer: diagnosis.presentation.disclaimer,
     personalization_summary: prescription.presentation.personalization_summary,
   }
+}
+
+function resolveMusicStreamUrl(streamUrl) {
+  if (!streamUrl) return ""
+  return streamUrl.indexOf("/api/") === 0 ? BASE_URL + streamUrl : streamUrl
 }
 
 // 生成任务成功后保存 asset（播放页只播放后端返回的 Music Asset）
@@ -1690,9 +1713,7 @@ export const apiV3 = {
 
   // 真实后端音频流地址（相对路径 → 绝对地址）
   musicStreamUrl(streamUrl) {
-    if (!streamUrl) return ""
-    if (streamUrl.indexOf("/api/") === 0) return BASE_URL + streamUrl
-    return streamUrl
+    return resolveMusicStreamUrl(streamUrl)
   },
 
   // 播放鉴权（P0-3 前端侧）：后端音频流要求 Bearer 头，audio 标签无法携带。
@@ -1700,7 +1721,7 @@ export const apiV3 = {
   // 本地资源与外部直链原样返回。失败时如实报错，不降级为无鉴权直连。
   fetchAuthorizedAudio(streamUrl) {
     if (!streamUrl) return Promise.resolve("")
-    const absolute = this.musicStreamUrl(streamUrl)
+    const absolute = resolveMusicStreamUrl(streamUrl)
     if (absolute.indexOf(BASE_URL) !== 0) {
       return Promise.resolve(absolute)
     }

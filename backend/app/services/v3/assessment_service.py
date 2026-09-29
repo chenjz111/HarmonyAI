@@ -255,6 +255,13 @@ def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str
         AssessmentRevisionV3.revision == run.current_revision,
     ).one()
     if request.decision == "confirm":
+        # Public confirmed text is a separate authority from structured
+        # evidence projections used for organ/coverage/conflict derivation.
+        public_state_summary = str(
+            (current.presentation_json or {}).get("summary")
+            or current.state_summary
+            or ""
+        ).strip()
         current.status = "confirmed"
         current.confirmation_status = "confirmed"
         current.confirmed_at = datetime.now(timezone.utc)
@@ -271,6 +278,8 @@ def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str
         db.expire_all()
         derived = _recompute_derived_state(_all_revision_evidence(db, run))
         _apply_derived_state(current, derived)
+        if public_state_summary:
+            current.state_summary = public_state_summary
         db.commit()
         return _assessment_read_model(db, run), False
 
@@ -302,7 +311,12 @@ def confirm_assessment(db: Session, principal: AuthPrincipal, assessment_id: str
         previous_revision=current.revision,
         understanding_revision=current.understanding_revision,
         input_revision=current.input_revision, status="confirmed",
-        confirmation_status="confirmed", state_summary=derived["state_summary"],
+        confirmation_status="confirmed",
+        state_summary=(
+            str(request.edited_summary_text).strip()
+            if request.edited_summary_text is not None
+            else current.state_summary
+        ),
         recent_context_summary=current.recent_context_summary,
         organ_profile_json=derived["organ_profile_json"],
         evidence_coverage=derived["evidence_coverage"],

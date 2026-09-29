@@ -87,8 +87,8 @@ def test_narrative_edit_keeps_every_structured_row_in_the_active_revision(
     assert response.status_code == 201, response.text
     current = _v3_data(response)
     assert current["presentation"]["summary"] == narrative
-    assert current["state_summary"] != narrative
-    assert current["state_summary"].startswith("已确认的近期状态：")
+    assert current["state_summary"] == narrative
+    assert current["organ_profile"] == original["organ_profile"]
     assert {
         f["fact_evidence_id"] for f in current["fact_evidence"]
     } == {f["fact_evidence_id"] for f in original["fact_evidence"]}
@@ -141,6 +141,6 @@ def test_plain_confirmation_recomputes_derived_state_from_confirmed_evidence(
     assert {f["claim_code"] for f in current["fact_evidence"]} == {
         f["claim_code"] for f in original["fact_evidence"]
     }
-    # Phase 2 (D4): the authoritative state text is the deterministic projection
-    # of the confirmed structured evidence, never the narrative.
-    assert current["state_summary"].startswith("已确认的近期状态：")
+    # Public confirmed text and structured derived state have separate authority.
+    assert current["state_summary"] == original["state_summary"]
+    assert current["organ_profile"] == original["organ_profile"]

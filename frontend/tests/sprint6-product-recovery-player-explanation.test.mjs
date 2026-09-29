@@ -251,4 +251,32 @@ test("PR-024/PR-030: explanation remains local presentation and Player stays rea
   assert.doesNotMatch(playerSource, /allowCreate\s*:\s*true/)
   assert.doesNotMatch(playerSource, /createAssessment|createDiagnosis|createPrescription|startMusicGeneration|pollMusicGeneration|cancelMusicGeneration|createMusicGenerationSession|RAG|Qwen|Provider/)
   assert.doesNotMatch(playerSource, /v31-tone-theme/)
+  assert.match(playerSource, /playerPresentation\.sourceLabel\.text/)
+  assert.doesNotMatch(playerSource, /\{\{\s*playerPresentation\.sourceLabel\s*\}\}/)
+  assert.match(playerSource, /neutral-hero-frame/)
+  assert.match(playerSource, /v-if="playerPresentation\.hasPrimaryTone" class="tone-hero-frame"/)
+  assert.match(playerSource, /v-if="playerPresentation\.instruments\.hasValues \|\| playerPresentation\.ambience\.hasValues"/)
+  assert.doesNotMatch(playerSource, /—　\{\{\s*playerPresentation\.instruments\.displayText/)
+  assert.match(playerSource, /primaryTone\.explanation\.text/)
+  assert.match(playerSource, /secondaryTone\.explanation\.text/)
+})
+
+test("PR-024: detached authorized audio callback does not depend on Player this binding", async () => {
+  const previous = globalThis.uni
+  const downloads = []
+  globalThis.uni = {
+    downloadFile(options) {
+      downloads.push(options)
+      options.success({ statusCode: 200, tempFilePath: "/tmp/audio.mp3" })
+    },
+  }
+  try {
+    const { apiV3 } = await import(`../common/api-v3.js?detached-${Date.now()}`)
+    const download = apiV3.fetchAuthorizedAudio
+    assert.equal(await download("/api/v3/music/assets/music_1/stream"), "/tmp/audio.mp3")
+    assert.equal(downloads.length, 1)
+    assert.equal(downloads[0].url, "http://localhost:8000/api/v3/music/assets/music_1/stream")
+  } finally {
+    globalThis.uni = previous
+  }
 })
