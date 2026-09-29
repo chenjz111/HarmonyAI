@@ -212,9 +212,8 @@ def test_p2_s1_paraphrase_never_changes_structured_status(
     assert current["presentation"]["summary"] == (
         "最近的状态和资料里写的不太一样，我也说不太清楚。"
     )
-    # D4: the authoritative state text is the projection, not the narrative.
-    assert current["state_summary"] != current["presentation"]["summary"]
-    assert current["state_summary"].startswith("已确认的近期状态：")
+    # Public confirmed text is independent from structured status changes.
+    assert current["state_summary"] == current["presentation"]["summary"]
 
 
 # --------------------------------------------------------------------------- #
@@ -514,7 +513,7 @@ def test_p2_s7_questionnaire_only_path_uses_the_same_contract(db_session_factory
         for fact_id, status in _statuses(current).items()
         if fact_id != target["fact_evidence_id"]
     } == {"confirmed"}
-    assert current["state_summary"].startswith("已确认的近期状态：")
+    assert current["state_summary"] == narrative
 
 
 # --------------------------------------------------------------------------- #
@@ -547,7 +546,9 @@ def test_p2_s8_reject_every_fact_is_a_valid_zero_evidence_revision(
     assert current["evidence_coverage"] == 0
     assert current["source_diversity"] == 0
     assert current["conflicts"] == []
-    assert current["state_summary"] == "当前没有已确认的状态事实。"
+    # Structured evidence is empty, while the public confirmed summary remains
+    # the previously confirmed user-facing text.
+    assert current["state_summary"] == original["state_summary"]
 
     with db_session_factory() as db:
         evidence, links = load_revision_evidence(

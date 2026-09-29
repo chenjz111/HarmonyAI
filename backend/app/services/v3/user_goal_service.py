@@ -69,7 +69,10 @@ def submit_user_goal(
     user_goal: UserGoalV31 | None,
 ) -> UserGoalReadModel:
     session_row = get_owned_session_row(db, principal, session_id)
-    if user_goal is not None:
+    # UserGoal is optional personalization on both normal paths. The
+    # questionnaire is required only when the session chose the questionnaire
+    # entry path; document-only sessions already have confirmed source input.
+    if user_goal is not None and session_row.input_mode != "with_document":
         _validate_active_questionnaire(db, session_row)
     session_row.user_goal_json = (
         user_goal.model_dump(mode="json") if user_goal is not None else None

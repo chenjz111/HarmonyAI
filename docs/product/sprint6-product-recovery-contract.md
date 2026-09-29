@@ -136,3 +136,11 @@ Every requirement marked merge-blocking in the Requirements Traceability Matrix 
 2. Its manual acceptance evidence recorded when the matrix requires device review.
 3. No conflicting active test that encodes an older product contract.
 4. Owner approval for any Medical Review or design-asset interpretation gate.
+
+## Owner Real-device Findings — 2026-09-29
+
+- A document-only session may submit an optional `UserGoal`; questionnaire completeness remains required on the questionnaire-only path.
+- Confirmed or edited public summary text is the downstream public state authority. Structured `FactEvidence` remains available for organ profile, coverage, conflicts, RAG and diagnosis, but `_authoritative_state_summary()` must not overwrite the confirmed text.
+- Player explanation data comes from the checksum-verified persisted `FiveToneAnalysisReadModel`, including independent primary/secondary tone explanations, BPM, instruments, ambience, `confirmed_state`, and `disclaimer`. The read path is `GET /api/v3/diagnoses/{diagnosis_id}/five-tone-analysis` and is read-only.
+- Player source labels render only their safe text value; technical exceptions are replaced with public-safe failure copy. Integrated and basic modes use neutral visuals and never fabricate a primary tone or tone ratio.
+- Opening or expanding Player explanation performs zero Diagnosis, Prescription, generation, RAG, or provider writes. Real provider smoke and Android product acceptance remain Owner gates.

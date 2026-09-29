@@ -6,10 +6,13 @@ from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
+from backend.app.models import Session as SessionModel
+from backend.app.models.v3.diagnosis import DiagnosisRun
 from backend.app.routers.v3.transport import V3APIError, v3_success
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.diagnosis import DiagnosisV3, DiagnosisV31Input
 from backend.app.schemas.v3.envelope import V3SuccessEnvelope
+from backend.app.schemas.v3.flow_v31 import FiveToneAnalysisReadModel, FiveToneAnalysisReadModelV33
 from backend.app.services.v3.auth_service import get_current_v3_principal
 from backend.app.services.v3.diagnosis_service import (
     IdempotencyConflict,
@@ -21,6 +24,7 @@ from backend.app.services.v3.diagnosis_service import (
     V31ReadinessError,
     run_diagnosis,
 )
+from backend.app.services.v3.internal_agent3_service import Agent3NotReady, load_current_five_tone_read_model
 
 
 router = APIRouter()
@@ -102,3 +106,39 @@ def create_run(
     if replayed:
         response.status_code = 200
     return v3_success(result)
+
+
+@router.get(
+    "/diagnoses/{diagnosis_id}/five-tone-analysis",
+    response_model=V3SuccessEnvelope[FiveToneAnalysisReadModel | FiveToneAnalysisReadModelV33],
+)
+def get_five_tone_analysis(
+    diagnosis_id: str,
+    principal: AuthPrincipal = Depends(get_current_v3_principal),
+    db: Session = Depends(get_db),
+) -> V3SuccessEnvelope[FiveToneAnalysisReadModel | FiveToneAnalysisReadModelV33]:
+    """Read the checksum-verified persisted Agent 3 model for Player.
+
+    This route is deliberately read-only: it only loads the existing diagnosis
+    row and its current assessment/session snapshot. It never creates or
+    recomputes diagnosis, prescription, RAG, or provider work.
+    """
+
+    diagnosis = (
+        db.query(DiagnosisRun)
+        .filter(
+            DiagnosisRun.diagnosis_id == diagnosis_id,
+            DiagnosisRun.internal_user_pk == principal.internal_user_pk,
+        )
+        .one_or_none()
+    )
+    if diagnosis is None:
+        raise V3APIError(404, "RESOURCE_NOT_FOUND", "未找到对应诊断。")
+    session_row = db.get(SessionModel, diagnosis.session_row_id)
+    if session_row is None or session_row.user_id != principal.internal_user_pk:
+        raise V3APIError(404, "RESOURCE_NOT_FOUND", "未找到对应诊断。")
+    try:
+        read_model = load_current_five_tone_read_model(db, diagnosis, session_row)
+    except Agent3NotReady as error:
+        raise V3APIError(409, error.code, error.message) from None
+    return v3_success(read_model)

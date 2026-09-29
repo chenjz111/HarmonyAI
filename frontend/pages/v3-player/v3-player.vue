@@ -213,22 +213,23 @@ export default {
           <text class="demo-banner-text">演示模式：当前音乐为模拟数据</text>
         </view>
 
-        <view class="hero-wrap">
+        <view class="hero-wrap" :class="{ 'hero-wrap--neutral': !playerPresentation.hasPrimaryTone }">
           <view class="wave-ring" :class="{ 'wave-ring--playing': playing }">
-            <view class="tone-hero-frame">
+            <view v-if="playerPresentation.hasPrimaryTone" class="tone-hero-frame">
               <image v-if="toneHeroSrc" class="tone-hero-image" :src="toneHeroSrc" mode="aspectFill" />
               <view class="tone-copy">
                 <view class="tone-glyph-row"><text class="tone-glyph">{{ playerPresentation.primaryTone.glyph }}</text><text class="tone-seal">{{ toneSealText }}</text></view>
                 <text class="tone-traits">{{ playerPresentation.modeDisplayLabel }}</text>
               </view>
             </view>
+            <view v-else class="neutral-hero-frame"><text class="neutral-hero-label">{{ playerPresentation.modeDisplayLabel }}</text></view>
           </view>
         </view>
 
         <text class="music-title">{{ playerPresentation.title.displayText }}</text>
         <text class="tone-pair">{{ playerPresentation.primaryTone.displayText || playerPresentation.modeDisplayLabel }}</text>
-        <text class="music-instruments">—　{{ playerPresentation.instruments.displayText }} · {{ playerPresentation.ambience.displayText }}　—</text>
-        <text class="music-caption">{{ playerPresentation.sourceLabel }}</text>
+        <text v-if="playerPresentation.instruments.hasValues || playerPresentation.ambience.hasValues" class="music-instruments">{{ playerPresentation.instruments.text }}<text v-if="playerPresentation.instruments.hasValues && playerPresentation.ambience.hasValues"> · </text>{{ playerPresentation.ambience.text }}</text>
+        <text v-if="playerPresentation.sourceLabel.text" class="music-caption">{{ playerPresentation.sourceLabel.text }}</text>
 
         <!-- 控制区：只渲染 controller snapshot 经 presentation 格式化的进度 -->
         <view class="progress-wrap">
@@ -252,10 +253,10 @@ export default {
         <view class="music-summary-card">
           <view class="summary-heading"><view class="summary-note">♫</view><text>本次音乐</text></view>
           <view class="music-summary-grid">
-            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.primaryTone.displayText || playerPresentation.modeDisplayLabel }}</text><text class="summary-label">{{ toneSummaryLabel }}</text></view>
-            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.analysis.parameters.bpm.displayText }}</text><text class="summary-label">舒缓节奏</text></view>
-            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.instruments.displayText }}</text><text class="summary-label">主要乐器</text></view>
-            <view class="music-summary-cell"><text class="summary-value">{{ playerPresentation.ambience.displayText }}</text><text class="summary-label">音乐氛围</text></view>
+            <view v-if="playerPresentation.hasPrimaryTone || playerPresentation.modeDisplayLabel" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.primaryTone.displayText || playerPresentation.modeDisplayLabel }}</text><text class="summary-label">{{ toneSummaryLabel }}</text></view>
+            <view v-if="playerPresentation.analysis.parameters.bpm.hasValue" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.analysis.parameters.bpm.displayText }}</text><text class="summary-label">舒缓节奏</text></view>
+            <view v-if="playerPresentation.instruments.hasValues" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.instruments.displayText }}</text><text class="summary-label">主要乐器</text></view>
+            <view v-if="playerPresentation.ambience.hasValues" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.ambience.displayText }}</text><text class="summary-label">音乐氛围</text></view>
           </view>
         </view>
 
@@ -313,7 +314,9 @@ export default {
               <view class="analysis-fact-list">
                 <text v-if="playerPresentation.analysis.modeLabel" class="analysis-fact">调适方式：{{ playerPresentation.analysis.modeDisplayLabel }}</text>
                 <text v-if="playerPresentation.analysis.hasPrimaryTone" class="analysis-fact">主音：{{ playerPresentation.analysis.primaryTone.displayName }}</text>
+                <text v-if="playerPresentation.analysis.primaryTone.explanation.hasText" class="analysis-fact">主音依据：{{ playerPresentation.analysis.primaryTone.explanation.text }}</text>
                 <text v-if="playerPresentation.analysis.secondaryTone.hasTone" class="analysis-fact">辅音：{{ playerPresentation.analysis.secondaryTone.displayName }}</text>
+                <text v-if="playerPresentation.analysis.secondaryTone.explanation.hasText" class="analysis-fact">辅音依据：{{ playerPresentation.analysis.secondaryTone.explanation.text }}</text>
                 <text v-if="playerPresentation.analysis.toneWeights.hasWeights" class="analysis-fact">五音配比：{{ playerPresentation.analysis.toneWeights.displayText }}</text>
               </view>
             </view>
@@ -325,8 +328,11 @@ export default {
               <text class="analysis-section-title">音乐设计</text>
               <view class="analysis-fact-list">
                 <text v-if="playerPresentation.analysis.parameters.bpm.hasValue" class="analysis-fact">节奏：{{ playerPresentation.analysis.parameters.bpm.text }}</text>
+                <text v-if="playerPresentation.analysis.parameters.bpm.explanation.hasText" class="analysis-fact">节奏依据：{{ playerPresentation.analysis.parameters.bpm.explanation.text }}</text>
                 <text v-if="playerPresentation.analysis.parameters.instruments.hasValues" class="analysis-fact">乐器：{{ playerPresentation.analysis.parameters.instruments.text }}</text>
+                <text v-if="playerPresentation.analysis.parameters.instruments.explanation.hasText" class="analysis-fact">乐器依据：{{ playerPresentation.analysis.parameters.instruments.explanation.text }}</text>
                 <text v-if="playerPresentation.analysis.parameters.ambience.hasValues" class="analysis-fact">氛围：{{ playerPresentation.analysis.parameters.ambience.text }}</text>
+                <text v-if="playerPresentation.analysis.parameters.ambience.explanation.hasText" class="analysis-fact">氛围依据：{{ playerPresentation.analysis.parameters.ambience.explanation.text }}</text>
               </view>
             </view>
           </view>
@@ -879,6 +885,8 @@ export default {
 .wave-ring--playing { animation:pulse-ring 2.6s ease-in-out infinite; }
 @keyframes pulse-ring { 50% { transform:scale(1.018); filter:saturate(1.08); } }
 .tone-hero-frame { position:relative; width:250px; max-width:72vw; height:250px; max-height:72vw; border:4px solid rgba(255,255,248,.88); border-radius:50%; overflow:hidden; z-index:1; box-shadow:0 5px 18px rgba(42,67,59,.16); background:var(--tone-soft); }
+.neutral-hero-frame { display:flex; align-items:center; justify-content:center; width:250px; max-width:72vw; height:250px; max-height:72vw; border:4px solid rgba(255,255,248,.88); border-radius:50%; box-sizing:border-box; z-index:1; box-shadow:0 5px 18px rgba(42,67,59,.12); background:rgba(241,244,243,.92); }
+.neutral-hero-label { max-width:70%; color:#536a66; font-family:'KaiTi','STKaiti',serif; font-size:22px; font-weight:800; line-height:1.4; text-align:center; }
 .tone-hero-image { width:100%; height:100%; border-radius:50%; }
 .tone-copy { position:absolute; top:45px; left:29px; display:flex; flex-direction:column; align-items:center; z-index:2; text-shadow:0 1px 2px rgba(255,255,255,.85); }
 .tone-glyph-row { display:flex; align-items:center; gap:6px; }

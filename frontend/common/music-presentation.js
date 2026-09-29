@@ -84,6 +84,7 @@ const TECHNICAL_IDENTIFIER_PATTERNS = Object.freeze([
   /^provider$/,
   /^chroma(?:v?\d[a-z0-9]*)?$/,
 ])
+const TECHNICAL_ERROR_PATTERN = /(?:cannot\s+read|typeerror|referenceerror|\bundefined\b|musicstreamurl|stack\s*trace|\bat\s+[a-z_$][\w$]*\s*\()/i
 
 // ------------------------------------------------------------------ 基础工具
 
@@ -201,6 +202,7 @@ export function toneDisplayName(value) {
  * tone 可以是权威 code、中文展示名，或 {tone|code|value} 对象。
  */
 export function presentTone(mode, tone, { role = "primary" } = {}) {
+  const source = tone && typeof tone === "object" ? tone : {}
   const theme = personalizedToneTheme(mode, tone)
   if (!theme.code) {
     return {
@@ -215,6 +217,7 @@ export function presentTone(mode, tone, { role = "primary" } = {}) {
       displayName: "",
       claim: "",
       displayText: "",
+      explanation: presentExplanation(""),
     }
   }
   const displayName = `${theme.glyph}音`
@@ -231,6 +234,7 @@ export function presentTone(mode, tone, { role = "primary" } = {}) {
     displayName,
     claim,
     displayText: claim,
+    explanation: presentExplanation(source.explanation, { maxLength: TEXT_LIMITS.message }),
   }
 }
 
@@ -348,7 +352,7 @@ export function presentBpm(bpm) {
 }
 
 /** 乐器展示：只来自后端值列表；缺失 → 中性空状态，绝不用主题表兜底。 */
-export function presentInstruments(values, { source = "" } = {}) {
+export function presentInstruments(values, { source = "", explanation = "" } = {}) {
   const list = normalizeValueList(values)
   return {
     source: list.length ? source : "",
@@ -356,11 +360,12 @@ export function presentInstruments(values, { source = "" } = {}) {
     values: list,
     text: list.join(" · "),
     displayText: list.length ? list.join(" · ") : NEUTRAL_DISPLAY,
+    explanation: presentExplanation(explanation, { maxLength: TEXT_LIMITS.message }),
   }
 }
 
 /** 氛围 / 环境音展示：缺失 → 中性空状态；绝不用任何编造的默认氛围补位。 */
-export function presentAmbience(values, { source = "" } = {}) {
+export function presentAmbience(values, { source = "", explanation = "" } = {}) {
   const list = normalizeValueList(values)
   return {
     source: list.length ? source : "",
@@ -368,6 +373,7 @@ export function presentAmbience(values, { source = "" } = {}) {
     values: list,
     text: list.join(" · "),
     displayText: list.length ? list.join(" · ") : NEUTRAL_DISPLAY,
+    explanation: presentExplanation(explanation, { maxLength: TEXT_LIMITS.message }),
   }
 }
 
@@ -464,7 +470,10 @@ export function presentRetryPolicy({ canResume, terminal, taskStatus } = {}) {
  */
 export function presentFailureDisplay(error, { taskStatus, canResume, terminal } = {}) {
   const source = error && typeof error === "object" ? error : {}
-  const message = presentText(source.message, { maxLength: TEXT_LIMITS.message })
+  const rawMessage = presentText(source.message, { maxLength: TEXT_LIMITS.message })
+  const message = rawMessage.hasText && !TECHNICAL_ERROR_PATTERN.test(rawMessage.text)
+    ? rawMessage
+    : presentText("")
   const code = toPlainText(source.code)
   return {
     isFailure: true,
@@ -530,8 +539,14 @@ export function buildAnalysisViewModel(basis) {
   const toneWeights = presentToneWeights(source.tone_weights)
   const parameters = {
     bpm: presentBpm(source.bpm),
-    instruments: presentInstruments(parameterInstruments, { source: "basis" }),
-    ambience: presentAmbience(parameterAmbience, { source: "basis" }),
+    instruments: presentInstruments(parameterInstruments, {
+      source: "basis",
+      explanation: source.instruments && source.instruments.explanation,
+    }),
+    ambience: presentAmbience(parameterAmbience, {
+      source: "basis",
+      explanation: source.ambience && source.ambience.explanation,
+    }),
   }
   const sections = {
     recentState: { hasContent: stateSummary.hasText },
@@ -551,6 +566,7 @@ export function buildAnalysisViewModel(basis) {
     modeLabel: mode.label,
     modeDisplayLabel: mode.displayLabel,
     hasPrimaryTone: primaryTone.hasTone,
+    hasSecondaryTone: secondaryTone.hasTone,
     primaryTone,
     secondaryTone,
     toneWeights,

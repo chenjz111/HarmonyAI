@@ -72,6 +72,22 @@ const prescription = {
     personalization_summary: "未应用历史偏好。",
   },
 }
+const persistedReadModel = {
+  schema_version: "five_tone_analysis_read_model_v3.2",
+  regulation_mode: "personalized_five_tone",
+  confirmed_state: "近期思虑偏多。",
+  state_tendency: "思虑偏多",
+  analysis_rationales: [{ summary: "依据已确认状态整理本次方案。", evidence_refs: ["fact_1"] }],
+  tone_weights: { jiao: 0.4, zhi: 0.2, gong: 0.15, shang: 0.15, yu: 0.1 },
+  primary_tone: { tone: "jiao", explanation: "主音依据。" },
+  secondary_tone: null,
+  bpm: { value: 60, explanation: "舒缓节奏。" },
+  instruments: { values: ["guqin"], explanation: "乐器依据。" },
+  ambience: { values: ["rain"], explanation: "氛围依据。" },
+  duration: { seconds: 180, explanation: "方案时长。" },
+  generation: { status: "ready", message: "可以开始生成本次音乐。" },
+  disclaimer: "仅用于音乐调养参考。",
+}
 
 function flowState(extra = {}) {
   return Object.assign(
@@ -79,7 +95,7 @@ function flowState(extra = {}) {
       session_id: "sess_r7",
       input_revision: 3,
       assessment,
-      diagnosis,
+      diagnosis: { ...diagnosis, five_tone_read_model: persistedReadModel },
       prescription,
       prescription_id: "rx_r7",
       generation_spec: spec,
@@ -122,6 +138,7 @@ globalThis.uni = {
     else if (path === "/api/v3/sessions" && options.method === "POST") data = { session_id: "sess_r7" }
     else if (path === "/api/v3/diagnoses") data = diagnosis
     else if (path === "/api/v3/prescriptions") data = prescription
+    else if (path === "/api/v3/diagnoses/diag_r7/five-tone-analysis") data = persistedReadModel
     else if (path === "/api/v3/music/generations" && options.method === "POST") data = taskResponse()
     else if (path === "/api/v3/music/generations/mtask_r7") data = taskResponse({ status: "running" })
     else throw new Error(`unexpected request ${options.method} ${path}`)

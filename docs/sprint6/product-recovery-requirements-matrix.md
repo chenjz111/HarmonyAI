@@ -47,6 +47,17 @@ Canonical design directory: `docs/product/assets/sprint6-recovery/`. The files b
 | PR-030 | Owner Plan Review item 3 | canonical `HarmonyAI山水疗愈音乐界面.png` | Player currently reads basis but must never create | `v3-player` | player page, api read paths, MusicGenerationFlow | D/E | zero-create/zero-AI Player test | Open/toggle explanation with request log unchanged | YES |
 | PR-031 | Owner Plan Review item 4 | — | Retained basis currently owns creation/generation | retained `v3-basis` | basis page, routes, compatibility tests | D | basis side-effect-free source/runtime test | Direct compatibility entry cannot create/retry/cancel | YES |
 
+### Owner Real-device Findings — 2026-09-29
+
+| Finding | Acceptance evidence | Status |
+|---|---|---|
+| Document-only `UserGoal` remains optional while questionnaire-only validation remains strict | `tests/api/v3/test_user_goal.py` | PASS |
+| Confirmed public summary survives structured derivation and reaches the persisted FiveTone read model | `tests/api/v3/test_assessment_read_confirmation.py`, `tests/api/v3/test_diagnosis_read_model_endpoint.py` | PASS |
+| Player consumes independent persisted explanations through a read-only endpoint | `frontend/tests/sprint6-phase6-music-presentation.test.mjs`, `frontend/tests/sprint6-product-recovery-player-explanation.test.mjs`, `tests/api/v3/test_diagnosis_read_model_endpoint.py` | PASS |
+| Technical errors and source labels remain public-safe primitive text | `frontend/tests/sprint6-phase6-music-presentation.test.mjs`, `frontend/tests/sprint6-product-recovery-player-explanation.test.mjs` | PASS |
+| Integrated/basic Player presentation remains neutral and does not fabricate a primary tone | `frontend/tests/sprint6-phase6-music-presentation.test.mjs`, Player source assertions | PASS |
+| Player explanation remains read-only and does not invoke generation/provider paths | `frontend/tests/sprint6-product-recovery-player-explanation.test.mjs` | PASS |
+
 ## Gate accounting
 
 - A requirement may move to PASS only when its automated test and required manual acceptance both have evidence.

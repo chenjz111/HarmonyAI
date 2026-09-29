@@ -65,13 +65,11 @@ def test_confirmation_with_edited_summary_creates_revision(monkeypatch, db_sessi
     changed = _v3_data(response)
     assert changed["revision"] == 2
     assert changed["status"] == "confirmed"
-    # Phase 2 (Option B): the narrative is presentation only, and the
-    # authoritative state text is the deterministic projection of the confirmed
-    # structured evidence.
+    # Owner contract: for document-only input, the user-confirmed narrative is
+    # the public state authority; structured evidence remains available for
+    # organ/coverage/conflict and downstream provenance projections.
     assert changed["presentation"]["summary"] == "最近容易烦躁，也会感到胸胁不舒。"
-    assert changed["state_summary"] != changed["presentation"]["summary"]
-    assert changed["state_summary"].startswith("已确认的近期状态：")
-    assert "烦躁易怒倾向" in changed["state_summary"]
+    assert changed["state_summary"] == changed["presentation"]["summary"]
     assert {
         item["fact_evidence_id"] for item in changed["fact_evidence"]
     } == {item["fact_evidence_id"] for item in created["fact_evidence"]}

@@ -33,6 +33,7 @@ const spec = {
   forbidden_constraints: [],
   fallback_policy: { allow_local_matching: false },
 }
+const readModel = { page: "five_tone_analysis", schema_version: "five_tone_analysis_read_model_v3.2", regulation_mode: "personalized_five_tone", confirmed_state: "近期思虑偏多。", state_tendency: "思虑偏多", analysis_rationales: [{ summary: "思虑偏多", evidence_refs: ["fact_1"] }], tone_weights: { gong: 0.7, jiao: 0.1, zhi: 0.1, shang: 0.05, yu: 0.05 }, primary_tone: { tone: "gong", explanation: "主音依据" }, secondary_tone: null, bpm: { value: 60, explanation: "舒缓节奏" }, instruments: { values: ["guqin"], explanation: "乐器依据" }, ambience: { values: ["rain"], explanation: "氛围依据" }, duration: { seconds: 180, explanation: "方案时长" }, generation: { status: "ready", message: "可以开始生成本次音乐。" }, disclaimer: "仅用于音乐调养参考。" }
 const audioAsset = {
   music_ref: { music_id: "music_async", source_type: "generated" },
   title: "生成音频 60 BPM",
@@ -107,6 +108,7 @@ globalThis.uni = {
     else if (path === "/api/v3/assessments/asmt_async") data = assessment
     else if (path.endsWith("/confirmations")) data = { ...assessment, status: "confirmed", requires_user_confirmation: false }
     else if (path === "/api/v3/diagnoses") data = { schema_version: "diagnosis_v3.0", diagnosis_id: "diag_async", status: "success", presentation: { title: "辨证分析", primary_tendency: "思虑偏多", basis_summaries: ["思虑偏多"], knowledge_references: [], disclaimer: "仅用于音乐调养参考，不构成医学诊断。" }, candidate_tendencies: [], element_profile: { status: "available", weights: { wood: 0, fire: 0, earth: 1, metal: 0, water: 0 }, score_semantics: "relative_evidence_distribution" } }
+    else if (path === "/api/v3/diagnoses/diag_async/five-tone-analysis") data = readModel
     else if (path === "/api/v3/prescriptions") data = { schema_version: "prescription_v3.0", prescription_id: "rx_async", diagnosis_id: "diag_async", status: "success", generation_spec: spec, presentation: { title: "五音调适解析", tone_summary: "本次以宫音为主。", parameter_summaries: ["舒缓节奏"], personalization_summary: "未应用历史偏好。" } }
     else if (path === "/api/v3/music/generations" && options.method === "POST") {
       if (scenario === "immediate") data = taskResponse({ status: "succeeded", progress: { value: 100, semantics: "provider_reported", indeterminate: false }, poll_after_ms: null, audio_asset: audioAsset })

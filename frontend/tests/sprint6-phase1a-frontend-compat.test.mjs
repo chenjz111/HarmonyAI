@@ -87,6 +87,38 @@ function toneProfile({ mode, primary = null, secondary = null, weights = null } 
   return profile
 }
 
+function persistedReadModel(profile, spec, assessment) {
+  const personalized = profile.regulation_mode === "personalized_five_tone"
+  const primary = personalized && profile.primary_tone ? {
+    tone: profile.primary_tone,
+    display_name: TONE_CODES[profile.primary_tone] || profile.primary_tone,
+    explanation: "主音依据",
+  } : null
+  const secondary = personalized && profile.secondary_tone ? {
+    tone: profile.secondary_tone,
+    display_name: TONE_CODES[profile.secondary_tone] || profile.secondary_tone,
+    explanation: "辅音依据",
+  } : null
+  return {
+    page: "five_tone_analysis",
+    schema_version: "five_tone_analysis_read_model_v3.2",
+    regulation_mode: profile.regulation_mode || null,
+    regulation_mode_label: "",
+    tone_weights: profile.weights || null,
+    confirmed_state: assessment.state_summary,
+    state_tendency: "思虑偏多",
+    analysis_rationales: [{ summary: "思虑偏多", evidence_refs: [] }],
+    primary_tone: primary,
+    secondary_tone: secondary,
+    bpm: { value: spec.bpm, explanation: "" },
+    instruments: { values: spec.instruments, explanation: "" },
+    ambience: { values: spec.ambient_sounds, explanation: "" },
+    duration: { seconds: spec.duration_seconds, explanation: "" },
+    generation: { status: "ready", message: "可以开始生成本次音乐。" },
+    disclaimer: "仅用于音乐调养参考，不构成医学诊断。",
+  }
+}
+
 /** 通过真实 flow-state 缓存分支驱动 apiV3.getMusicBasis()（无网络）。 */
 function seedBasisState(profile, { ambientSounds = ["流水"], parameterSummaries = ["舒缓节奏"] } = {}) {
   const spec = {
@@ -101,18 +133,21 @@ function seedBasisState(profile, { ambientSounds = ["流水"], parameterSummarie
     forbidden_constraints: [],
     fallback_policy: { allow_local_matching: false },
   }
+  const assessment = { status: "confirmed", state_summary: "近期思虑偏多。", revision: 1 }
   storage.set(
     "v3_flow_state",
     JSON.stringify({
       session_id: "sess_fe",
-      assessment: { status: "confirmed", state_summary: "近期思虑偏多。", revision: 1 },
+      assessment,
       diagnosis: {
+        diagnosis_id: "diag_fe",
         presentation: {
           title: "辨证分析",
           primary_tendency: "思虑偏多",
           basis_summaries: ["思虑偏多"],
           disclaimer: "仅用于音乐调养参考，不构成医学诊断。",
         },
+        five_tone_read_model: persistedReadModel(profile, spec, assessment),
       },
       prescription: {
         prescription_id: "rx_fe",

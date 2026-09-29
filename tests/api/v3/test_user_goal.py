@@ -7,6 +7,7 @@ import uuid
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from backend.app.schemas.v3.flow_v31 import UserGoalV31
 
 
 client = TestClient(app)
@@ -112,6 +113,35 @@ def test_non_null_user_goal_requires_complete_questionnaire():
     )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "QUESTIONNAIRE_REQUIRED"
+
+
+def test_document_only_user_goal_does_not_require_questionnaire(monkeypatch):
+    from backend.app.services.v3 import user_goal_service
+
+    class SessionRow:
+        id = 17
+        user_id = 23
+        input_mode = "with_document"
+        active_questionnaire_submission_id = None
+        user_goal_json = None
+        user_goal_revision = 0
+
+    class DB:
+        def commit(self):
+            return None
+
+    monkeypatch.setattr(
+        user_goal_service,
+        "get_owned_session_row",
+        lambda db, principal, session_id: SessionRow(),
+    )
+    result = user_goal_service.submit_user_goal(
+        DB(),
+        object(),
+        "sess_document_only",
+        UserGoalV31(primary_goal="sleep", secondary_goal=None, custom_goal_text=None),
+    )
+    assert result.user_goal.primary_goal == "sleep"
 
 
 def test_skip_user_goal_stores_null():
