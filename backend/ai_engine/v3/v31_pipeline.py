@@ -9,7 +9,7 @@ by their owning services and passed here as an already-authorized snapshot.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import inspect
 import uuid
 
@@ -37,6 +37,8 @@ from .diagnosis_pipeline import (
     DiagnosisProviderExecution,
     _build_diagnosis_provider_request,
     build_diagnosis_query,
+    build_focused_diagnosis_queries,
+    merge_focused_rag_results,
     execute_diagnosis_provider,
 )
 from .grounding import EvidenceKernelV1, build_evidence_kernel
@@ -86,6 +88,11 @@ class V31PipelineAuditContext:
     mapping_version: str
     # Sprint 6 Phase 3: policy-aware query-builder identity for the audit row.
     query_builder_version: str = "diagnosis_query_v3.1"
+    # Focused retrieval provenance is retained without changing the existing
+    # persistence schema: ordered group/query identities and hit origins are
+    # serialized into the audit metadata by the owning service.
+    focused_queries: tuple[tuple[str, RagQuery], ...] = ()
+    focused_hit_groups: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -142,7 +149,20 @@ async def execute_v31_ai_pipeline(
         raise V31PipelineBlocked("V31_PROVIDER_CHAIN_NOT_READY")
 
     query = build_diagnosis_query(assessment_snapshot)
-    rag_result = _query_rag(rag_store, query, assessment_snapshot)
+    focused = build_focused_diagnosis_queries(assessment_snapshot)
+    known_focused_claims = {
+        claim
+        for group in _focused_query_groups_for_runtime()
+        for claim in group.get("included_claim_codes", ())
+    }
+    has_known_claim = bool(set(assessment_snapshot.get("claim_codes", ())) & known_focused_claims)
+    focused_hit_groups = {}
+    if has_known_claim:
+        rag_result, focused_hit_groups = _query_focused_rag_with_provenance(
+            rag_store, focused, assessment_snapshot
+        )
+    else:
+        rag_result = _query_rag(rag_store, query, assessment_snapshot)
     diagnosis_request = _build_diagnosis_provider_request(
         assessment_snapshot,
         rag_result,
@@ -181,6 +201,8 @@ async def execute_v31_ai_pipeline(
                 "diagnosis_query_v3.1",
             )
         ),
+        focused_queries=tuple(focused if has_known_claim else ()),
+        focused_hit_groups=focused_hit_groups,
     )
     if execution.status == "abstained":
         pass
@@ -534,6 +556,49 @@ def _query_rag(rag_store, query: RagQuery, snapshot: Mapping[str, object]) -> Ra
     if not isinstance(result, RagResult):
         raise V31PipelineBlocked("RAG_INVALID_RESULT")
     return result
+
+
+def _focused_query_groups_for_runtime() -> tuple[dict[str, object], ...]:
+    from .diagnosis_pipeline import _focused_query_groups
+
+    return _focused_query_groups()
+
+
+def _query_focused_rag(
+    rag_store,
+    queries: list[tuple[str, RagQuery]],
+    snapshot: Mapping[str, object],
+) -> RagResult:
+    result, _provenance = _query_focused_rag_with_provenance(rag_store, queries, snapshot)
+    return result
+
+
+def _query_focused_rag_with_provenance(
+    rag_store,
+    queries: list[tuple[str, RagQuery]],
+    snapshot: Mapping[str, object],
+) -> tuple[RagResult, dict[str, tuple[str, ...]]]:
+    if not queries:
+        manifest = getattr(rag_store, "manifest", None)
+        return RagResult(
+            retrieval_id=f"rag_focused_empty_{uuid.uuid4().hex}",
+            status="empty",
+            knowledge_version=str(getattr(manifest, "knowledge_version", snapshot.get("knowledge_version", "unknown"))),
+            embedding_version=str(getattr(manifest, "embedding_version", snapshot.get("embedding_version", "unknown"))),
+            retrieval_score_semantics=str(snapshot.get("retrieval_score_semantics") or "normalized_similarity"),
+            hits=[],
+            degradation=Degradation(active=False, reason_codes=[]),
+        ), {}
+    focused_snapshot = dict(snapshot)
+    focused_snapshot.pop("confirmed_state_text", None)
+    results = [(group_id, _query_rag(rag_store, query, focused_snapshot)) for group_id, query in queries]
+    provenance: dict[str, list[str]] = {}
+    for group_id, result in results:
+        for hit in result.hits:
+            provenance.setdefault(hit.chunk_id, []).append(group_id)
+    return merge_focused_rag_results(results), {
+        chunk_id: tuple(groups) for chunk_id, groups in provenance.items()
+    }
 
 
 def _mapping_value(snapshot: Mapping[str, object], key: str) -> Mapping[str, object]:
