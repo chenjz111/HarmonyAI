@@ -1000,9 +1000,27 @@ def _persist_pipeline_audit(
     if rag_run is None:
         rag_run = RagRetrievalRun(rag_run_id=rag_run_id)
         db.add(rag_run)
+    focused_metadata = {
+        "focused_queries": [
+            {"group_id": group_id, "query": query.model_dump(mode="json")}
+            for group_id, query in audit.focused_queries
+        ],
+        "focused_hit_groups": {
+            str(chunk_id): list(groups)
+            for chunk_id, groups in audit.focused_hit_groups.items()
+        },
+    }
+    query_payload = (
+        focused_metadata["focused_queries"]
+        if audit.focused_queries
+        else audit.query.model_dump(mode="json")
+    )
+    degradation_payload = audit.rag_result.degradation.model_dump(mode="json")
+    if audit.focused_queries:
+        degradation_payload["focused_query_provenance"] = focused_metadata
     for field, value in {
         "diagnosis_id": diagnosis_id,
-        "query_hash": _request_hash(audit.query.model_dump(mode="json")),
+        "query_hash": _request_hash(query_payload),
         "query_builder_version": getattr(
             audit, "query_builder_version", "diagnosis_query_v3.1"
         ),
@@ -1015,7 +1033,7 @@ def _persist_pipeline_audit(
         "status": audit.rag_result.status,
         "top_k": audit.query.top_k,
         "minimum_score": float(manifest.minimum_score),
-        "degradation_json": audit.rag_result.degradation.model_dump(mode="json"),
+        "degradation_json": degradation_payload,
     }.items():
         setattr(rag_run, field, value)
     db.flush()

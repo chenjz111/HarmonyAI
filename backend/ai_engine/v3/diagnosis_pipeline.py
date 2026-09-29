@@ -10,6 +10,8 @@ import json
 import time
 from typing import Literal
 import uuid
+from functools import lru_cache
+from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -97,6 +99,110 @@ def build_diagnosis_query(snapshot: Mapping[str, object]) -> RagQuery:
         supporting_fact_ids=supporting,
         contradicting_fact_ids=contradicting,
         top_k=int(top_k),
+    )
+
+
+@lru_cache(maxsize=1)
+def _focused_query_groups() -> tuple[dict[str, object], ...]:
+    """Load the reviewed offline mapping; runtime never invents group membership."""
+    path = Path(__file__).resolve().parents[3] / "knowledge/v3/questionnaire-rag-gold-profiles-v1.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return tuple(payload["proposed_focused_query_groups"])
+
+
+def build_focused_diagnosis_queries(
+    snapshot: Mapping[str, object],
+) -> list[tuple[str, RagQuery]]:
+    """Build one frozen-policy query per eligible confirmed focused group."""
+    facts = [item for item in snapshot.get("facts", ()) if isinstance(item, Mapping)]
+    current_claims = set(_strings(snapshot.get("claim_codes")))
+    active = {
+        str(item.get("claim_code"))
+        for item in facts
+        if item.get("direction", "supporting") == "supporting"
+        and str(item.get("claim_code")) in current_claims
+    }
+    contradicted_ids = set(_strings(snapshot.get("contradicting_fact_ids")))
+    active -= {
+        str(item.get("claim_code"))
+        for item in facts
+        if str(item.get("fact_evidence_id")) in contradicted_ids
+        or item.get("direction") == "contradicting"
+    }
+    approved = set(_strings(snapshot.get("approved_claim_codes")))
+    active &= approved
+    top_k = snapshot.get("top_k")
+    policy_top_k = int(load_rag_query_policy().top_k)
+    if top_k is None:
+        top_k = policy_top_k
+    if int(top_k) != policy_top_k:
+        raise ValueError("FOCUSED_QUERY_POLICY_TOP_K_MISMATCH")
+    output: list[tuple[str, RagQuery]] = []
+    for group in _focused_query_groups():
+        rule = group.get("retrieval_activation") or {}
+        eligible = active & set(_strings(rule.get("eligible_claim_codes")))
+        if not eligible:
+            continue
+        group_id = str(group["group_id"])
+        organs = [str(group["organ_code"])]
+        scoped = dict(snapshot)
+        scoped["claim_codes"] = sorted(eligible)
+        scoped["organ_codes"] = organs
+        scoped["approved_organ_codes"] = organs
+        scoped["supporting_fact_ids"] = [
+            str(item.get("fact_evidence_id"))
+            for item in facts
+            if item.get("claim_code") in eligible and item.get("direction") == "supporting"
+        ]
+        scoped["contradicting_fact_ids"] = []
+        query = build_diagnosis_query(scoped)
+        if query.top_k != int(top_k):
+            raise ValueError("focused query policy mismatch")
+        output.append((group_id, query))
+    return output
+
+
+def merge_focused_rag_results(
+    results: Sequence[tuple[str, RagResult]],
+) -> RagResult:
+    """Merge approved focused results by chunk id, retaining highest score."""
+    if not results:
+        raise ValueError("focused result set cannot be empty")
+    first = results[0][1]
+    identity = (first.knowledge_version, first.embedding_version, first.retrieval_score_semantics)
+    if any((result.knowledge_version, result.embedding_version, result.retrieval_score_semantics) != identity for _group_id, result in results[1:]):
+        raise ValueError("FOCUSED_QUERY_IDENTITY_MISMATCH")
+    best: dict[str, tuple[int, object]] = {}
+    for order, (_group_id, result) in enumerate(results):
+        for hit in result.hits:
+            current = best.get(hit.chunk_id)
+            if current is None or hit.retrieval_score > current[1].retrieval_score:
+                best[hit.chunk_id] = (order, hit)
+    hits = [item[1] for item in sorted(best.values(), key=lambda item: (-item[1].retrieval_score, item[0], item[1].chunk_id))]
+    reason_codes = sorted({
+        reason
+        for _group_id, result in results
+        for reason in result.degradation.reason_codes
+    })
+    child_statuses = {result.status for _group_id, result in results}
+    active_degradation = any(result.degradation.active for _group_id, result in results)
+    if "failed" in child_statuses:
+        # A partial result is never safe to present as a successful retrieval.
+        status = "failed"
+        hits = []
+        reason_codes = sorted(set(reason_codes) | {"FOCUSED_QUERY_FAILED"})
+    elif "degraded" in child_statuses or active_degradation:
+        status = "degraded"
+    else:
+        status = "success" if hits else "empty"
+    return RagResult(
+        retrieval_id=f"rag_focused_{uuid.uuid4().hex}",
+        status=status,
+        knowledge_version=first.knowledge_version,
+        embedding_version=first.embedding_version,
+        retrieval_score_semantics=first.retrieval_score_semantics,
+        hits=hits,
+        degradation={"active": active_degradation, "reason_codes": reason_codes},
     )
 
 
