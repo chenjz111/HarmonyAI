@@ -116,8 +116,14 @@ _GLOBAL_STYLE = (
     "no vocals, no spoken words, natural acoustic character, coherent phrasing, "
     "smooth transitions, avoid abrupt transitions"
 )
+
+def _candidate_d_forbidden_pattern(phrase: str) -> re.Pattern[str]:
+    escaped = re.escape(phrase).replace("\\ ", r"\s+")
+    return re.compile(r"\b" + escaped + r"\b", re.IGNORECASE)
+
+
 _CANDIDATE_D_FORBIDDEN_PATTERNS = tuple(
-    re.compile(rf"\b{re.escape(phrase).replace(r'\ ', r'\s+')}\b", re.IGNORECASE)
+    _candidate_d_forbidden_pattern(phrase)
     for phrase in ("healing music", "instrumental only")
 )
 
