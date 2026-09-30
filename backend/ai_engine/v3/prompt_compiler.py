@@ -48,7 +48,7 @@ from backend.ai_engine.v3.music_provider import (
 )
 
 #: Frozen compiler version; part of the persisted audit identity.
-PROMPT_COMPILER_VERSION = "prompt-compiler-v2.0-r1"
+PROMPT_COMPILER_VERSION = "prompt-compiler-v2.1-r1"
 
 #: Version of the canonical intermediate model (persisted as the audit row's
 #: request/schema identity alongside the compiler version).
@@ -86,6 +86,36 @@ TONE_PROMPT_DESCRIPTORS: Mapping[str, str] = {
 
 _BASE_FRAGMENT = "Traditional Chinese instrumental healing music"
 _NO_TONE_FALLBACK = "warm acoustic textures"
+
+_CANDIDATE_D_DIALECTS = {
+    PromptDialect.TOKENHUB_MINIMAX,
+    PromptDialect.MINIMAX,
+}
+
+_ENERGY_TRANSLATIONS: Mapping[str, str] = {
+    "平稳舒缓": "calm and even",
+    "平稳专注": "steady and focused",
+    "轻快有活力": "light and lively",
+}
+
+_AMBIENCE_TRANSLATIONS: Mapping[str, str] = {
+    "微风": "gentle breeze ambience",
+    "细雨": "gentle rain ambience",
+    "溪流": "subtle stream ambience",
+}
+
+_NO_AMBIENCE_VALUES = {
+    "无额外环境音",
+    "无其他环境音",
+    "无环境音",
+    "无",
+}
+
+_NO_AMBIENCE_RENDERING = "clean acoustic space with no added ambience"
+_GLOBAL_STYLE = (
+    "no vocals, no spoken words, natural acoustic character, coherent phrasing, "
+    "smooth transitions, avoid abrupt transitions"
+)
 
 _LENGTH_SAFE_MESSAGE = "音乐生成提示词过长，无法提交生成服务。"
 _CONTRACT_SAFE_MESSAGE = "音乐生成参数不完整，无法提交生成服务。"
@@ -211,6 +241,13 @@ def _format_weight(value: Any) -> str:
         raise PromptCompilerContractError("PROMPT_COMPILER_TONE_WEIGHT_INVALID") from None
 
 
+def _format_percentage(value: Any) -> str:
+    try:
+        return f"{float(value) * 100:g}%"
+    except (TypeError, ValueError):
+        raise PromptCompilerContractError("PROMPT_COMPILER_TONE_WEIGHT_INVALID") from None
+
+
 def _tone_weights(tone_profile: Any) -> Mapping[str, Any] | None:
     weights = _get(tone_profile, "weights")
     if not isinstance(weights, Mapping):
@@ -296,8 +333,158 @@ def _duration_fragment(dialect: PromptDialect, seconds: Any) -> str:
     return f"total duration {seconds} seconds"
 
 
-def build_canonical_prompt(spec: Any, dialect: PromptDialect) -> CanonicalMusicPrompt:
-    """Build the deterministic canonical model from the authoritative spec."""
+def _translated_energy(spec: Any) -> str:
+    source_value = str(_get(spec, "energy_curve") or "")
+    translated = _ENERGY_TRANSLATIONS.get(source_value)
+    if translated is None:
+        raise PromptCompilerContractError("UNMAPPED_PROVIDER_LANGUAGE_VALUE")
+    return translated
+
+
+def _translated_ambience(spec: Any) -> str:
+    translated_values: list[str] = []
+    for item in (_get(spec, "ambient_sounds") or ()):
+        source_value = str(item).strip()
+        if source_value in _NO_AMBIENCE_VALUES:
+            continue
+        translated = _AMBIENCE_TRANSLATIONS.get(source_value)
+        if translated is None:
+            raise PromptCompilerContractError("UNMAPPED_PROVIDER_LANGUAGE_VALUE")
+        if translated not in translated_values:
+            translated_values.append(translated)
+    return ", ".join(translated_values) or _NO_AMBIENCE_RENDERING
+
+
+def _candidate_d_tone_fragments(tone_profile: Any) -> list[PromptFragment]:
+    if tone_profile is None:
+        raise PromptCompilerContractError("PROMPT_COMPILER_TONE_MISSING")
+
+    mode = _value(_get(tone_profile, "regulation_mode"))
+    primary = _tone_code(_get(tone_profile, "primary_tone"))
+    secondary = _tone_code(_get(tone_profile, "secondary_tone"))
+    weights = _tone_weights(tone_profile)
+
+    if mode == "personalized_five_tone":
+        if primary is None:
+            raise PromptCompilerContractError("PROMPT_COMPILER_TONE_MISSING")
+        if weights is None or primary not in weights:
+            raise PromptCompilerContractError("PROMPT_COMPILER_TONE_WEIGHT_MISSING")
+        fragments = [
+            PromptFragment(
+                source_field="tone_profile.primary_tone",
+                text=(
+                    f"Primary melodic character: {_tone_descriptor(primary)} "
+                    f"({_format_percentage(weights[primary])})."
+                ),
+            )
+        ]
+        if secondary is not None:
+            if secondary not in weights:
+                raise PromptCompilerContractError(
+                    "PROMPT_COMPILER_TONE_WEIGHT_MISSING"
+                )
+            fragments.append(
+                PromptFragment(
+                    source_field="tone_profile.secondary_tone",
+                    text=(
+                        f"Supporting tonal color: {_tone_descriptor(secondary)} "
+                        f"({_format_percentage(weights[secondary])})."
+                    ),
+                )
+            )
+        return fragments
+
+    if mode == "integrated_regulation":
+        return [
+            PromptFragment(
+                source_field="tone_profile.regulation_mode",
+                text=(
+                    "No dominant five-tone center; use an integrated, balanced "
+                    "modal blend."
+                ),
+            )
+        ]
+
+    if mode == "basic_wellness":
+        return [
+            PromptFragment(
+                source_field="tone_profile.regulation_mode",
+                text=(
+                    "No dominant five-tone center; use a neutral, gentle modal "
+                    "palette without asserting a specific tone."
+                ),
+            )
+        ]
+
+    raise PromptCompilerContractError("PROMPT_COMPILER_REGULATION_MODE_UNKNOWN")
+
+
+def _build_candidate_d_prompt(
+    spec: Any, dialect: PromptDialect
+) -> CanonicalMusicPrompt:
+    duration = _get(spec, "duration_seconds")
+    bpm = _get(spec, "bpm")
+    structure = _get(spec, "structure")
+    instruments = normalize_instruments(list(_get(spec, "instruments") or ()))
+    rendered_instruments = ", ".join(instruments) or _NO_TONE_FALLBACK
+    constraints = [
+        str(item).strip()
+        for item in (_get(spec, "forbidden_constraints") or ())
+        if str(item).strip()
+    ]
+
+    fragments: list[PromptFragment] = [
+        PromptFragment(
+            source_field="generation_spec.duration_seconds",
+            text=(
+                f"Create one {duration}-second traditional Chinese instrumental piece "
+                "rooted in a Chinese pentatonic palette."
+            ),
+        ),
+        *_candidate_d_tone_fragments(_get(spec, "tone_profile")),
+        PromptFragment(
+            source_field="generation_spec.bpm",
+            text=f"Tempo: {bpm} BPM.",
+        ),
+        PromptFragment(
+            source_field="generation_spec.instruments",
+            text=f"Instruments: {rendered_instruments}.",
+        ),
+        PromptFragment(
+            source_field="generation_spec.structure",
+            text=(
+                f"Form: {_get(structure, 'intro_seconds', 0)}-second opening, "
+                f"{_get(structure, 'main_seconds', 0)}-second main section, "
+                f"{_get(structure, 'outro_seconds', 0)}-second closing."
+            ),
+        ),
+        PromptFragment(
+            source_field="generation_spec.energy_curve",
+            text=f"Energy: {_translated_energy(spec)}.",
+        ),
+        PromptFragment(
+            source_field="generation_spec.ambient_sounds",
+            text=f"Atmosphere: {_translated_ambience(spec)}.",
+        ),
+        PromptFragment(
+            source_field="prompt_compiler.global_style",
+            text=f"Global style: {_GLOBAL_STYLE}" + ("." if constraints else ""),
+        ),
+    ]
+    if constraints:
+        fragments.append(
+            PromptFragment(
+                source_field="generation_spec.forbidden_constraints",
+                text="Avoid: " + ", ".join(constraints),
+            )
+        )
+    return CanonicalMusicPrompt(dialect=dialect, fragments=tuple(fragments))
+
+
+def _build_v2_canonical_prompt(
+    spec: Any, dialect: PromptDialect
+) -> CanonicalMusicPrompt:
+    """Build the historical V2 canonical model for non-Candidate-D dialects."""
 
     tone_profile = _get(spec, "tone_profile")
     fragments: list[PromptFragment] = [
@@ -366,6 +553,14 @@ def build_canonical_prompt(spec: Any, dialect: PromptDialect) -> CanonicalMusicP
         )
 
     return CanonicalMusicPrompt(dialect=dialect, fragments=tuple(fragments))
+
+
+def build_canonical_prompt(spec: Any, dialect: PromptDialect) -> CanonicalMusicPrompt:
+    """Build the deterministic canonical model for the selected provider dialect."""
+
+    if dialect in _CANDIDATE_D_DIALECTS:
+        return _build_candidate_d_prompt(spec, dialect)
+    return _build_v2_canonical_prompt(spec, dialect)
 
 
 def _sha256(value: str) -> str:

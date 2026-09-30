@@ -90,9 +90,9 @@ def _generation_spec() -> dict[str, object]:
         "bpm": 60,
         "duration_seconds": 60,
         "instruments": ["guqin", "xiao"],
-        "ambient_sounds": ["water"],
+        "ambient_sounds": ["微风"],
         "structure": {"intro_seconds": 6, "main_seconds": 48, "outro_seconds": 6},
-        "energy_curve": "gentle_decline",
+        "energy_curve": "平稳舒缓",
         "forbidden_constraints": ["sharp_high_frequency"],
         "fallback_policy": {"allow_local_matching": True},
     }
@@ -747,18 +747,17 @@ def test_no_extra_ambient_never_renders_a_contradictory_prompt(tmp_path):
     provider.create_task(_request(instruments=["古琴"], ambient=["无额外环境音"]))
     prompt = poster.calls[0]["json"]["prompt"]
     assert "无额外环境音" not in prompt
-    assert "ambience" not in prompt
-    assert "Atmosphere" not in prompt
+    assert "Atmosphere: clean acoustic space with no added ambience." in prompt
 
 
 def test_real_ambient_still_renders_while_no_ambient_token_is_dropped(tmp_path):
     poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
     provider = _provider(tmp_path, poster)
     provider.create_task(
-        _request(instruments=["箫"], ambient=["无额外环境音", "water"])
+        _request(instruments=["箫"], ambient=["无额外环境音", "溪流"])
     )
     prompt = poster.calls[0]["json"]["prompt"]
-    assert "soft water ambience" in prompt
+    assert "subtle stream ambience" in prompt
     assert "无额外环境音" not in prompt
 
 
@@ -774,7 +773,7 @@ def test_duration_is_a_prompt_target_not_a_provider_field(tmp_path):
     for forbidden_key in ("duration", "seconds_total", "length", "duration_seconds"):
         assert forbidden_key not in body
     prompt = body["prompt"]
-    assert "target length about 60 seconds" in prompt
+    assert "Create one 60-second" in prompt
 
     meta = provider.last_run_metadata
     # provider-reported actual duration (ms -> s) stays separate from the target
@@ -1024,7 +1023,7 @@ def test_tokenhub_prompt_actually_uses_prompt_compiler_v2(tmp_path):
     )
     assert prompt == expected.text
     assert TONE_PROMPT_DESCRIPTORS["gong"] in prompt
-    assert "primary tone emphasis 0.2" in prompt
+    assert "Primary melodic character: grounded, steady melodic contour (20%)." in prompt
     assert "Instruments: guqin, xiao" in prompt
 
 
@@ -1060,6 +1059,16 @@ def test_tokenhub_prompt_over_the_cap_fails_before_any_post(tmp_path):
         provider.create_task(_long_request(entries=200))
     assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
     assert caught.value.retryable is False
+    assert poster.calls == []
+
+
+def test_tokenhub_unmapped_provider_language_fails_before_any_post(tmp_path):
+    poster = FakePoster(response=FakeResponse(text=_completed_body(mp3_bytes().hex())))
+    provider = _provider(tmp_path, poster)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request(ambient=["water"]))
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+    assert caught.value.cause.reason_code == "UNMAPPED_PROVIDER_LANGUAGE_VALUE"
     assert poster.calls == []
 
 

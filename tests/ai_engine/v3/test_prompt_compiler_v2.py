@@ -27,6 +27,10 @@ from backend.ai_engine.v3.prompt_compiler import (
 from backend.app.schemas.v3.music import ProviderMusicRequest
 
 ALL_DIALECTS = tuple(PromptDialect)
+CANDIDATE_D_DIALECTS = (
+    PromptDialect.TOKENHUB_MINIMAX,
+    PromptDialect.MINIMAX,
+)
 TONE_CODES = ("jiao", "zhi", "gong", "shang", "yu")
 
 
@@ -62,9 +66,9 @@ def _generation_spec(**overrides):
         "bpm": 60,
         "duration_seconds": 60,
         "instruments": ["guqin", "xiao"],
-        "ambient_sounds": ["water"],
+        "ambient_sounds": ["微风"],
         "structure": {"intro_seconds": 6, "main_seconds": 48, "outro_seconds": 6},
-        "energy_curve": "gentle_decline",
+        "energy_curve": "平稳舒缓",
         "forbidden_constraints": [],
         "fallback_policy": {"allow_local_matching": True},
     }
@@ -96,8 +100,8 @@ def test_pc1_primary_tone_only_renders_descriptor_without_raw_enum():
         tone_profile=_tone_profile(secondary_tone=None),
     )
     assert TONE_PROMPT_DESCRIPTORS["jiao"] in compiled.text
-    assert "primary tone emphasis 0.7" in compiled.text
-    assert "secondary" not in compiled.text
+    assert "Primary melodic character: bright, gently rising melodic contour (70%)." in compiled.text
+    assert "Supporting tonal color" not in compiled.text
     assert not re.search(r"\bjiao\b", compiled.text, re.IGNORECASE)
 
 
@@ -105,8 +109,8 @@ def test_pc2_primary_and_secondary_render_both_authoritative_weights():
     compiled = compile_for(PromptDialect.MINIMAX)
     assert TONE_PROMPT_DESCRIPTORS["jiao"] in compiled.text
     assert TONE_PROMPT_DESCRIPTORS["zhi"] in compiled.text
-    assert "primary tone emphasis 0.7" in compiled.text
-    assert "secondary warm, lively melodic contour emphasis 0.15" in compiled.text
+    assert "Primary melodic character: bright, gently rising melodic contour (70%)." in compiled.text
+    assert "Supporting tonal color: warm, lively melodic contour (15%)." in compiled.text
     for tone in ("jiao", "zhi"):
         assert not re.search(rf"\b{tone}\b", compiled.text, re.IGNORECASE)
 
@@ -189,11 +193,14 @@ def test_pc3_all_five_tones_render_provider_safe_descriptors(tone, expected_weig
             tone_profile=_tone_profile(primary_tone=tone, secondary_tone=None),
         )
         assert TONE_PROMPT_DESCRIPTORS[tone] in compiled.text
-        assert f"primary tone emphasis {expected_weight}" in compiled.text
+        if dialect in CANDIDATE_D_DIALECTS:
+            assert f"Primary melodic character: {TONE_PROMPT_DESCRIPTORS[tone]} ({float(expected_weight) * 100:g}%)." in compiled.text
+        else:
+            assert f"primary tone emphasis {expected_weight}" in compiled.text
         assert not re.search(rf"\b{tone}\b", compiled.text, re.IGNORECASE)
 
 
-def test_pc3b_integrated_and_basic_keep_the_authoritative_distribution_visible():
+def test_pc3b_integrated_and_basic_respect_dialect_specific_neutral_rendering():
     integrated = _tone_profile(
         regulation_mode="integrated_regulation",
         primary_tone=None,
@@ -201,8 +208,8 @@ def test_pc3b_integrated_and_basic_keep_the_authoritative_distribution_visible()
         weights={tone: 0.2 for tone in TONE_CODES},
     )
     compiled = compile_for(PromptDialect.TOKENHUB_MINIMAX, tone_profile=integrated)
-    assert "balanced five-tone blend without a dominant tone" in compiled.text
-    assert "neutral five-tone distribution retained" in compiled.text
+    assert "No dominant five-tone center; use an integrated, balanced modal blend." in compiled.text
+    assert "neutral five-tone distribution retained" not in compiled.text
     for tone in TONE_CODES:
         assert not re.search(rf"\b{tone}\b", compiled.text, re.IGNORECASE)
 
@@ -213,7 +220,7 @@ def test_pc3b_integrated_and_basic_keep_the_authoritative_distribution_visible()
         weights=None,
     )
     compiled_basic = compile_for(PromptDialect.MINIMAX, tone_profile=basic)
-    assert "neutral, gentle soundscape without a tone conclusion" in compiled_basic.text
+    assert "No dominant five-tone center; use a neutral, gentle modal palette without asserting a specific tone." in compiled_basic.text
     assert "neutral five-tone distribution retained" not in compiled_basic.text
 
 
@@ -264,28 +271,42 @@ def test_pc6c_repeated_approved_instrument_collapses_without_reordering():
 # PC7 / PC8 / PC9 — ambience normalization
 # --------------------------------------------------------------------------- #
 def test_pc7_real_ambience_renders():
-    for dialect in ALL_DIALECTS:
-        compiled = compile_for(dialect, ambient_sounds=["water"])
-        assert "Atmosphere: soft water ambience." in compiled.text
+    for dialect in CANDIDATE_D_DIALECTS:
+        compiled = compile_for(dialect, ambient_sounds=["溪流"])
+        assert "Atmosphere: subtle stream ambience." in compiled.text
+    stability = compile_for(PromptDialect.STABILITY, ambient_sounds=["water"])
+    assert "Atmosphere: soft water ambience." in stability.text
 
 
-@pytest.mark.parametrize(
-    "token", ["无额外环境音", "无其他环境音", "无环境音", "no_extra_ambient", "no_ambient", "none"]
-)
+@pytest.mark.parametrize("token", ["无额外环境音", "无其他环境音", "无环境音", "无"])
 def test_pc8_no_extra_ambient_never_renders_a_contradictory_fragment(token):
     for dialect in ALL_DIALECTS:
         compiled = compile_for(dialect, ambient_sounds=[token])
         assert token not in compiled.text
-        assert "ambience" not in compiled.text
-        assert "Atmosphere" not in compiled.text
+        if dialect in CANDIDATE_D_DIALECTS:
+            assert "Atmosphere: clean acoustic space with no added ambience." in compiled.text
+        else:
+            assert "ambience" not in compiled.text
+            assert "Atmosphere" not in compiled.text
+
+
+@pytest.mark.parametrize("token", ["no_extra_ambient", "no_ambient", "none"])
+def test_pc8b_legacy_english_no_ambient_tokens_remain_stability_only(token):
+    compiled = compile_for(PromptDialect.STABILITY, ambient_sounds=[token])
+    assert "ambience" not in compiled.text
+    assert "Atmosphere" not in compiled.text
 
 
 def test_pc9_mixed_real_ambience_and_no_ambient_token_is_not_contradictory():
-    for dialect in ALL_DIALECTS:
-        compiled = compile_for(dialect, ambient_sounds=["无额外环境音", "water"])
-        assert "Atmosphere: soft water ambience." in compiled.text
+    for dialect in CANDIDATE_D_DIALECTS:
+        compiled = compile_for(dialect, ambient_sounds=["无额外环境音", "溪流"])
+        assert "Atmosphere: subtle stream ambience." in compiled.text
         assert "无额外环境音" not in compiled.text
-        assert "soft 无额外环境音 ambience" not in compiled.text
+    stability = compile_for(
+        PromptDialect.STABILITY, ambient_sounds=["无额外环境音", "water"]
+    )
+    assert "Atmosphere: soft water ambience." in stability.text
+    assert "无额外环境音" not in stability.text
 
 
 # --------------------------------------------------------------------------- #
@@ -293,7 +314,9 @@ def test_pc9_mixed_real_ambience_and_no_ambient_token_is_not_contradictory():
 # --------------------------------------------------------------------------- #
 def test_pc10_bpm_is_rendered_from_the_spec():
     for dialect in ALL_DIALECTS:
-        assert "bpm 72" in compile_for(dialect, bpm=72).text
+        text = compile_for(dialect, bpm=72).text
+        expected = "Tempo: 72 BPM." if dialect in CANDIDATE_D_DIALECTS else "bpm 72"
+        assert expected in text
 
 
 def test_pc11_duration_target_is_dialect_specific_and_authoritative():
@@ -301,10 +324,15 @@ def test_pc11_duration_target_is_dialect_specific_and_authoritative():
     tokenhub = compile_for(
         PromptDialect.TOKENHUB_MINIMAX, duration_seconds=90, structure=structure
     )
-    assert "target length about 90 seconds" in tokenhub.text
-    for dialect in (PromptDialect.MINIMAX, PromptDialect.STABILITY):
-        compiled = compile_for(dialect, duration_seconds=90, structure=structure)
-        assert "total duration 90 seconds" in compiled.text
+    assert "Create one 90-second" in tokenhub.text
+    minimax = compile_for(
+        PromptDialect.MINIMAX, duration_seconds=90, structure=structure
+    )
+    assert "Create one 90-second" in minimax.text
+    stability = compile_for(
+        PromptDialect.STABILITY, duration_seconds=90, structure=structure
+    )
+    assert "total duration 90 seconds" in stability.text
 
 
 def test_pc12_structure_is_rendered_exactly():
@@ -313,12 +341,15 @@ def test_pc12_structure_is_rendered_exactly():
         duration_seconds=90,
         structure={"intro_seconds": 6, "main_seconds": 78, "outro_seconds": 6},
     )
-    assert "Structure: intro 6s, main 78s, outro 6s" in compiled.text
+    assert "Form: 6-second opening, 78-second main section, 6-second closing." in compiled.text
 
 
-def test_pc13_energy_curve_is_rendered_verbatim():
-    for dialect in ALL_DIALECTS:
-        assert "Energy: 平稳舒缓" in compile_for(dialect, energy_curve="平稳舒缓").text
+def test_pc13_energy_curve_is_translated_only_for_candidate_d():
+    for dialect in CANDIDATE_D_DIALECTS:
+        assert "Energy: calm and even." in compile_for(dialect, energy_curve="平稳舒缓").text
+    assert "Energy: 平稳舒缓" in compile_for(
+        PromptDialect.STABILITY, energy_curve="平稳舒缓"
+    ).text
 
 
 def test_pc14_empty_forbidden_constraints_produce_no_avoid_fragment():
@@ -344,10 +375,10 @@ def _long_constraints(total_chars: int) -> list[str]:
 
 def test_pc15_prompt_near_max_length_still_compiles():
     compiled = compile_for(
-        PromptDialect.TOKENHUB_MINIMAX, forbidden_constraints=_long_constraints(1500)
+        PromptDialect.TOKENHUB_MINIMAX, forbidden_constraints=_long_constraints(1200)
     )
     assert len(compiled.text) <= PROMPT_MAX_LENGTH[PromptDialect.TOKENHUB_MINIMAX]
-    assert len(compiled.text) > 1400
+    assert len(compiled.text) > 1100
 
 
 def test_pc16_prompt_over_max_length_fails_closed_per_dialect():
@@ -401,7 +432,7 @@ def test_pc19b_input_spec_checksum_ignores_run_identity():
     second = compile_for(PromptDialect.TOKENHUB_MINIMAX)
     # Same authoritative spec, different dialect => same input identity.
     assert first.input_spec_checksum == second.input_spec_checksum
-    assert first.checksum != second.checksum
+    assert first.checksum == second.checksum
 
 
 def test_pc19c_audit_identity_carries_exactly_the_four_fields():
@@ -506,3 +537,218 @@ def test_pc21d_spec_is_not_mutated_by_compilation():
     before = authoritative.model_dump(mode="json")
     compile_music_prompt(authoritative, PromptDialect.STABILITY)
     assert authoritative.model_dump(mode="json") == before
+
+
+# --------------------------------------------------------------------------- #
+# Prompt Compiler V2.1 — Owner-frozen Candidate D production contract
+# --------------------------------------------------------------------------- #
+def _candidate_d_spec(**overrides):
+    payload = {
+        "tone_profile": _tone_profile(
+            secondary_tone="shang",
+            weights={"jiao": 0.7, "zhi": 0.15, "gong": 0.0, "shang": 0.15, "yu": 0.0},
+        ),
+        "duration_seconds": 180,
+        "structure": {
+            "intro_seconds": 30,
+            "main_seconds": 120,
+            "outro_seconds": 30,
+        },
+        "instruments": ["guqin", "pipa"],
+        "ambient_sounds": ["微风"],
+        "energy_curve": "平稳舒缓",
+    }
+    payload.update(overrides)
+    return spec(**payload)
+
+
+def test_v21_jiao_golden_is_exact_for_minimax_dialects():
+    expected = (
+        "Create one 180-second traditional Chinese instrumental piece rooted in a "
+        "Chinese pentatonic palette. Primary melodic character: bright, gently "
+        "rising melodic contour (70%). Supporting tonal color: clear, resonant melodic "
+        "contour (15%). Tempo: 60 BPM. Instruments: guqin, pipa. Form: 30-second "
+        "opening, 120-second main section, 30-second closing. Energy: calm and even. "
+        "Atmosphere: gentle breeze ambience. Global style: no vocals, no spoken "
+        "words, natural acoustic character, coherent phrasing, smooth transitions, "
+        "avoid abrupt transitions."
+    )
+    for dialect in CANDIDATE_D_DIALECTS:
+        assert compile_music_prompt(_candidate_d_spec(), dialect).text == expected
+
+
+@pytest.mark.parametrize("primary", TONE_CODES)
+def test_v21_all_five_authoritative_primary_tones_use_frozen_descriptors(primary):
+    secondary = "shang" if primary != "shang" else "yu"
+    weights = {tone: 0.0666667 for tone in TONE_CODES}
+    weights[primary] = 0.55
+    weights[secondary] = 0.25
+    profile = _tone_profile(
+        primary_tone=primary,
+        secondary_tone=secondary,
+        weights=weights,
+    )
+    text = compile_music_prompt(
+        _candidate_d_spec(tone_profile=profile), PromptDialect.TOKENHUB_MINIMAX
+    ).text
+    assert f"Primary melodic character: {TONE_PROMPT_DESCRIPTORS[primary]} (55%)." in text
+    assert f"Supporting tonal color: {TONE_PROMPT_DESCRIPTORS[secondary]} (25%)." in text
+    for tone in TONE_CODES:
+        assert not re.search(rf"\b{tone}\b", text, re.IGNORECASE)
+
+
+def test_v21_primary_secondary_authority_is_not_inferred_ranked_or_normalized():
+    profile = _tone_profile(
+        primary_tone="jiao",
+        secondary_tone="gong",
+        weights={"jiao": 0.2, "zhi": 0.1, "gong": 0.6, "shang": 0.05, "yu": 0.05},
+    )
+    compiled = compile_music_prompt(
+        _candidate_d_spec(tone_profile=profile), PromptDialect.MINIMAX
+    )
+    assert "Primary melodic character: bright, gently rising melodic contour (20%)." in compiled.text
+    assert "Supporting tonal color: grounded, steady melodic contour (60%)." in compiled.text
+    assert compiled.text.index("bright, gently rising") < compiled.text.index("grounded, steady")
+
+
+def test_v21_full_weights_stay_in_input_identity_but_not_provider_text():
+    first_profile = _tone_profile(
+        secondary_tone="zhi",
+        weights={"jiao": 0.7, "zhi": 0.15, "gong": 0.05, "shang": 0.05, "yu": 0.05}
+    )
+    second_profile = _tone_profile(
+        secondary_tone="zhi",
+        weights={"jiao": 0.7, "zhi": 0.15, "gong": 0.1, "shang": 0.025, "yu": 0.025}
+    )
+    first = compile_music_prompt(
+        _candidate_d_spec(tone_profile=first_profile), PromptDialect.TOKENHUB_MINIMAX
+    )
+    second = compile_music_prompt(
+        _candidate_d_spec(tone_profile=second_profile), PromptDialect.TOKENHUB_MINIMAX
+    )
+    assert first.text == second.text
+    assert first.input_spec_checksum != second.input_spec_checksum
+    assert "Full authoritative distribution" not in first.text
+    assert "grounded, steady melodic contour (5%)" not in first.text
+    assert "clear, resonant melodic contour (5%)" not in first.text
+    assert "deep, flowing melodic contour (5%)" not in first.text
+
+
+def test_v21_personalized_without_secondary_does_not_invent_one():
+    profile = _tone_profile(secondary_tone=None)
+    text = compile_music_prompt(
+        _candidate_d_spec(tone_profile=profile), PromptDialect.MINIMAX
+    ).text
+    assert "Primary melodic character: bright, gently rising melodic contour (70%)." in text
+    assert "Supporting tonal color" not in text
+
+
+def test_v21_integrated_and_basic_modes_make_no_tone_claims():
+    integrated = _tone_profile(
+        regulation_mode="integrated_regulation",
+        primary_tone=None,
+        secondary_tone=None,
+        weights={tone: 0.2 for tone in TONE_CODES},
+    )
+    integrated_text = compile_music_prompt(
+        _candidate_d_spec(tone_profile=integrated), PromptDialect.TOKENHUB_MINIMAX
+    ).text
+    assert "No dominant five-tone center; use an integrated, balanced modal blend." in integrated_text
+    assert "Primary melodic character" not in integrated_text
+    assert "Supporting tonal color" not in integrated_text
+    assert "20%" not in integrated_text
+
+    basic = _tone_profile(
+        regulation_mode="basic_wellness",
+        primary_tone=None,
+        secondary_tone=None,
+        weights=None,
+    )
+    basic_text = compile_music_prompt(
+        _candidate_d_spec(tone_profile=basic), PromptDialect.MINIMAX
+    ).text
+    assert (
+        "No dominant five-tone center; use a neutral, gentle modal palette without "
+        "asserting a specific tone."
+    ) in basic_text
+    assert "grounded, steady" not in basic_text
+    assert "Primary melodic character" not in basic_text
+    assert "Supporting tonal color" not in basic_text
+
+
+@pytest.mark.parametrize(
+    "source,translated",
+    (("平稳舒缓", "calm and even"), ("平稳专注", "steady and focused"), ("轻快有活力", "light and lively")),
+)
+def test_v21_energy_translation_is_fixed(source, translated):
+    text = compile_music_prompt(
+        _candidate_d_spec(energy_curve=source), PromptDialect.TOKENHUB_MINIMAX
+    ).text
+    assert f"Energy: {translated}." in text
+    assert source not in text
+
+
+@pytest.mark.parametrize(
+    "source,translated",
+    (("微风", "gentle breeze ambience"), ("细雨", "gentle rain ambience"), ("溪流", "subtle stream ambience")),
+)
+def test_v21_ambience_translation_is_fixed(source, translated):
+    text = compile_music_prompt(
+        _candidate_d_spec(ambient_sounds=[source]), PromptDialect.MINIMAX
+    ).text
+    assert f"Atmosphere: {translated}." in text
+    assert source not in text
+
+
+@pytest.mark.parametrize("source", ([], ["无额外环境音"], ["无其他环境音"], ["无环境音"], ["无"]))
+def test_v21_no_ambience_has_explicit_clean_acoustic_rendering(source):
+    text = compile_music_prompt(
+        _candidate_d_spec(ambient_sounds=source), PromptDialect.TOKENHUB_MINIMAX
+    ).text
+    assert "Atmosphere: clean acoustic space with no added ambience." in text
+
+
+def test_v21_no_ambience_sentinel_mixed_with_real_value_renders_only_real_value():
+    text = compile_music_prompt(
+        _candidate_d_spec(ambient_sounds=["无额外环境音", "溪流"]),
+        PromptDialect.MINIMAX,
+    ).text
+    assert "Atmosphere: subtle stream ambience." in text
+    assert "无额外环境音" not in text
+    assert "clean acoustic space" not in text
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    ({"energy_curve": "gentle_decline"}, {"ambient_sounds": ["water"]}),
+)
+def test_v21_unmapped_provider_language_fails_closed(overrides):
+    for dialect in CANDIDATE_D_DIALECTS:
+        with pytest.raises(MusicProviderFailureV3) as caught:
+            compile_music_prompt(_candidate_d_spec(**overrides), dialect)
+        assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+        assert caught.value.retryable is False
+        assert isinstance(caught.value.cause, PromptCompilerContractError)
+        assert caught.value.cause.reason_code == "UNMAPPED_PROVIDER_LANGUAGE_VALUE"
+
+
+def test_v21_global_style_medical_neutrality_version_and_length_contract():
+    compiled = compile_music_prompt(
+        _candidate_d_spec(forbidden_constraints=["sharp_high_frequency"]),
+        PromptDialect.TOKENHUB_MINIMAX,
+    )
+    assert compiled.compiler_version == "prompt-compiler-v2.1-r1"
+    assert len(compiled.text) <= PROMPT_MAX_LENGTH[PromptDialect.TOKENHUB_MINIMAX]
+    assert "sharp_high_frequency" in compiled.text
+    lowered = compiled.text.lower()
+    assert "healing music" not in lowered
+    assert "instrumental only" not in lowered
+    for term in ("diagnosis", "syndrome", "disease", "disorder", "severity", "treatment", "medicine", "medication", "prescription", "patient"):
+        assert term not in lowered
+
+
+def test_v21_stability_keeps_the_existing_v2_dialect():
+    text = compile_music_prompt(spec(), PromptDialect.STABILITY).text
+    assert text.startswith("Traditional Chinese instrumental healing music")
+    assert "Create one" not in text
+    assert "Energy: 平稳舒缓" in text
