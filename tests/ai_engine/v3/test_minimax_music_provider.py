@@ -76,9 +76,9 @@ def _generation_spec() -> dict[str, object]:
         "bpm": 60,
         "duration_seconds": 300,
         "instruments": ["guqin", "xiao"],
-        "ambient_sounds": ["water"],
+        "ambient_sounds": ["微风"],
         "structure": {"intro_seconds": 30, "main_seconds": 240, "outro_seconds": 30},
-        "energy_curve": "gentle_decline",
+        "energy_curve": "平稳舒缓",
         "forbidden_constraints": ["sharp_high_frequency"],
         "fallback_policy": {"allow_local_matching": True},
     }
@@ -248,7 +248,7 @@ def test_create_task_materializes_generated_audio(tmp_path):
     assert body["audio_setting"]["format"] == "mp3"
     # prompt carries spec parameters, never the request id
     assert "guqin" in body["prompt"] and "xiao" in body["prompt"]
-    assert "bpm 60" in body["prompt"]
+    assert "Tempo: 60 BPM." in body["prompt"]
     assert "pr_minimax_test" not in body["prompt"]
     assert len(body["prompt"]) <= 2000
     assert provider.health().status == "healthy"
@@ -459,11 +459,11 @@ def test_minimax_prompt_actually_uses_prompt_compiler_v2(tmp_path):
     expected = compile_music_prompt(request.generation_spec, PromptDialect.MINIMAX)
     assert prompt == expected.text
     assert TONE_PROMPT_DESCRIPTORS["gong"] in prompt
-    assert "primary tone emphasis 0.2" in prompt
+    assert "Primary melodic character: grounded, steady melodic contour (20%)." in prompt
     # the approved Chinese names were normalized to canonical tokens
     assert "Instruments: guqin, xiao" in prompt
     assert "古琴" not in prompt
-    assert "total duration 300 seconds" in prompt
+    assert "Create one 300-second" in prompt
 
 
 def test_minimax_prompt_has_no_raw_tone_enum_leakage(tmp_path):
@@ -481,8 +481,7 @@ def test_minimax_no_extra_ambient_never_renders_contradictory_text(tmp_path):
     provider.create_task(_request_with(ambient=["无额外环境音"]))
     prompt = json.loads(transport.calls[0]["body"])["prompt"]
     assert "无额外环境音" not in prompt
-    assert "Atmosphere" not in prompt
-    assert "ambience" not in prompt
+    assert "Atmosphere: clean acoustic space with no added ambience." in prompt
 
 
 def test_minimax_real_ambience_still_renders_and_mixed_input_is_not_contradictory(
@@ -490,14 +489,14 @@ def test_minimax_real_ambience_still_renders_and_mixed_input_is_not_contradictor
 ):
     transport = FakeTransport(response=_completed_body(_mp3_bytes()))
     provider = _provider(tmp_path, transport)
-    provider.create_task(_request_with(ambient=["water"]))
-    assert "Atmosphere: soft water ambience." in json.loads(
+    provider.create_task(_request_with(ambient=["溪流"]))
+    assert "Atmosphere: subtle stream ambience." in json.loads(
         transport.calls[0]["body"]
     )["prompt"]
 
-    provider.create_task(_request_with(ambient=["无额外环境音", "water"]))
+    provider.create_task(_request_with(ambient=["无额外环境音", "溪流"]))
     prompt = json.loads(transport.calls[1]["body"])["prompt"]
-    assert "Atmosphere: soft water ambience." in prompt
+    assert "Atmosphere: subtle stream ambience." in prompt
     assert "无额外环境音" not in prompt
     assert "soft 无额外环境音 ambience" not in prompt
 
@@ -531,6 +530,16 @@ def test_minimax_prompt_over_the_cap_fails_before_any_post(tmp_path):
     with pytest.raises(MusicProviderFailureV3) as caught:
         provider.create_task(_request_with(constraints=["x" * 20] * 200))
     assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+    assert transport.calls == []
+
+
+def test_minimax_unmapped_provider_language_fails_before_any_post(tmp_path):
+    transport = FakeTransport(response=_completed_body(_mp3_bytes()))
+    provider = _provider(tmp_path, transport)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        provider.create_task(_request_with(ambient=["water"]))
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+    assert caught.value.cause.reason_code == "UNMAPPED_PROVIDER_LANGUAGE_VALUE"
     assert transport.calls == []
 
 
