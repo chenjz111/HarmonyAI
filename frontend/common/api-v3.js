@@ -1636,6 +1636,13 @@ export const apiV3 = {
     return INPUT_REAL ? realInputApi.submitHealingIntent(payload) : mockApi.submitHealingIntent(payload)
   },
 
+  // Player 只读当前 session 已保存的音乐偏好；纯本地读取，不发请求、不创建任何产物。
+  getCurrentUserGoal() {
+    const cached = loadFlowState().user_goal
+    const goal = AGENT_MOCK && MOCK.healingIntent !== null ? MOCK.healingIntent : cached
+    return goal && typeof goal === "object" ? clone(goal) : null
+  },
+
   // 问卷：题目为权威清单（前后端同源），三种模式一致，必填性由会话权威模式决定；
   // 提交依赖后端综合评估能力（尚未交付）：real 模式返回等待状态，mock/hybrid 走演示状态机
   getQuestionnaireSchema() {

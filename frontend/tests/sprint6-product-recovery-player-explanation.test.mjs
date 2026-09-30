@@ -44,6 +44,7 @@ function createHarness() {
   const calls = {
     getMusic: 0,
     getMusicBasis: 0,
+    getCurrentUserGoal: 0,
     controllerCreates: 0,
     audioCreates: 0,
     controllerActions: 0,
@@ -66,14 +67,16 @@ function createHarness() {
     confirmed_state: "睡眠欠佳，食欲不振。",
     state_tendency: "近期恢复状态不足。",
     analysis_rationales: [{ summary: "依据已确认的近期状态选择舒缓方案。" }],
-    primary_tone: { tone: "gong" },
-    secondary_tone: { tone: "jiao" },
+    primary_tone: { tone: "gong", explanation: "宫音帮助形成稳定、舒缓的音乐基调。" },
+    secondary_tone: { tone: "shang", explanation: "商音让整体听感更清透。" },
     tone_weights: { gong: 0.4, jiao: 0.2, zhi: 0.15, shang: 0.15, yu: 0.1 },
     bpm: { value: 58, explanation: "采用舒缓节奏。" },
-    instruments: { values: ["古琴", "洞箫"] },
-    ambience: { values: ["自然声"] },
+    instruments: { values: ["古琴", "洞箫"], explanation: "温润音色减少听觉刺激。" },
+    ambience: { values: ["流水"], explanation: "自然声营造安静氛围。" },
     duration: { seconds: 300 },
+    disclaimer: "本内容用于解释本次音乐生成依据，不构成医学诊断或治疗建议。",
   }
+  const userGoal = { primary_goal: "relaxation", secondary_goal: "stress_relief", custom_goal_text: null }
   const audioContext = { identity: "audio_001", src: music.stream_url }
   const snapshot = { playing: true, currentTime: 73, duration: 300, error: null }
   const controller = {
@@ -89,6 +92,7 @@ function createHarness() {
     AGENT_SIMULATED: false,
     async getMusic() { calls.getMusic += 1; return music },
     async getMusicBasis() { calls.getMusicBasis += 1; return basis },
+    getCurrentUserGoal() { calls.getCurrentUserGoal += 1; return userGoal },
     fetchAuthorizedAudio() { throw new Error("toggle must not download audio") },
     startMusicGeneration() { calls.generationWrites += 1; taskIdentity = "task_changed" },
     pollMusicGeneration() { calls.generationWrites += 1; taskIdentity = "task_changed" },
@@ -109,6 +113,7 @@ function createHarness() {
     calls,
     music,
     basis,
+    userGoal,
     audioContext,
     snapshot,
     controller,
@@ -142,7 +147,7 @@ test("F-R2: all-empty analysis hides the explanation card and details", () => {
   assert.equal(page.analysisExpanded, false)
 })
 
-test("F-R2: one valid section shows a collapsed explanation with only that section", () => {
+test("F-R2: one authoritative state section shows a collapsed explanation", () => {
   const harness = createHarness()
   const page = instantiatePage(loadPlayerPage(harness))
   page.music = harness.music
@@ -151,13 +156,12 @@ test("F-R2: one valid section shows a collapsed explanation with only that secti
   assert.equal(page.analysisVisible, true)
   assert.equal(page.analysisExpanded, false)
   assert.deepEqual(
-    Object.fromEntries(Object.entries(page.playerPresentation.analysis.sections).map(([key, section]) => [key, section.hasContent])),
+    Object.fromEntries(Object.entries(page.playerPresentation.analysis.playerSections).map(([key, section]) => [key, section.hasContent])),
     {
       recentState: true,
-      interpretation: false,
-      rationales: false,
-      toneConfiguration: false,
+      plan: false,
       musicDesign: false,
+      userGoal: false,
     },
   )
 
@@ -165,7 +169,7 @@ test("F-R2: one valid section shows a collapsed explanation with only that secti
   assert.equal(page.analysisExpanded, true)
 })
 
-test("F-R2: multiple valid sections keep only their independent visibility", () => {
+test("F-R2: legacy tendency and rationale are not separate Player sections", () => {
   const harness = createHarness()
   const page = instantiatePage(loadPlayerPage(harness))
   page.music = harness.music
@@ -176,9 +180,9 @@ test("F-R2: multiple valid sections keep only their independent visibility", () 
   }
 
   assert.equal(page.analysisVisible, true)
-  assert.equal(page.playerPresentation.analysis.sections.recentState.hasContent, true)
-  assert.equal(page.playerPresentation.analysis.sections.rationales.hasContent, true)
-  assert.equal(page.playerPresentation.analysis.sections.interpretation.hasContent, false)
+  assert.equal(page.playerPresentation.analysis.playerSections.recentState.hasContent, true)
+  assert.equal(Object.hasOwn(page.playerPresentation.analysis.playerSections, "rationales"), false)
+  assert.equal(Object.hasOwn(page.playerPresentation.analysis.playerSections, "interpretation"), false)
 })
 
 test("PR-013: repeated explanation toggles execute page behavior without changing playback authorities", async () => {
@@ -187,9 +191,10 @@ test("PR-013: repeated explanation toggles execute page behavior without changin
   const page = instantiatePage(options)
   await page.load()
   assert.equal(page.analysisVisible, true)
+  assert.equal(harness.calls.getCurrentUserGoal, 1)
 
   const before = {
-    api: [harness.calls.getMusic, harness.calls.getMusicBasis],
+    api: [harness.calls.getMusic, harness.calls.getMusicBasis, harness.calls.getCurrentUserGoal],
     controller: page.playerController,
     audio: page.playerController.audioContext,
     music: page.music,
@@ -208,7 +213,7 @@ test("PR-013: repeated explanation toggles execute page behavior without changin
   page.toggleAnalysis()
   assert.equal(page.analysisExpanded, true)
 
-  assert.deepEqual([harness.calls.getMusic, harness.calls.getMusicBasis], before.api)
+  assert.deepEqual([harness.calls.getMusic, harness.calls.getMusicBasis, harness.calls.getCurrentUserGoal], before.api)
   assert.equal(harness.calls.controllerCreates, 1)
   assert.equal(harness.calls.audioCreates, 0)
   assert.equal(harness.calls.controllerActions, 0)
@@ -225,25 +230,45 @@ test("PR-013: repeated explanation toggles execute page behavior without changin
   assert.equal(page.progressPresentation.percent, before.progressPercent)
 })
 
-test("expanded explanation renders only resolved presentation fields and no internal mode name", () => {
+test("PR-012: Player re-entry resets explanation to the default collapsed state", () => {
+  const harness = createHarness()
+  const options = loadPlayerPage(harness)
+  const page = instantiatePage(options)
+  page.playerController = harness.controller
+  page.analysisExpanded = true
+
+  options.onShow.call(page)
+
+  assert.equal(page.analysisExpanded, false)
+})
+
+test("expanded explanation renders the frozen 01 / 02 / 03 presentation without engineering labels", () => {
   const template = playerSource.match(/<template>([\s\S]*?)<\/template>/)[1]
-  for (const heading of ["近期状态", "状态解析", "调适依据", "本次五音配置", "音乐设计"]) {
+  for (const heading of ["01", "你的近期状态", "02", "03", "音乐设计", "偏好已纳入"]) {
     assert.match(template, new RegExp(heading))
   }
+  for (const forbidden of ["状态解析", "调适依据", "本次五音配置", "主音依据：", "辅音依据：", "节奏依据：", "乐器依据：", "氛围依据："]) {
+    assert.doesNotMatch(template, new RegExp(forbidden))
+  }
   assert.match(template, /playerPresentation\.analysis\.stateSummary/)
-  assert.match(template, /playerPresentation\.analysis\.tendency/)
-  assert.match(template, /playerPresentation\.analysis\.rationales/)
+  assert.doesNotMatch(template, /playerPresentation\.analysis\.tendency/)
+  assert.doesNotMatch(template, /playerPresentation\.analysis\.rationales/)
   assert.match(template, /playerPresentation\.analysis\.primaryTone/)
+  assert.match(template, /playerPresentation\.analysis\.secondaryTone/)
+  assert.match(template, /playerPresentation\.analysis\.toneWeights\.entries/)
+  assert.match(template, /playerPresentation\.analysis\.sectionTwoTitle/)
+  assert.match(template, /playerPresentation\.analysis\.planLabel/)
+  assert.match(template, /playerPresentation\.analysis\.userGoal/)
   assert.match(template, /playerPresentation\.analysis\.parameters/)
   assert.doesNotMatch(template, /\{\{\s*playerPresentation\.analysis\.mode\s*\}\}/)
 
   const model = buildMusicPresentation({ music: createHarness().music, basis: createHarness().basis })
   assert.equal(model.analysis.stateSummary.text, "睡眠欠佳，食欲不振。")
-  assert.equal(model.analysis.tendency.text, "近期恢复状态不足。")
-  assert.equal(model.analysis.rationales.rows[0].text, "依据已确认的近期状态选择舒缓方案。")
+  assert.equal(model.analysis.primaryTone.explanation.text, "宫音帮助形成稳定、舒缓的音乐基调。")
+  assert.equal(model.analysis.secondaryTone.explanation.text, "商音让整体听感更清透。")
   assert.equal(model.analysis.parameters.bpm.text, "58 BPM")
   assert.deepEqual(model.analysis.parameters.instruments.values, ["古琴", "洞箫"])
-  assert.deepEqual(model.analysis.parameters.ambience.values, ["自然声"])
+  assert.deepEqual(model.analysis.parameters.ambience.values, ["流水"])
 })
 
 test("PR-024/PR-030: explanation remains local presentation and Player stays read-only", () => {

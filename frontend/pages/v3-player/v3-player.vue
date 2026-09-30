@@ -28,6 +28,7 @@ export default {
       loadFailure: null,
       music: null,
       basis: null,
+      userGoal: null,
       playerController: null,
       playerState: {
         playing: false,
@@ -46,6 +47,7 @@ export default {
       return buildMusicPresentation({
         music: this.music,
         basis: this.basis,
+        userGoal: this.userGoal,
         measuredSeconds: this.playerState.duration,
       })
     },
@@ -59,7 +61,7 @@ export default {
       return this.loadFailure ? buildMusicPresentation({ failure: this.loadFailure }) : { isFailure: false }
     },
     analysisVisible() {
-      return this.playerPresentation.analysis.hasContent
+      return this.playerPresentation.analysis.playerHasContent
     },
     playing() {
       return !!this.playerState.playing
@@ -93,6 +95,7 @@ export default {
     if (this.playerController) this.playerController.handleHide()
   },
   onShow() {
+    this.analysisExpanded = false
     if (this.playerController) this.playerController.handleShow()
   },
   onUnload() {
@@ -112,6 +115,7 @@ export default {
         } catch (e) {
           this.basis = null
         }
+        this.userGoal = apiV3.getCurrentUserGoal()
         this.setupPlayerController()
       } catch (e) {
         this.loadFailure = e
@@ -287,57 +291,82 @@ export default {
           </view>
 
           <view v-if="analysisVisible && analysisExpanded" class="analysis-details">
-            <view v-if="playerPresentation.analysis.sections.recentState.hasContent" class="analysis-section">
-              <text class="analysis-section-title">近期状态</text>
+            <view v-if="playerPresentation.analysis.playerSections.recentState.hasContent" class="analysis-section">
+              <view class="analysis-section-heading">
+                <text class="analysis-section-number">01</text>
+                <text class="analysis-section-title">你的近期状态</text>
+              </view>
               <text class="analysis-section-text">{{ playerPresentation.analysis.stateSummary.text }}</text>
             </view>
 
-            <view v-if="playerPresentation.analysis.sections.interpretation.hasContent" class="analysis-section">
-              <text class="analysis-section-title">状态解析</text>
-              <text class="analysis-section-text">{{ playerPresentation.analysis.tendency.text }}</text>
-            </view>
+            <view v-if="playerPresentation.analysis.playerSections.plan.hasContent" class="analysis-section">
+              <view class="analysis-section-heading">
+                <text class="analysis-section-number">02</text>
+                <text class="analysis-section-title">{{ playerPresentation.analysis.sectionTwoTitle }}</text>
+              </view>
+              <view v-if="playerPresentation.analysis.planLabel" class="analysis-plan-label">
+                <text>{{ playerPresentation.analysis.planLabel }}</text>
+              </view>
 
-            <view v-if="playerPresentation.analysis.sections.rationales.hasContent" class="analysis-section">
-              <text class="analysis-section-title">调适依据</text>
-              <text
-                v-for="item in playerPresentation.analysis.rationales.rows"
-                :key="item.index"
-                class="analysis-section-text"
-              >{{ item.text }}</text>
-            </view>
+              <view v-if="playerPresentation.analysis.hasPrimaryTone" class="tone-reason">
+                <view class="tone-role-row">
+                  <text class="tone-name-badge">{{ playerPresentation.analysis.primaryTone.displayName }}</text>
+                  <text class="tone-role-badge">主音</text>
+                </view>
+                <text class="tone-role-lead">{{ playerPresentation.analysis.primaryTone.displayName }}承担本次音乐最主要的基调。</text>
+                <text v-if="playerPresentation.analysis.primaryTone.explanation.hasText" class="analysis-section-text">{{ playerPresentation.analysis.primaryTone.explanation.text }}</text>
+              </view>
 
-            <view
-              v-if="playerPresentation.analysis.sections.toneConfiguration.hasContent"
-              class="analysis-section"
-            >
-              <text class="analysis-section-title">本次五音配置</text>
-              <view class="analysis-fact-list">
-                <text v-if="playerPresentation.analysis.modeLabel" class="analysis-fact">调适方式：{{ playerPresentation.analysis.modeDisplayLabel }}</text>
-                <text v-if="playerPresentation.analysis.hasPrimaryTone" class="analysis-fact">主音：{{ playerPresentation.analysis.primaryTone.displayName }}</text>
-                <text v-if="playerPresentation.analysis.primaryTone.explanation.hasText" class="analysis-fact">主音依据：{{ playerPresentation.analysis.primaryTone.explanation.text }}</text>
-                <text v-if="playerPresentation.analysis.secondaryTone.hasTone" class="analysis-fact">辅音：{{ playerPresentation.analysis.secondaryTone.displayName }}</text>
-                <text v-if="playerPresentation.analysis.secondaryTone.explanation.hasText" class="analysis-fact">辅音依据：{{ playerPresentation.analysis.secondaryTone.explanation.text }}</text>
-                <text v-if="playerPresentation.analysis.toneWeights.hasWeights" class="analysis-fact">五音配比：{{ playerPresentation.analysis.toneWeights.displayText }}</text>
+              <view v-if="playerPresentation.analysis.hasSecondaryTone" class="tone-reason">
+                <view class="tone-role-row">
+                  <text class="tone-name-badge tone-name-badge--secondary">{{ playerPresentation.analysis.secondaryTone.displayName }}</text>
+                  <text class="tone-role-badge">辅音</text>
+                </view>
+                <text class="tone-role-lead">{{ playerPresentation.analysis.secondaryTone.displayName }}作为辅助加入。</text>
+                <text v-if="playerPresentation.analysis.secondaryTone.explanation.hasText" class="analysis-section-text">{{ playerPresentation.analysis.secondaryTone.explanation.text }}</text>
+              </view>
+
+              <view v-if="playerPresentation.analysis.toneWeights.hasWeights" class="tone-weights">
+                <text class="tone-weights-title">五音配置</text>
+                <view v-for="item in playerPresentation.analysis.toneWeights.entries" :key="item.code" class="tone-weight-row">
+                  <text class="tone-weight-glyph">{{ item.glyph }}</text>
+                  <view class="tone-weight-track"><view class="tone-weight-value" :style="{ width: item.percentText }" /></view>
+                  <text class="tone-weight-percent">{{ item.percentText }}</text>
+                </view>
               </view>
             </view>
 
-            <view
-              v-if="playerPresentation.analysis.sections.musicDesign.hasContent"
-              class="analysis-section"
-            >
-              <text class="analysis-section-title">音乐设计</text>
-              <view class="analysis-fact-list">
-                <text v-if="playerPresentation.analysis.parameters.bpm.hasValue" class="analysis-fact">节奏：{{ playerPresentation.analysis.parameters.bpm.text }}</text>
-                <text v-if="playerPresentation.analysis.parameters.bpm.explanation.hasText" class="analysis-fact">节奏依据：{{ playerPresentation.analysis.parameters.bpm.explanation.text }}</text>
-                <text v-if="playerPresentation.analysis.parameters.instruments.hasValues" class="analysis-fact">乐器：{{ playerPresentation.analysis.parameters.instruments.text }}</text>
-                <text v-if="playerPresentation.analysis.parameters.instruments.explanation.hasText" class="analysis-fact">乐器依据：{{ playerPresentation.analysis.parameters.instruments.explanation.text }}</text>
-                <text v-if="playerPresentation.analysis.parameters.ambience.hasValues" class="analysis-fact">氛围：{{ playerPresentation.analysis.parameters.ambience.text }}</text>
-                <text v-if="playerPresentation.analysis.parameters.ambience.explanation.hasText" class="analysis-fact">氛围依据：{{ playerPresentation.analysis.parameters.ambience.explanation.text }}</text>
+            <view v-if="playerPresentation.analysis.playerSections.musicDesign.hasContent" class="analysis-section">
+              <view class="analysis-section-heading">
+                <text class="analysis-section-number">03</text>
+                <text class="analysis-section-title">音乐设计</text>
+              </view>
+              <view class="music-design-grid">
+                <view v-if="playerPresentation.analysis.parameters.bpm.hasValue" class="music-design-item">
+                  <text class="music-design-value">{{ playerPresentation.analysis.parameters.bpm.text }}</text>
+                  <text class="music-design-label">舒缓节奏</text>
+                  <text v-if="playerPresentation.analysis.parameters.bpm.explanation.hasText" class="music-design-reason">{{ playerPresentation.analysis.parameters.bpm.explanation.text }}</text>
+                </view>
+                <view v-if="playerPresentation.analysis.parameters.instruments.hasValues" class="music-design-item">
+                  <text class="music-design-value">{{ playerPresentation.analysis.parameters.instruments.text }}</text>
+                  <text class="music-design-label">主要乐器</text>
+                  <text v-if="playerPresentation.analysis.parameters.instruments.explanation.hasText" class="music-design-reason">{{ playerPresentation.analysis.parameters.instruments.explanation.text }}</text>
+                </view>
+                <view v-if="playerPresentation.analysis.parameters.ambience.hasValues" class="music-design-item">
+                  <text class="music-design-value">{{ playerPresentation.analysis.parameters.ambience.text }}</text>
+                  <text class="music-design-label">环境音</text>
+                  <text v-if="playerPresentation.analysis.parameters.ambience.explanation.hasText" class="music-design-reason">{{ playerPresentation.analysis.parameters.ambience.explanation.text }}</text>
+                </view>
               </view>
             </view>
+
+            <view v-if="playerPresentation.analysis.playerSections.userGoal.hasContent" class="analysis-preference">
+              <text class="analysis-preference-label">偏好已纳入</text>
+              <text class="analysis-preference-text">{{ playerPresentation.analysis.userGoal.text }}</text>
+            </view>
+            <text v-if="playerPresentation.analysis.disclaimer.hasText" class="analysis-disclaimer">{{ playerPresentation.analysis.disclaimer.text }}</text>
           </view>
         </view>
-        <text class="player-disclaimer">{{ playerPresentation.disclaimer.displayText }}</text>
         <view class="page-motto"><text>—　五音和鸣 · 乐养身心　—</text></view>
       </view>
     </view>
@@ -935,13 +964,36 @@ export default {
 .analysis-subtitle { margin-top:2px; color:#657a75; font-size:10px; line-height:1.4; }
 .analysis-chevron { width:8px; height:8px; border-right:2px solid #285c59; border-bottom:2px solid #285c59; transform:rotate(45deg) translateY(-2px); transition:transform .2s ease; }
 .analysis-chevron--expanded { transform:rotate(225deg) translate(-2px,-2px); }
-.analysis-details { padding:0 14px 4px 62px; }
-.analysis-section { display:flex; flex-direction:column; padding:11px 0; border-top:1px solid rgba(80,90,82,.12); }
-.analysis-section-title { color:#24504b; font-family:'KaiTi','STKaiti',serif; font-size:15px; font-weight:800; line-height:1.4; }
-.analysis-section-text { margin-top:5px; color:#526863; font-size:11px; line-height:1.7; }
-.analysis-fact-list { display:flex; flex-direction:column; gap:4px; margin-top:5px; }
-.analysis-fact { color:#526863; font-size:11px; line-height:1.55; overflow-wrap:anywhere; }
-.player-disclaimer { margin-top:10px; color:#637773; font-size:8px; text-align:center; }
+.analysis-details { width:100%; padding:0 14px 14px; box-sizing:border-box; }
+.analysis-section { display:flex; flex-direction:column; min-width:0; padding:16px 0; border-top:1px solid rgba(80,90,82,.12); }
+.analysis-section-heading { display:flex; align-items:baseline; gap:9px; min-width:0; }
+.analysis-section-number { flex:0 0 auto; color:#a84d3c; font-size:10px; font-weight:800; line-height:1.4; }
+.analysis-section-title { min-width:0; color:#24504b; font-family:'KaiTi','STKaiti',serif; font-size:16px; font-weight:800; line-height:1.4; overflow-wrap:anywhere; }
+.analysis-section-text { margin-top:7px; color:#526863; font-size:11px; line-height:1.75; overflow-wrap:anywhere; }
+.analysis-plan-label { align-self:flex-start; margin-top:10px; padding:5px 10px; border:1px solid rgba(36,80,75,.16); border-radius:4px; color:#24504b; background:rgba(225,232,223,.54); font-size:11px; font-weight:700; line-height:1.35; }
+.tone-reason { display:flex; flex-direction:column; min-width:0; margin-top:13px; }
+.tone-role-row { display:flex; align-items:center; gap:7px; min-width:0; }
+.tone-name-badge,.tone-role-badge { display:inline-flex; align-items:center; justify-content:center; min-height:24px; padding:3px 9px; box-sizing:border-box; border-radius:4px; font-size:10px; line-height:1.3; }
+.tone-name-badge { color:#fff; background:var(--tone-accent); font-family:'KaiTi','STKaiti',serif; font-size:12px; font-weight:800; }
+.tone-name-badge--secondary { color:#315d56; background:#e1ebe5; }
+.tone-role-badge { color:#657a75; border:1px solid rgba(80,100,93,.16); background:rgba(255,255,252,.8); }
+.tone-role-lead { margin-top:7px; color:#304d48; font-size:11px; font-weight:700; line-height:1.65; overflow-wrap:anywhere; }
+.tone-weights { display:flex; flex-direction:column; gap:8px; margin-top:16px; padding:12px; border-radius:6px; background:rgba(239,242,235,.7); }
+.tone-weights-title { color:#355a54; font-size:11px; font-weight:800; }
+.tone-weight-row { display:grid; grid-template-columns:18px minmax(0,1fr) 34px; align-items:center; gap:8px; min-width:0; }
+.tone-weight-glyph { color:#36534f; font-family:'KaiTi','STKaiti',serif; font-size:12px; font-weight:800; }
+.tone-weight-track { width:100%; height:6px; border-radius:3px; background:rgba(45,80,74,.10); overflow:hidden; }
+.tone-weight-value { height:100%; border-radius:3px; background:var(--tone-accent); }
+.tone-weight-percent { color:#60746f; font-size:9px; text-align:right; }
+.music-design-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-top:11px; }
+.music-design-item { display:flex; flex-direction:column; min-width:0; padding:11px; box-sizing:border-box; border:1px solid rgba(80,90,82,.10); border-radius:6px; background:rgba(255,255,252,.72); }
+.music-design-value { color:#284b46; font-family:'KaiTi','STKaiti',serif; font-size:14px; font-weight:800; line-height:1.4; overflow-wrap:anywhere; }
+.music-design-label { margin-top:3px; color:#72827e; font-size:9px; line-height:1.4; }
+.music-design-reason { margin-top:8px; color:#526863; font-size:10px; line-height:1.65; overflow-wrap:anywhere; }
+.analysis-preference { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:12px 0 2px; border-top:1px solid rgba(80,90,82,.12); }
+.analysis-preference-label { color:#7a8b86; font-size:9px; font-weight:700; }
+.analysis-preference-text { min-width:0; color:#47635e; font-size:10px; line-height:1.5; overflow-wrap:anywhere; }
+.analysis-disclaimer { display:block; margin-top:12px; padding-top:10px; border-top:1px solid rgba(80,90,82,.09); color:#7a8985; font-size:8px; line-height:1.6; text-align:left; overflow-wrap:anywhere; }
 .tone-player-page .page-motto { margin-top:13px; color:#496c67; font-family:'KaiTi','STKaiti',serif; font-size:10px; letter-spacing:1px; }
 .tone-player-page .loading-wrap,.tone-player-page .error-wrap { min-height:600px; padding:120px 20px; box-sizing:border-box; }
 .tone-player-page .error-text { color:#4f6661; }
