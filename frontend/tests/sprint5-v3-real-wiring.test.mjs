@@ -63,6 +63,13 @@ test("real questionnaire through player and feedback uses server resources in or
   await apiV3.submitQuestionnaire(fullAnswers(schema))
   await apiV3.createAssessment(); await apiV3.getAssessment()
   await apiV3.submitHealingIntent({ primary_goal: "relaxation" })
+  const callsBeforeGoalRead = calls.length
+  assert.deepEqual(apiV3.getCurrentUserGoal(), {
+    primary_goal: "relaxation",
+    secondary_goal: null,
+    custom_goal_text: null,
+  })
+  assert.equal(calls.length, callsBeforeGoalRead, "cached UserGoal read must issue zero requests")
   await apiV3.confirmAssessment({ expected_revision: 1, decision: "confirm", changes: [] })
   // Sprint 6 Phase 6 (R7): this is the generation step, so creating the basis is explicit here.
   const basis = await apiV3.getMusicBasis({ allowCreate: true })

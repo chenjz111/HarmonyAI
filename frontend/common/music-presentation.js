@@ -45,6 +45,7 @@ export const SOURCE_LABEL_FALLBACK = "审核曲库匹配音乐"
 
 /** 折叠解析区标题（P6-D1：五音解析不再独立成页，收进播放器按需展开）。 */
 export const ANALYSIS_TITLE = "为什么是这首音乐？"
+export const PLAYER_EXPLANATION_DISCLAIMER = "本内容用于解释本次音乐生成依据，不构成医学诊断或治疗建议。"
 
 export const FAILURE_TITLE = "暂时无法播放"
 /** 权威失败信息缺失时的中性兜底：不解释原因、不声称任何模式。 */
@@ -67,6 +68,16 @@ const TEXT_LIMITS = Object.freeze({
   disclaimer: 220,
   rationale: 160,
   state: 200,
+  userGoal: 80,
+})
+
+const USER_GOAL_LABELS = Object.freeze({
+  sleep: "睡得安稳",
+  relaxation: "放松",
+  emotion_regulation: "情绪释放",
+  focus: "专注",
+  energy: "恢复精力",
+  stress_relief: "减轻压力",
 })
 
 /** Internal audit/runtime vocabulary must never leak into end-user explanations. */
@@ -160,6 +171,25 @@ function normalizeValueList(values) {
     if (text && !list.includes(text)) list.push(text)
   }
   return list
+}
+
+/** 当前 session 的音乐偏好展示；只读 UserGoal，不参与任何医学证据或推断。 */
+export function presentUserGoal(userGoal) {
+  const source = userGoal && typeof userGoal === "object" && !Array.isArray(userGoal) ? userGoal : {}
+  const values = []
+  const custom = presentText(source.custom_goal_text, { maxLength: TEXT_LIMITS.userGoal }).text
+  for (const code of [source.primary_goal, source.secondary_goal]) {
+    const normalizedCode = toPlainText(code)
+    const label = normalizedCode === "other" ? (custom || "其他") : USER_GOAL_LABELS[normalizedCode] || ""
+    if (label && !values.includes(label)) values.push(label)
+  }
+  if (custom && !values.includes(custom)) values.push(custom)
+  return {
+    hasValues: values.length > 0,
+    values,
+    text: values.join(" · "),
+    displayText: values.length ? values.join(" · ") : NEUTRAL_DISPLAY,
+  }
 }
 
 // ------------------------------------------------------------------ 模式
@@ -526,7 +556,7 @@ export function presentPublicRationales(items) {
  * "为什么是这首音乐？"折叠视图模型（P6-D1 / MP-T15）：默认折叠，用户想看再展开。
  * 全部内容来自后端 read model；缺失项保持中性空状态。
  */
-export function buildAnalysisViewModel(basis) {
+export function buildAnalysisViewModel(basis, { userGoal, disclaimerFallback = "" } = {}) {
   const source = basis && typeof basis === "object" ? basis : {}
   const mode = presentRegulationMode(source.regulation_mode)
   const primaryTone = presentPrimaryTone(mode.mode, source.primary_tone)
@@ -536,7 +566,10 @@ export function buildAnalysisViewModel(basis) {
   const stateSummary = presentText(source.confirmed_state, { maxLength: TEXT_LIMITS.state })
   const tendency = presentPublicText(source.state_tendency, { maxLength: TEXT_LIMITS.state })
   const rationales = presentPublicRationales(source.analysis_rationales)
-  const toneWeights = presentToneWeights(source.tone_weights)
+  const toneWeights = mode.isPersonalized || mode.isIntegrated
+    ? presentToneWeights(source.tone_weights)
+    : presentToneWeights(null)
+  const presentedUserGoal = presentUserGoal(userGoal)
   const parameters = {
     bpm: presentBpm(source.bpm),
     instruments: presentInstruments(parameterInstruments, {
@@ -559,6 +592,20 @@ export function buildAnalysisViewModel(basis) {
       hasContent: parameters.bpm.hasValue || parameters.instruments.hasValues || parameters.ambience.hasValues,
     },
   }
+  const sectionTwoTitle = mode.isBasic ? "本次音乐策略" : mode.isPersonalized || mode.isIntegrated ? "本次五音方案" : ""
+  const planLabel = mode.isIntegrated || mode.isBasic ? mode.label : ""
+  const playerSections = {
+    recentState: { hasContent: stateSummary.hasText },
+    plan: {
+      hasContent: !!sectionTwoTitle && (
+        !!planLabel || primaryTone.hasTone || secondaryTone.hasTone || toneWeights.hasWeights
+      ),
+    },
+    musicDesign: {
+      hasContent: parameters.bpm.hasValue || parameters.instruments.hasValues || parameters.ambience.hasValues,
+    },
+    userGoal: { hasContent: presentedUserGoal.hasValues },
+  }
   return {
     collapsed: true,
     title: ANALYSIS_TITLE,
@@ -570,13 +617,18 @@ export function buildAnalysisViewModel(basis) {
     primaryTone,
     secondaryTone,
     toneWeights,
+    sectionTwoTitle,
+    planLabel,
     stateSummary,
     tendency,
     rationales,
     parameters,
+    userGoal: presentedUserGoal,
     sections,
+    playerSections,
     hasContent: Object.values(sections).some(section => section.hasContent),
-    disclaimer: presentDisclaimer(source.disclaimer),
+    playerHasContent: Object.values(playerSections).some(section => section.hasContent),
+    disclaimer: presentDisclaimer(source.disclaimer || disclaimerFallback),
   }
 }
 
@@ -619,7 +671,7 @@ export function emptyMusicPresentation() {
  *   ambience   ：basis.ambience.values
  *   duration   ：实测时长（P6-D7）→ asset.duration_seconds
  */
-export function buildMusicPresentation({ music, basis, failure, measuredSeconds } = {}) {
+export function buildMusicPresentation({ music, basis, failure, measuredSeconds, userGoal } = {}) {
   if (failure) {
     const model = emptyMusicPresentation()
     model.isEmpty = false
@@ -688,7 +740,10 @@ export function buildMusicPresentation({ music, basis, failure, measuredSeconds 
     playbackSource: playback.source,
     progress: presentProgress({ totalSeconds: playback.seconds }),
     disclaimer: presentDisclaimer(track ? track.disclaimer : ""),
-    analysis: buildAnalysisViewModel(analysisSource),
+    analysis: buildAnalysisViewModel(analysisSource, {
+      userGoal,
+      disclaimerFallback: (track && track.disclaimer) || PLAYER_EXPLANATION_DISCLAIMER,
+    }),
   }
 }
 
@@ -698,10 +753,12 @@ export default {
   SOURCE_LABEL_GENERATED,
   SOURCE_LABEL_FALLBACK,
   ANALYSIS_TITLE,
+  PLAYER_EXPLANATION_DISCLAIMER,
   FAILURE_TITLE,
   FAILURE_NEUTRAL_MESSAGE,
   toFiniteSeconds,
   presentText,
+  presentUserGoal,
   isFabricatedExplanation,
   presentExplanation,
   presentRegulationMode,

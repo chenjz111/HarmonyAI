@@ -745,7 +745,7 @@ test("player only renders backend-provided asset, wires favorites and V3 feedbac
   assert.ok(player.includes("fetchAuthorizedAudio"), "player controller must receive the authorized audio downloader")
   assert.ok(player.includes("buildMusicPresentation"), "player facts must render through music-presentation")
   assert.ok(player.includes("playerPresentation.sourceLabel"), "player must show presentation source label")
-  assert.ok(player.includes("playerPresentation.disclaimer.displayText"), "player must render the authoritative disclaimer")
+  assert.ok(player.includes("playerPresentation.analysis.disclaimer.text"), "expanded explanation must render the authoritative disclaimer")
   assert.ok(player.includes("addFavorite"), "favorites must use backend API")
   assert.ok(player.includes("/pages/v3-feedback/v3-feedback"), "feedback entry must route to V3 feedback page")
   assert.ok(!player.includes("/pages/feedback-v2/feedback-v2"), "V3 flow must not reuse V2 feedback page")

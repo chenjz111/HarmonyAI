@@ -636,6 +636,95 @@ test("MP-T16 persisted read-model explanations stay independent and mode-aware",
   assert.equal(basic.toneWeights.hasWeights, false)
 })
 
+test("MP-T17 Player explanation follows the frozen mode presentation and keeps UserGoal non-medical", () => {
+  const basis = {
+    regulation_mode: "personalized_five_tone",
+    confirmed_state: "近期睡眠欠佳。",
+    primary_tone: { tone: "gong", explanation: "宫音解释" },
+    secondary_tone: { tone: "shang", explanation: "商音解释" },
+    tone_weights: { gong: 0.35, shang: 0.25, yu: 0.18, jiao: 0.12, zhi: 0.1 },
+    bpm: { value: 60, explanation: "后端节奏解释" },
+    instruments: { values: ["古琴"], explanation: "后端乐器解释" },
+    ambience: { values: ["流水"], explanation: "后端氛围解释" },
+    disclaimer: "权威免责声明",
+  }
+  const originalBasis = structuredClone(basis)
+  const personalized = buildMusicPresentation({
+    music: { regulation_mode: "personalized_five_tone", tone_code: "gong" },
+    basis,
+    userGoal: { primary_goal: "relaxation", secondary_goal: "stress_relief", custom_goal_text: null },
+  }).analysis
+
+  assert.equal(personalized.sectionTwoTitle, "本次五音方案")
+  assert.equal(personalized.hasPrimaryTone, true)
+  assert.equal(personalized.primaryTone.explanation.text, "宫音解释")
+  assert.equal(personalized.hasSecondaryTone, true)
+  assert.equal(personalized.secondaryTone.explanation.text, "商音解释")
+  assert.deepEqual(personalized.toneWeights.entries.map(item => item.text), ["角 12%", "徵 10%", "宫 35%", "商 25%", "羽 18%"])
+  assert.equal(personalized.parameters.bpm.explanation.text, "后端节奏解释")
+  assert.equal(personalized.parameters.instruments.explanation.text, "后端乐器解释")
+  assert.equal(personalized.parameters.ambience.explanation.text, "后端氛围解释")
+  assert.equal(personalized.disclaimer.text, "权威免责声明")
+  assert.equal(personalized.userGoal.hasValues, true)
+  assert.equal(personalized.userGoal.text, "放松 · 减轻压力")
+  assert.deepEqual(basis, originalBasis, "music personalization must not mutate medical evidence")
+
+  const integrated = buildMusicPresentation({
+    basis: {
+      regulation_mode: "integrated_regulation",
+      primary_tone: { tone: "gong", explanation: "不得展示" },
+      secondary_tone: { tone: "shang", explanation: "不得展示" },
+      tone_weights: { gong: 0.8, shang: 0.2 },
+    },
+  }).analysis
+  assert.equal(integrated.sectionTwoTitle, "本次五音方案")
+  assert.equal(integrated.planLabel, "综合调适")
+  assert.equal(integrated.hasPrimaryTone, false)
+  assert.equal(integrated.hasSecondaryTone, false)
+  assert.equal(integrated.toneWeights.hasWeights, true)
+
+  const basic = buildMusicPresentation({
+    basis: {
+      regulation_mode: "basic_wellness",
+      primary_tone: { tone: "gong", explanation: "不得展示" },
+      tone_weights: { gong: 1 },
+    },
+  }).analysis
+  assert.equal(basic.sectionTwoTitle, "本次音乐策略")
+  assert.equal(basic.planLabel, "基础舒缓")
+  assert.equal(basic.hasPrimaryTone, false)
+  assert.equal(basic.hasSecondaryTone, false)
+  assert.equal(basic.toneWeights.hasWeights, false)
+
+  const missing = buildMusicPresentation({
+    basis: {
+      regulation_mode: "basic_wellness",
+      bpm: { value: 62 },
+      instruments: { values: ["古琴"] },
+      ambience: { values: ["流水"] },
+    },
+    userGoal: null,
+  }).analysis
+  assert.equal(missing.parameters.bpm.explanation.hasText, false)
+  assert.equal(missing.parameters.instruments.explanation.hasText, false)
+  assert.equal(missing.parameters.ambience.explanation.hasText, false)
+  assert.equal(missing.userGoal.hasValues, false)
+  assert.equal(missing.disclaimer.text, "本内容用于解释本次音乐生成依据，不构成医学诊断或治疗建议。")
+
+  const otherOnly = buildMusicPresentation({
+    basis: { regulation_mode: "basic_wellness" },
+    userGoal: { primary_goal: "other", secondary_goal: null, custom_goal_text: null },
+  }).analysis.userGoal
+  assert.equal(otherOnly.hasValues, true)
+  assert.equal(otherOnly.text, "其他")
+
+  const otherWithText = buildMusicPresentation({
+    basis: { regulation_mode: "basic_wellness" },
+    userGoal: { primary_goal: "other", secondary_goal: null, custom_goal_text: "想听更轻盈的音乐" },
+  }).analysis.userGoal
+  assert.equal(otherWithText.text, "想听更轻盈的音乐")
+})
+
 // ------------------------------------------------------------------ 静态护栏
 
 test("MP-STATIC 展示层不引用主题表事实字段，也不存在宫兜底", () => {

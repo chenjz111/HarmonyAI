@@ -57,13 +57,14 @@ test("PR-017: every public analysis section computes hasContent independently", 
   assert.equal(resolved.hasContent, true)
 })
 
-test("PR-017: Player and compatibility basis render sections only through section flags", () => {
-  for (const [name, source] of [["Player", playerSource], ["Basis", basisSource]]) {
-    assert.match(source, /sections\.recentState\.hasContent/, `${name} recent-state gate`)
-    assert.match(source, /sections\.interpretation\.hasContent/, `${name} interpretation gate`)
-    assert.match(source, /sections\.rationales\.hasContent/, `${name} rationale gate`)
-    assert.match(source, /sections\.toneConfiguration\.hasContent/, `${name} tone gate`)
-    assert.match(source, /sections\.musicDesign\.hasContent/, `${name} music-design gate`)
+test("PR-017: Player and compatibility basis use their own section gates", () => {
+  for (const key of ["recentState", "plan", "musicDesign", "userGoal"]) {
+    assert.match(playerSource, new RegExp(`playerSections\\.${key}\\.hasContent`), `Player ${key} gate`)
+  }
+  assert.doesNotMatch(playerSource, /playerSections\.(interpretation|rationales)\.hasContent/)
+
+  for (const key of ["recentState", "interpretation", "rationales", "toneConfiguration", "musicDesign"]) {
+    assert.match(basisSource, new RegExp(`sections\\.${key}\\.hasContent`), `Basis ${key} gate`)
   }
 })
 
