@@ -171,9 +171,9 @@ def _generation_spec() -> dict[str, object]:
         "bpm": 60,
         "duration_seconds": 60,
         "instruments": ["guqin", "xiao"],
-        "ambient_sounds": ["water"],
+        "ambient_sounds": ["微风"],
         "structure": {"intro_seconds": 6, "main_seconds": 48, "outro_seconds": 6},
-        "energy_curve": "gentle_decline",
+        "energy_curve": "平稳舒缓",
         "forbidden_constraints": ["sharp_high_frequency"],
         "fallback_policy": {"allow_local_matching": True},
     }
@@ -556,9 +556,9 @@ def test_rule_asset_chinese_instruments_normalize_for_prompt_and_keep_display(tm
         assert "guqin" in prompt and "xiao" in prompt
         assert "古琴" not in prompt and "箫" not in prompt
         assert "无额外环境音" not in prompt
-        assert "ambience" not in prompt and "Atmosphere" not in prompt
+        assert "Atmosphere: clean acoustic space with no added ambience." in prompt
         # duration is a prompt-level target only (no provider duration field)
-        assert "target length about 60 seconds" in prompt
+        assert "Create one 60-second" in prompt
         for forbidden_key in ("duration", "seconds_total", "length", "duration_seconds"):
             assert forbidden_key not in sent
 
