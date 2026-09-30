@@ -747,6 +747,24 @@ def test_v21_global_style_medical_neutrality_version_and_length_contract():
         assert term not in lowered
 
 
+@pytest.mark.parametrize("forbidden_phrase", ("healing music", "instrumental only"))
+@pytest.mark.parametrize("separator", (" ", "  ", "\t", "\n"))
+@pytest.mark.parametrize("dialect", CANDIDATE_D_DIALECTS)
+def test_v21_forbidden_provider_phrases_in_constraints_fail_closed(
+    forbidden_phrase, separator, dialect
+):
+    phrase = forbidden_phrase.replace(" ", separator)
+    with pytest.raises(MusicProviderFailureV3) as caught:
+        compile_music_prompt(
+            _candidate_d_spec(forbidden_constraints=[phrase]),
+            dialect,
+        )
+    assert caught.value.error_code == "GENERATION_PROVIDER_REJECTED"
+    assert caught.value.retryable is False
+    assert isinstance(caught.value.cause, PromptCompilerContractError)
+    assert caught.value.cause.reason_code == "PROMPT_COMPILER_FORBIDDEN_LANGUAGE"
+
+
 def test_v21_stability_keeps_the_existing_v2_dialect():
     text = compile_music_prompt(spec(), PromptDialect.STABILITY).text
     assert text.startswith("Traditional Chinese instrumental healing music")

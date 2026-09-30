@@ -116,6 +116,10 @@ _GLOBAL_STYLE = (
     "no vocals, no spoken words, natural acoustic character, coherent phrasing, "
     "smooth transitions, avoid abrupt transitions"
 )
+_CANDIDATE_D_FORBIDDEN_PATTERNS = tuple(
+    re.compile(rf"\b{re.escape(phrase).replace(r'\ ', r'\s+')}\b", re.IGNORECASE)
+    for phrase in ("healing music", "instrumental only")
+)
 
 _LENGTH_SAFE_MESSAGE = "音乐生成提示词过长，无法提交生成服务。"
 _CONTRACT_SAFE_MESSAGE = "音乐生成参数不完整，无法提交生成服务。"
@@ -612,6 +616,12 @@ def _assert_medical_neutral(text: str) -> None:
             raise PromptCompilerContractError("PROMPT_COMPILER_MEDICAL_LANGUAGE")
 
 
+def _assert_candidate_d_language(text: str) -> None:
+    for pattern in _CANDIDATE_D_FORBIDDEN_PATTERNS:
+        if pattern.search(text):
+            raise PromptCompilerContractError("PROMPT_COMPILER_FORBIDDEN_LANGUAGE")
+
+
 def compile_music_prompt(spec: Any, dialect: PromptDialect) -> CompiledPrompt:
     """Compile the authoritative generation spec into a provider-safe prompt.
 
@@ -627,6 +637,8 @@ def compile_music_prompt(spec: Any, dialect: PromptDialect) -> CompiledPrompt:
         canonical = build_canonical_prompt(spec, dialect)
         text = canonical.render()
         _assert_medical_neutral(text)
+        if dialect in _CANDIDATE_D_DIALECTS:
+            _assert_candidate_d_language(text)
         max_length = PROMPT_MAX_LENGTH[dialect]
         if len(text) > max_length:
             raise MusicProviderFailureV3(
