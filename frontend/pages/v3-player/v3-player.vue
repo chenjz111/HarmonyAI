@@ -20,6 +20,7 @@
 import { apiV3 } from "../../common/api-v3.js"
 import { createPlayerController } from "../../common/player-controller.js"
 import { buildMusicPresentation, presentProgress } from "../../common/music-presentation.js"
+import { seekRatioFromEvent } from "../../common/player-seek.js"
 
 export default {
   data() {
@@ -40,6 +41,8 @@ export default {
       favBusy: false,
       simulated: false,
       analysisExpanded: false,
+      seeking: false,
+      seekMoved: false,
     }
   },
   computed: {
@@ -146,6 +149,44 @@ export default {
       if (!this.playerController) return false
       return this.playerController.seek(ratio)
     },
+    hasSeekableDuration() {
+      return Number.isFinite(this.playerState.duration) && this.playerState.duration > 0
+    },
+    seekFromProgressEvent(event) {
+      if (!this.hasSeekableDuration()) return false
+      uni.createSelectorQuery()
+        .in(this)
+        .select("#player-progress-track")
+        .boundingClientRect(rect => {
+          const ratio = seekRatioFromEvent(event, rect)
+          if (ratio !== null) this.seekToRatio(ratio)
+        })
+        .exec()
+      return true
+    },
+    handleProgressTap(event) {
+      return this.seekFromProgressEvent(event)
+    },
+    handleSeekStart() {
+      this.seeking = this.hasSeekableDuration()
+      this.seekMoved = false
+    },
+    handleSeekMove(event) {
+      if (!this.seeking) return false
+      this.seekMoved = true
+      return this.seekFromProgressEvent(event)
+    },
+    handleSeekEnd(event) {
+      if (!this.seeking) return false
+      const sought = this.seekMoved ? this.seekFromProgressEvent(event) : false
+      this.seeking = false
+      this.seekMoved = false
+      return sought
+    },
+    handleSeekCancel() {
+      this.seeking = false
+      this.seekMoved = false
+    },
     toggleAnalysis() {
       this.analysisExpanded = !this.analysisExpanded
     },
@@ -237,7 +278,7 @@ export default {
 
         <!-- 控制区：只渲染 controller snapshot 经 presentation 格式化的进度 -->
         <view class="progress-wrap">
-          <view class="progress-track" role="progressbar" :aria-valuenow="progressPresentation.percent" aria-valuemin="0" aria-valuemax="100">
+          <view id="player-progress-track" class="progress-track" role="progressbar" :aria-valuenow="progressPresentation.percent" aria-valuemin="0" aria-valuemax="100" @tap="handleProgressTap" @touchstart="handleSeekStart" @touchmove.stop.prevent="handleSeekMove" @touchend="handleSeekEnd" @touchcancel="handleSeekCancel">
             <view class="progress-value" :style="{ width: progressPresentation.percent + '%' }"><view class="progress-thumb" /></view>
           </view>
           <view class="progress-times">
@@ -927,8 +968,9 @@ export default {
 .tone-player-page .music-instruments { margin:8px 0 5px; color:#6c5039; font-family:'KaiTi','STKaiti',serif; font-size:13px; letter-spacing:1px; }
 .music-caption { color:#536a66; font-size:10px; line-height:1.5; text-align:center; }
 .tone-player-page .progress-wrap { width:90%; margin:15px 0 0; }
-.tone-player-page .progress-track { width:100%; height:4px; margin:0; overflow:visible; border-radius:3px; background:rgba(73,85,80,.28); }
-.tone-player-page .progress-value { position:relative; height:100%; border-radius:3px; background:var(--tone-accent); }
+.tone-player-page .progress-track { position:relative; width:100%; height:28px; margin:-12px 0; overflow:visible; border-radius:3px; background:transparent; }
+.tone-player-page .progress-track::before { position:absolute; top:12px; right:0; left:0; height:4px; border-radius:3px; background:rgba(73,85,80,.28); content:""; }
+.tone-player-page .progress-value { position:relative; top:12px; height:4px; border-radius:3px; background:var(--tone-accent); }
 .progress-thumb { position:absolute; top:50%; right:-5px; width:10px; height:10px; border-radius:50%; background:var(--tone-accent); transform:translateY(-50%); }
 .tone-player-page .progress-times { display:flex; justify-content:center; margin-top:7px; }
 .tone-player-page .progress-time { color:#3f5551; font-size:10px; letter-spacing:0; white-space:nowrap; font-variant-numeric:tabular-nums; }

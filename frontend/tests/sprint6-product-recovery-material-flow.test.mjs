@@ -131,6 +131,22 @@ test("edit, cancel, reset and failure recovery preserve legal state", () => {
   assert.equal(clock.pending, 0)
 })
 
+test("a confirmed edit becomes the exact ready summary for supplement back navigation", () => {
+  const clock = createFakeScheduler()
+  const flow = createMaterialRecoveryFlow({ schedule: clock.schedule, cancelSchedule: clock.cancel })
+
+  flow.beginUpload()
+  flow.documentsReady()
+  flow.summaryReady("原摘要")
+  clock.runAll()
+  flow.beginEdit()
+
+  assert.equal(flow.commitEdit("用户确认后的准确摘要"), true)
+  assert.equal(flow.getState().phase, MATERIAL_PHASES.SUMMARY_READY)
+  assert.equal(flow.getState().summaryText, "用户确认后的准确摘要")
+  assert.equal(flow.getState().revealedText, "用户确认后的准确摘要")
+})
+
 test("reset and dispose cancel reveal/thinking timers and disposed callbacks cannot mutate state", () => {
   const clock = createFakeScheduler()
   const changes = []

@@ -18,11 +18,21 @@ function loadPlayerPage({ apiV3, createPlayerController, uni }) {
       /import \{ buildMusicPresentation, presentProgress \} from [^\r\n]+\r?\n/,
       "const { buildMusicPresentation, presentProgress } = __deps\n",
     )
+    .replace(
+      /import \{ seekRatioFromEvent \} from [^\r\n]+\r?\n/,
+      "const seekRatioFromEvent = __deps.seekRatioFromEvent\n",
+    )
     .replace("export default {", "__pageOptions = {")
 
   const context = {
     __pageOptions: null,
-    __deps: { apiV3, createPlayerController, buildMusicPresentation, presentProgress },
+    __deps: {
+      apiV3,
+      createPlayerController,
+      buildMusicPresentation,
+      presentProgress,
+      seekRatioFromEvent: () => null,
+    },
     uni,
   }
   runInNewContext(script, context)
