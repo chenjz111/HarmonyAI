@@ -30,6 +30,7 @@ export default {
       summaryModel: null,
       editText: "",
       submitting: false,
+      summaryConfirmed: false,
       operationToken: 0,
     }
   },
@@ -169,6 +170,7 @@ export default {
         const summaryModel = await apiV3.getCaseSummary()
         if (!this.isCurrentRun(runToken)) return
         this.summaryModel = summaryModel
+        this.summaryConfirmed = false
         const summaryText = this.resolvedSummaryText
         if (!summaryText || !this.materialFlow.summaryReady(summaryText)) {
           throw new Error("资料摘要尚未就绪，请稍后重试。")
@@ -186,16 +188,21 @@ export default {
     },
     async confirmOk() {
       if (this.submitting || !this.summaryModel) return
+      if (this.summaryConfirmed) {
+        uni.navigateTo({ url: "/pages/v3-supplement/v3-supplement" })
+        return
+      }
       const runToken = this.operationToken
       this.submitting = true
       try {
-        await apiV3.confirmUnderstanding({
+        const confirmed = await apiV3.confirmUnderstanding({
           expected_revision: this.summaryModel.revision,
           decision: "confirm",
           changes: [],
         })
         if (!this.isCurrentRun(runToken)) return
-        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
+        this.applyConfirmedSummary(confirmed)
+        uni.navigateTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (error) {
         if (!this.isCurrentRun(runToken)) return
         uni.showToast({ title: (error && error.message) || "确认失败，请重试", icon: "none" })
@@ -221,7 +228,7 @@ export default {
       const runToken = this.operationToken
       this.submitting = true
       try {
-        await apiV3.confirmUnderstanding({
+        const confirmed = await apiV3.confirmUnderstanding({
           expected_revision: this.summaryModel.revision,
           decision: "confirm_with_changes",
           changes: [],
@@ -229,7 +236,9 @@ export default {
           reprocess_requested: true,
         })
         if (!this.isCurrentRun(runToken)) return
-        uni.redirectTo({ url: "/pages/v3-supplement/v3-supplement" })
+        this.applyConfirmedSummary(confirmed, text)
+        this.materialFlow.commitEdit(text)
+        uni.navigateTo({ url: "/pages/v3-supplement/v3-supplement" })
       } catch (error) {
         if (!this.isCurrentRun(runToken)) return
         uni.showToast({ title: (error && error.message) || "保存失败，请重试", icon: "none" })
@@ -241,6 +250,18 @@ export default {
       if (!this.materialFlow || !this.materialFlow.cancelEdit()) return
       this.editText = ""
     },
+    applyConfirmedSummary(confirmed, editedText) {
+      const next = { ...this.summaryModel }
+      if (confirmed && Number.isFinite(Number(confirmed.revision))) next.revision = Number(confirmed.revision)
+      if (confirmed && typeof confirmed.status === "string") next.status = confirmed.status
+      if (typeof editedText === "string") {
+        next.summary = editedText
+        next.state_summary = editedText
+        next.presentation = { ...(next.presentation || {}), summary: editedText }
+      }
+      this.summaryModel = next
+      this.summaryConfirmed = true
+    },
     resetMaterialFlow() {
       if (!this.materialFlow) return
       this.operationToken += 1
@@ -250,6 +271,7 @@ export default {
       this.summaryModel = null
       this.editText = ""
       this.submitting = false
+      this.summaryConfirmed = false
     },
     reupload() { this.resetMaterialFlow() },
   },

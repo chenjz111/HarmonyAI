@@ -8,6 +8,8 @@ import { createMaterialRecoveryFlow, MATERIAL_PHASES } from "../common/material-
 const root = resolve(import.meta.dirname, "..")
 const material = readFileSync(resolve(root, "pages/v3-material/v3-material.vue"), "utf8")
 const script = material.match(/<script>([\s\S]*?)<\/script>/)?.[1] || ""
+const supplement = readFileSync(resolve(root, "pages/v3-supplement/v3-supplement.vue"), "utf8")
+const supplementScript = supplement.match(/<script>([\s\S]*?)<\/script>/)?.[1] || ""
 
 function deferred() {
   let resolvePromise
@@ -48,11 +50,13 @@ function loadMaterialComponent(apiV3) {
 
 function createMaterialVm(confirmUnderstanding) {
   const redirects = []
+  const navigations = []
   const toasts = []
   const switches = []
   const previousUni = globalThis.uni
   globalThis.uni = {
     redirectTo: payload => redirects.push(payload),
+    navigateTo: payload => navigations.push(payload),
     showToast: payload => toasts.push(payload),
     switchTab: payload => switches.push(payload),
   }
@@ -73,6 +77,7 @@ function createMaterialVm(confirmUnderstanding) {
     component,
     vm,
     redirects,
+    navigations,
     toasts,
     switches,
     restore() {
@@ -193,7 +198,7 @@ test("pending edited confirmation cannot redirect or overwrite a newer reset sta
   }
 })
 
-test("current confirmation still redirects once and duplicate click stays suppressed", async () => {
+test("current confirmation preserves material in the stack and duplicate click stays suppressed", async () => {
   const confirmation = deferred()
   let calls = 0
   const harness = createMaterialVm(() => {
@@ -207,10 +212,72 @@ test("current confirmation still redirects once and duplicate click stays suppre
     await Promise.all([first, duplicate])
 
     assert.equal(calls, 1)
-    assert.deepEqual(harness.redirects, [{ url: "/pages/v3-supplement/v3-supplement" }])
+    assert.deepEqual(harness.navigations, [{ url: "/pages/v3-supplement/v3-supplement" }])
+    assert.deepEqual(harness.redirects, [])
     assert.equal(harness.vm.submitting, false)
   } finally {
     harness.restore()
+  }
+})
+
+test("returning from supplement continues without submitting the confirmed revision twice", async () => {
+  const payloads = []
+  const harness = createMaterialVm(async payload => {
+    payloads.push(payload)
+    return { revision: 8, status: "confirmed" }
+  })
+  try {
+    await harness.vm.confirmOk()
+    await harness.vm.confirmOk()
+
+    assert.equal(payloads.length, 1)
+    assert.equal(harness.vm.summaryModel.revision, 8)
+    assert.equal(harness.navigations.length, 2)
+  } finally {
+    harness.restore()
+  }
+})
+
+test("editing after return uses the confirmed revision and preserves the exact edited summary", async () => {
+  const payloads = []
+  const harness = createMaterialVm(async payload => {
+    payloads.push(payload)
+    return { revision: payloads.length === 1 ? 8 : 9, status: "confirmed" }
+  })
+  try {
+    await harness.vm.confirmOk()
+    harness.vm.editText = "返回后修正的准确摘要"
+    await harness.vm.saveEdit()
+
+    assert.deepEqual(payloads.map(payload => payload.expected_revision), [7, 8])
+    assert.equal(harness.vm.summaryModel.revision, 9)
+    assert.equal(harness.vm.resolvedSummaryText, "返回后修正的准确摘要")
+  } finally {
+    harness.restore()
+  }
+})
+
+test("supplement back returns to the preserved inline material summary", () => {
+  const executable = supplementScript
+    .replace(/import[\s\S]*?from\s+["'][^"']+["']\s*/g, "")
+    .replace("export default", "return")
+  const component = new Function("apiV3", executable)({})
+  const vm = component.data()
+  for (const [name, method] of Object.entries(component.methods)) vm[name] = method.bind(vm)
+  const backs = []
+  const redirects = []
+  const previousUni = globalThis.uni
+  globalThis.uni = {
+    navigateBack: payload => backs.push(payload),
+    redirectTo: payload => redirects.push(payload),
+  }
+  try {
+    vm.backToSummary()
+    assert.deepEqual(backs, [{ delta: 1 }])
+    assert.deepEqual(redirects, [])
+    assert.doesNotMatch(supplement, /\/pages\/v3-summary\/v3-summary/)
+  } finally {
+    globalThis.uni = previousUni
   }
 })
 

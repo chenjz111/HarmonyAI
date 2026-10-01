@@ -30,7 +30,7 @@ export default {
   methods: {
     backToSummary() {
       if (this.navigating || this.analyzing) return
-      uni.redirectTo({ url: "/pages/v3-summary/v3-summary" })
+      uni.navigateBack({ delta: 1 })
     },
     // 填写问卷：进入 5 页近期状态问卷
     goQuestionnaire() {

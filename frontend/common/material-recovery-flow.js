@@ -153,6 +153,16 @@ export function createMaterialRecoveryFlow({
       return true
     },
 
+    commitEdit(text) {
+      if (disposed || state.phase !== MATERIAL_PHASES.EDITING || typeof text !== "string" || !text.length) return false
+      setState({
+        phase: MATERIAL_PHASES.SUMMARY_READY,
+        summaryText: text,
+        revealedText: text,
+      })
+      return true
+    },
+
     fail(error) {
       if (disposed) return false
       clearTimer()
