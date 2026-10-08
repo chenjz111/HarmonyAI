@@ -1,95 +1,57 @@
-# HarmonyAI（和鸣AI）
+# HarmonyAI｜AI 五音音乐调适应用
 
-> **Knowledge-Driven / Explainable / Multi-Agent Music Therapy Platform**
->
-> 知识驱动的可解释多智能体音乐疗愈平台
+> 项目负责人、主要跨模块开发与集成：陈家智
 
----
+面向音乐辅助调适场景的应用项目，串联资料上传、问卷评估、状态解析、音乐参数组装、AI 音乐生成、播放和反馈。**本应用并非医疗诊断工具。**
 
-## 一句话定位
+## 项目流程
 
-HarmonyAI 不是一个音乐生成项目，而是一个**基于知识驱动（Knowledge-Driven）的可解释多智能体音乐疗愈系统**。APP 是展示形式，AI 音乐是输出结果，核心技术是中间那套"中医知识 → 音乐参数 → AI 生成"的决策引擎。
-
----
-
-## Project Principles
-
-1. **Knowledge First** — 所有 AI 推理基于 Knowledge Engine，不凭空生成
-2. **Explainability** — 所有输出必须可解释，附带推荐理由与文献出处
-3. **Human in the Loop** — 医疗建议允许人工确认，关键节点不自动决策
-4. **Modular Design** — 所有 Agent 可独立替换，音乐平台/LLM/数据库均可插拔
-5. **Fail Gracefully** — 任何模型失败系统仍可运行，有降级策略
-
----
-
-## 系统架构：三层 + 五 Agent
-
-```
-第一层：医学分析层
-  ├── ① 评估Agent（检测仪）— 采集量化，输出健康画像
-  └── ② 辨证Agent（诊断大脑）— 输出中医证型 + 可信度
-
-第二层：知识映射层 🔥 核心创新
-  └── ③ 处方Agent（开方子）— 中医语言 → 音乐参数 → Prompt Tag
-
-第三层：AI生成层
-  ├── ④ 生成Agent（煎药机）— 调 API，参数 → 音频
-  └── ⑤ 反馈Agent（复诊）— 效果评估，闭环优化
+```text
+资料上传 / 问卷 → 识别摘要 → 结构化分析 → 音乐参数与 Prompt
+             → 第三方音乐生成服务 → 音乐播放器 → 用户反馈
 ```
 
----
+这是项目的整体功能范围，不代表全部模块已经完成生产部署。
 
-## 团队
+## 开发职责
 
-| 角色 | 姓名 |
-|------|------|
-| Project Leader & AI Architect | 陈家智 |
-| Medical Knowledge Engineer | 待定 |
-| AI Engineering Lead | 钟睿宸 |
-| Backend Platform Engineer | 蔡子鑫 |
-| Client Engineer | 彭翔 |
+**陈家智主导产品与技术落地，并承担主要的跨模块开发、调试和集成工作：**
 
----
+- **前端：** 主导移动端资料上传、问卷、分析展示、音乐播放及反馈流程的设计与实现验收。
+- **后端：** 推进 Python/FastAPI 接口设计、数据结构、请求响应契约与前后端联调。
+- **AI 应用：** 设计 Agent I/O、结构化输出、Prompt 模板与参数分离，推进模型及音乐生成服务接口集成。
+- **工程质量：** 参与调用异常诊断、超时与重试处理、结果校验、测试和回归验证。
+- **开发方式：** 使用 Git、ChatGPT、Codex 等工具辅助实现、审查与调试，对整体交付负责。
 
-## 技术栈
+“主要开发”不代表全部代码均为手工编写，也不否认其他实际参与者的贡献。
 
-| 层 | 技术 |
-|----|------|
-| Agent 编排 | LangGraph + Supervisor |
-| LLM | Qwen2.5-7B-Instruct |
-| 向量数据库 | Chroma + BGE-M3 |
-| 后端 | FastAPI (Python 3.10+) |
-| 数据库 | MySQL 8.0 + Redis |
-| 前端 | uni-app (Vue 3) |
-| 部署 | Docker |
+## 技术方向
 
----
+| 范围 | 技术/内容 |
+| --- | --- |
+| 客户端 | uni-app / Vue 3、页面交互及播放器 |
+| 服务端 | Python / FastAPI、REST API、接口联调 |
+| AI | 模型 API、Prompt 工程、结构化输出 |
+| 工程 | Git、测试、日志、异常排查 |
 
-## 项目结构
+早期文档中的 LangGraph、Chroma、Qwen 和三层五 Agent 描述属于架构设计和技术探索，**不能仅凭该文档认定为当前已部署的运行组件**。
 
-```
-HarmonyAI/
-├── docs/          ← 设计文档（架构/ADR/RFC/会议/比赛）
-├── schemas/v1.0/  ← JSON Schema（Agent I/O 合约）
-├── prompt/v1/     ← Prompt 模板（版本化）
-├── knowledge/v1/  ← 四层知识库（版本化）
-├── backend/       ← FastAPI
-├── frontend/      ← uni-app
-├── api/           ← OpenAPI 规范
-├── logs/          ← 运行日志
-└── deploy/        ← Docker 部署
-```
+### 三层五 Agent（设计方案）
 
----
+1. 评估 Agent：组织输入与用户状态
+2. 辨证 Agent：结构化解释与依据
+3. 处方 Agent：音乐参数与 Prompt 映射
+4. 生成 Agent：音乐生成服务衔接
+5. 反馈 Agent：体验反馈收集与后续优化
 
-## 项目生命周期
+## 公开仓库范围
 
-```
-Idea → RFC → Architecture → Schema → Development → Review → Merge → Release → Feedback
-```
+本仓库当前主要用于**公开早期设计及项目文档**，完整应用源码目前尚未在该公开仓库提供，因此不能将其作为可直接克隆运行的代码仓库。后续公开源码应先清理密钥、私人资料、第三方受限内容，并补充运行与测试说明。
 
----
+## 团队协作与历史记录
 
-## License
+2026 年 7 月制定了多人团队[初始分工书](docs/团队分工书.md)。它记录初始计划，并不自动证明后续开发过程中的实际代码归属。随着项目迭代，陈家智主导产品与技术落地并承担主要的跨模块实现、集成与验收。其他参与者的实际贡献仍应如实保留，不能通过改动 README 抹除。
 
-MIT
+## 声明
+
+AI 音乐辅助调适不构成医学建议、诊断或治疗。
