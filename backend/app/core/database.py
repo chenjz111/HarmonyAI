@@ -27,10 +27,11 @@ Base = declarative_base()
 
 def init_database() -> None:
     """Create the lightweight local schema for development and demos."""
-    Base.metadata.create_all(bind=engine)
     from backend.app.core.sprint4_migrations import apply_sprint4_migrations
-    from backend.app.core.v3_migrations import apply_v3_migrations
+    from backend.app.core.v3_migrations import apply_v3_migrations, preflight_v3_migrations
 
+    preflight_v3_migrations(engine)
+    Base.metadata.create_all(bind=engine)
     apply_sprint4_migrations(engine)
     apply_v3_migrations(engine)
 
