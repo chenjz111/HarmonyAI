@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 from backend.app.core.database import get_db
 from backend.app.models.user import User
@@ -1153,6 +1154,102 @@ def test_playback_event_is_idempotent_per_owner_and_conflicts_across_assets(
             json={"event_id": f"evt-{bad_type}", "event_type": bad_type},
         )
         assert response.status_code == 422, response.text
+
+
+def test_playback_epoch_bumps_once_per_new_event_and_never_on_replay(
+    client, db_session_factory, controlled_media_root, monkeypatch
+):
+    """Owner ruling: a new real ``play_started`` bumps ``library_epoch`` in the
+    same transaction, while an idempotent replay - sequential or losing a
+    concurrent insert race - never bumps it a second time."""
+
+    headers, owner = _principal(client, db_session_factory)
+    with db_session_factory() as db:
+        for music_id in ("music_epoch1", "music_epoch2"):
+            db.add(
+                _asset(
+                    music_id,
+                    owner=owner,
+                    created_at=datetime(2026, 10, 12, 8, tzinfo=UTC),
+                    storage_key=_write_audio(controlled_media_root, music_id),
+                )
+            )
+        db.commit()
+
+    def _epoch() -> int:
+        with db_session_factory() as db:
+            return library_epoch_for(db, internal_user_pk=owner)
+
+    # Reading never created state, so the epoch starts implicit at 0.
+    assert _epoch() == 0
+
+    first = client.post(
+        "/api/v3/music/assets/music_epoch1/playback-events",
+        headers=headers,
+        json={"event_id": "evt-epoch", "event_type": "play_started"},
+    )
+    assert first.status_code == 201, first.text
+    assert _epoch() == 1
+
+    # Sequential replay of the same event for the same asset: idempotent, no bump.
+    replay = client.post(
+        "/api/v3/music/assets/music_epoch1/playback-events",
+        headers=headers,
+        json={"event_id": "evt-epoch", "event_type": "play_started"},
+    )
+    assert replay.status_code == 200, replay.text
+    assert _payload(replay)["replayed"] is True
+    assert _epoch() == 1
+
+    # A genuinely new event on another asset does bump again.
+    second = client.post(
+        "/api/v3/music/assets/music_epoch2/playback-events",
+        headers=headers,
+        json={"event_id": "evt-epoch-new", "event_type": "play_started"},
+    )
+    assert second.status_code == 201, second.text
+    assert _epoch() == 2
+
+    # Racing insert: both requests passed the pre-check and this one lost the
+    # unique-constraint race.  It must resolve to an idempotent replay of the
+    # winner rather than an error, and must not bump the epoch again.
+    import backend.app.routers.v3.music_library_router as router_module
+
+    def _lost_the_race(*_args, **_kwargs):
+        raise IntegrityError(
+            "INSERT INTO music_playback_events",
+            {},
+            Exception(
+                "UNIQUE constraint failed: music_playback_events.internal_user_pk, "
+                "music_playback_events.event_id"
+            ),
+        )
+
+    monkeypatch.setattr(router_module, "record_playback_event", _lost_the_race)
+    raced = client.post(
+        "/api/v3/music/assets/music_epoch1/playback-events",
+        headers=headers,
+        json={"event_id": "evt-epoch", "event_type": "play_started"},
+    )
+    assert raced.status_code == 200, raced.text
+    raced_data = _payload(raced)
+    assert raced_data["replayed"] is True
+    assert raced_data["occurred_at"] == _payload(first)["occurred_at"]
+    assert _epoch() == 2
+
+    # Losing the race with an id that belongs to a *different* asset is still a
+    # conflict, not a replay.
+    foreign = client.post(
+        "/api/v3/music/assets/music_epoch2/playback-events",
+        headers=headers,
+        json={"event_id": "evt-epoch", "event_type": "play_started"},
+    )
+    assert foreign.status_code == 409, foreign.text
+    assert _error(foreign)["code"] == "PLAYBACK_EVENT_CONFLICT"
+    assert _epoch() == 2
+
+    with db_session_factory() as db:
+        assert db.query(MusicPlaybackEvent).count() == 2
 
 
 def test_playback_requires_owned_ready_asset_and_owned_context(

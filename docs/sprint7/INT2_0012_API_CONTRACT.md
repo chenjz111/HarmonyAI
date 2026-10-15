@@ -10,13 +10,15 @@ This candidate includes UNMERGED upstream PR #158
 (`a753e4d8bc95f337ada162f2564a63cd54378487`) and PR #159
 (`7f5b3eb5c7a77830607e46a927a1620f25322c1c`). It is not directly mergeable
 until those dependencies and the integration delta are reviewed together.
-During final remote verification PR #159 advanced to
-`067c67746a33c7e848fc522e4d50500b601698b6`. That additional commit fixes a
-concurrent duplicate playback insert returning 409 instead of idempotent 200.
-It is NOT included: the Owner specified the earlier exact SHA. Sequential replay
-is tested here, but the concurrent replay contract remains BLOCKED until the new
-upstream is explicitly reconciled and tested with this schema. Do not promote
-this candidate as a complete concurrent-idempotency acceptance result.
+Owner subsequently approved PR #159's exact incremental fix
+`067c67746a33c7e848fc522e4d50500b601698b6`. Its three-file delta is now
+integrated through an equivalent non-rewriting patch transfer, retaining the
+candidate's private-title epoch hook. Router and upstream API test content match
+that exact Backend revision; service differences are the existing title hook only.
+No ORM, migration SQL or DTO is changed by this increment. The upstream regression
+was first run against the old candidate and failed as expected (409 rather than
+200), then passed after integration. This closes the previously recorded upstream
+drift blocker, not the separate deployment and cross-database gates.
 PR #155 (`31b62112d0c2d814ff13c17b67b5d555e4789a3f`) is a reference only;
 its DraftBase and 0013 are not imported or registered.
 
@@ -191,3 +193,44 @@ Network guard self-tests: 7 passed. Each Node file runs in its own guarded proce
 MODULE_TYPELESS_PACKAGE_JSON warning. No test calls a real Provider or production
 database. Test harnesses/evidence stay private outside the committed source tree.
 No complete App, H5 build, real MySQL or real Stream Gate is claimed.
+
+### Approved concurrency increment
+
+The original 122-test result above is historical. The new affected command adds
+`tests/api/v3/test_int2_playback_concurrency.py` to those six Python files and
+retains the Backend author's new test. All tests run under the same private
+offline wrapper, with temporary SQLite files and synthetic identities/assets.
+Actual increment result: **133 passed, 0 failed, 1 skipped, 1 warning**.
+Skip and warning remain the previously identified Windows real-symlink
+limitation and Starlette/httpx deprecation. Shared Node fixture: **2 passed**;
+original adapter: **6 passed**, with one known module-type warning per process.
+Offline guard self-verification: **7 passed**. No real Provider or external test
+connection occurred. MySQL actual execution and full H5/App remain NOT RUN.
+
+Evidence types are deliberately separate:
+
+- **Real request concurrency (8 cases):** two simultaneous in-process HTTP
+  requests use distinct SQLAlchemy Sessions and distinct physical SQLite
+  connections. A SQL execution listener places a barrier before both actual
+  playback INSERT statements; it does not substitute SQL, query results, or an
+  exception. Same owner/event/asset is tested three times with initial owner state
+  present and absent (6 cases): exactly one row, 201 + 200 replay, identical stored
+  occurred_at and epoch exactly 1, including subsequent sequential replay.
+  Different assets with the same owner/event are tested with state present and
+  absent (2 cases): 201 + 409, one winning event and epoch 1; never a false replay.
+- **Real owner-state conflict (1 case):** two independent Sessions/connections
+  race actual first owner-state INSERTs via the production shared transaction
+  helper. One commits, one gets the real uniqueness error; after rollback the
+  replay resolver finds no event. One owner row, epoch 0, no playback rows.
+- **Simulated exception evidence:** the retained upstream test injects an
+  IntegrityError to exercise the route's already-stored-event recovery branch.
+  A separate new route test injects an owner-state IntegrityError with no stored
+  event and verifies retryable 409, not a fabricated successful replay. These
+  are exception-handler tests, not real concurrency evidence.
+
+SQLite serializes writers: playback is inserted before owner state, so a natural
+owner-state collision *inside two playback HTTP requests* is not independently
+forced here. Its direct shared-helper race and route error handling are verified
+separately. This is not MySQL race validation, an exhaustive scheduling proof,
+multi-process/load testing, or approval of database lock retry policy. Each test
+barrier/future is bounded; no sleeps, remote services or production data are used.
