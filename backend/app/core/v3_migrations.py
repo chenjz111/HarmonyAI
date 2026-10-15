@@ -6,7 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 import re
 
-from sqlalchemy import event, inspect
+from sqlalchemy import event, inspect, Integer, String, DateTime
 from sqlalchemy.engine import Engine
 
 
@@ -22,9 +22,11 @@ V3_MIGRATION_VERSIONS = [
     "0008_v3_prescription_user_goal_snapshot",
     "0009_v3_five_tone_read_model",
     "0010_v3_generation_prompt_audit",
+    "0011_v3_auth_foundation",
 ]
 
 _REQUIRED_TABLES = {
+    "auth_sessions",
     # 0001 foundation
     "user_identities",
     "user_profiles",
@@ -73,6 +75,168 @@ _REQUIRED_TABLES = {
 
 class MigrationChecksumMismatch(RuntimeError):
     """Raised when an already-applied migration file was changed."""
+
+
+class MigrationOrderError(RuntimeError):
+    """History is not a legal immutable prefix; reject before DDL."""
+
+
+class MigrationSchemaMismatch(RuntimeError):
+    """Existing partial/create_all schema is incompatible; do not guess repair."""
+
+
+def preflight_v3_migrations(engine: Engine, *, migrations_root=None):
+    """Read-only validation; called before initialization create_all as well."""
+    versions = list(V3_MIGRATION_VERSIONS)
+    numbers = [int(v[:4]) if re.fullmatch(r'\d{4}_[a-z0-9_]+', v) else -1 for v in versions]
+    if not versions or numbers != list(range(1, len(versions)+1)) or len(set(versions)) != len(versions):
+        raise MigrationOrderError('registered migration order is invalid')
+    dialect = engine.dialect.name
+    if dialect not in {'sqlite','mysql'}:
+        raise RuntimeError(f'unsupported V3 migration dialect: {dialect}')
+    inspector = inspect(engine)
+    rows = []
+    if 'schema_migrations' in inspector.get_table_names():
+        with engine.connect() as connection:
+            rows = connection.exec_driver_sql('SELECT version,checksum FROM schema_migrations ORDER BY applied_at,version').fetchall()
+    applied = [row[0] for row in rows]
+    if applied != versions[:len(applied)] or len(set(applied)) != len(applied):
+        raise MigrationOrderError('applied migration order is not a complete registered prefix')
+    # Read every source before applying anything, not one migration at a time.
+    sources = {version: _read_migration(dialect,version,'up',migrations_root) for version in versions}
+    for version,checksum in rows:
+        if checksum != _checksum(sources[version]):
+            raise MigrationChecksumMismatch(f'applied migration {version} checksum changed')
+    _validate_auth_existing_schema(engine)
+    return sources
+
+
+def _validate_auth_existing_schema(engine):
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+    normalize = lambda value: re.sub(r'[\s`"()]','',str(value)).lower()
+    if 'user_identities' in tables:
+        columns = {c['name']:c for c in inspector.get_columns('user_identities')}
+        if 'auth_epoch' in columns:
+            epoch = columns['auth_epoch']
+            checks = [normalize(c['sqltext']) for c in inspector.get_check_constraints('user_identities')]
+            if (not isinstance(epoch['type'],Integer) or epoch['nullable'] or normalize(epoch.get('default')) not in {'0',"'0'"}
+                    or not any('auth_epoch>=0' in c for c in checks)):
+                raise MigrationSchemaMismatch('incompatible existing auth_epoch')
+    if 'auth_sessions' not in tables:
+        return
+    columns = {c['name']:c for c in inspector.get_columns('auth_sessions')}
+    expected = {'auth_session_id':(String,64,False), 'internal_user_pk':(Integer,None,False),
+                'refresh_credential_hash':(String,255,False),'family_id':(String,64,False),
+                'created_at':(DateTime,None,False),'expires_at':(DateTime,None,False),'revoked_at':(DateTime,None,True)}
+    for name,(kind,length,nullable) in expected.items():
+        c = columns.get(name)
+        if c is None or not isinstance(c['type'],kind) or c['nullable'] != nullable or (length and c['type'].length != length):
+            raise MigrationSchemaMismatch(f'incompatible auth_sessions column {name}')
+    if ('current_timestamp' not in normalize(columns['created_at'].get('default'))
+            or columns['expires_at'].get('default') is not None):
+        raise MigrationSchemaMismatch('incompatible auth session time defaults')
+    if inspector.get_pk_constraint('auth_sessions')['constrained_columns'] != ['auth_session_id']:
+        raise MigrationSchemaMismatch('incompatible auth_sessions primary key')
+    uniques = inspector.get_unique_constraints('auth_sessions') + [i for i in inspector.get_indexes('auth_sessions') if i.get('unique')]
+    if not any(u['column_names']==['refresh_credential_hash'] for u in uniques):
+        raise MigrationSchemaMismatch('missing auth session hash uniqueness')
+    fks = inspector.get_foreign_keys('auth_sessions')
+    if not any(f['constrained_columns']==['internal_user_pk'] and f['referred_table']=='users' and f['referred_columns']==['id'] and f.get('options',{}).get('ondelete','').upper()=='CASCADE' for f in fks):
+        raise MigrationSchemaMismatch('missing auth session owner FK')
+    checks = [normalize(c['sqltext']) for c in inspector.get_check_constraints('auth_sessions')]
+    if not any('expires_at>created_at' in c for c in checks) or not any('revoked_atisnullorrevoked_at>=created_at' in c for c in checks):
+        raise MigrationSchemaMismatch('missing auth session lifecycle checks')
+    if not any('lengthrefresh_credential_hash>0' in c for c in checks):
+        raise MigrationSchemaMismatch('missing nonempty auth digest check')
+    if engine.dialect.name == 'mysql' and getattr(columns['refresh_credential_hash']['type'],'collation',None) != 'utf8mb4_bin':
+        raise MigrationSchemaMismatch('auth digest requires case-sensitive collation')
+
+
+def _render_auth_foundation(engine, sql):
+    _validate_auth_existing_schema(engine)
+    columns = {c['name'] for c in inspect(engine).get_columns('user_identities')}
+    if 'auth_epoch' in columns:
+        sql = '\n'.join(line for line in sql.splitlines() if not line.startswith('ALTER TABLE user_identities ADD COLUMN auth_epoch'))
+    return sql
+
+
+def _execute_sqlite_statements(cursor, sql):
+    import sqlite3
+    pending = ''
+    for line in sql.splitlines(keepends=True):
+        pending += line
+        if sqlite3.complete_statement(pending):
+            cursor.execute(pending)
+            pending = ''
+    if any(line.strip() and not line.strip().startswith('--') for line in pending.splitlines()):
+        raise RuntimeError('incomplete migration SQL')
+
+
+def _render_mysql_model_columns(engine, version, sql):
+    """create_all compatibility for existing nullable 0009/0010 model columns.
+
+    Source SQL/checksums remain immutable; only omit already-present ADDs.
+    This does not claim full MySQL fresh-init execution has been verified.
+    """
+    tables = {'0009_v3_five_tone_read_model':'diagnosis_runs',
+              '0010_v3_generation_prompt_audit':'generation_tasks'}
+    table = tables.get(version)
+    if table is None or table not in inspect(engine).get_table_names():
+        return sql
+    columns = {c['name'] for c in inspect(engine).get_columns(table)}
+    additions = re.findall(r'ADD COLUMN\s+(\w+)\s+([^,;]+)',sql)
+    missing = [(name,definition) for name,definition in additions if name not in columns]
+    if not missing:
+        return '-- model-created nullable columns already present\n'
+    return f'ALTER TABLE {table} ' + ', '.join(f'ADD COLUMN {name} {definition.strip()}' for name,definition in missing) + ';\n'
+
+
+def rollback_auth_foundation(engine: Engine):
+    """Explicit SQLite-only safe downgrade. Never called by initialization."""
+    if engine.dialect.name != 'sqlite':
+        raise RuntimeError('MySQL downgrade requires separately verified operator recovery')
+    preflight_v3_migrations(engine)
+    with engine.connect() as connection:
+        latest = connection.exec_driver_sql('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1').scalar()
+    if latest != '0011_v3_auth_foundation':
+        raise MigrationOrderError('0011 must be the last applied version to downgrade')
+    raw = engine.raw_connection()
+    try:
+        cursor = raw.cursor()
+        cursor.execute('BEGIN IMMEDIATE')
+        _preflight_sqlite_auth_epoch_drop(cursor)
+        _execute_sqlite_statements(cursor,_read_migration('sqlite','0011_v3_auth_foundation','down'))
+        raw.commit()
+    except Exception:
+        raw.rollback()
+        raise
+    finally:
+        raw.close()
+
+
+def _preflight_sqlite_auth_epoch_drop(cursor):
+    """Probe table CHECK compatibility on a schema-only in-memory copy.
+
+    SQLite cannot drop an auth_epoch referenced by an ORM table-level CHECK.
+    Do not rebuild the real identity table or first drop auth_sessions and hope
+    rollback is sufficient. This conservative probe never copies user rows and
+    is performed under the original connection's write transaction/lock.
+    """
+    import sqlite3
+    from contextlib import closing
+    row = cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='user_identities'").fetchone()
+    if row is None or not row[0]:
+        raise MigrationSchemaMismatch('SQLite auth downgrade has no identity table definition')
+    with closing(sqlite3.connect(':memory:')) as probe:
+        try:
+            probe.execute(row[0])
+            probe.execute('ALTER TABLE user_identities DROP COLUMN auth_epoch')
+        except sqlite3.Error as error:
+            raise MigrationSchemaMismatch(
+                'SQLite auth downgrade unsupported for this identity table definition; '
+                'fresh-create table CHECK requires separately approved rebuild or snapshot recovery'
+            ) from error
 
 
 def _default_migrations_root() -> Path:
@@ -260,7 +424,13 @@ def _apply_sqlite_migration(
             rendered = _render_sqlite_generation_prompt_audit_migration(
                 engine, rendered
             )
-        raw.executescript(rendered)
+        if version == '0011_v3_auth_foundation':
+            rendered = _render_auth_foundation(engine,rendered)
+            # Unlike historical scripts, 0011 DDL and ledger are one transaction.
+            cursor.execute('BEGIN IMMEDIATE')
+            _execute_sqlite_statements(cursor,rendered)
+        else:
+            raw.executescript(rendered)
         cursor.execute(
             "INSERT INTO schema_migrations (version, checksum) VALUES (?, ?)",
             (version, checksum),
@@ -317,6 +487,9 @@ def _apply_mysql_migration(
                 rendered = _remove_marked_block(rendered, "V3_SESSION_OWNER_INDEX")
         if session_owner_flow and _has_owner_flow_session_columns(engine):
             rendered = _remove_marked_block(rendered, "V3_OWNER_FLOW_SESSION")
+        if version == '0011_v3_auth_foundation':
+            rendered = _render_auth_foundation(engine,rendered)
+        rendered = _render_mysql_model_columns(engine,version,rendered)
         statements = [item.strip() for item in rendered.split(";") if item.strip()]
         for statement in statements:
             connection.exec_driver_sql(statement)
@@ -337,10 +510,11 @@ def apply_v3_migrations(
     dialect = engine.dialect.name
     if dialect not in {"sqlite", "mysql"}:
         raise RuntimeError(f"unsupported V3 migration dialect: {dialect}")
+    sources = preflight_v3_migrations(engine,migrations_root=migrations_root)
     applied: list[str] = []
     last_checksum = ""
     for version in V3_MIGRATION_VERSIONS:
-        sql = _read_migration(dialect, version, "up", migrations_root)
+        sql = sources[version]
         checksum = _checksum(sql)
         last_checksum = checksum
         session_upgrade = version == V3_FOUNDATION_VERSION
