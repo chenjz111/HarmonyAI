@@ -13,6 +13,12 @@ ROOT = Path(__file__).resolve().parents[3] / 'backend/migrations/v3'
 VERSION = '0011_v3_auth_foundation'
 
 
+@pytest.fixture(autouse=True)
+def historical_0011_registry(monkeypatch):
+    """Keep this suite's 0011-stage assertions while testing the current executor."""
+    monkeypatch.setattr(migrations,'V3_MIGRATION_VERSIONS',migrations.V3_MIGRATION_VERSIONS[:11])
+
+
 @pytest.fixture
 def old_database(tmp_path, monkeypatch):
     engine = create_engine(f'sqlite:///{tmp_path / "isolated.sqlite"}')

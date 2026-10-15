@@ -24,6 +24,7 @@ from .diagnosis import (
 )
 from .prescription import PrescriptionV3
 from .music import GenerationTask, MusicAsset
+from .music_library import MusicLibraryState, MusicPlaybackEvent, OwnerMusicState
 from .feedback import (
     Favorite,
     FeedbackV3,
@@ -34,6 +35,7 @@ from .feedback import (
 )
 
 __all__ = [
+    "MusicLibraryState", "MusicPlaybackEvent", "OwnerMusicState",
     "AuthSession",
     "UserIdentity",
     "UserProfile",

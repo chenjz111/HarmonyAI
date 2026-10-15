@@ -23,9 +23,11 @@ V3_MIGRATION_VERSIONS = [
     "0009_v3_five_tone_read_model",
     "0010_v3_generation_prompt_audit",
     "0011_v3_auth_foundation",
+    "0012_v3_music_library",
 ]
 
 _REQUIRED_TABLES = {
+    "owner_music_state", "music_library_state", "music_playback_events",
     "auth_sessions",
     # 0001 foundation
     "user_identities",
@@ -108,7 +110,63 @@ def preflight_v3_migrations(engine: Engine, *, migrations_root=None):
         if checksum != _checksum(sources[version]):
             raise MigrationChecksumMismatch(f'applied migration {version} checksum changed')
     _validate_auth_existing_schema(engine)
+    _validate_library_existing_schema(engine)
     return sources
+
+
+def _validate_library_existing_schema(engine):
+    """Reject incompatible unregistered side tables; no silent schema repair."""
+    from sqlalchemy import BigInteger
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    required = {
+        'owner_music_state':{'owner_internal_user_pk','library_epoch','feedback_evidence_epoch','preference_clear_cutoff','created_at','updated_at'},
+        'music_library_state':{'owner_internal_user_pk','music_asset_id','user_title','metadata_version','created_at','updated_at'},
+        'music_playback_events':{'playback_event_row_id','internal_user_pk','event_id','music_asset_id','event_type','source_context_id','occurred_at','created_at'},
+    }
+    for table, fields in required.items():
+        if table not in tables:
+            continue
+        columns={c['name']:c for c in inspector.get_columns(table)}
+        if set(columns)!=fields:
+            raise MigrationSchemaMismatch(f'incompatible library columns: {table}')
+        epoch_fields = ['library_epoch','feedback_evidence_epoch'] if table=='owner_music_state' else ['metadata_version'] if table=='music_library_state' else []
+        for name in epoch_fields:
+            column=columns[name]
+            if not isinstance(column['type'],BigInteger) or column['nullable'] or str(column['default']).strip("'() ")!='0':
+                raise MigrationSchemaMismatch(f'incompatible library default/type: {table}.{name}')
+        if table=='music_library_state' and columns['user_title']['type'].length!=120:
+            raise MigrationSchemaMismatch('private title must have length 120')
+        if table=='music_playback_events':
+            fks=inspector.get_foreign_keys(table)
+            if not any(f['constrained_columns']==['source_context_id','internal_user_pk','music_asset_id'] and f['referred_table']=='generation_tasks' and f['referred_columns']==['task_id','internal_user_pk','music_asset_id'] for f in fks):
+                raise MigrationSchemaMismatch('missing playback owner/asset/context FK')
+    if 'music_playback_events' in tables:
+        indexes=inspector.get_indexes('generation_tasks')
+        if not any(i.get('unique') and i['column_names']==['task_id','internal_user_pk','music_asset_id'] for i in indexes):
+            raise MigrationSchemaMismatch('missing task context parent unique index')
+
+
+def rollback_music_library(engine):
+    """SQLite-only explicit candidate downgrade, refusing nonempty extension data."""
+    if engine.dialect.name!='sqlite':
+        raise RuntimeError('MySQL downgrade requires separately verified recovery')
+    preflight_v3_migrations(engine)
+    with engine.connect() as connection:
+        latest=connection.exec_driver_sql('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1').scalar()
+    if latest!='0012_v3_music_library':
+        raise MigrationOrderError('0012 must be the latest applied migration')
+    raw=engine.raw_connection()
+    try:
+        cursor=raw.cursor()
+        cursor.execute('BEGIN IMMEDIATE')
+        _execute_sqlite_statements(cursor,_read_migration('sqlite','0012_v3_music_library','down'))
+        raw.commit()
+    except Exception:
+        raw.rollback()
+        raise
+    finally:
+        raw.close()
 
 
 def _validate_auth_existing_schema(engine):
@@ -424,8 +482,9 @@ def _apply_sqlite_migration(
             rendered = _render_sqlite_generation_prompt_audit_migration(
                 engine, rendered
             )
-        if version == '0011_v3_auth_foundation':
-            rendered = _render_auth_foundation(engine,rendered)
+        if version in {'0011_v3_auth_foundation','0012_v3_music_library'}:
+            if version == '0011_v3_auth_foundation':
+                rendered = _render_auth_foundation(engine,rendered)
             # Unlike historical scripts, 0011 DDL and ledger are one transaction.
             cursor.execute('BEGIN IMMEDIATE')
             _execute_sqlite_statements(cursor,rendered)
@@ -489,6 +548,10 @@ def _apply_mysql_migration(
             rendered = _remove_marked_block(rendered, "V3_OWNER_FLOW_SESSION")
         if version == '0011_v3_auth_foundation':
             rendered = _render_auth_foundation(engine,rendered)
+        if version == '0012_v3_music_library':
+            indexes = inspect(engine).get_indexes('generation_tasks')
+            if any(i['name']=='uq_generation_tasks_owner_asset_context' for i in indexes):
+                rendered = '\n'.join(line for line in rendered.splitlines() if not line.startswith('CREATE UNIQUE INDEX uq_generation_tasks_owner_asset_context'))
         rendered = _render_mysql_model_columns(engine,version,rendered)
         statements = [item.strip() for item in rendered.split(";") if item.strip()]
         for statement in statements:
