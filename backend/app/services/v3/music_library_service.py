@@ -656,6 +656,49 @@ def _latest_playback(
     return None if value is None else _utc(value)
 
 
+def replayed_playback_event(
+    db: Session,
+    *,
+    internal_user_pk: int,
+    music_id: str,
+    event_id: str,
+) -> RecordedPlaybackEvent | None:
+    """Resolve an already-stored event after a concurrent insert conflict.
+
+    Used when ``record_playback_event`` lost a race: two requests with the same
+    owner-scoped ``event_id`` may both pass the pre-check, and only one insert can
+    win.  The loser must become an idempotent replay of the winner rather than an
+    error, and must not bump the library epoch a second time.
+
+    Returns ``None`` when no such event exists (the conflict was elsewhere, e.g.
+    the owner-state row), and raises ``PlaybackEventConflict`` when the stored
+    event belongs to a different asset.
+    """
+
+    row = (
+        db.query(MusicPlaybackEvent)
+        .filter(
+            MusicPlaybackEvent.internal_user_pk == internal_user_pk,
+            MusicPlaybackEvent.event_id == event_id,
+        )
+        .one_or_none()
+    )
+    if row is None:
+        return None
+    if row.music_asset_id != music_id:
+        raise PlaybackEventConflict("event_id already belongs to another asset")
+    occurred_at = _utc(row.occurred_at)
+    latest = _latest_playback(db, internal_user_pk=internal_user_pk, music_id=music_id)
+    return RecordedPlaybackEvent(
+        event_id=event_id,
+        music_id=music_id,
+        event_type=row.event_type,
+        occurred_at=occurred_at,
+        last_played_at=latest or occurred_at,
+        replayed=True,
+    )
+
+
 def record_playback_event(
     db: Session,
     *,

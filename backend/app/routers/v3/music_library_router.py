@@ -61,6 +61,7 @@ from backend.app.services.v3.music_library_service import (
     owner_music_item,
     page_owner_music,
     record_playback_event,
+    replayed_playback_event,
     update_private_title,
 )
 from backend.app.services.v3.music_source_service import (
@@ -355,12 +356,41 @@ def create_music_playback_event(
         ) from None
     except IntegrityError:
         db.rollback()
-        raise V3APIError(
-            409,
-            "PLAYBACK_EVENT_CONFLICT",
-            "播放事件写入冲突，请重试。",
-            retryable=True,
-        ) from None
+        # A concurrent request may have stored the very same owner-scoped event
+        # id while this one was in flight.  That is an idempotent replay of this
+        # asset (Owner ruling: replay must not bump the library epoch again), not
+        # a conflict; only a genuinely unusable situation becomes an error.
+        try:
+            replayed = replayed_playback_event(
+                db,
+                internal_user_pk=principal.internal_user_pk,
+                music_id=music_id,
+                event_id=body.event_id,
+            )
+        except PlaybackEventConflict:
+            raise V3APIError(
+                409,
+                "PLAYBACK_EVENT_CONFLICT",
+                "该播放事件标识已属于其他音乐。",
+            ) from None
+        if replayed is None:
+            raise V3APIError(
+                409,
+                "PLAYBACK_EVENT_CONFLICT",
+                "播放记录写入冲突，请重试。",
+                retryable=True,
+            ) from None
+        response.status_code = 200
+        return v3_success(
+            PlaybackEventResultV1(
+                event_id=replayed.event_id,
+                music_id=replayed.music_id,
+                event_type=replayed.event_type,
+                occurred_at=replayed.occurred_at,
+                last_played_at=replayed.last_played_at,
+                replayed=replayed.replayed,
+            )
+        )
     db.commit()
     if recorded.replayed:
         response.status_code = 200
