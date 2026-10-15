@@ -1,0 +1,918 @@
+{
+    "schema_version":  "questionnaire_v2.1_contract",
+    "status":  "frozen",
+    "required_question_fields":  [
+                                     "question_id",
+                                     "module",
+                                     "order",
+                                     "text",
+                                     "type",
+                                     "time_window",
+                                     "options",
+                                     "dimension",
+                                     "scored",
+                                     "reverse_scored",
+                                     "safety_only",
+                                     "weight",
+                                     "ui",
+                                     "version"
+                                 ],
+    "follow_up":  {
+                      "schema_version":  "follow_up_v1",
+                      "allowed_count_range":  [
+                                                  0,
+                                                  4
+                                              ],
+                      "max_questions_total":  4
+                  },
+    "questions":  [
+                      {
+                          "question_id":  "q01_user_goal",
+                          "module":  "A_goal",
+                          "order":  1,
+                          "text":  "你这次最希望音乐帮助你做什么？",
+                          "type":  "single_choice",
+                          "time_window":  "current",
+                          "options":  [
+                                          {
+                                              "value":  "relaxation",
+                                              "label":  "放松紧张"
+                                          },
+                                          {
+                                              "value":  "sleep",
+                                              "label":  "帮助入睡"
+                                          },
+                                          {
+                                              "value":  "calm_irritability",
+                                              "label":  "平复烦躁"
+                                          },
+                                          {
+                                              "value":  "improve_low_mood",
+                                              "label":  "缓解低落"
+                                          },
+                                          {
+                                              "value":  "focus",
+                                              "label":  "提升专注"
+                                          },
+                                          {
+                                              "value":  "restore_energy",
+                                              "label":  "恢复精力"
+                                          },
+                                          {
+                                              "value":  "release_emotion",
+                                              "label":  "释放情绪"
+                                          },
+                                          {
+                                              "value":  "other",
+                                              "label":  "其他"
+                                          }
+                                      ],
+                          "dimension":  null,
+                          "scored":  false,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  0,
+                          "ui":  {
+                                     "layout":  "card-horizontal",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q02_mood_weather",
+                          "module":  "A_goal",
+                          "order":  2,
+                          "text":  "把最近的整体状态比作天气，哪一种最接近？",
+                          "type":  "visual_single",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  "clear",
+                                              "label":  "晴朗",
+                                              "score":  0
+                                          },
+                                          {
+                                              "value":  "variable",
+                                              "label":  "阴晴不定",
+                                              "score":  1
+                                          },
+                                          {
+                                              "value":  "rainy",
+                                              "label":  "连绵阴雨",
+                                              "score":  2
+                                          },
+                                          {
+                                              "value":  "fog",
+                                              "label":  "浓雾弥漫",
+                                              "score":  3
+                                          },
+                                          {
+                                              "value":  "storm",
+                                              "label":  "雷电交加",
+                                              "score":  4
+                                          }
+                                      ],
+                          "dimension":  null,
+                          "scored":  false,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  0,
+                          "ui":  {
+                                     "layout":  "card-horizontal",
+                                     "icon_required":  true,
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q03_tension_worry",
+                          "module":  "B_activation",
+                          "order":  3,
+                          "text":  "过去两周，你有多经常感到紧张、担忧或难以放松？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "从不"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "偶尔"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "经常"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "几乎每天"
+                                          }
+                                      ],
+                          "dimension":  "tension_worry",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q04_worry_control",
+                          "module":  "B_activation",
+                          "order":  4,
+                          "text":  "开始担忧后，你有多难让自己停止？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "从不"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "偶尔"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "经常"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "几乎每天"
+                                          }
+                                      ],
+                          "dimension":  "worry_control",
+                          "scored":  false,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  0,
+                          "evidence_role":  "qualitative",
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q05_overthinking",
+                          "module":  "B_activation",
+                          "order":  5,
+                          "text":  "你的思绪有多像下面哪一种海面？",
+                          "type":  "visual_single",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  "calm",
+                                              "label":  "平静",
+                                              "score":  0
+                                          },
+                                          {
+                                              "value":  "ripple",
+                                              "label":  "微澜",
+                                              "score":  1
+                                          },
+                                          {
+                                              "value":  "waves",
+                                              "label":  "波动",
+                                              "score":  2
+                                          },
+                                          {
+                                              "value":  "swell",
+                                              "label":  "翻涌",
+                                              "score":  3
+                                          },
+                                          {
+                                              "value":  "storm",
+                                              "label":  "风暴",
+                                              "score":  4
+                                          }
+                                      ],
+                          "dimension":  "overthinking",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "card-horizontal",
+                                     "icon_required":  true,
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q06_irritability_anger",
+                          "module":  "B_activation",
+                          "order":  6,
+                          "text":  "过去两周，你有多经常感到烦躁、易怒或没有耐心？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "从不"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "偶尔"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "经常"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "几乎每天"
+                                          }
+                                      ],
+                          "dimension":  "irritability_anger",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q07_fear_unease",
+                          "module":  "B_activation",
+                          "order":  7,
+                          "text":  "过去两周，你有多经常感到不安、害怕或担心坏事发生？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "从不"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "偶尔"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "经常"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "几乎每天"
+                                          }
+                                      ],
+                          "dimension":  "fear_unease",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q08_low_mood",
+                          "module":  "C_mood",
+                          "order":  8,
+                          "text":  "过去两周，你有多经常感到情绪低落、难过或心情沉重？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "从不"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "偶尔"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "经常"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "几乎每天"
+                                          }
+                                      ],
+                          "dimension":  "low_mood",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q09_interest_loss",
+                          "module":  "C_mood",
+                          "order":  9,
+                          "text":  "过去两周，你有多经常对原本喜欢的事情提不起兴趣？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "从不"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "偶尔"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "经常"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "几乎每天"
+                                          }
+                                      ],
+                          "dimension":  "interest_loss",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q10_calm_wellbeing",
+                          "module":  "C_mood",
+                          "order":  10,
+                          "text":  "过去两周，你有多经常感到平静、轻松或内心安稳？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "从不"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "偶尔"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "经常"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "几乎每天"
+                                          }
+                                      ],
+                          "dimension":  "calm_wellbeing",
+                          "scored":  true,
+                          "reverse_scored":  true,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q11_emotional_recovery",
+                          "module":  "C_mood",
+                          "order":  11,
+                          "text":  "情绪受到影响后，你通常能够慢慢恢复吗？",
+                          "type":  "single_choice",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "总能恢复"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "大多能"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时能"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "比较难"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "很难恢复"
+                                          }
+                                      ],
+                          "dimension":  "emotional_recovery",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q12_sleep_disturbance",
+                          "module":  "D_sleep_energy",
+                          "order":  12,
+                          "text":  "过去两周，你有多经常入睡困难、夜间醒来或早醒？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "从不"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "偶尔"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "经常"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "几乎每天"
+                                          }
+                                      ],
+                          "dimension":  "sleep_disturbance",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q13_unrefreshing_sleep",
+                          "module":  "D_sleep_energy",
+                          "order":  13,
+                          "text":  "过去两周，醒来后有多经常觉得没有休息好？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "从不"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "偶尔"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "有时"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "经常"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "几乎每天"
+                                          }
+                                      ],
+                          "dimension":  "unrefreshing_sleep",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q14_low_energy",
+                          "module":  "D_sleep_energy",
+                          "order":  14,
+                          "text":  "哪种电池状态最接近你最近的精力？",
+                          "type":  "visual_single",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  "full",
+                                              "label":  "充足",
+                                              "score":  0
+                                          },
+                                          {
+                                              "value":  "half",
+                                              "label":  "一般",
+                                              "score":  2
+                                          },
+                                          {
+                                              "value":  "empty",
+                                              "label":  "很低",
+                                              "score":  4
+                                          }
+                                      ],
+                          "dimension":  "low_energy",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "card-horizontal",
+                                     "icon_required":  true,
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q15_appetite_change",
+                          "module":  "D_sleep_energy",
+                          "order":  15,
+                          "text":  "最近食欲是否发生明显变化？",
+                          "type":  "single_choice",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  {
+                                                            "direction":  "none",
+                                                            "severity":  0
+                                                        },
+                                              "label":  "没有变化"
+                                          },
+                                          {
+                                              "value":  {
+                                                            "direction":  "decrease",
+                                                            "severity":  2
+                                                        },
+                                              "label":  "有所下降"
+                                          },
+                                          {
+                                              "value":  {
+                                                            "direction":  "increase",
+                                                            "severity":  2
+                                                        },
+                                              "label":  "有所增加"
+                                          }
+                                      ],
+                          "dimension":  "appetite_change",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q16_physical_signals",
+                          "module":  "D_sleep_energy",
+                          "order":  16,
+                          "text":  "最近出现过哪些身体感受？",
+                          "type":  "multi_choice",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  "neck_tension",
+                                              "label":  "肩颈紧绷"
+                                          },
+                                          {
+                                              "value":  "head_heaviness",
+                                              "label":  "头痛或头部沉重"
+                                          },
+                                          {
+                                              "value":  "palpitation",
+                                              "label":  "心慌"
+                                          },
+                                          {
+                                              "value":  "chest_tightness",
+                                              "label":  "胸口发紧"
+                                          },
+                                          {
+                                              "value":  "stomach_discomfort",
+                                              "label":  "胃部不适"
+                                          },
+                                          {
+                                              "value":  "limb_fatigue",
+                                              "label":  "四肢乏力"
+                                          },
+                                          {
+                                              "value":  "cold_extremities",
+                                              "label":  "手脚发冷"
+                                          },
+                                          {
+                                              "value":  "sweating",
+                                              "label":  "出汗"
+                                          },
+                                          {
+                                              "value":  "dry_mouth",
+                                              "label":  "口干"
+                                          },
+                                          {
+                                              "value":  "none",
+                                              "label":  "无明显不适"
+                                          },
+                                          {
+                                              "value":  "other",
+                                              "label":  "其他"
+                                          }
+                                      ],
+                          "dimension":  "physical_signals",
+                          "scored":  false,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  0,
+                          "ui":  {
+                                     "layout":  "multi-select",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1",
+                          "mutually_exclusive_value":  "none"
+                      },
+                      {
+                          "question_id":  "q17_duration",
+                          "module":  "E_duration_impact",
+                          "order":  17,
+                          "text":  "这些状态持续了多久？",
+                          "type":  "duration_choice",
+                          "time_window":  "current",
+                          "options":  [
+                                          {
+                                              "value":  "less_than_3_days",
+                                              "label":  "少于3天"
+                                          },
+                                          {
+                                              "value":  "3_to_6_days",
+                                              "label":  "3-6天"
+                                          },
+                                          {
+                                              "value":  "1_to_2_weeks",
+                                              "label":  "1-2周"
+                                          },
+                                          {
+                                              "value":  "2_weeks_to_1_month",
+                                              "label":  "2周-1个月"
+                                          },
+                                          {
+                                              "value":  "1_to_3_months",
+                                              "label":  "1-3个月"
+                                          },
+                                          {
+                                              "value":  "over_3_months",
+                                              "label":  "超过3个月"
+                                          },
+                                          {
+                                              "value":  "recurrent_unclear",
+                                              "label":  "反复出现，难以判断"
+                                          }
+                                      ],
+                          "dimension":  null,
+                          "scored":  false,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  0,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q18_daily_impact",
+                          "module":  "E_duration_impact",
+                          "order":  18,
+                          "text":  "这些状态对学习、工作、社交或日常生活造成多大影响？",
+                          "type":  "frequency_0_4",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  0,
+                                              "label":  "没有"
+                                          },
+                                          {
+                                              "value":  1,
+                                              "label":  "轻微"
+                                          },
+                                          {
+                                              "value":  2,
+                                              "label":  "一些"
+                                          },
+                                          {
+                                              "value":  3,
+                                              "label":  "较大"
+                                          },
+                                          {
+                                              "value":  4,
+                                              "label":  "非常大"
+                                          }
+                                      ],
+                          "dimension":  "daily_impact",
+                          "scored":  true,
+                          "reverse_scored":  false,
+                          "safety_only":  false,
+                          "weight":  1,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q19_self_harm",
+                          "module":  "F_safety",
+                          "order":  19,
+                          "text":  "过去两周是否出现过伤害自己、结束生命或不想活下去的想法？",
+                          "type":  "single_choice",
+                          "time_window":  "past_14_days",
+                          "options":  [
+                                          {
+                                              "value":  "never",
+                                              "label":  "从未有过",
+                                              "route":  "continue_assessment"
+                                          },
+                                          {
+                                              "value":  "fleeting",
+                                              "label":  "偶尔闪过",
+                                              "route":  "safety_flow"
+                                          },
+                                          {
+                                              "value":  "sometimes",
+                                              "label":  "有时想到",
+                                              "route":  "safety_flow"
+                                          },
+                                          {
+                                              "value":  "often",
+                                              "label":  "经常想到",
+                                              "route":  "safety_flow"
+                                          },
+                                          {
+                                              "value":  "specific_plan",
+                                              "label":  "有具体计划",
+                                              "route":  "safety_flow"
+                                          }
+                                      ],
+                          "dimension":  null,
+                          "scored":  false,
+                          "reverse_scored":  false,
+                          "safety_only":  true,
+                          "weight":  0,
+                          "ui":  {
+                                     "layout":  "button-row",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      },
+                      {
+                          "question_id":  "q20_emergency",
+                          "module":  "F_safety",
+                          "order":  20,
+                          "text":  "目前是否存在需要优先处理的紧急身体情况？",
+                          "type":  "multi_choice",
+                          "time_window":  "current",
+                          "options":  [
+                                          {
+                                              "value":  "severe_chest_pain",
+                                              "label":  "持续或严重胸痛",
+                                              "route":  "safety_flow"
+                                          },
+                                          {
+                                              "value":  "severe_breathing_difficulty",
+                                              "label":  "明显呼吸困难",
+                                              "route":  "safety_flow"
+                                          },
+                                          {
+                                              "value":  "confusion",
+                                              "label":  "意识模糊",
+                                              "route":  "safety_flow"
+                                          },
+                                          {
+                                              "value":  "near_fainting",
+                                              "label":  "接近晕厥",
+                                              "route":  "safety_flow"
+                                          },
+                                          {
+                                              "value":  "rapid_worsening",
+                                              "label":  "症状快速加重",
+                                              "route":  "safety_flow"
+                                          },
+                                          {
+                                              "value":  "none",
+                                              "label":  "无以上情况",
+                                              "route":  "continue_assessment"
+                                          }
+                                      ],
+                          "mutually_exclusive_value":  "none",
+                          "dimension":  null,
+                          "scored":  false,
+                          "reverse_scored":  false,
+                          "safety_only":  true,
+                          "weight":  0,
+                          "ui":  {
+                                     "layout":  "multi-select",
+                                     "progress_required":  true
+                                 },
+                          "version":  "2.1"
+                      }
+                  ],
+    "v20_migration":  {
+                          "q12_physical_safety":  {
+                                                      "value_routes":  {
+                                                                           "neck_tension":  "q16_physical_signals",
+                                                                           "head_heaviness":  "q16_physical_signals",
+                                                                           "palpitation":  "q16_physical_signals",
+                                                                           "stomach_discomfort":  "q16_physical_signals",
+                                                                           "fatigue":  "q16_physical_signals",
+                                                                           "other":  "q16_physical_signals",
+                                                                           "severe_chest_pain":  "q20_emergency",
+                                                                           "severe_breathing_difficulty":  "q20_emergency",
+                                                                           "self_harm_thoughts":  "q19_self_harm",
+                                                                           "none":  "q16_physical_signals"
+                                                                       },
+                                                      "preserve_safety_flags":  true
+                                                  }
+                      }
+}

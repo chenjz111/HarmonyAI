@@ -1,0 +1,1709 @@
+"""Agent 2 — owner-scoped V3.1 diagnosis orchestration.
+
+The formal V3.1 endpoint keeps the existing ownership and idempotency gates,
+then projects only confirmed persistence rows into ``ConfirmedUserState`` and
+the frozen ``DiagnosisProviderRequest``.  Real mode is readiness-gated through
+the explicit Embedding/Chroma/Qwen dependency factory; legacy V3.0 behavior is
+retained when real mode is disabled.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Mapping
+from datetime import datetime, timezone
+from hashlib import sha256
+import json
+import re
+import uuid
+
+from sqlalchemy.orm import Session
+
+from backend.app.models import Session as SessionModel
+from backend.app.models.document import Document
+from backend.app.models.v3.session import SessionInputRevision, V3IdempotencyRecord
+from backend.app.models.v3.assessment import AssessmentRevisionV3, AssessmentV3
+from backend.app.models.v3.assessment import (
+    FactEvidence as FactEvidenceRow,
+    OrganEvidence as OrganEvidenceRow,
+)
+from backend.app.models.v3.diagnosis import (
+    AiProviderRun,
+    DiagnosisCandidateEvidence,
+    DiagnosisCandidate as DiagnosisCandidateRow,
+    DiagnosisRun,
+    KnowledgeManifest,
+    RagRetrievalHit,
+    RagRetrievalRun,
+)
+from backend.app.models.v3.understanding import (
+    FactSourceRef,
+    NormalizedFact,
+    QuestionnaireSubmissionV3,
+    UnderstandingRevision,
+    UnderstandingRun,
+    UnderstandingSource,
+)
+from backend.app.services.v3.document_summary import document_time_context
+from backend.app.services.v3.evidence_admission import AdmissionFailure, admit_projection, checksum
+from backend.app.services.v3.document_relevance_gate import (
+    DocumentRelevanceGateError, require_active_document_set_relevance,
+)
+from backend.app.schemas.v3.assessment import AssessmentRefV31
+from backend.app.schemas.v3.common import (
+    AuthPrincipal,
+    Degradation,
+    ElementCode,
+    ElementProfile,
+    OrganCode,
+)
+from backend.app.schemas.v3.diagnosis import (
+    AbstainedDiagnosis,
+    DiagnosisV3,
+    DiagnosisV31Input,
+    DiagnosisPresentation,
+    ExecutionVersions,
+    DiagnosisCandidate,
+    KnowledgeReference,
+)
+from backend.app.schemas.v3.flow_v31 import ConfirmedUserState
+from backend.ai_engine.v3.diagnosis_pipeline import DiagnosisPipelineFailure
+from backend.ai_engine.v3.grounding import (
+    authoritative_state_tendency,
+    presentation_with_kernel,
+)
+from backend.ai_engine.v3.v31_pipeline import (
+    V31AiPipelineResult,
+    V31LegalAbstainResult,
+    V31PipelineAuditContext,
+    V31PipelineBlocked,
+    build_v31_legal_abstain,
+    execute_v31_ai_pipeline,
+)
+from backend.ai_engine.v3.agent3 import Agent3Blocked
+from backend.app.schemas.v3.flow_v31 import FiveToneAnalysisReadModel
+from backend.app.schemas.v3.flow_v31 import (
+    FIVE_TONE_ANALYSIS_SCHEMA_VERSION_V33,
+    FiveToneAnalysisReadModelV33,
+)
+from backend.app.services.v3.internal_agent3_service import to_transport_spec
+from backend.app.services.v3.agent3_preference_policy import (
+    apply_preference_policy,
+    synchronize_generation_spec,
+)
+from backend.app.services.v3.feedback_service import get_latest_preference_snapshot
+from backend.app.services.v3.knowledge_assets import (
+    MusicGenerationRuleAssetNotReady,
+    load_approved_syndrome_display_names,
+    load_configured_music_generation_rules,
+    load_five_tone_mapping,
+    load_organ_mapping,
+)
+from backend.app.services.v3.assessment_service import load_revision_evidence
+from backend.app.services.v3.organ_dominance_service import (
+    build_organ_aggregation_snapshot,
+)
+from backend.app.services.v3.idempotency import (
+    IdempotencyConflict,
+    IdempotencyFailureReplay,
+    IdempotencyInProgress,
+    reserve_v3_idempotency,
+)
+
+
+class OwnedResourceNotFound(RuntimeError):
+    pass
+
+
+class MedicalAssetUnavailable(RuntimeError):
+    pass
+
+
+class V31ReadinessError(RuntimeError):
+    """A formal V3.1 dependency is unavailable or not approved."""
+
+    def __init__(self, error_code: str, safe_message: str = "V3.1 AI 链路尚未就绪。"):
+        self.error_code = error_code
+        self.safe_message = safe_message
+        self.retryable = False
+        self.request_id: str | None = None
+        super().__init__(f"{error_code}: {safe_message}")
+
+
+class V31PipelineFailure(RuntimeError):
+    """A formal V3.1 provider/schema/rule failure, never an abstention."""
+
+    def __init__(
+        self,
+        error_code: str,
+        safe_message: str = "V3.1 AI 链路执行失败。",
+        *,
+        audit_context: V31PipelineAuditContext | None = None,
+        retryable: bool = False,
+        safe_diagnostics: Mapping[str, object] | None = None,
+    ):
+        self.error_code = error_code
+        self.safe_message = safe_message
+        self.audit_context = audit_context
+        self.retryable = retryable
+        self.safe_diagnostics = dict(safe_diagnostics or {})
+        self.request_id: str | None = None
+        super().__init__(f"{error_code}: {safe_message}")
+
+
+_OPERATION = "create_v3_diagnosis"
+
+#: Sprint 6 Phase 4 fallback basis line. It is deterministic, non-diagnostic and
+#: only used when the safe-atom builder produced nothing (it always produces at
+#: least one atom for a successful run, so this is defence in depth).
+DEFAULT_SAFE_BASIS_SUMMARY = "已根据本次确认信息整理音乐调适方向。"
+
+
+def _request_hash(payload: dict[str, object]) -> str:
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+_ORGAN_ELEMENT = {
+    "liver": "wood",
+    "heart": "fire",
+    "spleen": "earth",
+    "lung": "metal",
+    "kidney": "water",
+}
+
+
+def _element_profile_from_organ(
+    organ_profile_json: dict | None,
+) -> ElementProfile:
+    """Derive the element profile from the approved organ_element mapping.
+
+    Insufficient organ evidence yields an insufficient element profile —
+    the honest abstain input for Agent 2.
+    """
+    if not organ_profile_json or organ_profile_json.get("status") != "available":
+        return ElementProfile(
+            status="insufficient",
+            weights=None,
+            score_semantics="relative_element_support",
+        )
+    organ_weights = organ_profile_json.get("weights") or {}
+    element_weights: dict[ElementCode, float] = {
+        element: 0.0 for element in ElementCode
+    }
+    for organ_code, weight in organ_weights.items():
+        element = _ORGAN_ELEMENT.get(organ_code)
+        if element is not None:
+            element_weights[ElementCode(element)] += float(weight)
+    total = sum(element_weights.values())
+    if total <= 0:
+        return ElementProfile(
+            status="insufficient",
+            weights=None,
+            score_semantics="relative_element_support",
+        )
+    normalized = {key: round(value / total, 4) for key, value in element_weights.items()}
+    return ElementProfile(
+        status="available",
+        weights=normalized,
+        score_semantics="relative_element_support",
+    )
+
+
+def _v31_real_mode() -> bool:
+    from backend.app.core.agent_config import get_v31_provider_config
+
+    return get_v31_provider_config().real_agents
+
+
+def _admission_allows_projection(
+    db: Session, assessment: AssessmentV3, assessment_revision: AssessmentRevisionV3,
+    upstream: UnderstandingRevision, rows: list[NormalizedFact],
+) -> bool:
+    """Verify the exact persisted population; never release by audit presence.
+
+    All-or-nothing is deliberate: the existing organ snapshot is aggregated
+    over the whole population. A partial release would reuse unqualified organ
+    weights. Invalid audits retain narrative suppression, without rewriting
+    history or treating source refs as user attestations.
+    """
+    try:
+        audit = upstream.presentation_json["evidence_admission"]
+        summary = upstream.case_summary_json["summary"].strip()
+        run = db.get(UnderstandingRun, upstream.understanding_id)
+        session = db.get(SessionModel, assessment.session_row_id)
+        if not isinstance(audit, dict) or audit.get("contract_version") != "pragmatic_ai_evidence_v1":
+            return False
+        if (not run or not session or not rows or upstream.confirmed_at is None
+            or upstream.confirmation_decision != "confirm_with_changes"
+            or run.status != "confirmed" or run.current_revision != upstream.revision
+            or run.internal_user_pk != assessment.internal_user_pk or session.user_id != run.internal_user_pk
+            or run.session_row_id != session.id
+            or session.active_understanding_id != run.understanding_id
+            or session.active_understanding_revision != upstream.revision
+            or assessment.current_revision != assessment_revision.revision
+            or assessment_revision.understanding_revision != upstream.revision
+            or assessment_revision.confirmation_status != "confirmed"
+            or not session.input_revision
+            or not (audit.get("input_revision") == run.input_revision == session.input_revision
+                    == assessment.input_revision == assessment_revision.input_revision)
+            or audit.get("run_id") != run.understanding_id
+            or audit.get("revision") != upstream.revision
+            or audit.get("previous_revision") != upstream.previous_revision
+            or audit.get("summary_checksum") != checksum(summary)
+            or assessment_revision.state_summary != summary):
+            return False
+        binding = db.get(SessionInputRevision, (session.id, session.input_revision))
+        if (not binding or binding.active_understanding_id != run.understanding_id
+            or binding.active_understanding_revision != upstream.revision):
+            return False
+        gate = require_active_document_set_relevance(db, session)
+        ready_sources = db.query(UnderstandingSource).filter_by(
+            understanding_id=run.understanding_id, processing_status="ready").all()
+        if (len(ready_sources) != len(gate.document_ids)
+            or any(s.source_type != "document" for s in ready_sources)
+            or {s.document_id for s in ready_sources} != set(gate.document_ids)):
+            return False
+        event = audit["confirmation_event"]
+        if event["scope"] != "summary" or not isinstance(event["request_checksum"], str):
+            return False
+        # Bind the summary-scoped event to the actual successful confirmation,
+        # not a self-asserted checksum inside a loose JSON object.
+        committed = db.query(V3IdempotencyRecord).filter_by(
+            internal_user_pk=run.internal_user_pk,
+            operation=f"confirm_v3_understanding:{run.understanding_id}",
+            request_hash=event["request_checksum"], status="succeeded",
+            resource_type="understanding_revision",
+            resource_id=f"{run.understanding_id}:rev:{upstream.revision}:in:{audit['input_revision']}",
+        ).first()
+        if committed is None:
+            return False
+        candidates = audit["candidates"]
+        projection = upstream.presentation_json["normalized_facts"]
+        by_id = {c["fact_id"]: c for c in candidates}
+        projected = {f["fact_id"]: f for f in projection}
+        if (len(by_id) != len(candidates) or len(projected) != len(projection)
+            or set(by_id) != set(projected) or set(by_id) != {r.fact_id for r in rows}):
+            return False
+        contexts = {}
+        for row in rows:
+            fact = projected[row.fact_id]
+            if (row.owner_type != "understanding" or row.confirmation_status != "confirmed"
+                or row.understanding_id != upstream.understanding_id or row.understanding_revision != upstream.revision
+                or any(fact.get(key) != value for key, value in {
+                    "fact_code": row.fact_code, "category": row.category, "display_name": row.display_name,
+                    "value": row.value_json, "time_window": row.time_window, "negated": bool(row.negated),
+                    "subject": row.subject, "confirmation_status": "confirmed"}.items())):
+                return False
+            refs = db.query(FactSourceRef).filter_by(fact_row_id=row.fact_row_id).all()
+            persisted_refs = [{"source_id": r.source_id, "source_type": r.source_type, "span_ref": r.span_ref} for r in refs]
+            canonical = lambda items: sorted(json.dumps(r, sort_keys=True) for r in items)
+            candidate = by_id[row.fact_id]
+            if (not refs or canonical(fact["source_refs"]) != canonical(persisted_refs)
+                or canonical(candidate["source_refs"]) != canonical(persisted_refs)
+                or candidate["disposition"] != "admitted" or candidate["reason_codes"] != []
+                or candidate["admission_actor"] != "system"
+                or candidate["admission_basis"] != "pragmatic_ai_evidence_contract_v1"):
+                return False
+            for ref in refs:
+                if ref.source_type == "user_correction":
+                    if ref.source_id != f"corr_{run.understanding_id}_{upstream.revision}":
+                        return False
+                    text = summary
+                elif ref.source_type == "document":
+                    source = db.get(UnderstandingSource, ref.source_id)
+                    if (not source or source.understanding_id != run.understanding_id
+                        or source.source_type != ref.source_type or source.processing_status != "ready"):
+                        return False
+                    document = db.query(Document).filter_by(document_id=source.document_id,
+                        user_id=run.internal_user_pk, session_id=session.session_id).one_or_none()
+                    if (not document or document.status == "deleted" or not document.ocr_text
+                        or source.text_hash != checksum(document.ocr_text)):
+                        return False
+                    text = document.ocr_text
+                else:
+                    return False
+                window, record_date = document_time_context(text, today=upstream.confirmed_at.date())
+                if (ref.source_type == "user_correction" and record_date is None
+                    and re.search(r"(?:最近|近期|目前|现在|近[七7]天|过去七天)", text)):
+                    window = "past_7_days"
+                contexts[ref.source_id] = {"kind": ref.source_type, "text": text, "time_window": window}
+        # Replay only the already-approved deterministic checks, never an LLM
+        # or new medical inference. This also rechecks explicit corrections.
+        _, checked = admit_projection(projection, sources=contexts, summary=summary)
+        if any(c != by_id[c["fact_id"]] for c in checked):
+            return False
+        evidence = db.query(FactEvidenceRow).filter_by(assessment_id=assessment.assessment_id,
+            assessment_revision=assessment_revision.revision).all()
+        row_map = {r.fact_row_id: r for r in rows}
+        if len(evidence) != len(rows) or {e.normalized_fact_row_id for e in evidence} != set(row_map):
+            return False
+        for item in evidence:
+            row = row_map[item.normalized_fact_row_id]
+            if (item.confirmation_status != "confirmed" or item.claim_code != row.fact_code
+                or item.value_json != row.value_json or item.time_window != row.time_window
+                or item.direction != ("contradicting" if row.negated else "supporting")):
+                return False
+        return True
+    except (DocumentRelevanceGateError, AdmissionFailure, KeyError, TypeError, ValueError, AttributeError):
+        # Corrupt/unsupported internal audit cannot expand legacy authority.
+        return False
+
+
+def _edited_summary_override(
+    db: Session,
+    assessment: AssessmentV3,
+    assessment_revision: AssessmentRevisionV3,
+) -> str | None:
+    """Return the user's final narrative when it supersedes structured state.
+
+    The assessment revision keeps structured evidence and its deterministic
+    ``state_summary`` for provenance/audit.  A different presentation summary
+    is the existing storage signal for ``edited_summary_text``; it becomes the
+    sole current-state context without deleting any evidence rows.
+    """
+
+    presentation = assessment_revision.presentation_json
+    if not isinstance(presentation, Mapping):
+        return None
+    edited = str(presentation.get("summary") or "").strip()
+    if not edited:
+        return None
+    # Opt in before legacy Assessment-revision shortcuts: a later Assessment
+    # revision with unchanged text must not bypass a damaged admission audit.
+    if assessment.questionnaire_submission_id is None and assessment.understanding_id is not None:
+        admitted_revision = db.get(UnderstandingRevision, (
+            assessment.understanding_id, assessment.understanding_revision))
+        if (admitted_revision is not None and isinstance(admitted_revision.presentation_json, Mapping)
+            and "evidence_admission" in admitted_revision.presentation_json):
+            if (admitted_revision.status != "confirmed"
+                or "chg_summary_edit" not in (admitted_revision.presentation_json.get("applied_changes") or [])
+                or str((admitted_revision.case_summary_json or {}).get("summary") or "").strip() != edited):
+                return edited
+            rows = db.query(NormalizedFact).filter_by(understanding_id=assessment.understanding_id,
+                understanding_revision=assessment.understanding_revision, confirmation_status="confirmed").all()
+            return None if _admission_allows_projection(
+                db, assessment, assessment_revision, admitted_revision, rows
+            ) else edited
+    if assessment_revision.previous_revision is not None:
+        previous = (
+            db.query(AssessmentRevisionV3)
+            .filter(
+                AssessmentRevisionV3.assessment_id
+                == assessment_revision.assessment_id,
+                AssessmentRevisionV3.revision
+                == assessment_revision.previous_revision,
+            )
+            .one_or_none()
+        )
+        if previous is None:
+            return None
+        previous_presentation = previous.presentation_json
+        previous_summary = (
+            str(previous_presentation.get("summary") or "").strip()
+            if isinstance(previous_presentation, Mapping)
+            else ""
+        )
+        return edited if edited != previous_summary else None
+
+    # A document-only full-text edit happens one stage earlier, on the linked
+    # Understanding.  Its Assessment starts at revision 1, so there is no prior
+    # Assessment revision to compare.  Recognize only the persisted narrative
+    # edit marker on that exact confirmed Understanding revision; structured
+    # confirmation and questionnaire-bearing assessments keep their existing
+    # fact authority.
+    if (
+        assessment.questionnaire_submission_id is not None
+        or assessment.understanding_id is None
+        or assessment.understanding_revision is None
+    ):
+        return None
+    understanding_revision = (
+        db.query(UnderstandingRevision)
+        .filter(
+            UnderstandingRevision.understanding_id == assessment.understanding_id,
+            UnderstandingRevision.revision == assessment.understanding_revision,
+            UnderstandingRevision.status == "confirmed",
+        )
+        .one_or_none()
+    )
+    if understanding_revision is None:
+        return None
+    upstream_presentation = understanding_revision.presentation_json
+    applied_changes = (
+        list(upstream_presentation.get("applied_changes") or [])
+        if isinstance(upstream_presentation, Mapping)
+        else []
+    )
+    upstream_summary = str(
+        (understanding_revision.case_summary_json or {}).get("summary") or ""
+    ).strip()
+    if (
+        understanding_revision.confirmation_decision == "confirm_with_changes"
+        and "chg_summary_edit" in applied_changes
+        and upstream_summary == edited
+    ):
+        aligned_rows = (
+            db.query(NormalizedFact)
+            .filter(
+                NormalizedFact.understanding_id == assessment.understanding_id,
+                NormalizedFact.understanding_revision
+                == assessment.understanding_revision,
+                NormalizedFact.confirmation_status == "confirmed",
+            )
+            .all()
+        )
+        if aligned_rows and all(
+            db.query(FactSourceRef)
+            .filter(
+                FactSourceRef.fact_row_id == row.fact_row_id,
+                FactSourceRef.source_type == "user_correction",
+            )
+            .first()
+            is not None
+            for row in aligned_rows
+        ):
+            return None
+        return edited
+    return None
+
+
+def _load_confirmed_user_state(
+    db: Session,
+    *,
+    assessment: AssessmentV3,
+    assessment_revision: AssessmentRevisionV3,
+    session_row: SessionModel,
+) -> ConfirmedUserState:
+    """Project reviewed persistence into the internal ConfirmedUserState.
+
+    This is an adapter boundary until the reviewed #104/#105 state loader is
+    available.  It reads only owner-scoped confirmed rows and does not copy
+    their persistence implementation or accept state from the request body.
+    """
+
+    final_summary_ref = None
+    if assessment.understanding_id is not None:
+        understanding_run = (
+            db.query(UnderstandingRun)
+            .filter(
+                UnderstandingRun.understanding_id == assessment.understanding_id,
+                UnderstandingRun.current_revision == assessment.understanding_revision,
+                UnderstandingRun.internal_user_pk == session_row.user_id,
+                UnderstandingRun.session_row_id == session_row.id,
+                UnderstandingRun.status == "confirmed",
+            )
+            .one_or_none()
+        )
+        understanding_revision = (
+            db.query(UnderstandingRevision)
+            .filter(
+                UnderstandingRevision.understanding_id == assessment.understanding_id,
+                UnderstandingRevision.revision == assessment.understanding_revision,
+                UnderstandingRevision.status == "confirmed",
+            )
+            .one_or_none()
+        )
+        if understanding_run is None or understanding_revision is None:
+            raise V31PipelineFailure("CONFIRMED_USER_STATE_NOT_OWNED")
+        case_summary = understanding_revision.case_summary_json
+        if not isinstance(case_summary, Mapping):
+            raise V31PipelineFailure("CONFIRMED_USER_STATE_INVALID")
+        summary_payload = dict(case_summary)
+        summary_checksum = str(summary_payload.get("content_checksum") or "")
+        if not summary_checksum.startswith("sha256:"):
+            summary_checksum = _request_hash(
+                {key: value for key, value in summary_payload.items() if key != "content_checksum"}
+            )
+        final_summary_ref = {
+            "summary_id": str(
+                summary_payload.get("case_summary_id")
+                or summary_payload.get("summary_id")
+                or f"summary_{assessment.understanding_id}_{assessment.understanding_revision}"
+            ),
+            "revision": int(summary_payload.get("revision") or assessment.understanding_revision),
+            "content_checksum": summary_checksum,
+            "confirmation_status": "confirmed",
+        }
+
+    questionnaire_ref = None
+    if assessment.questionnaire_submission_id is not None:
+        submission = (
+            db.query(QuestionnaireSubmissionV3)
+            .filter(
+                QuestionnaireSubmissionV3.questionnaire_submission_id
+                == assessment.questionnaire_submission_id,
+                QuestionnaireSubmissionV3.internal_user_pk == session_row.user_id,
+                QuestionnaireSubmissionV3.session_row_id == session_row.id,
+            )
+            .one_or_none()
+        )
+        if (
+            submission is None
+            or submission.schema_id != "questionnaire_v3"
+            or submission.schema_version != "3.0.1"
+            or submission.manifest_version != "medical_v3.0.1"
+            or not submission.content_checksum.startswith("sha256:")
+            or len(submission.answers_json or []) != 10
+        ):
+            raise V31PipelineFailure("CONFIRMED_USER_STATE_INVALID")
+        questionnaire_ref = {
+            "questionnaire_result_id": submission.questionnaire_submission_id,
+            "revision": 1,
+            "content_checksum": submission.content_checksum,
+            "completion_status": "complete",
+        }
+
+    if final_summary_ref is not None and questionnaire_ref is not None:
+        source_mode = "document_plus_questionnaire"
+    elif final_summary_ref is not None:
+        source_mode = "document_only"
+    elif questionnaire_ref is not None:
+        source_mode = "questionnaire_only"
+    else:
+        raise V31PipelineFailure("CONFIRMED_USER_STATE_INVALID")
+
+    edited_summary = _edited_summary_override(db, assessment, assessment_revision)
+    projection: list[dict[str, object]] = []
+    evidence_rows = (
+        db.query(FactEvidenceRow)
+        .filter(
+            FactEvidenceRow.assessment_id == assessment.assessment_id,
+            FactEvidenceRow.assessment_revision == assessment_revision.revision,
+            FactEvidenceRow.confirmation_status == "confirmed",
+        )
+        .order_by(FactEvidenceRow.fact_evidence_id)
+        .all()
+    )
+    for row in ([] if edited_summary else evidence_rows):
+        source_rows = (
+            db.query(FactSourceRef)
+            .filter(FactSourceRef.fact_row_id == row.normalized_fact_row_id)
+            .order_by(FactSourceRef.source_type, FactSourceRef.source_id)
+            .all()
+        )
+        source_refs = [f"{item.source_type}:{item.source_id}" for item in source_rows]
+        if not source_refs:
+            raise V31PipelineFailure("CONFIRMED_USER_STATE_INVALID")
+        projection.append(
+            {
+                "fact_id": row.fact_evidence_id,
+                "claim_code": row.claim_code,
+                "display_text": row.display_name,
+                "source_refs": source_refs,
+            }
+        )
+
+    input_revision = int(
+        session_row.input_revision or assessment.input_revision or assessment_revision.input_revision or 1
+    )
+    created_at = datetime.now(timezone.utc)
+    state_payload = {
+        "schema_version": "confirmed_user_state_v3.1",
+        "confirmed_user_state_id": f"cus_{assessment.assessment_id}_{assessment_revision.revision}",
+        "session_id": session_row.session_id,
+        "source_mode": source_mode,
+        "final_confirmed_summary_ref": final_summary_ref,
+        "questionnaire_result_ref": questionnaire_ref,
+        "user_goal_ref": None,
+        "confirmed_state_text": edited_summary or assessment_revision.state_summary,
+        "normalized_projection": projection,
+        "revision": assessment_revision.revision,
+        "authority_status": "current",
+        "confirmation_status": "confirmed",
+        "confirmed_by": "user",
+        "session_input_revision": input_revision,
+        "created_at": created_at,
+    }
+    state_checksum_payload = dict(state_payload)
+    state_checksum_payload["created_at"] = created_at.isoformat()
+    state_payload["content_checksum"] = _request_hash(state_checksum_payload)
+    try:
+        return ConfirmedUserState.model_validate(state_payload)
+    except (TypeError, ValueError) as error:
+        raise V31PipelineFailure("CONFIRMED_USER_STATE_INVALID") from error
+
+
+def _build_v31_assessment_snapshot(
+    db: Session,
+    *,
+    request: DiagnosisV31Input,
+    assessment: AssessmentV3,
+    assessment_revision: AssessmentRevisionV3,
+    deps,
+) -> dict[str, object]:
+    """Create the provider snapshot exclusively from confirmed DB rows."""
+
+    manifest = getattr(deps.rag_store, "manifest", None)
+    if manifest is None:
+        raise V31ReadinessError("RAG_MANIFEST_NOT_READY")
+    persisted_evidence_rows = (
+        db.query(FactEvidenceRow)
+        .filter(
+            FactEvidenceRow.assessment_id == assessment.assessment_id,
+            FactEvidenceRow.assessment_revision == assessment_revision.revision,
+            FactEvidenceRow.confirmation_status == "confirmed",
+        )
+        .order_by(FactEvidenceRow.fact_evidence_id)
+        .all()
+    )
+    edited_summary = _edited_summary_override(db, assessment, assessment_revision)
+    evidence_rows = [] if edited_summary else persisted_evidence_rows
+    facts = [
+        {
+            "fact_evidence_id": row.fact_evidence_id,
+            "claim_code": row.claim_code,
+            "value": row.value_json,
+            "direction": row.direction,
+            "time_window": row.time_window,
+        }
+        for row in evidence_rows
+    ]
+    supporting = [row.fact_evidence_id for row in evidence_rows if row.direction == "supporting"]
+    contradicting = [row.fact_evidence_id for row in evidence_rows if row.direction == "contradicting"]
+    organ_codes = {
+        item.organ
+        for item in db.query(OrganEvidenceRow)
+        .join(
+            FactEvidenceRow,
+            OrganEvidenceRow.fact_evidence_row_id == FactEvidenceRow.fact_evidence_row_id,
+        )
+        .filter(
+            FactEvidenceRow.assessment_id == assessment.assessment_id,
+            FactEvidenceRow.assessment_revision == assessment_revision.revision,
+        )
+        .all()
+    }
+    organ_profile = assessment_revision.organ_profile_json or {}
+    if edited_summary:
+        organ_codes = set()
+        organ_profile = {
+            "status": "insufficient",
+            "weights": None,
+            "score_semantics": "relative_evidence_distribution",
+        }
+    else:
+        organ_codes.update(str(key) for key in (organ_profile.get("weights") or {}))
+    # Sprint 6 Phase 1B: one canonical aggregation pass over this revision's
+    # confirmed evidence, handed to the dominance service. Nothing downstream
+    # recomputes raw support or re-qualifies candidates.
+    if edited_summary:
+        revision_evidence, revision_links = [], []
+    else:
+        revision_evidence, revision_links = load_revision_evidence(
+            db,
+            assessment_id=assessment.assessment_id,
+            revision=assessment_revision.revision,
+            confirmed_only=True,
+        )
+    try:
+        organ_mapping = load_organ_mapping()
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise V31ReadinessError("ORGAN_MAPPING_ASSET_NOT_READY") from error
+    organ_aggregation = build_organ_aggregation_snapshot(
+        revision_evidence, revision_links, organ_mapping
+    )
+    # Public explanation uses this same canonical population, with source-side
+    # negation/subject/confirmation respected. Do not copy raw OCR narrative.
+    explanation_excluded = []
+    for row in evidence_rows:
+        source_fact = db.get(NormalizedFact, row.normalized_fact_row_id)
+        if (
+            source_fact is None
+            or source_fact.negated
+            or source_fact.subject != "self"
+            or source_fact.confirmation_status != "confirmed"
+        ):
+            explanation_excluded.append(row.fact_evidence_id)
+    try:
+        from backend.app.services.v3.knowledge_assets import load_claim_dictionary
+
+        _claim_version, claims = load_claim_dictionary()
+        approved_claim_codes = sorted(claims)
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise V31ReadinessError("MEDICAL_RULE_ASSET_NOT_READY") from error
+
+    provider = deps.diagnosis_provider
+    if hasattr(provider, "allowed_fact_ids"):
+        provider.allowed_fact_ids = {row.fact_evidence_id for row in evidence_rows}
+    if hasattr(provider, "allowed_chunk_ids"):
+        provider.allowed_chunk_ids = set(
+            getattr(deps.rag_store, "approved_chunk_ids", ())
+        )
+    # Sprint 6 Phase 3 (R3-D3): top_k and the query-mapping identity are
+    # authoritative in the approved/versioned RAG query policy asset.
+    query_policy = _resolve_rag_query_policy(deps)
+    return {
+        "assessment_id": assessment.assessment_id,
+        "assessment_revision": assessment_revision.revision,
+        "input_revision": int(assessment_revision.input_revision or 1),
+        "organ_aggregation": organ_aggregation,
+        "organ_mapping": organ_mapping,
+        "explanation_evidence": organ_aggregation.source_evidence,
+        "explanation_excluded_fact_ids": explanation_excluded,
+        "confirmed_state_text": edited_summary or assessment_revision.state_summary,
+        "diagnosis_id": request.diagnosis_id,
+        "request_id": f"diag_req_{request.diagnosis_id}",
+        "prompt_version": "diagnosis_prompt_v3.1",
+        "medical_rule_version": deps.medical_rule_version,
+        "organ_profile": organ_profile,
+        "organ_weights": {} if edited_summary else organ_profile.get("weights"),
+        "organ_codes": sorted(organ_codes),
+        "approved_organ_codes": [item.value for item in OrganCode],
+        "claim_codes": sorted({item["claim_code"] for item in facts}),
+        "approved_claim_codes": approved_claim_codes,
+        "supporting_fact_ids": supporting,
+        "contradicting_fact_ids": contradicting,
+        "facts": facts,
+        "conflicts": [] if edited_summary else assessment_revision.conflicts_json or [],
+        "missing_information": assessment_revision.missing_information_json or [],
+        "knowledge_version": manifest.knowledge_version,
+        "manifest_checksum": manifest.manifest_checksum,
+        "embedding_version": manifest.embedding_version,
+        "retrieval_score_semantics": manifest.retrieval_score_semantics,
+        "top_k": int(query_policy.top_k),
+        "query_builder_version": query_policy.builder_identity,
+        "max_candidates": 3,
+        "allowed_syndrome_codes": sorted(deps.allowed_syndrome_codes),
+    }
+
+
+def _resolve_rag_query_policy(deps):
+    """Resolve the approved RAG query policy for this diagnosis request.
+
+    Order: the dependency bundle, then the bound RAG store, then the approved
+    repository asset (checksum-verified). A missing or invalid policy is a
+    readiness failure — never a silent default.
+    """
+
+    policy = getattr(deps, "rag_query_policy", None)
+    if policy is None:
+        policy = getattr(getattr(deps, "rag_store", None), "query_policy", None)
+    if policy is not None:
+        return policy
+    from backend.ai_engine.v3.rag_ingestion import (
+        RagQueryPolicyNotReady,
+        load_rag_query_policy,
+    )
+
+    try:
+        return load_rag_query_policy()
+    except RagQueryPolicyNotReady as error:
+        raise V31ReadinessError(error.error_code, error.safe_message) from None
+
+
+def _run_v31_pipeline(
+    db: Session,
+    *,
+    request: DiagnosisV31Input,
+    assessment: AssessmentV3,
+    assessment_revision: AssessmentRevisionV3,
+    session_row: SessionModel,
+) -> V31AiPipelineResult:
+    try:
+        from backend.app.core.agent_config import (
+            V31ReadinessFailure,
+            get_v31_ai_pipeline_dependencies,
+        )
+
+        deps = get_v31_ai_pipeline_dependencies()
+        state = _load_confirmed_user_state(
+            db,
+            assessment=assessment,
+            assessment_revision=assessment_revision,
+            session_row=session_row,
+        )
+        snapshot = _build_v31_assessment_snapshot(
+            db,
+            request=request,
+            assessment=assessment,
+            assessment_revision=assessment_revision,
+            deps=deps,
+        )
+        return asyncio.run(
+            execute_v31_ai_pipeline(
+                confirmed_user_state=state,
+                assessment_snapshot=snapshot,
+                rag_store=deps.rag_store,
+                diagnosis_provider=deps.diagnosis_provider,
+                tone_mapping=deps.tone_mapping,
+                generation_parameter_rules=deps.generation_parameter_rules,
+                organ_mapping=snapshot.get("organ_mapping"),
+                # The optional UserGoal is an Agent 3 personalization input owned
+                # by the session (user_goal_service), never Agent 1 output: the
+                # frozen 0003_v3_owner_flow migration constrains
+                # assessment_v3.user_goal_json to NULL for v3-owner-flow-1, so
+                # the session is the only approved source for goal rule
+                # selection. goal never changes the medical tone profile.
+                user_goal=session_row.user_goal_json,
+            )
+        )
+    except V31ReadinessFailure as error:
+        raise V31ReadinessError(error.error_code, error.safe_message) from None
+    except V31ReadinessError:
+        raise
+    except V31PipelineBlocked as error:
+        raise V31PipelineFailure(
+            error.error_code,
+            error.safe_message,
+            audit_context=error.audit_context,
+            retryable=error.retryable,
+            safe_diagnostics=error.safe_diagnostics,
+        ) from None
+    except (DiagnosisPipelineFailure, Agent3Blocked) as error:
+        error_code = getattr(error, "error_code", "V31_PIPELINE_FAILED")
+        safe_message = getattr(error, "safe_message", "V3.1 AI 链路执行失败。")
+        raise V31PipelineFailure(
+            error_code,
+            safe_message,
+            safe_diagnostics=getattr(error, "safe_diagnostics", None),
+        ) from None
+
+
+def _diagnosis_from_v31_pipeline(
+    pipeline: V31AiPipelineResult,
+    *,
+    diagnosis_id: str,
+    assessment_ref: AssessmentRefV31,
+    element_profile: ElementProfile,
+) -> DiagnosisV3:
+    response = pipeline.diagnosis
+    execution = pipeline.diagnosis_execution
+    rag_refs = [
+        KnowledgeReference(title=hit.source_title, summary=hit.display_summary)
+        for hit in pipeline.rag_result.hits
+    ]
+    if execution.status == "abstained" or (
+        response is not None and response.status == "abstained"
+    ):
+        reason_code = (
+            execution.reason_code
+            or (response.abstain_reason if response is not None else None)
+            or "DIAGNOSIS_ABSTAINED"
+        )
+        root = AbstainedDiagnosis(
+            schema_version="diagnosis_v3.0",
+            agent_id="diagnosis_agent",
+            diagnosis_id=diagnosis_id,
+            assessment_ref={
+                "assessment_id": assessment_ref.assessment_id,
+                "revision": assessment_ref.revision,
+            },
+            rag_result_ref=pipeline.rag_result.retrieval_id,
+            execution_versions=ExecutionVersions(
+                prompt_version=pipeline.diagnosis_request.prompt_version,
+                response_schema_version=pipeline.diagnosis_request.response_schema_version,
+                knowledge_version=pipeline.rag_result.knowledge_version,
+                mapping_version=pipeline.tone_profile.mapping_version,
+            ),
+            degradation=Degradation(active=True, reason_codes=[reason_code]),
+            presentation=DiagnosisPresentation(
+                title="本次未形成明确的状态倾向",
+                primary_tendency=None,
+                basis_summaries=[],
+                knowledge_references=rag_refs,
+                disclaimer="本结果不构成医学诊断或治疗建议。",
+            ),
+            status="abstained",
+            abstained=True,
+            abstain_reason=reason_code,
+            candidate_tendencies=[],
+            primary_tendency_id=None,
+            element_profile=ElementProfile(
+                status="insufficient",
+                weights=None,
+                score_semantics=element_profile.score_semantics,
+            ),
+        )
+        return DiagnosisV3(root=root)
+    if response is None or response.status not in {"success", "degraded"}:
+        raise V31PipelineFailure("DIAGNOSIS_RESPONSE_INVALID")
+    # The provider is free to phrase ``display_name`` itself; the user-facing
+    # 证型倾向 wording is always resolved from the medically approved Chinese
+    # whitelist by stable syndrome code.  The provider's raw value stays in the
+    # provenance payloads (provider response/audit) and is only used as a
+    # fallback when the code is absent from the approved asset.
+    approved_display_names = load_approved_syndrome_display_names()
+    candidates = []
+    for index, candidate in enumerate(response.candidate_tendencies, start=1):
+        dumped = candidate.model_dump(mode="json")
+        dumped["display_name"] = approved_display_names.get(
+            candidate.syndrome_code, candidate.display_name
+        )
+        candidates.append(
+            DiagnosisCandidate(
+                candidate_id=f"{diagnosis_id}_c{index}",
+                **dumped,
+            )
+        )
+    if not candidates:
+        raise V31PipelineFailure("DIAGNOSIS_RESPONSE_INVALID")
+    # Sprint 6 Phase 4 (F4-D6 / F4-D8): the user-facing presentation is built from
+    # deterministic authority only. Provider `reasoning_summary`, `display_name`
+    # fallbacks, `relative_support` and candidate ordering no longer feed
+    # `presentation.primary_tendency` or `presentation.basis_summaries`; those
+    # come from the Phase 1B decision / read model and the safe explanation atoms.
+    #
+    # Phase 4 blocking fix: `primary_tendency` is a *state/tendency* field (the H5
+    # client renders it inside 「状态解读」), so it takes the read model's
+    # authoritative `state_tendency` text — never the primary-tone label, never
+    # provider free text and never the page title.
+    presentation_primary_tendency = authoritative_state_tendency(
+        getattr(pipeline, "read_model", None)
+    )
+    atom_texts: list[str] = []
+    for atom in (
+        getattr(getattr(pipeline, "evidence_kernel", None), "explanation_atoms", ())
+        or ()
+    ):
+        text = str(getattr(atom, "display_text", "") or "").strip()
+        # The state line is the headline itself, so it is not repeated in the
+        # user-facing basis rows. The kernel keeps the `state_context` atom
+        # internally for audit/provenance.
+        if not text or text == presentation_primary_tendency:
+            continue
+        if text not in atom_texts:
+            atom_texts.append(text)
+    if not atom_texts:
+        atom_texts = [DEFAULT_SAFE_BASIS_SUMMARY]
+    root = {
+        "schema_version": "diagnosis_v3.0",
+        "agent_id": "diagnosis_agent",
+        "diagnosis_id": diagnosis_id,
+        "assessment_ref": {
+            "assessment_id": assessment_ref.assessment_id,
+            "revision": assessment_ref.revision,
+        },
+        "rag_result_ref": pipeline.rag_result.retrieval_id,
+        "execution_versions": ExecutionVersions(
+            prompt_version=pipeline.diagnosis_request.prompt_version,
+            response_schema_version=pipeline.diagnosis_request.response_schema_version,
+            knowledge_version=pipeline.rag_result.knowledge_version,
+            mapping_version=pipeline.tone_profile.mapping_version,
+        ),
+        "degradation": Degradation(
+            active=response.status == "degraded",
+            reason_codes=["DIAGNOSIS_DEGRADED"] if response.status == "degraded" else [],
+        ),
+        "presentation": DiagnosisPresentation(
+            title="辨证分析",
+            primary_tendency=presentation_primary_tendency,
+            basis_summaries=atom_texts,
+            knowledge_references=rag_refs,
+            disclaimer="本结果不构成医学诊断或治疗建议。",
+        ),
+        "status": response.status,
+        "abstained": False,
+        "abstain_reason": None,
+        "candidate_tendencies": [item.model_dump(mode="json") for item in candidates],
+        "primary_tendency_id": candidates[0].candidate_id,
+        "element_profile": element_profile,
+    }
+    try:
+        return DiagnosisV3.model_validate(root)
+    except (TypeError, ValueError) as error:
+        raise V31PipelineFailure("DIAGNOSIS_RESPONSE_INVALID") from error
+
+
+def _persist_diagnosis(
+    db: Session,
+    *,
+    principal: AuthPrincipal,
+    session_row: SessionModel,
+    assessment_ref: AssessmentRefV31,
+    result: DiagnosisV3,
+    record,
+    evidence_rows: list[FactEvidenceRow] | None = None,
+    pipeline: V31AiPipelineResult | None = None,
+) -> None:
+    root = result.root
+    run = db.get(DiagnosisRun, root.diagnosis_id)
+    if run is None:
+        run = DiagnosisRun(
+            diagnosis_id=root.diagnosis_id,
+            internal_user_pk=principal.internal_user_pk,
+            session_row_id=session_row.id,
+            assessment_id=assessment_ref.assessment_id,
+            assessment_revision=assessment_ref.revision,
+            provider_run_id=None,
+            rag_run_id=None,
+        )
+        db.add(run)
+    run.status = root.status
+    run.abstained = 1 if root.abstained else 0
+    run.abstain_reason = root.abstain_reason
+    run.primary_tendency_id = root.primary_tendency_id
+    run.element_profile_json = root.element_profile.model_dump(mode="json")
+    run.degradation_json = root.degradation.model_dump(mode="json")
+    # Sprint 6 Phase 4 (F4-D11): the EvidenceKernelV1 is persisted additively
+    # inside this existing JSON snapshot. The column is an internal, write-only
+    # audit snapshot (no reader builds a contract model from it), so no column,
+    # table, migration or public read-model version is required, and the public
+    # presentation served to clients is unchanged in shape. Legacy rows simply
+    # have no `evidence_kernel` key and stay readable as legacy_unverified.
+    run.presentation_json = presentation_with_kernel(
+        root.presentation.model_dump(mode="json"),
+        getattr(pipeline, "evidence_kernel", None) if pipeline is not None else None,
+    )
+    if pipeline is not None:
+        # Sprint 6 Phase 1B: the pipeline emits the v3.3 read model (with the
+        # checksum-protected dominance audit); a Phase 1A v3.2 payload stays
+        # valid for callers that did not pass a decision.
+        raw_read_model = pipeline.read_model
+        read_model_model = (
+            FiveToneAnalysisReadModelV33
+            if getattr(raw_read_model, "schema_version", None)
+            == FIVE_TONE_ANALYSIS_SCHEMA_VERSION_V33
+            else FiveToneAnalysisReadModel
+        )
+        read_model = read_model_model.model_validate(raw_read_model)
+        preference = get_latest_preference_snapshot(db, principal)
+        applications = []
+        if preference is not None:
+            read_model, applications = apply_preference_policy(read_model, preference)
+        read_model_payload = read_model.model_dump(mode="json")
+        canonical_read_model = json.dumps(
+            read_model_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        run.five_tone_read_model_schema_version = read_model.schema_version
+        run.five_tone_read_model_json = read_model_payload
+        run.five_tone_read_model_checksum = (
+            f"sha256:{sha256(canonical_read_model.encode('utf-8')).hexdigest()}"
+        )
+        generation_spec = to_transport_spec(
+            pipeline.generation_spec,
+            tone_profile=pipeline.tone_profile,
+        )
+        generation_spec = synchronize_generation_spec(generation_spec, read_model)
+        run.generation_spec_json = generation_spec.model_dump(mode="json")
+        run.preference_application_json = [
+            item.model_dump(mode="json") for item in applications
+        ]
+        run.five_tone_generated_at = datetime.now(timezone.utc)
+        run.preference_profile_id = preference.profile_id if preference is not None else None
+        run.preference_version = preference.version if preference is not None else None
+    db.flush()
+    if pipeline is not None:
+        run.rag_run_id, run.provider_run_id = _persist_pipeline_audit(
+            db,
+            diagnosis_id=root.diagnosis_id,
+            pipeline=pipeline,
+        )
+        db.flush()
+    fact_by_id = {row.fact_evidence_id: row for row in (evidence_rows or [])}
+    for rank, candidate in enumerate(root.candidate_tendencies, start=1):
+        db.add(
+            DiagnosisCandidateRow(
+                candidate_id=candidate.candidate_id,
+                diagnosis_id=root.diagnosis_id,
+                syndrome_code=candidate.syndrome_code,
+                display_name=candidate.display_name,
+                relative_support=candidate.relative_support,
+                reasoning_summary=candidate.reasoning_summary,
+                rank=rank,
+            )
+        )
+        for direction, fact_ids in (
+            ("supporting", candidate.supporting_fact_ids),
+            ("contradicting", candidate.contradicting_fact_ids),
+        ):
+            for fact_id in fact_ids:
+                fact_row = fact_by_id.get(fact_id)
+                if fact_row is not None:
+                    db.add(
+                        DiagnosisCandidateEvidence(
+                            candidate_id=candidate.candidate_id,
+                            fact_evidence_row_id=fact_row.fact_evidence_row_id,
+                            direction=direction,
+                        )
+                    )
+    record.resource_type = "diagnosis"
+    record.resource_id = root.diagnosis_id
+    record.status = "succeeded"
+    record.response_code = 201
+    record.response_json = result.model_dump_json()
+    db.commit()
+
+
+def _persist_pipeline_audit(
+    db: Session,
+    *,
+    diagnosis_id: str,
+    pipeline: V31AiPipelineResult | V31PipelineAuditContext,
+) -> tuple[str, str | None]:
+    """Persist safe RAG/provider audit rows and return their linked IDs.
+
+    The audit chain keeps versions, hashes, public summaries and stable chunk
+    references. It never stores credentials, full prompts, user source text,
+    or complete embedding vectors.
+    """
+
+    if isinstance(pipeline, V31PipelineAuditContext):
+        audit = pipeline
+    elif pipeline.audit_context is not None:
+        audit = pipeline.audit_context
+    else:
+        audit = V31PipelineAuditContext(
+            query=pipeline.query,
+            rag_result=pipeline.rag_result,
+            diagnosis_request=pipeline.diagnosis_request,
+            diagnosis_execution=pipeline.diagnosis_execution,
+            rag_manifest=pipeline.rag_manifest,
+            rag_chunk_checksums=pipeline.rag_chunk_checksums,
+            mapping_version=pipeline.tone_profile.mapping_version,
+        )
+
+    manifest = audit.rag_manifest
+    if manifest is None:
+        raise V31ReadinessError("RAG_MANIFEST_NOT_READY")
+    manifest_checksum = str(getattr(manifest, "manifest_checksum", ""))
+    manifest_id = f"km_{sha256(manifest_checksum.encode('utf-8')).hexdigest()[:48]}"
+    manifest_row = (
+        db.query(KnowledgeManifest)
+        .filter(KnowledgeManifest.manifest_checksum == manifest_checksum)
+        .one_or_none()
+    )
+    if manifest_row is None:
+        manifest_row = KnowledgeManifest(
+            knowledge_manifest_id=manifest_id,
+            knowledge_version=str(manifest.knowledge_version),
+            embedding_provider=str(manifest.embedding_provider),
+            embedding_model=str(manifest.embedding_model),
+            embedding_version=str(manifest.embedding_version),
+            distance_metric=str(manifest.distance_metric),
+            score_semantics=str(manifest.retrieval_score_semantics),
+            minimum_score=float(manifest.minimum_score),
+            chunk_count=int(manifest.chunk_count),
+            manifest_checksum=manifest_checksum,
+            review_status="approved",
+            medical_review_version=(
+                audit.diagnosis_execution.medical_rule_version or "unknown"
+            ),
+        )
+        db.add(manifest_row)
+        db.flush()
+    elif manifest_row.knowledge_manifest_id != manifest_id:
+        raise V31ReadinessError("RAG_MANIFEST_ID_MISMATCH")
+
+    rag_run_id = audit.rag_result.retrieval_id
+    rag_run = db.get(RagRetrievalRun, rag_run_id)
+    if rag_run is None:
+        rag_run = RagRetrievalRun(rag_run_id=rag_run_id)
+        db.add(rag_run)
+    focused_metadata = {
+        "focused_queries": [
+            {"group_id": group_id, "query": query.model_dump(mode="json")}
+            for group_id, query in audit.focused_queries
+        ],
+        "focused_hit_groups": {
+            str(chunk_id): list(groups)
+            for chunk_id, groups in audit.focused_hit_groups.items()
+        },
+    }
+    query_payload = (
+        focused_metadata["focused_queries"]
+        if audit.focused_queries
+        else audit.query.model_dump(mode="json")
+    )
+    degradation_payload = audit.rag_result.degradation.model_dump(mode="json")
+    if audit.focused_queries:
+        degradation_payload["focused_query_provenance"] = focused_metadata
+    for field, value in {
+        "diagnosis_id": diagnosis_id,
+        "query_hash": _request_hash(query_payload),
+        "query_builder_version": getattr(
+            audit, "query_builder_version", "diagnosis_query_v3.1"
+        ),
+        "knowledge_manifest_id": manifest_row.knowledge_manifest_id,
+        "knowledge_version": audit.rag_result.knowledge_version,
+        "manifest_checksum": manifest_checksum,
+        "embedding_version": audit.rag_result.embedding_version,
+        "distance_metric": str(manifest.distance_metric),
+        "score_semantics": audit.rag_result.retrieval_score_semantics,
+        "status": audit.rag_result.status,
+        "top_k": audit.query.top_k,
+        "minimum_score": float(manifest.minimum_score),
+        "degradation_json": degradation_payload,
+    }.items():
+        setattr(rag_run, field, value)
+    db.flush()
+    chunk_checksums = audit.rag_chunk_checksums
+    for hit in audit.rag_result.hits:
+        # Sprint 6 Phase 3 (B2): the persisted audit keeps its historical,
+        # documented semantics. ``chunk_content_checksum`` is the approved
+        # manifest/corpus payload checksum (the persistence contract requires it
+        # to match the manifest) and ``text_ciphertext`` keeps the historical
+        # request-hash form, so pre-Phase-3 and Phase-3 rows stay comparable.
+        # Live-text integrity is verified separately at retrieval and at the
+        # provider boundary; it is deliberately not folded into these fields.
+        chunk_checksum = chunk_checksums.get(hit.chunk_id) or _request_hash(
+            {"chunk_id": hit.chunk_id, "text": hit.text}
+        )
+        hit_row = db.get(RagRetrievalHit, (rag_run_id, hit.chunk_id))
+        if hit_row is None:
+            hit_row = RagRetrievalHit(rag_run_id=rag_run_id, chunk_id=hit.chunk_id)
+            db.add(hit_row)
+        for field, value in {
+            "source_id": hit.source_id,
+            "source_title": hit.source_title,
+            "section": hit.section,
+            "retrieval_score": float(hit.retrieval_score),
+            "display_summary": hit.display_summary,
+            "text_ciphertext": _request_hash({"text": hit.text}),
+            "review_status": hit.review_status,
+            "knowledge_version": audit.rag_result.knowledge_version,
+            "chunk_content_checksum": chunk_checksum,
+        }.items():
+            setattr(hit_row, field, value)
+
+    execution = audit.diagnosis_execution
+    if execution.provider_run_id is not None:
+        db.add(
+            AiProviderRun(
+                provider_run_id=execution.provider_run_id,
+                purpose="diagnosis",
+                resource_id=diagnosis_id,
+                provider=execution.provider_name,
+                model=execution.provider_model,
+                prompt_version=audit.diagnosis_request.prompt_version,
+                response_schema_version=audit.diagnosis_request.response_schema_version,
+                status=execution.status,
+                error_code=execution.reason_code,
+                attempts=max(1, execution.attempts),
+                latency_ms=max(0, execution.latency_ms),
+                input_tokens=None,
+                output_tokens=None,
+                request_hash=execution.request_hash,
+                response_hash=execution.response_hash,
+                knowledge_version=audit.rag_result.knowledge_version,
+                mapping_version=audit.mapping_version,
+            )
+        )
+    return rag_run_id, execution.provider_run_id
+
+
+def _persist_failed_pipeline_audit(
+    db: Session,
+    *,
+    principal: AuthPrincipal,
+    session_row: SessionModel,
+    assessment_ref: AssessmentRefV31,
+    diagnosis_id: str,
+    element_profile: ElementProfile,
+    audit: V31PipelineAuditContext,
+) -> None:
+    """Stage a failed/abstained Agent2 attempt before idempotency commit."""
+
+    execution = audit.diagnosis_execution
+    abstained = execution.status == "abstained"
+    status = "abstained" if abstained else "failed"
+    reason_code = execution.reason_code if abstained else None
+    run = db.get(DiagnosisRun, diagnosis_id)
+    if run is None:
+        run = DiagnosisRun(
+            diagnosis_id=diagnosis_id,
+            internal_user_pk=principal.internal_user_pk,
+            session_row_id=session_row.id,
+            assessment_id=assessment_ref.assessment_id,
+            assessment_revision=assessment_ref.revision,
+            status=status,
+            abstained=1 if abstained else 0,
+            abstain_reason=reason_code,
+            primary_tendency_id=None,
+            element_profile_json=element_profile.model_dump(mode="json"),
+            degradation_json=Degradation(
+                active=True,
+                reason_codes=[execution.reason_code] if execution.reason_code else [],
+            ).model_dump(mode="json"),
+            presentation_json={
+                "title": "辨证分析",
+                "primary_tendency": None,
+                "basis_summaries": ["当前请求未生成可展示的辨证结果。"],
+                "knowledge_references": [],
+                "disclaimer": "本结果不构成医学诊断或治疗建议。",
+            },
+            provider_run_id=None,
+            rag_run_id=None,
+        )
+        db.add(run)
+    else:
+        run.status = status
+        run.abstained = 1 if abstained else 0
+        run.abstain_reason = reason_code
+        run.element_profile_json = element_profile.model_dump(mode="json")
+        run.degradation_json = Degradation(
+            active=True,
+            reason_codes=[execution.reason_code] if execution.reason_code else [],
+        ).model_dump(mode="json")
+    db.flush()
+    run.rag_run_id, run.provider_run_id = _persist_pipeline_audit(
+        db,
+        diagnosis_id=diagnosis_id,
+        pipeline=audit,
+    )
+    # The caller persists the matching safe error envelope and commits both
+    # the audit rows and idempotency terminal state in one transaction.
+
+
+def _build_snapshot_for_legal_abstain(
+    db: Session,
+    *,
+    assessment: AssessmentV3,
+    assessment_revision: AssessmentRevisionV3,
+) -> dict[str, object]:
+    """Minimal authoritative snapshot for a legal abstain (no provider/RAG).
+
+    The canonical aggregation snapshot is the same one the pipeline uses; the
+    evidence population is this revision's confirmed rows.
+    """
+
+    evidence, links = load_revision_evidence(
+        db,
+        assessment_id=assessment.assessment_id,
+        revision=assessment_revision.revision,
+        confirmed_only=True,
+    )
+    try:
+        organ_mapping = load_organ_mapping()
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise V31ReadinessError("ORGAN_MAPPING_ASSET_NOT_READY") from error
+    return {
+        "assessment_id": assessment.assessment_id,
+        "assessment_revision": assessment_revision.revision,
+        "input_revision": int(assessment_revision.input_revision or 1),
+        "organ_aggregation": build_organ_aggregation_snapshot(
+            evidence, links, organ_mapping
+        ),
+        "organ_mapping": organ_mapping,
+        "conflicts": assessment_revision.conflicts_json or [],
+        "supporting_fact_ids": [
+            item.fact_evidence_id for item in evidence if item.direction == "supporting"
+        ],
+        "contradicting_fact_ids": [
+            item.fact_evidence_id
+            for item in evidence
+            if item.direction == "contradicting"
+        ],
+    }
+
+
+def _build_early_legal_abstain_result(
+    db: Session,
+    *,
+    request: DiagnosisV31Input,
+    assessment: AssessmentV3,
+    assessment_revision: AssessmentRevisionV3,
+    session_row: SessionModel,
+    abstain_reason: str,
+) -> V31LegalAbstainResult:
+    """Phase 1B: canonical legal-abstain normalization -> ``basic_wellness``.
+
+    Sprint 6 Phase 1B closes the frozen contract
+    ``ELEMENT_EVIDENCE_INSUFFICIENT -> basic_wellness ->
+    BASIC_ELEMENT_EVIDENCE_INSUFFICIENT`` for early legal abstains: the same
+    dominance service and the same v3.3 read-model builder/checksum as the
+    pipeline path are used, and the result is persisted into the DiagnosisRun
+    that this path already creates. No provider or RAG call is made.
+    """
+
+    state = _load_confirmed_user_state(
+        db,
+        assessment=assessment,
+        assessment_revision=assessment_revision,
+        session_row=session_row,
+    )
+    snapshot = _build_snapshot_for_legal_abstain(
+        db, assessment=assessment, assessment_revision=assessment_revision
+    )
+    snapshot["diagnosis_id"] = request.diagnosis_id
+    try:
+        rules = load_configured_music_generation_rules()
+    except MusicGenerationRuleAssetNotReady as error:
+        raise V31ReadinessError(error.error_code, error.safe_message) from None
+    except (OSError, UnicodeError, ValueError, TypeError) as error:
+        raise V31ReadinessError("MUSIC_PARAMETER_ASSET_INVALID") from error
+    tone_mapping = load_five_tone_mapping()
+    try:
+        return build_v31_legal_abstain(
+            confirmed_user_state=state,
+            assessment_snapshot=snapshot,
+            tone_mapping=tone_mapping,
+            generation_parameter_rules=rules,
+            abstain_reason=abstain_reason,
+        )
+    except V31PipelineBlocked as error:
+        # Asset/readiness problems stay failures (never a music mode).
+        raise V31ReadinessError(error.error_code, error.safe_message) from None
+
+
+def _persist_legal_abstain_read_model(
+    run: DiagnosisRun,
+    abstain_result: V31LegalAbstainResult,
+) -> None:
+    """Persist the abstain decision in the checksum-protected v3.3 read model."""
+
+    read_model = abstain_result.read_model
+    read_model_payload = read_model.model_dump(mode="json")
+    canonical_read_model = json.dumps(
+        read_model_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    run.five_tone_read_model_schema_version = read_model.schema_version
+    run.five_tone_read_model_json = read_model_payload
+    run.five_tone_read_model_checksum = (
+        f"sha256:{sha256(canonical_read_model.encode('utf-8')).hexdigest()}"
+    )
+    generation_spec = to_transport_spec(
+        abstain_result.generation_spec,
+        tone_profile=abstain_result.tone_profile,
+    )
+    generation_spec = synchronize_generation_spec(generation_spec, read_model)
+    run.generation_spec_json = generation_spec.model_dump(mode="json")
+    run.five_tone_generated_at = datetime.now(timezone.utc)
+
+
+def run_diagnosis(
+    db: Session,
+    principal: AuthPrincipal,
+    request: DiagnosisV31Input,
+    *,
+    idempotency_key: str,
+) -> tuple[DiagnosisV3, bool]:
+    request_hash = _request_hash(request.model_dump(mode="json"))
+    record, replayed = reserve_v3_idempotency(
+        db,
+        internal_user_pk=principal.internal_user_pk,
+        operation=_OPERATION,
+        idempotency_key=idempotency_key,
+        request_hash=request_hash,
+    )
+    if replayed:
+        if record.status == "failed":
+            raise IdempotencyFailureReplay.from_record(record)
+        return DiagnosisV3.model_validate_json(record.response_json), True
+
+    ref: AssessmentRefV31 = request.assessment_ref
+    owned_input = (
+        db.query(AssessmentV3, AssessmentRevisionV3, SessionModel)
+        .join(SessionModel, AssessmentV3.session_row_id == SessionModel.id)
+        .join(
+            AssessmentRevisionV3,
+            (AssessmentRevisionV3.assessment_id == AssessmentV3.assessment_id)
+            & (AssessmentRevisionV3.revision == ref.revision),
+        )
+        .filter(
+            AssessmentV3.assessment_id == ref.assessment_id,
+            AssessmentV3.internal_user_pk == principal.internal_user_pk,
+            SessionModel.user_id == principal.internal_user_pk,
+            SessionModel.session_id == request.session_id,
+            SessionModel.input_revision == ref.input_revision,
+            AssessmentV3.current_revision == ref.revision,
+            AssessmentV3.input_revision == ref.input_revision,
+            AssessmentRevisionV3.input_revision == ref.input_revision,
+            AssessmentV3.status == "confirmed",
+            AssessmentRevisionV3.status == "confirmed",
+            AssessmentRevisionV3.confirmation_status == "confirmed",
+            AssessmentV3.flow_contract_version == "v3-owner-flow-1",
+            AssessmentV3.safety_policy == "deferred_v3",
+            AssessmentV3.safety_status.is_(None),
+            AssessmentV3.safety_evaluation_status == "not_run",
+        )
+        .one_or_none()
+    )
+    if owned_input is None:
+        raise OwnedResourceNotFound
+    _assessment, assessment_revision, session_row = owned_input
+
+    element_profile = _element_profile_from_organ(
+        assessment_revision.organ_profile_json
+    )
+    diagnosis_id = request.diagnosis_id
+    rag_degraded = Degradation(
+        active=True,
+        reason_codes=["RAG_INGESTION_NOT_APPROVED"],
+    )
+
+    abstain_result: V31LegalAbstainResult | None = None
+    if element_profile.status == "insufficient":
+        # Honest abstain: element evidence is insufficient.
+        result = DiagnosisV3(
+            root=AbstainedDiagnosis(
+                schema_version="diagnosis_v3.0",
+                agent_id="diagnosis_agent",
+                diagnosis_id=diagnosis_id,
+                assessment_ref={
+                    "assessment_id": ref.assessment_id,
+                    "revision": ref.revision,
+                },
+                rag_result_ref=None,
+                execution_versions=ExecutionVersions(
+                    prompt_version="diagnosis_v3.0",
+                    response_schema_version="diagnosis_provider_response_v3.0",
+                    knowledge_version="medical_v3.0",
+                    mapping_version="organ_mapping_v3.0",
+                ),
+                degradation=rag_degraded,
+                presentation=DiagnosisPresentation(
+                    title="本次未形成明确的状态倾向",
+                    primary_tendency=None,
+                    basis_summaries=[],
+                    knowledge_references=[],
+                    disclaimer="本结果不构成医学诊断或治疗建议。",
+                ),
+                status="abstained",
+                abstained=True,
+                abstain_reason="ELEMENT_EVIDENCE_INSUFFICIENT",
+                candidate_tendencies=[],
+                primary_tendency_id=None,
+                element_profile=element_profile,
+            )
+        )
+        status = "abstained"
+        # Sprint 6 Phase 1B: the early legal abstain is normalized and routed
+        # through the authoritative dominance service so that the frozen
+        # basic_wellness decision (and its audit) is persisted, not inferred.
+        abstain_result = _build_early_legal_abstain_result(
+            db,
+            request=request,
+            assessment=_assessment,
+            assessment_revision=assessment_revision,
+            session_row=session_row,
+            abstain_reason="ELEMENT_EVIDENCE_INSUFFICIENT",
+        )
+    elif _v31_real_mode():
+        try:
+            pipeline = _run_v31_pipeline(
+                db,
+                request=request,
+                assessment=_assessment,
+                assessment_revision=assessment_revision,
+                session_row=session_row,
+            )
+        except (V31PipelineFailure, V31ReadinessError) as error:
+            if getattr(error, "audit_context", None) is not None:
+                _persist_failed_pipeline_audit(
+                    db,
+                    principal=principal,
+                    session_row=session_row,
+                    assessment_ref=ref,
+                    diagnosis_id=diagnosis_id,
+                    element_profile=element_profile,
+                    audit=error.audit_context,
+                )
+            error.request_id = _mark_idempotency_failed(
+                db,
+                record,
+                status_code=503 if isinstance(error, V31ReadinessError) else 502,
+                error_code=error.error_code,
+                safe_message=error.safe_message,
+                retryable=error.retryable,
+            )
+            raise
+        result = _diagnosis_from_v31_pipeline(
+            pipeline,
+            diagnosis_id=diagnosis_id,
+            assessment_ref=ref,
+            element_profile=element_profile,
+        )
+        evidence_rows = (
+            db.query(FactEvidenceRow)
+            .filter(
+                FactEvidenceRow.assessment_id == ref.assessment_id,
+                FactEvidenceRow.assessment_revision == ref.revision,
+                FactEvidenceRow.confirmation_status == "confirmed",
+            )
+            .all()
+        )
+        _persist_diagnosis(
+            db,
+            principal=principal,
+            session_row=session_row,
+            assessment_ref=ref,
+            result=result,
+            record=record,
+            evidence_rows=evidence_rows,
+            pipeline=pipeline,
+        )
+        return result, False
+    else:
+        # Element evidence is available but no approved syndrome whitelist /
+        # production RAG exists: fabricating syndromes is forbidden.
+        failure = MedicalAssetUnavailable()
+        failure.request_id = _mark_idempotency_failed(
+            db,
+            record,
+            status_code=503,
+            error_code="MEDICAL_ASSET_UNAVAILABLE",
+            safe_message="辨证所需的医学知识资产尚未批准，暂不能输出证型倾向。",
+            retryable=False,
+        )
+        raise failure
+
+    run = DiagnosisRun(
+        diagnosis_id=diagnosis_id,
+        internal_user_pk=principal.internal_user_pk,
+        session_row_id=session_row.id,
+        assessment_id=ref.assessment_id,
+        assessment_revision=ref.revision,
+        status=status,
+        abstained=1 if status == "abstained" else 0,
+        abstain_reason="ELEMENT_EVIDENCE_INSUFFICIENT"
+        if status == "abstained"
+        else None,
+        primary_tendency_id=None,
+        element_profile_json=element_profile.model_dump(mode="json"),
+        degradation_json=rag_degraded.model_dump(mode="json"),
+        presentation_json=result.root.presentation.model_dump(mode="json"),
+        provider_run_id=None,
+        rag_run_id=None,
+    )
+    db.add(run)
+    if abstain_result is not None:
+        # Sprint 6 Phase 1B: persist the authoritative basic_wellness decision
+        # (already-created run, existing read-model columns — no migration).
+        _persist_legal_abstain_read_model(run, abstain_result)
+    record.resource_type = "diagnosis"
+    record.resource_id = diagnosis_id
+    record.status = "succeeded"
+    record.response_code = 201
+    record.response_json = result.model_dump_json()
+    db.commit()
+    return result, False
+
+
+def _mark_idempotency_failed(
+    db: Session,
+    record,
+    *,
+    status_code: int,
+    error_code: str,
+    safe_message: str,
+    retryable: bool,
+) -> str:
+    """Persist the first safe failure envelope for deterministic replay."""
+
+    request_id = f"req_{uuid.uuid4().hex}"
+    record.status = "failed"
+    record.response_code = status_code
+    record.response_json = json.dumps(
+        {
+            "status_code": status_code,
+            "code": error_code,
+            "message": safe_message,
+            "retryable": bool(retryable),
+            "next_actions": [],
+            "request_id": request_id,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    db.commit()
+    return request_id

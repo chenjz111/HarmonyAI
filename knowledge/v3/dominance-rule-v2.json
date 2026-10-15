@@ -1,0 +1,157 @@
+{
+  "asset_version": "dominance-rule-v2.1-r1",
+  "candidate_policies": {
+    "one_legal_candidate": {
+      "reason_code": "PERSONALIZED_SINGLE_LEGAL_CANDIDATE",
+      "regulation_mode": "personalized_five_tone"
+    },
+    "two_or_more_legal_candidates_unique_top1": {
+      "reason_code": "PERSONALIZED_UNIQUE_AUTHORITY_TOP1",
+      "regulation_mode": "personalized_five_tone"
+    },
+    "zero_legal_candidates": {
+      "dominant_organ": null,
+      "primary_tone": null,
+      "reason_code": "BASIC_NO_LEGAL_ORGAN_CANDIDATE",
+      "regulation_mode": "basic_wellness"
+    },
+    "exact_authority_tie": {
+      "dominant_organ": null,
+      "primary_tone": null,
+      "reason_code": "BASIC_EXACT_AUTHORITY_TIE",
+      "regulation_mode": "basic_wellness"
+    }
+  },
+  "conflict_policy": {
+    "direct_contradiction_definition": "same canonical claim plus opposite direction plus comparable temporal scope",
+    "blocking_definition": "unresolved direct contradiction involving a claim that contributes to the unique top1 legal candidate and therefore prevents reliable primary-tone selection",
+    "blocking_unresolved_direct_contradiction": {
+      "primary_tone": null,
+      "reason_code": "BASIC_UNRESOLVED_DIRECT_CONTRADICTION",
+      "regulation_mode": "basic_wellness"
+    },
+    "ordinary_value_difference": "audit_only",
+    "different_temporal_scope": "not_direct_contradiction",
+    "multi_organ_evidence": "not_contradiction",
+    "otherwise": "audit_only"
+  },
+  "content_checksum": "sha256:eead981da08175400776033744a91b8720dd1767f130155b1bb037163d57f624",
+  "decision_snapshot_schema_id": "organ_dominance_decision_v1",
+  "dominance_gate": {
+    "comparison_population": "legal_candidates_only",
+    "entropy_or_spread_gate": null,
+    "epsilon": null,
+    "exact_tie_basis": "canonical_raw_support_equality",
+    "normalized_margin_comparison": ">=",
+    "normalized_margin_routing_authority": "audit_only",
+    "normalized_margin_threshold": 0.08,
+    "normalized_precision": 4,
+    "raw_ratio_comparison": ">=",
+    "raw_ratio_routing_authority": "audit_only",
+    "raw_ratio_threshold": 1.2,
+    "top1_hard_gate": null,
+    "top_ordering_authority": "canonical_raw_support"
+  },
+  "evidence_gate": {
+    "comparison": ">=",
+    "counted_directions": [
+      "supporting",
+      "contradicting"
+    ],
+    "coverage_formula": "min(1.0, effective_confirmed_fact_count / 8)",
+    "coverage_formula_version": "s6_evidence_coverage_v1",
+    "denominator": 8,
+    "effective_evidence_population": "effective_confirmed_evidence_after_source_priority_dedupe",
+    "minimum_coverage": 0.5,
+    "routing_authority": "audit_only",
+    "upstream_abstain_mappings": [
+      {
+        "reason_code": "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT",
+        "upstream_reason_code": "ELEMENT_EVIDENCE_INSUFFICIENT"
+      },
+      {
+        "reason_code": "BASIC_RAG_EMPTY",
+        "upstream_reason_code": "RAG_EMPTY"
+      }
+    ]
+  },
+  "failure_policy": {
+    "mapping_identity_mismatch": "readiness_failure",
+    "safety_blocked": "withheld",
+    "silent_mock_fallback": false,
+    "technical_failure_reasons_preserved": [
+      "MODEL_SCHEMA_INVALID",
+      "RAG_UNAVAILABLE",
+      "INGESTION_NOT_APPROVED",
+      "PROVIDER_AUTH_FAILED",
+      "PROVIDER_TIMEOUT",
+      "PROVIDER_RATE_LIMITED",
+      "NETWORK_ERROR",
+      "MUSIC_PARAMETER_ASSET_NOT_READY",
+      "GENERATION_SPEC_NOT_READY"
+    ],
+    "technical_failures_are_not_modes": true
+  },
+  "legacy_compatibility_modes": [
+    "integrated_regulation"
+  ],
+  "legal_candidate_gate": {
+    "authority": "approved_organ_mapping",
+    "comparison": ">=",
+    "minimum_effective_evidence_count": 2,
+    "minimum_raw_support": 0.75,
+    "note": "temporary engineering thresholds pending real-sample validation; runtime authority remains the approved organ mapping",
+    "reference": "organ_mapping_v3@3.0.0"
+  },
+  "medical_review": {
+    "review_version": "two-mode-v2.1-contract-freeze",
+    "status": "approved"
+  },
+  "normal_production_modes": [
+    "personalized_five_tone",
+    "basic_wellness"
+  ],
+  "owner_approval": {
+    "approval_version": "two-mode-v2.1-owner-freeze",
+    "approved_phase": "Two-Mode Five-Tone Decision Contract V2.1",
+    "status": "approved"
+  },
+  "read_model_schema_version": "five_tone_analysis_read_model_v3.3",
+  "reason_codes": {
+    "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT": "evidence legally insufficient upstream (element evidence)",
+    "BASIC_EXACT_AUTHORITY_TIE": "exact canonical authority tie with no approved medical tie-break authority",
+    "BASIC_NO_LEGAL_ORGAN_CANDIDATE": "no organ qualifies as a legal candidate",
+    "BASIC_RAG_EMPTY": "no approved retrieval context upstream",
+    "BASIC_UNRESOLVED_DIRECT_CONTRADICTION": "unresolved direct contradiction prevents reliable primary-tone selection",
+    "PERSONALIZED_SINGLE_LEGAL_CANDIDATE": "exactly one legal organ candidate",
+    "PERSONALIZED_UNIQUE_AUTHORITY_TOP1": "multiple legal candidates with one unique canonical authority top1"
+  },
+  "reason_precedence": {
+    "evidence_and_candidate_gates": [
+      "BASIC_ELEMENT_EVIDENCE_INSUFFICIENT",
+      "BASIC_RAG_EMPTY",
+      "BASIC_NO_LEGAL_ORGAN_CANDIDATE"
+    ],
+    "two_or_more_legal_candidates": [
+      "BASIC_EXACT_AUTHORITY_TIE",
+      "BASIC_UNRESOLVED_DIRECT_CONTRADICTION",
+      "PERSONALIZED_UNIQUE_AUTHORITY_TOP1"
+    ]
+  },
+  "references": {
+    "five_tone_mapping": {
+      "content_checksum": "sha256:8f6bd8b91a5989201bc5605d6ddc55ac76162ad566f932bd89a901f19c4fe36e",
+      "schema_id": "five_tone_mapping_v3",
+      "schema_version": "3.0.0"
+    },
+    "organ_mapping": {
+      "content_checksum": "sha256:771ca8d799a2df6fedd789beabe90e840432862fb72500d52cb15cf90b5ea495",
+      "schema_id": "organ_mapping_v3",
+      "schema_version": "3.0.0"
+    }
+  },
+  "review_status": "approved",
+  "schema_id": "dominance_rule_contract",
+  "schema_version": "2.1",
+  "scope": "Two-Mode V2.1 normal routing; integrated_regulation retained for legacy compatibility only"
+}

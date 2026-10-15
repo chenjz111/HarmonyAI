@@ -1,0 +1,265 @@
+{
+  "schema_version": "sprint6_acceptance_cases_v1",
+  "sprint": "Sprint 6",
+  "phase": "Phase 0",
+  "purpose": "Frozen acceptance case set A-H for Sprint 6 regression. Defines semantic goals and future contract expectations only; Phase 0 does not require current production code to satisfy them.",
+  "provenance": {
+    "data_class": "synthetic",
+    "contains_real_user_data": false,
+    "authoring_basis": "hand-authored from approved knowledge assets; no OCR text, no DB rows, no runtime log content",
+    "forbidden_sources_not_used": [
+      "real medical-record image uploads",
+      "canonical acceptance database rows (real OCR text)",
+      "acceptance runtime logs"
+    ]
+  },
+  "source_assets": {
+    "questionnaire": "knowledge/v3/questionnaire-v3.0.1.json",
+    "claim_dictionary": "knowledge/v3/claim-dictionary-v3.0.json",
+    "organ_mapping": "knowledge/v3/organ-mapping-v3.0.json",
+    "five_tone_mapping": "knowledge/v3/five-tone-mapping-v3.0.json"
+  },
+  "mode_vocabulary": [
+    "personalized_five_tone",
+    "integrated_regulation",
+    "basic_wellness"
+  ],
+  "tone_vocabulary": [
+    "jiao",
+    "zhi",
+    "gong",
+    "shang",
+    "yu"
+  ],
+  "organ_vocabulary": [
+    "liver",
+    "heart",
+    "spleen",
+    "lung",
+    "kidney"
+  ],
+  "input_type_vocabulary": [
+    "questionnaire",
+    "organ_profile_snapshot",
+    "insufficient_input",
+    "diagnosis_snapshot_rag_empty",
+    "repeatability"
+  ],
+  "cases": [
+    {
+      "case_id": "A",
+      "title": "Clear liver / wood tendency",
+      "description": "A clearly dominant liver organ must stay a personalized five-tone conclusion and must not be downgraded to integrated or basic.",
+      "input_type": "questionnaire",
+      "synthetic_input": {
+        "data_class": "synthetic",
+        "answers": [
+          { "question_id": "q01", "answer_type": "frequency_0_4", "value": 4 },
+          { "question_id": "q02", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q03", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q04", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q05", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["flank_discomfort", "tendon_stiffness", "muscle_cramp"] },
+          { "question_id": "q07", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q08", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q09", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q10", "answer_type": "multi_choice_evidence", "value": ["none"] }
+        ]
+      },
+      "synthetic_organ_profile": { "liver": 1.0, "heart": 0.0, "spleen": 0.0, "lung": 0.0, "kidney": 0.0 },
+      "expected_future_mode": "personalized_five_tone",
+      "expected_future_primary_tone": "jiao",
+      "expected_future_tone_weights_present": true,
+      "baseline_sprint5_observed": null,
+      "baseline_source": "not measured in Phase 0; scheduled for Phase 1 measurement",
+      "notes": "Primary guard against over-correction: a genuine single-organ conclusion must remain personalized."
+    },
+    {
+      "case_id": "B",
+      "title": "Clear spleen / earth tendency",
+      "description": "A clearly dominant spleen organ must produce a genuine gong conclusion, distinguishable from the historical fabricated fallback gong.",
+      "input_type": "questionnaire",
+      "synthetic_input": {
+        "data_class": "synthetic",
+        "answers": [
+          { "question_id": "q01", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q02", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q03", "answer_type": "frequency_0_4", "value": 4 },
+          { "question_id": "q04", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q05", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q07", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q08", "answer_type": "multi_choice_evidence", "value": ["poor_appetite", "postmeal_bloating", "loose_stool"] },
+          { "question_id": "q09", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q10", "answer_type": "multi_choice_evidence", "value": ["none"] }
+        ]
+      },
+      "synthetic_organ_profile": { "liver": 0.0, "heart": 0.0, "spleen": 1.0, "lung": 0.0, "kidney": 0.0 },
+      "expected_future_mode": "personalized_five_tone",
+      "expected_future_primary_tone": "gong",
+      "expected_future_tone_weights_present": true,
+      "baseline_sprint5_observed": null,
+      "baseline_source": "not measured in Phase 0; Sprint 5 would likely also emit gong here, but through the same argmax path as every other case, so it is not evidence of correctness",
+      "notes": "The legitimate genuine-gong case. Removing the fabricated fallback gong must not remove this one."
+    },
+    {
+      "case_id": "C",
+      "title": "Clear heart / fire tendency",
+      "description": "A third independent organ direction must produce its own tone rather than a gong default.",
+      "input_type": "questionnaire",
+      "synthetic_input": {
+        "data_class": "synthetic",
+        "answers": [
+          { "question_id": "q01", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q02", "answer_type": "frequency_0_4", "value": 4 },
+          { "question_id": "q03", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q04", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q05", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q07", "answer_type": "multi_choice_evidence", "value": ["palpitation_at_rest", "palpitation_after_activity", "palpitation_night"] },
+          { "question_id": "q08", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q09", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q10", "answer_type": "multi_choice_evidence", "value": ["none"] }
+        ]
+      },
+      "synthetic_organ_profile": { "liver": 0.0, "heart": 1.0, "spleen": 0.0, "lung": 0.0, "kidney": 0.0 },
+      "expected_future_mode": "personalized_five_tone",
+      "expected_future_primary_tone": "zhi",
+      "expected_future_tone_weights_present": true,
+      "baseline_sprint5_observed": null,
+      "baseline_source": "not measured in Phase 0; scheduled for Phase 1 measurement",
+      "notes": "Together with A and B this pins three distinct organs through the same decision path."
+    },
+    {
+      "case_id": "D",
+      "title": "Five organs / five tones close together",
+      "description": "A near-uniform profile must no longer be forced into a single primary tone by argmax or tie order.",
+      "input_type": "organ_profile_snapshot",
+      "synthetic_input": {
+        "data_class": "synthetic",
+        "answers": [
+          { "question_id": "q01", "answer_type": "frequency_0_4", "value": 2 },
+          { "question_id": "q02", "answer_type": "frequency_0_4", "value": 2 },
+          { "question_id": "q03", "answer_type": "frequency_0_4", "value": 2 },
+          { "question_id": "q04", "answer_type": "frequency_0_4", "value": 2 },
+          { "question_id": "q05", "answer_type": "frequency_0_4", "value": 2 },
+          { "question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["flank_discomfort", "tendon_stiffness"] },
+          { "question_id": "q07", "answer_type": "multi_choice_evidence", "value": ["palpitation_at_rest", "palpitation_after_activity"] },
+          { "question_id": "q08", "answer_type": "multi_choice_evidence", "value": ["poor_appetite", "postmeal_bloating"] },
+          { "question_id": "q09", "answer_type": "multi_choice_evidence", "value": ["throat_cough", "nasal_discomfort"] },
+          { "question_id": "q10", "answer_type": "multi_choice_evidence", "value": ["lower_back_knee_weakness", "tinnitus"] }
+        ]
+      },
+      "synthetic_organ_profile": { "liver": 0.2, "heart": 0.2, "spleen": 0.2, "lung": 0.2, "kidney": 0.2 },
+      "expected_future_mode": "integrated_regulation",
+      "expected_future_primary_tone": null,
+      "expected_future_tone_weights_present": true,
+      "baseline_sprint5_observed": "uniform organ profile makes gong and shang tie at raw mapping sum 1.15, and the _TONE_CODES tuple order resolves the tie to gong",
+      "baseline_source": "docs/sprint6/sprint6-baseline.md section 4 item 2; backend/ai_engine/v3/agent3.py; knowledge/v3/five-tone-mapping-v3.0.json",
+      "notes": "Core Sprint 6 defect case. The mode label is what changes; the weights already exist and stay user-meaningful."
+    },
+    {
+      "case_id": "E",
+      "title": "Insufficient information",
+      "description": "Insufficient evidence must yield basic wellness with no primary tone and must never fabricate gong.",
+      "input_type": "insufficient_input",
+      "synthetic_input": {
+        "data_class": "synthetic",
+        "answers": [
+          { "question_id": "q01", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q02", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q03", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q04", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q05", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q07", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q08", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q09", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q10", "answer_type": "multi_choice_evidence", "value": ["none"] }
+        ]
+      },
+      "synthetic_organ_profile": null,
+      "expected_future_mode": "basic_wellness",
+      "expected_future_primary_tone": null,
+      "expected_future_tone_weights_present": false,
+      "baseline_sprint5_observed": "insufficient element profile yields an abstained diagnosis, and the wellness fallback fabricates primary_tone=gong with weights gong 0.6 / others 0.1",
+      "baseline_source": "docs/sprint6/sprint6-baseline.md section 4 item 1; backend/app/services/v3/prescription_service.py; canonical DB 15/15 wellness prescriptions are gong",
+      "notes": "Must never claim a single five-tone primary tone. User-facing wording requires Medical review (rule-freeze Q2)."
+    },
+    {
+      "case_id": "F",
+      "title": "Questionnaire with a clearly one-directional difference",
+      "description": "The questionnaire must be able to produce a clear directional difference instead of every organ landing near 0.2.",
+      "input_type": "questionnaire",
+      "synthetic_input": {
+        "data_class": "synthetic",
+        "answers": [
+          { "question_id": "q01", "answer_type": "frequency_0_4", "value": 4 },
+          { "question_id": "q02", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q03", "answer_type": "frequency_0_4", "value": 3 },
+          { "question_id": "q04", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q05", "answer_type": "frequency_0_4", "value": 0 },
+          { "question_id": "q06", "answer_type": "multi_choice_evidence", "value": ["flank_discomfort", "eye_discomfort"] },
+          { "question_id": "q07", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q08", "answer_type": "multi_choice_evidence", "value": ["poor_appetite"] },
+          { "question_id": "q09", "answer_type": "multi_choice_evidence", "value": ["none"] },
+          { "question_id": "q10", "answer_type": "multi_choice_evidence", "value": ["none"] }
+        ]
+      },
+      "synthetic_organ_profile": { "liver": 0.53, "heart": 0.0, "spleen": 0.47, "lung": 0.0, "kidney": 0.0 },
+      "expected_future_mode": "personalized_five_tone",
+      "expected_future_primary_tone": "jiao",
+      "expected_future_tone_weights_present": true,
+      "baseline_sprint5_observed": null,
+      "baseline_source": "not measured in Phase 0; scheduled for Phase 1 measurement",
+      "notes": "Two organs qualify with clearly different support. If Phase 1 thresholds classify this margin as ambiguous, re-classify to integrated_regulation only with Owner + Medical sign-off and update this fixture."
+    },
+    {
+      "case_id": "G",
+      "title": "Historical RAG_EMPTY",
+      "description": "An empty retrieval result must never be presented as a gong tone conclusion.",
+      "input_type": "diagnosis_snapshot_rag_empty",
+      "synthetic_input": {
+        "data_class": "synthetic",
+        "organ_profile_weights": { "liver": 0.2, "heart": 0.2, "spleen": 0.2, "lung": 0.2, "kidney": 0.2 },
+        "rag_result": {
+          "status": "empty",
+          "hits": [],
+          "reason_code": "RAG_EMPTY"
+        }
+      },
+      "synthetic_organ_profile": { "liver": 0.2, "heart": 0.2, "spleen": 0.2, "lung": 0.2, "kidney": 0.2 },
+      "expected_future_mode": "basic_wellness",
+      "expected_future_primary_tone": null,
+      "expected_future_tone_weights_present": false,
+      "baseline_sprint5_observed": "an empty retrieval marks the diagnosis abstained with reason RAG_EMPTY without calling the provider, and the prescription fallback then fabricates gong",
+      "baseline_source": "docs/sprint6/sprint6-baseline.md section 4 items 1 and 3; backend/ai_engine/v3/diagnosis_pipeline.py; canonical DB 10/20 retrievals empty",
+      "notes": "Final mode for RAG_EMPTY is confirmed by the Phase 1 / Phase 3 contract; the invariant that it must not become a fabricated gong tone holds regardless."
+    },
+    {
+      "case_id": "H",
+      "title": "Same-input repeatability",
+      "description": "A fixed input repeated several times must produce a stable mode, tone, weights, retrieval and prompt.",
+      "input_type": "repeatability",
+      "synthetic_input": {
+        "data_class": "synthetic",
+        "repeats_reference_case": "D",
+        "repeat_count": 3,
+        "checks": [
+          "mode_consistency",
+          "primary_tone_consistency",
+          "tone_weights_stability",
+          "rag_result_stability",
+          "prompt_stability"
+        ]
+      },
+      "synthetic_organ_profile": { "liver": 0.2, "heart": 0.2, "spleen": 0.2, "lung": 0.2, "kidney": 0.2 },
+      "expected_future_mode": "integrated_regulation",
+      "expected_future_primary_tone": null,
+      "expected_future_tone_weights_present": true,
+      "baseline_sprint5_observed": null,
+      "baseline_source": "no repeatability harness exists at Sprint 5 closeout",
+      "notes": "Phase 0 must not call any real provider for this case. Repeatability is verified with fake or injected providers, or with pure functions only."
+    }
+  ]
+}

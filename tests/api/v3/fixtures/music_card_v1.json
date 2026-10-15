@@ -1,0 +1,21 @@
+{
+  "music_id": "music_shared",
+  "source_type": "matched",
+  "default_title": "2026年10月12日的音乐 · shared",
+  "user_title": null,
+  "display_title": "2026年10月12日的音乐 · shared",
+  "metadata_version": 0,
+  "playable_created_at": "2026-10-12T08:00:00Z",
+  "last_played_at": null,
+  "activity_at": "2026-10-12T08:00:00Z",
+  "duration_seconds": null,
+  "availability": "ready",
+  "is_favorite": true,
+  "primary_instrument_code": "unknown",
+  "primary_instrument_origin": "unknown",
+  "source_summary": {
+    "kind": "unknown",
+    "availability": "unknown",
+    "context_count": 2
+  }
+}

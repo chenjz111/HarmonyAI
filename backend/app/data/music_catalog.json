@@ -1,0 +1,15 @@
+[
+  {
+    "music_id": "music_jiao_001",
+    "title": "角调·舒心",
+    "source_type": "matched",
+    "stream_url": "/static/music/jiao-demo.wav",
+    "tone_id": "jiao",
+    "mode": "角调",
+    "bpm": 68,
+    "duration_seconds": 30,
+    "instruments": ["古琴", "古筝"],
+    "ambient_sounds": [],
+    "rights_note": "比赛版自有本地演示音频"
+  }
+]

@@ -1,0 +1,10 @@
+.v31-page-shell {
+  --v31-page-top-base: 12px;
+  --v31-page-bottom-base: 24px;
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  padding-top: calc(var(--v31-page-top-base) + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(var(--v31-page-bottom-base) + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}

@@ -1,5 +1,7 @@
 # HarmonyAI（和鸣AI）
 
+> Sprint 7 团队候选尚未批准公开发布，不是完整 App。见 [开发说明](docs/sprint7/TEAM_BASELINE_DEVELOPMENT.md)。下文为历史介绍；自动反馈学习及旧模型部署描述不是当前实施合同。
+
 > **Knowledge-Driven / Explainable / Multi-Agent Music Therapy Platform**
 >
 > 知识驱动的可解释多智能体音乐疗愈平台

@@ -1,0 +1,1040 @@
+<script>
+/**
+ * V3 音乐播放页
+ * 合同依据：frontend-read-model-contract-v3.md §12 PlayerReadModel
+ *
+ * - 只播放后端返回的 asset（stream_url），前端不构造处方
+ * - source_label 区分"AI生成音乐"与"审核曲库匹配音乐"（不伪装实时生成）
+ * - 不展示任何目标类字段（该概念已在 V3 删除，Amendment §5）
+ * - 保留非诊断/非治疗免责声明
+ * - 收藏走真实 Favorites API（music_ref），mock/hybrid 由 facade 本地记录
+ * - hybrid 模式显示"演示数据"标识
+ *
+ * v2 重写（水墨国风）：
+ *   - 全页 .han-page 山水背景
+ *   - 播放器卡片改为宣纸卡片
+ *   - 唱片改为水墨渐变 + 旋转动效
+ *   - 播放按钮改为朱砂印章大按钮
+ *   - 业务逻辑 togglePlay/toggleFavorite/goFeedback/exitSession 完全保留
+ */
+import { apiV3 } from "../../common/api-v3.js"
+import { createPlayerController } from "../../common/player-controller.js"
+import { buildMusicPresentation, presentProgress } from "../../common/music-presentation.js"
+import { seekRatioFromEvent } from "../../common/player-seek.js"
+
+export default {
+  data() {
+    return {
+      loading: true,
+      loadFailure: null,
+      music: null,
+      basis: null,
+      userGoal: null,
+      playerController: null,
+      playerState: {
+        playing: false,
+        currentTime: 0,
+        duration: 0,
+        error: null,
+      },
+      favorite: false,
+      favBusy: false,
+      simulated: false,
+      analysisExpanded: false,
+      seeking: false,
+      seekMoved: false,
+    }
+  },
+  computed: {
+    playerPresentation() {
+      return buildMusicPresentation({
+        music: this.music,
+        basis: this.basis,
+        userGoal: this.userGoal,
+        measuredSeconds: this.playerState.duration,
+      })
+    },
+    progressPresentation() {
+      return presentProgress({
+        currentSeconds: this.playerState.currentTime,
+        totalSeconds: this.playerPresentation.duration.seconds,
+      })
+    },
+    failurePresentation() {
+      return this.loadFailure ? buildMusicPresentation({ failure: this.loadFailure }) : { isFailure: false }
+    },
+    analysisVisible() {
+      return this.playerPresentation.analysis.playerHasContent
+    },
+    playing() {
+      return !!this.playerState.playing
+    },
+    toneSealText() {
+      return this.playerPresentation.sealText
+    },
+    toneSummaryLabel() {
+      return this.playerPresentation.modeDisplayLabel
+    },
+    playerStyle() {
+      const tone = this.playerPresentation.primaryTone
+      const style = {
+        "--tone-accent": tone.accent,
+        "--tone-soft": tone.soft,
+      }
+      if (tone.imageCode) {
+        style.backgroundImage = `linear-gradient(rgba(255,255,252,.08),rgba(255,255,252,.08)), url('/static/v31-player/${tone.imageCode}-1.png')`
+      }
+      return style
+    },
+    toneHeroSrc() {
+      const imageCode = this.playerPresentation.primaryTone.imageCode
+      return imageCode ? `/static/v31-player/${imageCode}-2.png` : ""
+    },
+  },
+  onLoad() {
+    this.load()
+  },
+  onHide() {
+    if (this.playerController) this.playerController.handleHide()
+  },
+  onShow() {
+    this.analysisExpanded = false
+    if (this.playerController) this.playerController.handleShow()
+  },
+  onUnload() {
+    if (this.playerController) this.playerController.dispose()
+    this.playerController = null
+  },
+  methods: {
+    async load() {
+      this.loading = true
+      this.loadFailure = null
+      try {
+        this.music = await apiV3.getMusic()
+        this.favorite = !!this.music.favorite
+        this.simulated = !!apiV3.AGENT_SIMULATED
+        try {
+          this.basis = await apiV3.getMusicBasis()
+        } catch (e) {
+          this.basis = null
+        }
+        this.userGoal = apiV3.getCurrentUserGoal()
+        this.setupPlayerController()
+      } catch (e) {
+        this.loadFailure = e
+      } finally {
+        this.loading = false
+      }
+    },
+    setupPlayerController() {
+      if (this.playerController) this.playerController.dispose()
+      this.playerController = createPlayerController({
+        downloadAudio: apiV3.fetchAuthorizedAudio,
+        createAudioContext: uni.createInnerAudioContext,
+        onStateChange: snapshot => {
+          this.playerState = snapshot
+        },
+        onError: error => {
+          const failure = buildMusicPresentation({ failure: error })
+          uni.showToast({ title: failure.failure.message, icon: "none" })
+        },
+      })
+      this.playerState = this.playerController.getState()
+    },
+    togglePlay() {
+      if (!this.playerController || !this.music) return
+      void this.playerController.toggle(this.music.stream_url)
+    },
+    seekToRatio(ratio) {
+      if (!this.playerController) return false
+      return this.playerController.seek(ratio)
+    },
+    hasSeekableDuration() {
+      return Number.isFinite(this.playerState.duration) && this.playerState.duration > 0
+    },
+    seekFromProgressEvent(event) {
+      if (!this.hasSeekableDuration()) return false
+      uni.createSelectorQuery()
+        .in(this)
+        .select("#player-progress-track")
+        .boundingClientRect(rect => {
+          const ratio = seekRatioFromEvent(event, rect)
+          if (ratio !== null) this.seekToRatio(ratio)
+        })
+        .exec()
+      return true
+    },
+    handleProgressTap(event) {
+      return this.seekFromProgressEvent(event)
+    },
+    handleSeekStart() {
+      this.seeking = this.hasSeekableDuration()
+      this.seekMoved = false
+    },
+    handleSeekMove(event) {
+      if (!this.seeking) return false
+      this.seekMoved = true
+      return this.seekFromProgressEvent(event)
+    },
+    handleSeekEnd(event) {
+      if (!this.seeking) return false
+      const sought = this.seekMoved ? this.seekFromProgressEvent(event) : false
+      this.seeking = false
+      this.seekMoved = false
+      return sought
+    },
+    handleSeekCancel() {
+      this.seeking = false
+      this.seekMoved = false
+    },
+    toggleAnalysis() {
+      this.analysisExpanded = !this.analysisExpanded
+    },
+    async toggleFavorite() {
+      if (this.favBusy) return
+      const ref = this.music.music_ref || {}
+      const musicId = ref.music_id
+      if (!musicId) {
+        uni.showToast({ title: "收藏失败：缺少音乐标识", icon: "none" })
+        return
+      }
+      this.favBusy = true
+      const target = !this.favorite
+      try {
+        if (target) {
+          await apiV3.addFavorite(musicId, ref.source_type)
+        } else {
+          await apiV3.removeFavorite(musicId)
+        }
+        this.favorite = target
+        uni.showToast({ title: target ? "已收藏" : "已取消收藏", icon: "none" })
+      } catch (e) {
+        uni.showToast({ title: e.message || "操作失败，请重试", icon: "none" })
+      } finally {
+        this.favBusy = false
+      }
+    },
+    goFeedback() {
+      if (this.playerController) this.playerController.dispose()
+      uni.navigateTo({ url: "/pages/v3-feedback/v3-feedback" })
+    },
+    exitSession() {
+      if (this.playerController) this.playerController.dispose()
+      uni.reLaunch({ url: "/pages/entry/entry" })
+    },
+  },
+}
+</script>
+
+<template>
+  <view class="tone-player-page" :style="playerStyle">
+    <view class="player-shell v31-page-shell">
+      <view class="brand-row">
+        <button class="back-button" role="button" aria-label="返回" @click="exitSession"><view class="back-chevron" /></button>
+        <image class="brand-leaf" src="/static/v31-document/leaf.svg" mode="aspectFit" />
+        <view class="brand-copy"><text class="brand-name">HarmonyAI</text><text class="brand-tagline">用音乐，陪伴更好的你</text></view>
+        <view class="brand-motto"><text>五音和鸣</text><text>心自安宁</text><text class="motto-seal">和</text></view>
+      </view>
+
+      <view v-if="loading" class="loading-wrap">
+        <view class="loading-ring"></view>
+        <text class="loading-text">正在准备音乐…</text>
+      </view>
+
+      <view v-else-if="failurePresentation.isFailure" class="error-wrap ink-fade-in">
+        <view class="error-seal">
+          <text class="error-seal-text">音</text>
+        </view>
+        <text class="error-title">{{ failurePresentation.failure.title }}</text>
+        <text class="error-text">{{ failurePresentation.failure.message }}</text>
+        <view class="han-btn han-btn-primary btn-retry" @click="load">
+          <text class="btn-text">重试</text>
+        </view>
+        <text class="error-hint">{{ failurePresentation.failure.retry.notice }}</text>
+      </view>
+
+      <view v-else class="player-content ink-fade-up">
+        <view v-if="simulated" class="demo-banner">
+          <text class="demo-banner-text">演示模式：当前音乐为模拟数据</text>
+        </view>
+
+        <view class="hero-wrap" :class="{ 'hero-wrap--neutral': !playerPresentation.hasPrimaryTone }">
+          <view class="wave-ring" :class="{ 'wave-ring--playing': playing }">
+            <view v-if="playerPresentation.hasPrimaryTone" class="tone-hero-frame">
+              <image v-if="toneHeroSrc" class="tone-hero-image" :src="toneHeroSrc" mode="aspectFill" />
+              <view class="tone-copy">
+                <view class="tone-glyph-row"><text class="tone-glyph">{{ playerPresentation.primaryTone.glyph }}</text><text class="tone-seal">{{ toneSealText }}</text></view>
+              </view>
+            </view>
+            <view v-else class="neutral-hero-frame" aria-hidden="true" />
+          </view>
+        </view>
+
+        <!-- 控制区：只渲染 controller snapshot 经 presentation 格式化的进度 -->
+        <view class="progress-wrap">
+          <view id="player-progress-track" class="progress-track" role="progressbar" :aria-valuenow="progressPresentation.percent" aria-valuemin="0" aria-valuemax="100" @tap="handleProgressTap" @touchstart="handleSeekStart" @touchmove.stop.prevent="handleSeekMove" @touchend="handleSeekEnd" @touchcancel="handleSeekCancel">
+            <view class="progress-value" :style="{ width: progressPresentation.percent + '%' }"><view class="progress-thumb" /></view>
+          </view>
+          <view class="progress-times">
+            <text class="progress-time">{{ progressPresentation.currentText }} / {{ progressPresentation.totalText }}</text>
+          </view>
+        </view>
+        <view class="controls">
+          <view class="ctrl-play" @click="togglePlay" :aria-label="playing ? '暂停' : '播放'">
+            <view v-if="playing" class="pause-shape" aria-hidden="true">
+              <view class="pause-bar"></view>
+              <view class="pause-bar"></view>
+            </view>
+            <view v-else class="play-shape" aria-hidden="true"></view>
+          </view>
+        </view>
+
+        <view class="music-summary-card">
+          <view class="summary-heading"><view class="summary-note">♫</view><text>本次音乐</text></view>
+          <view class="music-summary-grid">
+            <view v-if="playerPresentation.hasPrimaryTone || playerPresentation.modeDisplayLabel" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.primaryTone.displayText || playerPresentation.modeDisplayLabel }}</text><text class="summary-label">{{ toneSummaryLabel }}</text></view>
+            <view v-if="playerPresentation.analysis.parameters.bpm.hasValue" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.analysis.parameters.bpm.displayText }}</text><text class="summary-label">舒缓节奏</text></view>
+            <view v-if="playerPresentation.instruments.hasValues" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.instruments.displayText }}</text><text class="summary-label">主要乐器</text></view>
+            <view v-if="playerPresentation.ambience.hasValues" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.ambience.displayText }}</text><text class="summary-label">音乐氛围</text></view>
+          </view>
+          <text v-if="playerPresentation.sourceLabel.isFallback" class="music-caption">{{ playerPresentation.sourceLabel.text }}</text>
+        </view>
+
+        <view class="actions">
+          <view class="player-action feedback-action" @click="goFeedback">
+            <view class="action-icon leaf-action-icon"><image src="/static/v31-document/leaf.svg" mode="aspectFit" /></view>
+            <view class="action-copy"><text class="action-title">反馈本次体验</text><text class="action-subtitle">让我们做得更好</text></view><text class="action-arrow">→</text>
+          </view>
+          <view class="player-action end-action" @click="exitSession">
+            <view class="action-icon"><view class="stop-square" /></view>
+            <view class="action-copy"><text class="action-title">结束本次聆听</text><text class="action-subtitle">愿你身心安宁</text></view>
+          </view>
+        </view>
+
+        <view v-if="analysisVisible" class="analysis-card">
+          <view
+            class="analysis-toggle"
+            role="button"
+            :aria-expanded="analysisExpanded"
+            @click="toggleAnalysis"
+          >
+            <view class="analysis-icon">析</view>
+            <view class="analysis-heading-copy">
+              <text class="analysis-title">为什么是这首音乐？</text>
+              <text class="analysis-subtitle">查看本次音乐的生成依据</text>
+            </view>
+            <view class="analysis-chevron" :class="{ 'analysis-chevron--expanded': analysisExpanded }" />
+          </view>
+
+          <view v-if="analysisVisible && analysisExpanded" class="analysis-details">
+            <view v-if="playerPresentation.analysis.playerSections.recentState.hasContent" class="analysis-section">
+              <view class="analysis-section-heading">
+                <text class="analysis-section-number">01</text>
+                <text class="analysis-section-title">资料状态</text>
+              </view>
+              <text class="analysis-section-text">{{ playerPresentation.analysis.stateSummary.text }}</text>
+            </view>
+
+            <view v-if="playerPresentation.analysis.playerSections.interpretation.hasContent" class="analysis-section">
+              <view class="analysis-section-heading">
+                <text class="analysis-section-number">02</text>
+                <text class="analysis-section-title">状态解读</text>
+              </view>
+              <text class="analysis-section-text">{{ playerPresentation.analysis.tendency.text }}</text>
+            </view>
+
+            <view v-if="playerPresentation.analysis.playerSections.direction.hasContent" class="analysis-section">
+              <view class="analysis-section-heading">
+                <text class="analysis-section-number">03</text>
+                <text class="analysis-section-title">本次调适方向</text>
+              </view>
+              <text v-for="item in playerPresentation.analysis.rationales.rows" :key="item.index" class="analysis-section-text">{{ item.text }}</text>
+            </view>
+
+            <view v-if="playerPresentation.analysis.playerSections.fiveTonePlan.hasContent" class="analysis-section">
+              <view class="analysis-section-heading">
+                <text class="analysis-section-number">04</text>
+                <text class="analysis-section-title">五音方案</text>
+              </view>
+              <text v-if="playerPresentation.analysis.modePlanLabel.hasText" class="analysis-plan-label">{{ playerPresentation.analysis.modePlanLabel.text }}</text>
+              <text v-if="playerPresentation.analysis.modeExplanation.hasText" class="analysis-section-text">{{ playerPresentation.analysis.modeExplanation.text }}</text>
+
+              <view v-if="playerPresentation.analysis.hasPrimaryTone" class="tone-reason">
+                <view class="tone-role-row">
+                  <text class="tone-name-badge">{{ playerPresentation.analysis.primaryTone.displayName }}</text>
+                  <text class="tone-role-badge">主音</text>
+                </view>
+                <text v-if="playerPresentation.analysis.primaryTone.explanation.hasText" class="analysis-section-text">{{ playerPresentation.analysis.primaryTone.explanation.text }}</text>
+              </view>
+
+              <view v-if="playerPresentation.analysis.hasSecondaryTone" class="tone-reason">
+                <view class="tone-role-row">
+                  <text class="tone-name-badge tone-name-badge--secondary">{{ playerPresentation.analysis.secondaryTone.displayName }}</text>
+                  <text class="tone-role-badge">辅音</text>
+                </view>
+                <text v-if="playerPresentation.analysis.secondaryTone.explanation.hasText" class="analysis-section-text">{{ playerPresentation.analysis.secondaryTone.explanation.text }}</text>
+              </view>
+            </view>
+
+            <view v-if="playerPresentation.analysis.playerSections.musicDesign.hasContent" class="analysis-section">
+              <view class="analysis-section-heading">
+                <text class="analysis-section-number">05</text>
+                <text class="analysis-section-title">音乐设计</text>
+              </view>
+              <view class="music-design-grid">
+                <view v-if="playerPresentation.analysis.parameters.bpm.hasValue" class="music-design-item">
+                  <text class="music-design-value">{{ playerPresentation.analysis.parameters.bpm.text }}</text>
+                  <text class="music-design-label">舒缓节奏</text>
+                  <text v-if="playerPresentation.analysis.parameters.bpm.explanation.hasText" class="music-design-reason">{{ playerPresentation.analysis.parameters.bpm.explanation.text }}</text>
+                </view>
+                <view v-if="playerPresentation.analysis.parameters.instruments.hasValues" class="music-design-item">
+                  <text class="music-design-value">{{ playerPresentation.analysis.parameters.instruments.text }}</text>
+                  <text class="music-design-label">主要乐器</text>
+                  <text v-if="playerPresentation.analysis.parameters.instruments.explanation.hasText" class="music-design-reason">{{ playerPresentation.analysis.parameters.instruments.explanation.text }}</text>
+                </view>
+                <view v-if="playerPresentation.analysis.parameters.ambience.hasValues" class="music-design-item">
+                  <text class="music-design-value">{{ playerPresentation.analysis.parameters.ambience.text }}</text>
+                  <text class="music-design-label">环境音</text>
+                  <text v-if="playerPresentation.analysis.parameters.ambience.explanation.hasText" class="music-design-reason">{{ playerPresentation.analysis.parameters.ambience.explanation.text }}</text>
+                </view>
+                <view v-if="playerPresentation.analysis.parameters.energy.hasValue" class="music-design-item">
+                  <text class="music-design-value">{{ playerPresentation.analysis.parameters.energy.value }}</text>
+                  <text class="music-design-label">能量走向</text>
+                  <text v-if="playerPresentation.analysis.parameters.energy.explanation.hasText" class="music-design-reason">{{ playerPresentation.analysis.parameters.energy.explanation.text }}</text>
+                </view>
+                <view v-if="playerPresentation.analysis.parameters.structure.hasValue" class="music-design-item">
+                  <text class="music-design-value">{{ playerPresentation.analysis.parameters.structure.value }}</text>
+                  <text class="music-design-label">音乐结构</text>
+                  <text v-if="playerPresentation.analysis.parameters.structure.explanation.hasText" class="music-design-reason">{{ playerPresentation.analysis.parameters.structure.explanation.text }}</text>
+                </view>
+              </view>
+            </view>
+
+            <text v-if="playerPresentation.analysis.disclaimer.hasText" class="analysis-disclaimer">{{ playerPresentation.analysis.disclaimer.text }}</text>
+          </view>
+        </view>
+        <view class="page-motto"><text>—　五音和鸣 · 乐养身心　—</text></view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<style scoped>
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.container {
+  min-height: 100vh;
+  padding: 48rpx 40rpx 60rpx;
+  box-sizing: border-box;
+}
+
+.header {
+  margin-bottom: 24rpx;
+}
+
+.step-tag {
+  display: inline-flex;
+}
+
+.step-tag-text {
+  font-size: 22rpx;
+  color: var(--ink-primary);
+  background: rgba(107, 124, 94, 0.1);
+  border: 1rpx solid rgba(107, 124, 94, 0.2);
+  border-radius: var(--radius-seal);
+  padding: 8rpx 18rpx;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+}
+
+.player-card {
+  padding: 48rpx 36rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ===== 唱片 ===== */
+.disc-wrap {
+  position: relative;
+  margin-bottom: 48rpx;
+  width: 320rpx;
+  height: 320rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.disc {
+  width: 320rpx;
+  height: 320rpx;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255,255,255,0.08) 0%, transparent 40%),
+    radial-gradient(circle, var(--ink-primary) 0%, var(--ink-primary-dark) 55%, var(--ink-700) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 20rpx 50rpx rgba(58, 53, 44, 0.22),
+    inset 0 0 0 16rpx rgba(255, 254, 250, 0.04);
+  position: relative;
+}
+
+.disc-spinning {
+  animation: discspin 10s linear infinite;
+}
+
+@keyframes discspin {
+  to { transform: rotate(360deg); }
+}
+
+.disc-inner {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  background: var(--paper-card-solid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 2rpx 10rpx rgba(58, 53, 44, 0.1);
+  z-index: 2;
+}
+
+.disc-tone {
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 52rpx;
+  color: var(--ink-primary);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.disc-groove {
+  position: absolute;
+  inset: 40rpx;
+  border-radius: 50%;
+  border: 1rpx solid rgba(255, 254, 250, 0.08);
+  pointer-events: none;
+}
+
+.disc-seal {
+  position: absolute;
+  right: 4rpx;
+  bottom: 24rpx;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: var(--radius-seal);
+  background: var(--ink-seal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-seal);
+  z-index: 3;
+  transform: rotate(8deg);
+}
+
+.disc-seal-text {
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 34rpx;
+  color: var(--text-inverse);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ===== 音乐信息 ===== */
+.music-source {
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  margin-bottom: 8rpx;
+  letter-spacing: 0.08em;
+}
+
+.music-instruments {
+  font-size: 24rpx;
+  color: var(--text-muted);
+  margin-bottom: 48rpx;
+  letter-spacing: 0.05em;
+}
+
+/* ===== 进度条 ===== */
+.progress-wrap {
+  width: 100%;
+  margin-bottom: 32rpx;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8rpx;
+  background: rgba(107, 124, 94, 0.1);
+  border-radius: 4rpx;
+  overflow: hidden;
+  margin-bottom: 12rpx;
+}
+
+.progress-value {
+  height: 100%;
+  background: var(--ink-seal);
+  border-radius: 4rpx;
+  transition: width 0.1s linear;
+  transform-origin: left;
+}
+
+.progress-times {
+  text-align: center;
+}
+
+.progress-time {
+  font-size: 22rpx;
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+}
+
+/* ===== 控制区 ===== */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 56rpx;
+  margin-bottom: 44rpx;
+}
+
+.ctrl-fav {
+  width: 80rpx;
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ctrl-fav-icon {
+  width: 48rpx;
+  height: 48rpx;
+  position: relative;
+  transition: all 0.2s ease-out;
+}
+
+/* 心形收藏图标（CSS SVG） */
+.heart-shape {
+  width: 100%;
+  height: 100%;
+  background: var(--ink-accent-light);
+  transform: rotate(-45deg);
+  position: relative;
+}
+
+.heart-shape::before,
+.heart-shape::after {
+  content: "";
+  width: 100%;
+  height: 100%;
+  background: inherit;
+  border-radius: 50%;
+  position: absolute;
+}
+
+.heart-shape::before {
+  top: -24rpx;
+  left: 0;
+}
+
+.heart-shape::after {
+  left: 24rpx;
+  top: 0;
+}
+
+.fav-active .heart-shape,
+.fav-active .heart-shape::before,
+.fav-active .heart-shape::after {
+  background: var(--ink-seal);
+}
+
+.ctrl-play {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 50%;
+  background: var(--ink-seal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-seal);
+  transition: all 0.25s ease-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.ctrl-play::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.ctrl-play:active {
+  transform: scale(0.96);
+  background: var(--ink-seal-dark);
+}
+
+/* 播放/暂停图标（CSS SVG） */
+.play-shape {
+  width: 0;
+  height: 0;
+  border-top: 32rpx solid transparent;
+  border-bottom: 32rpx solid transparent;
+  border-left: 52rpx solid var(--text-inverse);
+  margin-left: 8rpx;
+  position: relative;
+  z-index: 1;
+}
+
+.pause-shape {
+  display: flex;
+  gap: 16rpx;
+  position: relative;
+  z-index: 1;
+}
+
+.pause-bar {
+  width: 16rpx;
+  height: 40rpx;
+  background: var(--text-inverse);
+  border-radius: 2rpx;
+}
+
+.ctrl-duration {
+  width: 80rpx;
+  display: flex;
+  justify-content: center;
+}
+
+.ctrl-duration-text {
+  font-size: 24rpx;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+/* ===== 免责声明 ===== */
+.disclaimer-box {
+  background: rgba(107, 124, 94, 0.08);
+  border: 1rpx solid rgba(107, 124, 94, 0.12);
+  border-radius: var(--radius-md);
+  padding: 24rpx;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 40rpx;
+}
+
+.disclaimer-text {
+  font-size: 22rpx;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  text-align: center;
+}
+
+/* ===== 操作区 ===== */
+.actions {
+  width: 100%;
+}
+
+.han-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  border: none;
+  padding: 24rpx 48rpx;
+  transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.han-btn-primary {
+  background: var(--ink-seal);
+  color: var(--text-inverse);
+  border-radius: var(--radius-seal);
+  box-shadow: var(--shadow-seal);
+  position: relative;
+  overflow: hidden;
+}
+
+.han-btn-primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.han-btn-primary:active {
+  background: var(--ink-seal-dark);
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  width: 100%;
+  margin-bottom: 20rpx;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+
+.han-btn-ghost {
+  width: 100%;
+  background: rgba(251, 249, 244, 0.6);
+  color: var(--ink-700);
+  border: 1rpx solid var(--border-soft);
+  border-radius: var(--radius-seal);
+}
+
+.han-btn-ghost:active {
+  background: rgba(232, 227, 216, 0.8);
+}
+
+.btn-ghost {
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+
+.btn-text,
+.btn-text-ghost {
+  color: inherit;
+  font-size: 30rpx;
+}
+
+/* ===== 加载态 ===== */
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 120rpx 0;
+}
+
+.loading-ring {
+  width: 72rpx;
+  height: 72rpx;
+  border: 6rpx solid var(--border-light);
+  border-top-color: var(--ink-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  margin-top: 24rpx;
+  font-size: 26rpx;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+/* ===== 错误态 ===== */
+.error-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 100rpx 0;
+}
+
+.error-seal {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: var(--radius-seal);
+  background: var(--paper-card-solid);
+  border: 2rpx solid var(--ink-seal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 32rpx;
+  box-shadow: var(--shadow-seal);
+  transform: rotate(-4deg);
+}
+
+.error-seal-text {
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+  font-size: 64rpx;
+  color: var(--ink-seal);
+  font-weight: 700;
+}
+
+.error-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: var(--ink-700);
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", "Noto Serif SC", serif;
+  margin-bottom: 12rpx;
+  letter-spacing: 0.08em;
+}
+
+.error-text {
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  margin-bottom: 32rpx;
+  text-align: center;
+  max-width: 480rpx;
+  line-height: 1.6;
+}
+
+.btn-retry {
+  min-width: 220rpx;
+  font-family: "LXGW WenKai", "KaiTi", "STKaiti", serif;
+}
+
+.error-hint {
+  margin-top: 24rpx;
+  font-size: 22rpx;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.demo-banner {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24rpx;
+  width: 100%;
+}
+
+.demo-banner-text {
+  font-size: 22rpx;
+  color: var(--warning);
+  background: rgba(198, 138, 46, 0.1);
+  border: 1rpx solid rgba(198, 138, 46, 0.2);
+  border-radius: var(--radius-seal);
+  padding: 8rpx 20rpx;
+  letter-spacing: 0.05em;
+}
+</style>
+
+<style scoped>
+.tone-player { background:radial-gradient(circle at 65% 8%,var(--tone-soft),transparent 30%),linear-gradient(180deg,#fffdf8 0%,var(--tone-soft) 100%); }
+.tone-player .player-card { border:0; background:rgba(255,255,255,.72); border-radius:38rpx; box-shadow:0 24rpx 70rpx rgba(23,76,63,.13); }
+.tone-player .disc { background:radial-gradient(circle at 50% 45%,#fffdf4 0 16%,var(--tone-soft) 17% 54%,rgba(255,255,255,.75) 55% 100%); border:4rpx solid rgba(255,255,255,.9); box-shadow:0 0 0 16rpx color-mix(in srgb,var(--tone-accent) 14%,transparent),0 26rpx 60rpx rgba(34,67,57,.18); }
+.tone-player .disc-tone { color:var(--tone-accent); font-size:112rpx; font-family:"STKaiti","KaiTi",serif; }
+.tone-player .disc-seal,.tone-player .ctrl-play,.tone-player .progress-value { background:var(--tone-accent); }
+.tone-player .ctrl-play { box-shadow:0 0 0 18rpx color-mix(in srgb,var(--tone-accent) 12%,transparent),0 16rpx 40rpx rgba(38,72,60,.2); }
+.tone-player .btn-primary { background:linear-gradient(135deg,#c8553f,#a93b2e); border-radius:999rpx; }
+.tone-player .btn-ghost { border-radius:999rpx; }
+</style>
+
+<style scoped>
+/* ===== Owner V3.1 五音动态播放器 ===== */
+.tone-player-page {
+  width:100%;
+  max-width:430px;
+  min-height:100vh;
+  margin:0 auto;
+  color:#164f50;
+  background-color:#f8f6ed;
+  background-repeat:no-repeat;
+  background-position:center top;
+  background-size:100% 100%;
+}
+.player-shell { --v31-page-top-base:14px; --v31-page-bottom-base:26px; min-height:100vh; padding-left:16px; padding-right:16px; box-sizing:border-box; }
+.tone-player-page .brand-row { display:flex; align-items:center; min-height:46px; gap:8px; }
+.tone-player-page .back-button { display:flex; align-items:center; justify-content:center; width:28px; height:40px; margin:0; padding:0; border:0; background:transparent; }
+.tone-player-page .back-button::after { border:0; }
+.tone-player-page .back-chevron { width:11px; height:11px; border-left:2px solid #173e3d; border-bottom:2px solid #173e3d; transform:rotate(45deg); }
+.tone-player-page .brand-leaf { width:42px; height:42px; }
+.tone-player-page .brand-copy { display:flex; flex-direction:column; gap:1px; }
+.tone-player-page .brand-name { color:#194f4e; font-size:18px; font-weight:750; line-height:1.15; }
+.tone-player-page .brand-tagline { color:#416663; font-size:10px; letter-spacing:2px; }
+.brand-motto { position:relative; display:flex; flex-direction:column; align-items:flex-end; margin-left:auto; padding-right:18px; color:#285c59; font-family:'KaiTi','STKaiti',serif; font-size:11px; font-weight:700; line-height:1.25; transform:rotate(-5deg); }
+.motto-seal { position:absolute; right:0; bottom:0; display:flex; align-items:center; justify-content:center; width:14px; height:25px; border-radius:3px; color:#fff; background:#9d2821; font-size:8px; }
+.player-content { display:flex; flex-direction:column; align-items:center; }
+.tone-player-page .demo-banner { margin:2px 0 4px; }
+.tone-player-page .demo-banner-text { padding:3px 8px; font-size:8px; }
+.hero-wrap { display:flex; align-items:center; justify-content:center; width:100%; margin:7px 0 8px; }
+.wave-ring { position:relative; display:flex; align-items:center; justify-content:center; width:286px; max-width:82vw; height:286px; max-height:82vw; border-radius:50%; background:repeating-conic-gradient(from -3deg,var(--tone-accent) 0 1deg,transparent 1deg 3.6deg); opacity:.98; }
+.wave-ring::before { content:''; position:absolute; inset:12px; border-radius:50%; background:rgba(255,255,250,.82); box-shadow:0 0 0 1px color-mix(in srgb,var(--tone-accent) 30%,transparent); }
+.wave-ring--playing { animation:pulse-ring 2.6s ease-in-out infinite; }
+@keyframes pulse-ring { 50% { transform:scale(1.018); filter:saturate(1.08); } }
+.tone-hero-frame { position:relative; width:250px; max-width:72vw; height:250px; max-height:72vw; border:4px solid rgba(255,255,248,.88); border-radius:50%; overflow:hidden; z-index:1; box-shadow:0 5px 18px rgba(42,67,59,.16); background:var(--tone-soft); }
+.neutral-hero-frame { display:flex; align-items:center; justify-content:center; width:250px; max-width:72vw; height:250px; max-height:72vw; border:4px solid rgba(255,255,248,.88); border-radius:50%; box-sizing:border-box; z-index:1; box-shadow:0 5px 18px rgba(42,67,59,.12); background:rgba(241,244,243,.92); }
+.neutral-hero-label { max-width:70%; color:#536a66; font-family:'KaiTi','STKaiti',serif; font-size:22px; font-weight:800; line-height:1.4; text-align:center; }
+.tone-hero-image { width:100%; height:100%; border-radius:50%; }
+.tone-copy { position:absolute; top:45px; left:29px; display:flex; flex-direction:column; align-items:center; z-index:2; text-shadow:0 1px 2px rgba(255,255,255,.85); }
+.tone-glyph-row { display:flex; align-items:center; gap:6px; }
+.tone-glyph { color:#382b1c; font-family:'KaiTi','STKaiti',serif; font-size:42px; font-weight:800; line-height:1; }
+.tone-seal { display:flex; align-items:center; justify-content:center; width:18px; height:32px; border-radius:4px; color:#fff; background:#9e3028; font-family:'KaiTi','STKaiti',serif; font-size:9px; writing-mode:vertical-rl; }
+.tone-traits { width:16px; margin-top:5px; color:#263d37; font-family:'KaiTi','STKaiti',serif; font-size:11px; line-height:1.35; writing-mode:vertical-rl; letter-spacing:2px; }
+.tone-pair { color:#65462e; font-family:'KaiTi','STKaiti',serif; font-size:14px; letter-spacing:2px; }
+.tone-player-page .music-instruments { margin:8px 0 5px; color:#6c5039; font-family:'KaiTi','STKaiti',serif; font-size:13px; letter-spacing:1px; }
+.music-caption { color:#536a66; font-size:10px; line-height:1.5; text-align:center; }
+.tone-player-page .progress-wrap { width:90%; margin:15px 0 0; }
+.tone-player-page .progress-track { position:relative; width:100%; height:28px; margin:-12px 0; overflow:visible; border-radius:3px; background:transparent; }
+.tone-player-page .progress-track::before { position:absolute; top:12px; right:0; left:0; height:4px; border-radius:3px; background:rgba(73,85,80,.28); content:""; }
+.tone-player-page .progress-value { position:relative; top:12px; height:4px; border-radius:3px; background:var(--tone-accent); }
+.progress-thumb { position:absolute; top:50%; right:-5px; width:10px; height:10px; border-radius:50%; background:var(--tone-accent); transform:translateY(-50%); }
+.tone-player-page .progress-times { display:flex; justify-content:center; margin-top:7px; }
+.tone-player-page .progress-time { color:#3f5551; font-size:10px; letter-spacing:0; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.tone-player-page .controls { display:flex; justify-content:center; margin:3px 0 15px; }
+.tone-player-page .ctrl-play { display:flex; align-items:center; justify-content:center; width:78px; height:78px; border-radius:50%; background:var(--tone-accent); box-shadow:0 0 0 12px color-mix(in srgb,var(--tone-accent) 10%,transparent),0 8px 22px rgba(47,64,57,.22); }
+.tone-player-page .play-shape { border-top-width:13px; border-bottom-width:13px; border-left-width:21px; margin-left:5px; }
+.tone-player-page .pause-shape { gap:8px; }
+.tone-player-page .pause-bar { width:7px; height:25px; border-radius:3px; }
+.music-summary-card { width:100%; padding:12px 10px 13px; box-sizing:border-box; border:1px solid rgba(84,92,80,.12); border-radius:13px; background:rgba(255,255,250,.84); box-shadow:0 3px 12px rgba(62,74,65,.10); }
+.summary-heading { display:flex; align-items:center; gap:8px; margin-bottom:9px; color:#233e3a; font-family:'KaiTi','STKaiti',serif; font-size:17px; font-weight:800; }
+.summary-note { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:rgba(221,229,215,.9); color:var(--tone-accent); font-size:18px; }
+.music-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+.music-summary-cell { display:flex; flex-direction:column; align-items:center; min-width:0; min-height:54px; padding:4px 3px; box-sizing:border-box; border-right:1px solid rgba(80,90,82,.12); text-align:center; }
+.music-summary-cell:last-child { border-right:0; }
+.summary-value { max-width:100%; color:#2d3f3b; font-family:'KaiTi','STKaiti',serif; font-size:10px; font-weight:750; line-height:1.35; overflow-wrap:anywhere; }
+.summary-label { margin-top:4px; color:#667a75; font-size:8px; line-height:1.3; }
+.tone-player-page .actions { display:flex; flex-direction:column; gap:9px; width:78%; margin-top:13px; }
+.player-action { display:grid; grid-template-columns:36px minmax(0,1fr) 24px; align-items:center; min-height:58px; padding:7px 17px; box-sizing:border-box; border-radius:31px; }
+.feedback-action { color:#fff; background:linear-gradient(105deg,#c7513d,#b53d31); box-shadow:0 5px 15px rgba(155,54,43,.2); }
+.end-action { grid-template-columns:36px minmax(0,1fr); color:#243b37; border:1px solid rgba(255,255,255,.9); background:rgba(239,239,230,.84); }
+.action-icon { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border:1px solid currentColor; border-radius:50%; }
+.leaf-action-icon image { width:21px; height:21px; filter:brightness(0) invert(1); }
+.stop-square { width:9px; height:9px; border-radius:1px; background:currentColor; }
+.action-copy { display:flex; flex-direction:column; align-items:center; }
+.action-title { font-family:'KaiTi','STKaiti',serif; font-size:16px; font-weight:700; line-height:1.2; }
+.action-subtitle { margin-top:2px; font-size:8px; opacity:.82; }
+.action-arrow { font-size:22px; }
+.analysis-card { width:100%; margin-top:14px; box-sizing:border-box; border:1px solid rgba(84,92,80,.12); border-radius:14px; background:rgba(255,255,250,.88); box-shadow:0 4px 15px rgba(62,74,65,.10); overflow:hidden; }
+.analysis-toggle { display:grid; grid-template-columns:38px minmax(0,1fr) 18px; align-items:center; gap:10px; min-height:68px; padding:10px 14px; box-sizing:border-box; }
+.analysis-icon { display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%; color:var(--tone-accent); background:rgba(221,229,215,.82); font-family:'KaiTi','STKaiti',serif; font-size:17px; font-weight:800; }
+.analysis-heading-copy { display:flex; flex-direction:column; min-width:0; }
+.analysis-title { color:#21423e; font-family:'KaiTi','STKaiti',serif; font-size:18px; font-weight:800; line-height:1.3; }
+.analysis-subtitle { margin-top:2px; color:#657a75; font-size:10px; line-height:1.4; }
+.analysis-chevron { width:8px; height:8px; border-right:2px solid #285c59; border-bottom:2px solid #285c59; transform:rotate(45deg) translateY(-2px); transition:transform .2s ease; }
+.analysis-chevron--expanded { transform:rotate(225deg) translate(-2px,-2px); }
+.analysis-details { width:100%; padding:0 14px 14px; box-sizing:border-box; }
+.analysis-section { display:flex; flex-direction:column; min-width:0; padding:16px 0; border-top:1px solid rgba(80,90,82,.12); }
+.analysis-section-heading { display:flex; align-items:baseline; gap:9px; min-width:0; }
+.analysis-section-number { flex:0 0 auto; color:#a84d3c; font-size:10px; font-weight:800; line-height:1.4; }
+.analysis-section-title { min-width:0; color:#24504b; font-family:'KaiTi','STKaiti',serif; font-size:16px; font-weight:800; line-height:1.4; overflow-wrap:anywhere; }
+.analysis-section-text { margin-top:7px; color:#526863; font-size:11px; line-height:1.75; overflow-wrap:anywhere; }
+.analysis-plan-label { align-self:flex-start; margin-top:10px; padding:5px 10px; border:1px solid rgba(36,80,75,.16); border-radius:4px; color:#24504b; background:rgba(225,232,223,.54); font-size:11px; font-weight:700; line-height:1.35; }
+.tone-reason { display:flex; flex-direction:column; min-width:0; margin-top:13px; }
+.tone-role-row { display:flex; align-items:center; gap:7px; min-width:0; }
+.tone-name-badge,.tone-role-badge { display:inline-flex; align-items:center; justify-content:center; min-height:24px; padding:3px 9px; box-sizing:border-box; border-radius:4px; font-size:10px; line-height:1.3; }
+.tone-name-badge { color:#fff; background:var(--tone-accent); font-family:'KaiTi','STKaiti',serif; font-size:12px; font-weight:800; }
+.tone-name-badge--secondary { color:#315d56; background:#e1ebe5; }
+.tone-role-badge { color:#657a75; border:1px solid rgba(80,100,93,.16); background:rgba(255,255,252,.8); }
+.tone-role-lead { margin-top:7px; color:#304d48; font-size:11px; font-weight:700; line-height:1.65; overflow-wrap:anywhere; }
+.music-design-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-top:11px; }
+.music-design-item { display:flex; flex-direction:column; min-width:0; padding:11px; box-sizing:border-box; border:1px solid rgba(80,90,82,.10); border-radius:6px; background:rgba(255,255,252,.72); }
+.music-design-value { color:#284b46; font-family:'KaiTi','STKaiti',serif; font-size:14px; font-weight:800; line-height:1.4; overflow-wrap:anywhere; }
+.music-design-label { margin-top:3px; color:#72827e; font-size:9px; line-height:1.4; }
+.music-design-reason { margin-top:8px; color:#526863; font-size:10px; line-height:1.65; overflow-wrap:anywhere; }
+.analysis-preference { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:12px 0 2px; border-top:1px solid rgba(80,90,82,.12); }
+.analysis-preference-label { color:#7a8b86; font-size:9px; font-weight:700; }
+.analysis-preference-text { min-width:0; color:#47635e; font-size:10px; line-height:1.5; overflow-wrap:anywhere; }
+.analysis-disclaimer { display:block; margin-top:12px; padding-top:10px; border-top:1px solid rgba(80,90,82,.09); color:#7a8985; font-size:8px; line-height:1.6; text-align:left; overflow-wrap:anywhere; }
+.tone-player-page .page-motto { margin-top:13px; color:#496c67; font-family:'KaiTi','STKaiti',serif; font-size:10px; letter-spacing:1px; }
+.tone-player-page .loading-wrap,.tone-player-page .error-wrap { min-height:600px; padding:120px 20px; box-sizing:border-box; }
+.tone-player-page .error-text { color:#4f6661; }
+@media (max-width:350px) {
+  .player-shell { padding-left:10px; padding-right:10px; }
+  .brand-motto { font-size:10px; }
+  .wave-ring { width:254px; height:254px; }
+  .tone-hero-frame { width:220px; height:220px; }
+  .tone-copy { top:38px; left:24px; }
+  .tone-glyph { font-size:37px; }
+  .music-summary-card { padding-left:6px; padding-right:6px; }
+  .music-summary-cell { padding-left:1px; padding-right:1px; }
+  .summary-value { font-size:9px; }
+  .tone-player-page .actions { width:84%; }
+}
+</style>

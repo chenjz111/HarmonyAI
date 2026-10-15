@@ -1,0 +1,5 @@
+# Versions used for the guarded candidate tests, not a fully resolved lockfile.
+# Install only after independent dependency/security review; this task did not install.
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1

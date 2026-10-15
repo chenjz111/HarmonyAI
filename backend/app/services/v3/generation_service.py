@@ -1,0 +1,840 @@
+"""Agent 4 music generation task service.
+
+Manages GenerationTask / MusicAsset rows with a monotonic, terminal-only
+state machine, per-user idempotency, explicit reviewed fallback, and a
+controlled /api/v3/music/assets/{id}/stream surface. Private provider task
+ids and asset locators are never returned to clients.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
+from hashlib import sha256
+import json
+import logging
+from pathlib import Path
+import os
+import uuid
+
+from sqlalchemy.orm import Session, sessionmaker
+
+from backend.ai_engine.v3.music_provider import (
+    MusicGenerationProvider,
+    MusicProviderFailureV3,
+    build_matched_fallback_task,
+    map_provider_task_to_music_task,
+)
+from backend.app.core.audio_duration import mp3_duration_seconds
+from backend.app.core.database import SessionLocal
+from backend.app.models.v3.music import GenerationTask, MusicAsset
+from backend.app.models.v3.prescription import PrescriptionV3
+from backend.app.models.v3.session import V3IdempotencyRecord
+from backend.app.schemas.v3.common import AuthPrincipal
+from backend.app.schemas.v3.music import (
+    AudioAsset,
+    CancelledMusicTask,
+    FailedMusicTask,
+    MatchedFallbackMusicTask,
+    MusicFallback,
+    MusicGenerationV3Request,
+    MusicProgress,
+    MusicRef,
+    MusicProviderPolicy,
+    MusicTask,
+    ProviderMusicRequest,
+    QueuedMusicTask,
+    RunningMusicTask,
+    SucceededMusicTask,
+)
+from backend.app.schemas.v3.prescription import GenerationSpec
+from backend.app.services.v3 import legacy_mode_compat
+from backend.app.services.v3.legacy_mode_compat import LegacyProvenance
+
+_OPERATION = "create_music_generation"
+_POLL_AFTER_MS = 2000
+
+logger = logging.getLogger(__name__)
+
+_TERMINAL_STATUSES = {
+    "succeeded",
+    "matched_fallback",
+    "failed",
+    "cancelled",
+}
+
+_NO_FALLBACK = MusicFallback(applied=False, reason_code=None)
+
+# Same public provider-error vocabulary as music_provider mapping helpers.
+_PUBLIC_PROVIDER_ERRORS = {
+    "GENERATION_PROVIDER_UNAVAILABLE",
+    "GENERATION_PROVIDER_TIMEOUT",
+    "GENERATION_PROVIDER_RATE_LIMITED",
+    "GENERATION_PROVIDER_AUTH_FAILED",
+    "GENERATION_PROVIDER_REJECTED",
+}
+
+
+class IdempotencyConflict(RuntimeError):
+    pass
+
+
+class OwnedResourceNotFound(RuntimeError):
+    pass
+
+
+class GenerationNotAllowed(RuntimeError):
+    pass
+
+
+class GenerationCancelUnsupported(RuntimeError):
+    pass
+
+
+class AssetNotPlayable(RuntimeError):
+    pass
+
+
+class _GeneratedAudioValidationFailure(MusicProviderFailureV3):
+    pass
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _request_hash(payload: dict[str, object]) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+def _normalize_error_code(error_code: str | None) -> str:
+    if error_code in _PUBLIC_PROVIDER_ERRORS:
+        return error_code
+    return "GENERATION_PROVIDER_UNAVAILABLE"
+
+
+def _resolve_asset_path(storage_key: str | None) -> Path | None:
+    """Resolve a stored key to a local file; provider locators stay private."""
+    if not storage_key:
+        return None
+    path = Path(storage_key)
+    if not path.is_absolute():
+        root = Path(os.environ.get("HARMONY_MEDIA_ROOT", "media"))
+        path = root / path
+    return path if path.is_file() else None
+
+
+def _locator_checksum(locator: str) -> str:
+    if not locator:
+        return f"sha256:{'0' * 64}"
+    path = Path(locator)
+    if path.is_file():
+        return f"sha256:{sha256(path.read_bytes()).hexdigest()}"
+    return f"sha256:{sha256(locator.encode('utf-8')).hexdigest()}"
+
+
+def _message_for_status(status: str) -> str:
+    return {
+        "queued": "音乐生成任务已排队",
+        "running": "正在生成音乐",
+        "succeeded": "音乐已生成",
+        "matched_fallback": "生成服务暂时不可用，已使用审核曲库匹配",
+        "failed": "音乐生成服务暂时不可用",
+        "cancelled": "音乐生成任务已取消",
+    }[status]
+
+
+def _audio_asset_from_row(row: MusicAsset) -> AudioAsset:
+    # A pre-Phase-1A asset tone profile is resolved by the row-aware legacy
+    # compatibility resolver: known wellness / abstained / fabricated-Gong
+    # history never reads back as a personalized tone claim.
+    tone_profile, _compatibility = legacy_mode_compat.resolve_tone_profile_payload(
+        row.tone_profile_json,
+        LegacyProvenance(source="asset"),
+    )
+    return AudioAsset(
+        music_ref=MusicRef(
+            music_id=row.music_asset_id,
+            source_type=row.source_type,
+        ),
+        title=row.title,
+        stream_url=f"/api/v3/music/assets/{row.music_asset_id}/stream",
+        duration_seconds=row.duration_seconds,
+        format=row.format,
+        checksum=row.checksum,
+        tone_profile=tone_profile,
+        bpm=row.bpm,
+        instruments=row.instruments_json,
+    )
+
+
+def _progress_from_db(task: GenerationTask) -> MusicProgress | None:
+    if task.progress_value is not None:
+        return MusicProgress(
+            value=task.progress_value,
+            semantics="provider_reported_percent",
+            indeterminate=False,
+        )
+    return None
+
+
+def _find_owned_task(
+    db: Session,
+    principal: AuthPrincipal,
+    task_id: str,
+) -> GenerationTask:
+    task = db.query(GenerationTask).filter(
+        GenerationTask.task_id == task_id,
+        GenerationTask.internal_user_pk == principal.internal_user_pk,
+    ).one_or_none()
+    if task is None:
+        raise OwnedResourceNotFound
+    return task
+
+
+def _find_owned_asset(
+    db: Session,
+    principal: AuthPrincipal,
+    music_id: str,
+) -> MusicAsset:
+    asset = db.query(MusicAsset).filter(
+        MusicAsset.music_asset_id == music_id,
+        (MusicAsset.owner_internal_user_pk == principal.internal_user_pk)
+        | (MusicAsset.owner_internal_user_pk.is_(None)),
+    ).one_or_none()
+    if asset is None:
+        raise OwnedResourceNotFound
+    return asset
+
+
+def _find_matched_asset_for_user(db: Session, internal_user_pk: int) -> MusicAsset | None:
+    candidates = (
+        db.query(MusicAsset)
+        .filter(
+            MusicAsset.source_type == "matched",
+            MusicAsset.playable_status == "ready",
+            (MusicAsset.owner_internal_user_pk == internal_user_pk)
+            | (MusicAsset.owner_internal_user_pk.is_(None)),
+        )
+        .order_by(MusicAsset.created_at)
+        .all()
+    )
+    for candidate in candidates:
+        if candidate.bpm is not None and candidate.instruments_json:
+            return candidate
+    return None
+
+
+def _spec_for_task(db: Session, task: GenerationTask) -> GenerationSpec:
+    prescription = db.query(PrescriptionV3).filter(
+        PrescriptionV3.prescription_id == task.prescription_id
+    ).one_or_none()
+    if prescription is None or prescription.generation_spec_json is None:
+        raise RuntimeError("prescription generation_spec unavailable")
+    spec, _compatibility = legacy_mode_compat.resolve_generation_spec_payload(
+        prescription.generation_spec_json,
+        LegacyProvenance(
+            source="prescription",
+            prescription_mode=prescription.prescription_mode,
+        ),
+    )
+    return spec
+
+
+def _persist_generated_asset(
+    db: Session,
+    principal_pk: int,
+    task_id: str,
+    provider_task,
+    spec: GenerationSpec,
+) -> MusicAsset:
+    locator = provider_task.asset_locator or ""
+    # Owner rule: the stored duration MUST be measured from the actual saved
+    # audio. If it cannot be measured the generation is an explicit failure —
+    # the requested duration is never silently stored as the real duration.
+    measured_seconds = _measure_audio_duration_seconds(locator)
+    if measured_seconds is None:
+        raise _GeneratedAudioValidationFailure(
+            "GENERATION_PROVIDER_REJECTED",
+            retryable=False,
+            safe_message="生成音频时长无法读取，已停止使用该结果。",
+        )
+    row = MusicAsset(
+        music_asset_id=f"asset_{uuid.uuid4().hex}",
+        owner_internal_user_pk=principal_pk,
+        generation_task_id=task_id,
+        source_type="generated",
+        title=f"生成音频 {spec.bpm} BPM",
+        storage_key=locator,
+        format="mp3",
+        duration_seconds=measured_seconds,
+        checksum=_locator_checksum(locator),
+        tone_profile_json=spec.tone_profile.model_dump(mode="json"),
+        bpm=spec.bpm,
+        instruments_json=spec.instruments,
+        playable_status="ready",
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _measure_audio_duration_seconds(locator: str) -> int | None:
+    """Measured duration of the materialized generated audio, or None."""
+    path = Path(locator)
+    if not path.is_file():
+        return None
+    try:
+        measured = mp3_duration_seconds(path.read_bytes())
+    except (OSError, ValueError):
+        return None
+    if measured is None or measured <= 0:
+        return None
+    return max(1, int(round(measured)))
+
+
+def _provider_identity(provider: object) -> tuple[str, str | None]:
+    """Safe ops-internal provider name/model without returning credentials.
+
+    A provider may expose ``provider_audit_label`` to record both platform and
+    model (e.g. ``tokenhub/minimax-music-v3.0``) on the generation task; it is
+    still ops-internal metadata and never reaches clients.
+    """
+    label = getattr(provider, "provider_audit_label", None)
+    name = (
+        label
+        if isinstance(label, str) and label
+        else getattr(provider, "provider_name", None)
+    )
+    if not isinstance(name, str) or not name:
+        name = "music"
+    model = getattr(provider, "model", None)
+    return name, model if isinstance(model, str) and model else None
+
+
+def _safe_diagnostic_identifier(value: object | None) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(str(value).split())
+    return text[:128] or None
+
+
+def _log_audio_validation_failure(
+    provider: object, error: MusicProviderFailureV3
+) -> None:
+    metadata = getattr(provider, "last_run_metadata", None)
+    if not isinstance(metadata, Mapping):
+        metadata = {}
+    provider_name = _safe_diagnostic_identifier(
+        getattr(provider, "provider_name", None)
+    )
+    provider_model = _safe_diagnostic_identifier(getattr(provider, "model", None))
+    http_status = metadata.get("provider_http_status")
+    if not isinstance(http_status, int):
+        http_status = None
+    diagnostic = {
+        "provider_name": provider_name,
+        "provider_model": provider_model,
+        "provider_http_status": http_status,
+        "provider_error_code": None,
+        "provider_error_type": "audio_duration_validation",
+        "provider_error_message_short": error.safe_message[:200],
+        "provider_failure_stage": "audio_validation",
+        "provider_request_id": _safe_diagnostic_identifier(
+            metadata.get("request_id")
+        ),
+        "provider_trace_id": _safe_diagnostic_identifier(metadata.get("trace_id")),
+        "public_error_code": error.error_code,
+    }
+    logger.error(
+        "MUSIC_PROVIDER_FAILURE %s",
+        json.dumps(
+            diagnostic,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
+    )
+
+
+_PROMPT_AUDIT_KEYS = (
+    "compiler_version",
+    "dialect_id",
+    "prompt_checksum",
+    "input_spec_checksum",
+)
+
+
+def _provider_prompt_audit(provider: object) -> dict[str, str] | None:
+    """Prompt Compiler V2 identity from the provider's ops-internal metadata.
+
+    Only the four identity fields are persisted (never the prompt text, never
+    credentials/vendor payloads). Returns ``None`` when the provider did not
+    compile a prompt for this attempt, which leaves the nullable column unset.
+    """
+
+    metadata = getattr(provider, "last_run_metadata", None)
+    if not isinstance(metadata, Mapping):
+        return None
+    identity = {
+        key: metadata[key]
+        for key in _PROMPT_AUDIT_KEYS
+        if isinstance(metadata.get(key), str) and metadata.get(key)
+    }
+    return identity or None
+
+
+def _persist_task_outcome(
+    db: Session,
+    task: GenerationTask,
+    music_task: MusicTask,
+    provider_task_id: str | None,
+    provider_name: str | None = None,
+) -> None:
+    task.status = music_task.status
+    task.progress_value = (
+        music_task.progress.value
+        if music_task.progress is not None
+        and not music_task.progress.indeterminate
+        else None
+    )
+    task.progress_indeterminate = int(
+        music_task.progress.indeterminate if music_task.progress is not None else True
+    )
+    task.message_code = f"gen.{music_task.status}"
+    task.fallback_applied = int(music_task.fallback.applied)
+    task.fallback_reason_code = music_task.fallback.reason_code
+    task.error_code = music_task.error_code
+    task.provider_task_id = provider_task_id
+    if provider_name is not None:
+        task.provider = provider_name
+    if music_task.audio_asset is not None:
+        task.music_asset_id = music_task.audio_asset.music_ref.music_id
+    if music_task.status in _TERMINAL_STATUSES:
+        task.completed_at = _utc_now()
+    db.flush()
+
+
+def _apply_provider_task(
+    db: Session,
+    principal_pk: int,
+    task: GenerationTask,
+    provider_task,
+    provider_name: str | None = None,
+) -> MusicTask:
+    if provider_task.status == "succeeded":
+        asset_row = None
+        if task.music_asset_id is not None:
+            asset_row = db.query(MusicAsset).filter(
+                MusicAsset.music_asset_id == task.music_asset_id
+            ).one_or_none()
+        if asset_row is None:
+            asset_row = _persist_generated_asset(
+                db,
+                principal_pk,
+                task.task_id,
+                provider_task,
+                _spec_for_task(db, task),
+            )
+        generated = _audio_asset_from_row(asset_row)
+        music_task = map_provider_task_to_music_task(
+            task_id=task.task_id,
+            provider_task=provider_task,
+            generated_asset=generated,
+        )
+    else:
+        music_task = map_provider_task_to_music_task(
+            task_id=task.task_id,
+            provider_task=provider_task,
+            generated_asset=None,
+        )
+    _persist_task_outcome(
+        db,
+        task,
+        music_task,
+        provider_task.provider_task_id,
+        provider_name=provider_name,
+    )
+    return music_task
+
+
+def _failed_music_task(task_id: str, error_code: str) -> MusicTask:
+    return FailedMusicTask(
+        task_id=task_id,
+        status="failed",
+        progress=None,
+        message="音乐生成服务暂时不可用",
+        poll_after_ms=None,
+        audio_asset=None,
+        fallback=_NO_FALLBACK,
+        error_code=_normalize_error_code(error_code),
+    )
+
+
+def _music_task_from_db(
+    db: Session,
+    task: GenerationTask,
+) -> MusicTask:
+    status = task.status
+    if status == "queued":
+        return QueuedMusicTask(
+            task_id=task.task_id,
+            status="queued",
+            progress=None,
+            message=_message_for_status(status),
+            poll_after_ms=_POLL_AFTER_MS,
+            audio_asset=None,
+            fallback=_NO_FALLBACK,
+            error_code=None,
+        )
+    if status == "running":
+        return RunningMusicTask(
+            task_id=task.task_id,
+            status="running",
+            progress=_progress_from_db(task),
+            message=_message_for_status(status),
+            poll_after_ms=_POLL_AFTER_MS,
+            audio_asset=None,
+            fallback=_NO_FALLBACK,
+            error_code=None,
+        )
+    if status in {"succeeded", "matched_fallback"}:
+        asset_row = db.query(MusicAsset).filter(
+            MusicAsset.music_asset_id == task.music_asset_id
+        ).one_or_none()
+        if asset_row is None:
+            return _failed_music_task(task.task_id, "GENERATION_PROVIDER_UNAVAILABLE")
+        audio = _audio_asset_from_row(asset_row)
+        if status == "matched_fallback":
+            return MatchedFallbackMusicTask(
+                task_id=task.task_id,
+                status="matched_fallback",
+                progress=MusicProgress(
+                    value=100,
+                    semantics="completed",
+                    indeterminate=False,
+                ),
+                message=_message_for_status(status),
+                poll_after_ms=None,
+                audio_asset=audio,
+                fallback=MusicFallback(
+                    applied=True,
+                    reason_code=task.fallback_reason_code,
+                ),
+                error_code=None,
+            )
+        return SucceededMusicTask(
+            task_id=task.task_id,
+            status="succeeded",
+            progress=MusicProgress(
+                value=100,
+                semantics="completed",
+                indeterminate=False,
+            ),
+            message=_message_for_status(status),
+            poll_after_ms=None,
+            audio_asset=audio,
+            fallback=_NO_FALLBACK,
+            error_code=None,
+        )
+    if status == "failed":
+        return FailedMusicTask(
+            task_id=task.task_id,
+            status="failed",
+            progress=None,
+            message=_message_for_status(status),
+            poll_after_ms=None,
+            audio_asset=None,
+            fallback=_NO_FALLBACK,
+            error_code=task.error_code or "GENERATION_PROVIDER_UNAVAILABLE",
+        )
+    return CancelledMusicTask(
+        task_id=task.task_id,
+        status="cancelled",
+        progress=None,
+        message=_message_for_status("cancelled"),
+        poll_after_ms=None,
+        audio_asset=None,
+        fallback=_NO_FALLBACK,
+        error_code=None,
+    )
+
+
+def create_generation_task(
+    db: Session,
+    principal: AuthPrincipal,
+    request: MusicGenerationV3Request,
+    provider: MusicGenerationProvider,
+) -> tuple[MusicTask, bool]:
+    prescription = db.query(PrescriptionV3).filter(
+        PrescriptionV3.prescription_id == request.prescription_id,
+        PrescriptionV3.internal_user_pk == principal.internal_user_pk,
+    ).one_or_none()
+    if prescription is None:
+        raise OwnedResourceNotFound
+    if prescription.status not in {"success", "degraded"}:
+        raise GenerationNotAllowed
+
+    request_hash = _request_hash(request.model_dump(mode="json"))
+    record = db.query(V3IdempotencyRecord).filter(
+        V3IdempotencyRecord.internal_user_pk == principal.internal_user_pk,
+        V3IdempotencyRecord.operation == _OPERATION,
+        V3IdempotencyRecord.idempotency_key == request.idempotency_key,
+    ).one_or_none()
+    if record is not None and _as_utc(record.expires_at) <= _utc_now():
+        db.delete(record)
+        db.flush()
+        record = None
+    if record is not None:
+        if record.request_hash != request_hash:
+            raise IdempotencyConflict
+        if record.status == "succeeded" and record.resource_id:
+            existing = _find_owned_task(db, principal, record.resource_id)
+            return _music_task_from_db(db, existing), True
+
+    task_id = f"mtask_{uuid.uuid4().hex}"
+    if record is None:
+        record = V3IdempotencyRecord(
+            idempotency_record_id=f"idem_{uuid.uuid4().hex}",
+            internal_user_pk=principal.internal_user_pk,
+            operation=_OPERATION,
+            idempotency_key=request.idempotency_key,
+            request_hash=request_hash,
+            status="processing",
+            expires_at=_utc_now() + timedelta(hours=24),
+        )
+        db.add(record)
+
+    task = GenerationTask(
+        task_id=task_id,
+        internal_user_pk=principal.internal_user_pk,
+        session_row_id=prescription.session_row_id,
+        prescription_id=request.prescription_id,
+        idempotency_key=request.idempotency_key,
+        status="queued",
+        progress_indeterminate=0,
+        message_code="gen.queued",
+        fallback_applied=0,
+    )
+    db.add(task)
+    db.flush()
+
+    # The Provider call is deliberately NOT made here. A real provider (e.g. Tencent Cloud
+    # TokenHub / minimax-music-v3.0) takes minutes, which exceeds browser request timeouts and
+    # loses the task id. The task is persisted as queued, committed, and returned immediately;
+    # the router schedules execute_generation_task() which runs the provider in the background
+    # with its own database session.
+    record.resource_type = "generation_task"
+    record.resource_id = task_id
+    record.status = "succeeded"
+    record.response_code = 201
+    db.commit()
+    return _music_task_from_db(db, task), False
+
+
+def execute_generation_task(
+    task_id: str,
+    provider: MusicGenerationProvider,
+    *,
+    fallback_mode: str = "none",
+    bind=None,
+) -> None:
+    """Run the real Provider generation outside the request lifecycle.
+
+    Owns an independent database session bound to the same engine the request used (so
+    per-app databases, including isolated test databases, are honoured). The request-scoped
+    session object itself is already closed by the time this runs and is never reused.
+    """
+
+    factory = (
+        SessionLocal
+        if bind is None
+        else sessionmaker(bind=bind, autocommit=False, autoflush=False)
+    )
+    db = factory()
+    try:
+        task = db.query(GenerationTask).filter(
+            GenerationTask.task_id == task_id
+        ).one_or_none()
+        if task is None or task.status not in {"queued", "running"}:
+            return
+        internal_user_pk = task.internal_user_pk
+        try:
+            spec = _spec_for_task(db, task)
+            provider_request = ProviderMusicRequest(
+                provider_request_id=f"pr_{task.task_id}",
+                generation_spec=spec,
+                output_format="mp3",
+                callback_ref=None,
+            )
+            provider_name, _ = _provider_identity(provider)
+            provider_task = provider.create_task(provider_request)
+            _apply_provider_task(
+                db,
+                internal_user_pk,
+                task,
+                provider_task,
+                provider_name=provider_name,
+            )
+        except MusicProviderFailureV3 as error:
+            if isinstance(error, _GeneratedAudioValidationFailure):
+                _log_audio_validation_failure(provider, error)
+            provider_name, _ = _provider_identity(provider)
+            fallback_task = _try_fallback_for_task(
+                db,
+                internal_user_pk,
+                task,
+                fallback_mode=fallback_mode,
+                provider_error_code=error.error_code,
+            )
+            if fallback_task is not None:
+                music_task = fallback_task
+            else:
+                music_task = _failed_music_task(task.task_id, error.error_code)
+            _persist_task_outcome(
+                db,
+                task,
+                music_task,
+                None,
+                provider_name=provider_name,
+            )
+        except Exception:  # noqa: BLE001 - never leak internals; fail closed
+            _persist_task_outcome(
+                db,
+                task,
+                _failed_music_task(task.task_id, "GENERATION_PROVIDER_UNAVAILABLE"),
+                None,
+            )
+        # Sprint 6 Phase 5 (Prompt Compiler V2, P5-D4): persist the prompt
+        # identity for this attempt (success or failure). Identity only — the
+        # compiled prompt text is never stored.
+        prompt_audit = _provider_prompt_audit(provider)
+        if prompt_audit is not None:
+            task.prompt_audit_json = prompt_audit
+        db.commit()
+    except Exception:  # noqa: BLE001 - background worker must not raise
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _try_fallback_for_task(
+    db: Session,
+    internal_user_pk: int,
+    task: GenerationTask,
+    *,
+    fallback_mode: str,
+    provider_error_code: str,
+) -> MusicTask | None:
+    """Reviewed-catalog fallback resolved from persisted state (background path)."""
+
+    spec = _spec_for_task(db, task)
+    if fallback_mode != "local_matching" or not spec.fallback_policy.allow_local_matching:
+        return None
+    matched_row = _find_matched_asset_for_user(db, internal_user_pk)
+    if matched_row is None:
+        return None
+    matched = _audio_asset_from_row(matched_row)
+    request = MusicGenerationV3Request(
+        schema_version="music_generation_v3.0",
+        request_id=f"pr_{task.task_id}",
+        prescription_id=task.prescription_id,
+        idempotency_key=task.idempotency_key,
+        generation_spec=spec,
+        provider_policy=MusicProviderPolicy(
+            mode="prefer_real_generation", fallback="local_matching"
+        ),
+    )
+    return build_matched_fallback_task(
+        task_id=task.task_id,
+        request=request,
+        reason_code=provider_error_code,
+        matched_asset=matched,
+    )
+
+
+def get_generation_task(
+    db: Session,
+    principal: AuthPrincipal,
+    task_id: str,
+    provider: MusicGenerationProvider,
+) -> MusicTask:
+    task = _find_owned_task(db, principal, task_id)
+    if task.status in _TERMINAL_STATUSES:
+        return _music_task_from_db(db, task)
+    if task.provider_task_id is None:
+        return _music_task_from_db(db, task)
+    try:
+        provider_task = provider.get_task(task.provider_task_id)
+        provider_name, _ = _provider_identity(provider)
+        music_task = _apply_provider_task(
+            db,
+            principal.internal_user_pk,
+            task,
+            provider_task,
+            provider_name=provider_name,
+        )
+        db.commit()
+        return music_task
+    except MusicProviderFailureV3:
+        db.rollback()
+        return _music_task_from_db(db, task)
+
+
+def cancel_generation_task(
+    db: Session,
+    principal: AuthPrincipal,
+    task_id: str,
+    provider: MusicGenerationProvider,
+) -> MusicTask:
+    task = _find_owned_task(db, principal, task_id)
+    if task.status in _TERMINAL_STATUSES:
+        return _music_task_from_db(db, task)
+    if task.provider_task_id is None:
+        task.status = "cancelled"
+        task.message_code = "gen.cancelled"
+        task.completed_at = _utc_now()
+        db.commit()
+        return _music_task_from_db(db, task)
+    try:
+        provider_task = provider.cancel_task(task.provider_task_id)
+    except MusicProviderFailureV3 as error:
+        if error.error_code == "GENERATION_CANCEL_UNSUPPORTED":
+            raise GenerationCancelUnsupported from None
+        raise
+    provider_name, _ = _provider_identity(provider)
+    music_task = _apply_provider_task(
+        db,
+        principal.internal_user_pk,
+        task,
+        provider_task,
+        provider_name=provider_name,
+    )
+    db.commit()
+    return music_task
+
+
+def get_playable_asset_stream_path(
+    db: Session,
+    principal: AuthPrincipal,
+    music_id: str,
+) -> tuple[MusicAsset, Path]:
+    asset = _find_owned_asset(db, principal, music_id)
+    if asset.playable_status != "ready":
+        raise AssetNotPlayable
+    path = _resolve_asset_path(asset.storage_key)
+    if path is None:
+        raise AssetNotPlayable
+    return asset, path
