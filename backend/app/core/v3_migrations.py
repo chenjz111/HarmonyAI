@@ -205,6 +205,7 @@ def rollback_auth_foundation(engine: Engine):
     try:
         cursor = raw.cursor()
         cursor.execute('BEGIN IMMEDIATE')
+        _preflight_sqlite_auth_epoch_drop(cursor)
         _execute_sqlite_statements(cursor,_read_migration('sqlite','0011_v3_auth_foundation','down'))
         raw.commit()
     except Exception:
@@ -212,6 +213,30 @@ def rollback_auth_foundation(engine: Engine):
         raise
     finally:
         raw.close()
+
+
+def _preflight_sqlite_auth_epoch_drop(cursor):
+    """Probe table CHECK compatibility on a schema-only in-memory copy.
+
+    SQLite cannot drop an auth_epoch referenced by an ORM table-level CHECK.
+    Do not rebuild the real identity table or first drop auth_sessions and hope
+    rollback is sufficient. This conservative probe never copies user rows and
+    is performed under the original connection's write transaction/lock.
+    """
+    import sqlite3
+    from contextlib import closing
+    row = cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='user_identities'").fetchone()
+    if row is None or not row[0]:
+        raise MigrationSchemaMismatch('SQLite auth downgrade has no identity table definition')
+    with closing(sqlite3.connect(':memory:')) as probe:
+        try:
+            probe.execute(row[0])
+            probe.execute('ALTER TABLE user_identities DROP COLUMN auth_epoch')
+        except sqlite3.Error as error:
+            raise MigrationSchemaMismatch(
+                'SQLite auth downgrade unsupported for this identity table definition; '
+                'fresh-create table CHECK requires separately approved rebuild or snapshot recovery'
+            ) from error
 
 
 def _default_migrations_root() -> Path:

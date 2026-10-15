@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect, text, event
 from sqlalchemy.exc import IntegrityError
 
 from backend.app.core import v3_migrations as migrations
@@ -234,3 +234,42 @@ def test_refresh_hash_storage_rejects_empty_digest(old_database):
     with pytest.raises(IntegrityError):
         with old_database.begin() as connection:
             connection.execute(text("INSERT INTO auth_sessions(auth_session_id,internal_user_pk,refresh_credential_hash,family_id,expires_at) VALUES('empty',7,'','family','2099-01-01')"))
+
+
+def test_fresh_create_downgrade_refused_before_destructive_ddl(tmp_path, monkeypatch):
+    """Table-level auth_epoch CHECK cannot survive SQLite DROP COLUMN."""
+    from backend.app.core import database
+    engine = create_engine(f'sqlite:///{tmp_path / "fresh-down.sqlite"}')
+    monkeypatch.setattr(database,'engine',engine)
+    database.init_database()
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO user_identities(internal_user_pk,public_user_id,auth_type) VALUES(1,'synthetic:fresh-down','registered')"))
+    raw = engine.raw_connection()
+    try:
+        before_schema = raw.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall()
+        before_identity = raw.execute('SELECT * FROM user_identities').fetchall()
+        before_ledger = raw.execute('SELECT * FROM schema_migrations ORDER BY version').fetchall()
+        statements = []
+        def trace_checkout(connection, record, proxy):
+            connection.set_trace_callback(statements.append)
+        def clear_trace(connection, record):
+            if connection is not None:
+                connection.set_trace_callback(None)
+        event.listen(engine,'checkout',trace_checkout)
+        event.listen(engine,'checkin',clear_trace)
+        try:
+            with pytest.raises(migrations.MigrationSchemaMismatch,match='downgrade'):
+                migrations.rollback_auth_foundation(engine)
+        finally:
+            event.remove(engine,'checkout',trace_checkout)
+            event.remove(engine,'checkin',clear_trace)
+        assert any(statement.lstrip().upper().startswith('SELECT ') for statement in statements)
+        assert not any(statement.lstrip().upper().startswith(('DROP ','ALTER ','CREATE ')) for statement in statements)
+        assert raw.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall() == before_schema
+        assert raw.execute('SELECT * FROM user_identities').fetchall() == before_identity
+        assert raw.execute('SELECT * FROM schema_migrations ORDER BY version').fetchall() == before_ledger
+        assert raw.execute('PRAGMA foreign_key_check').fetchall() == []
+    finally:
+        raw.driver_connection.set_trace_callback(None)
+        raw.close()
+        engine.dispose()

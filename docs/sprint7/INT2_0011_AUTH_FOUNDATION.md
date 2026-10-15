@@ -48,6 +48,11 @@ rollback_auth_foundation(engine)仅支持显式SQLite操作，不在初始化/�
 先验证历史/checksum、要求0011为最后已应用版本，再执行有防丢数据CHECK的down SQL。
 auth_sessions非空、任何auth_epoch不为0或有更高版本时拒绝；无自动删除会话或重置epoch。
 SQLite DROP COLUMN要求>=3.35。测试覆盖拒绝条件、成功降级及随后重新升级。
+fresh-create的ORM使用表级auth_epoch CHECK，SQLite不能直接DROP该列；本路径明确不支持自动降级。
+rollback_auth_foundation在原库BEGIN IMMEDIATE后、任何降级DDL前，使用仅含identity表定义的内存副本探测DROP兼容性；不复制用户数据、不重建原表。
+不兼容时抛MigrationSchemaMismatch，原表、约束、数据及ledger均不变。SQLite down SQL只允许经该入口执行，不得裸跑。
+旧0010经0011 ALTER升级产生列级CHECK，原有安全降级/再升级仍保留。
+fresh-create需要降级时，先停机并申请独立审查的备份恢复或表重建方案，本PR不擅自实施。
 降级后不能继续使用需要auth_epoch的新ORM承接请求，必须停机并与代码版本同步切换。
 
 MySQL DDL隐式提交；普通engine.begin不是整批DDL原子性保证。
@@ -78,3 +83,11 @@ MySQL仅SQL静态审阅、模型DDL编译与渲染逻辑检查，真实执行NOT
 4. 先闭合真实MySQL/单迁移进程/失败恢复Gate，再批准部署；业务API/helper/权限和stream仍单独验收。
 
 本PR不代表M1、正式认证或生产数据库迁移已验收/执行完成。
+
+## 合并前定向修正
+
+真实SQLite临时文件库复现：fresh-create的表级CHECK导致DROP auth_epoch报no such column。
+新增回归验证明确拒绝发生在破坏性DDL前，并比较原schema、identity数据、迁移ledger及foreign_key_check。
+限制的是fresh-create自动降级，不限制正常初始化、升级或旧库列级CHECK的降级。
+本次重新执行同一受影响集合：71 passed / 0 failed / 0 skipped / 1 Starlette warning。
+本段为追加修正回执，上文70项为首轮交付历史回执；MySQL真实执行仍NOT RUN，生产部署Gate不变。
