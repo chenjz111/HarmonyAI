@@ -209,14 +209,16 @@ def _find_owned_asset(
     principal: AuthPrincipal,
     music_id: str,
 ) -> MusicAsset:
-    asset = db.query(MusicAsset).filter(
-        MusicAsset.music_asset_id == music_id,
-        (MusicAsset.owner_internal_user_pk == principal.internal_user_pk)
-        | (MusicAsset.owner_internal_user_pk.is_(None)),
-    ).one_or_none()
-    if asset is None:
-        raise OwnedResourceNotFound
-    return asset
+    # Stream-only lookup. Do not change Catalog candidate matching authority.
+    from backend.app.services.v3.music_library_access import (
+        LibraryAccessDenied, require_library_access,
+    )
+    try:
+        return require_library_access(
+            db, internal_user_pk=principal.internal_user_pk, music_id=music_id,
+        ).asset
+    except LibraryAccessDenied:
+        raise OwnedResourceNotFound from None
 
 
 def _find_matched_asset_for_user(db: Session, internal_user_pk: int) -> MusicAsset | None:
@@ -831,10 +833,14 @@ def get_playable_asset_stream_path(
     principal: AuthPrincipal,
     music_id: str,
 ) -> tuple[MusicAsset, Path]:
+    from backend.app.services.v3.music_library_access import library_availability
+    from backend.app.services.v3.music_library_service import resolve_library_audio_path
+
     asset = _find_owned_asset(db, principal, music_id)
-    if asset.playable_status != "ready":
+    # Authorize before inspecting retention, status or private storage.
+    if library_availability(asset, now=_utc_now()) != "ready":
         raise AssetNotPlayable
-    path = _resolve_asset_path(asset.storage_key)
+    path = resolve_library_audio_path(asset)
     if path is None:
         raise AssetNotPlayable
     return asset, path

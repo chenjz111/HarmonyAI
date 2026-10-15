@@ -85,11 +85,20 @@ def _availability(asset: MusicAsset, *, now: datetime) -> str:
         return "expired"
     if asset.playable_status != "ready":
         return asset.playable_status
+    return "ready" if resolve_library_audio_path(asset) is not None else "missing"
+
+
+def resolve_library_audio_path(asset: MusicAsset) -> Path | None:
+    """Return only a canonical, controlled, actually readable local file.
+
+    Callers must establish membership before invoking this storage-only helper.
+    Shared by availability and Stream: never fall back to the unchecked locator.
+    """
     # The legacy stream resolver supports local paths only. Constrain its
     # input before it touches storage; unknown/remote locators fail closed.
     key = asset.storage_key
     if not isinstance(key, str) or not key.strip() or "\x00" in key:
-        return "missing"
+        return None
     try:
         from backend.app.services.v3.generation_service import _resolve_asset_path
 
@@ -98,25 +107,25 @@ def _availability(asset: MusicAsset, *, now: datetime) -> str:
         # Do not probe UNC/network shares, device paths, drive-relative paths,
         # URLs or NTFS alternate data streams.
         if str(raw_root).startswith(("\\\\", "//")) or str(raw_path).startswith(("\\\\", "//")):
-            return "missing"
+            return None
         if ".." in raw_path.parts or (raw_path.drive and not raw_path.is_absolute()):
-            return "missing"
+            return None
         if any(":" in part for part in raw_path.parts[1 if raw_path.anchor else 0:]):
-            return "missing"
+            return None
         root = raw_root.resolve(strict=True)
         candidate = (raw_path if raw_path.is_absolute() else root / raw_path).resolve(strict=True)
         if not candidate.is_relative_to(root):
-            return "missing"
+            return None
         path = _resolve_asset_path(str(candidate))
         if path is None:
-            return "missing"
+            return None
         with path.open("rb") as audio:
             if not stat.S_ISREG(os.fstat(audio.fileno()).st_mode):
-                return "missing"
+                return None
             audio.read(1)
-        return "ready"
+        return path
     except (OSError, ValueError, RuntimeError):
-        return "missing"
+        return None
 
 
 def list_owner_music_history(
