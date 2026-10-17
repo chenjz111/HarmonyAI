@@ -1,0 +1,9 @@
+{
+  "contract": "int2-isolated-draft-1",
+  "production_enabled": false,
+  "owner_music_state": {"internal_user_pk": 1, "library_epoch": 0, "feedback_evidence_epoch": 0, "preference_clear_cutoff": null},
+  "music_library_state": {"internal_user_pk": 1, "music_asset_id": "shared", "user_title": null, "last_played_at": null, "metadata_version": 0},
+  "music_playback_events": {"internal_user_pk": 1, "event_id": "synthetic-event-1", "music_asset_id": "shared", "origin_task_id": null, "event_type": "play_started", "played_at": "2026-10-15T00:00:00Z"},
+  "legacy_feedback_extensions": {"learning_consent": 0, "consent_policy_version": null, "consented_at": null, "deleted_at": null, "source_task_id": null, "evidence_epoch": null, "request_fingerprint": null},
+  "legacy_preference_version_extensions": {"evidence_epoch": null}
+}
