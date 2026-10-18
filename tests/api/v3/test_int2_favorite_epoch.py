@@ -23,8 +23,8 @@ def principal(pk=7):
     return AuthPrincipal(internal_user_pk=pk,public_user_id=f'synthetic-{pk}',auth_type='registered',guest_expires_at=None)
 
 
-@pytest.fixture
-def resources(tmp_path,monkeypatch):
+@pytest.fixture(params=[False,True],ids=['production-no-autoflush','legacy-autoflush'])
+def resources(tmp_path,monkeypatch,request):
     engine=create_engine(f'sqlite:///{tmp_path / "favorites.sqlite"}',connect_args={'check_same_thread':False})
     @event.listens_for(engine,'connect')
     def foreign_keys(connection,record):
@@ -44,7 +44,7 @@ def resources(tmp_path,monkeypatch):
     monkeypatch.setenv('HARMONY_MEDIA_ROOT',str(media))
     monkeypatch.setenv('HARMONY_LIBRARY_CURSOR_SECRET','synthetic-favorite-cursor-secret-0123456789')
     try:
-        yield engine,sessionmaker(bind=engine)
+        yield engine,sessionmaker(bind=engine,autoflush=request.param,autocommit=False)
     finally:
         engine.dispose()
 
@@ -191,10 +191,17 @@ def test_real_feedback_race_keeps_stage1_and_one_favorite_epoch(resources,same_k
     engine,factory=resources
     barrier=Barrier(2,timeout=10)
     connections=set()
+    mutex=Lock()
     def synchronize(connection,cursor,sql,parameters,context,many):
-        if sql.lower().lstrip().startswith('insert into feedback_v3'):
-            connections.add(id(connection.connection.driver_connection))
-            barrier.wait()
+        # Synchronize BEFORE each connection's first real write. Waiting after
+        # an earlier Favorite INSERT would deadlock our own test on SQLite.
+        if sql.lower().lstrip().startswith(('insert into feedback_v3','insert into favorites')):
+            with mutex:
+                identity=id(connection.connection.driver_connection)
+                first=identity not in connections
+                connections.add(identity)
+            if first:
+                barrier.wait()
     event.listen(engine,'before_cursor_execute',synchronize)
     try:
         with ThreadPoolExecutor(max_workers=2) as workers:
@@ -238,3 +245,73 @@ def test_legacy_null_owner_with_invalid_task_still_does_not_grant_library_access
         service.set_favorite(db,principal(),'unclaimed')
         with pytest.raises(LibraryAccessDenied):
             require_library_access(db,internal_user_pk=7,music_id='unclaimed')
+
+
+@pytest.mark.parametrize('intent',[True,False])
+def test_real_feedback_and_direct_favorite_race(resources,intent):
+    engine,factory=resources
+    if not intent:
+        with factory.begin() as db:
+            db.add(Favorite(favorite_id='mixed-before',internal_user_pk=7,music_asset_id='owned1'))
+    barrier=Barrier(2,timeout=10)
+    connections=set()
+    mutex=Lock()
+    def synchronize(connection,cursor,sql,parameters,context,many):
+        if sql.lower().lstrip().startswith(('insert into feedback_v3','insert into favorites','delete from favorites')):
+            with mutex:
+                identity=id(connection.connection.driver_connection)
+                first=identity not in connections
+                connections.add(identity)
+            if first:
+                barrier.wait()
+    def direct():
+        with factory() as db:
+            return (service.set_favorite if intent else service.remove_favorite)(db,principal(),'owned1')
+    event.listen(engine,'before_cursor_execute',synchronize)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            fb=workers.submit(feedback,factory,intent,'mixed')
+            favorite=workers.submit(direct)
+            result,replayed=fb.result(timeout=20)
+            assert favorite.result(timeout=20).is_favorite is intent
+    finally:
+        event.remove(engine,'before_cursor_execute',synchronize)
+    assert len(connections)==2 and result.status=='saved' and not replayed
+    assert epoch(factory)==1
+    feedback(factory,intent,'mixed')
+    assert epoch(factory)==1
+    with factory() as db:
+        assert db.query(FeedbackV3).count()==1
+        assert db.query(Favorite).filter_by(internal_user_pk=7,music_asset_id='owned1').count()==int(intent)
+
+
+def test_real_first_owner_state_unique_conflict_is_not_a_favorite_success(resources):
+    from sqlalchemy.exc import IntegrityError
+    engine,factory=resources
+    barrier=Barrier(2,timeout=10)
+    connections=set()
+    def synchronize(connection,cursor,sql,parameters,context,many):
+        if sql.lower().lstrip().startswith('insert into owner_music_state'):
+            connections.add(id(connection.connection.driver_connection))
+            barrier.wait()
+    def create():
+        with factory() as db:
+            try:
+                state.lock_owner_music_state(db,internal_user_pk=7)
+                db.commit()
+                return 'created'
+            except IntegrityError:
+                db.rollback()
+                return 'unique-conflict'
+    event.listen(engine,'before_cursor_execute',synchronize)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            futures=[workers.submit(create) for _ in range(2)]
+            results=[future.result(timeout=20) for future in futures]
+    finally:
+        event.remove(engine,'before_cursor_execute',synchronize)
+    assert len(connections)==2 and sorted(results)==['created','unique-conflict']
+    assert epoch(factory)==0
+    with factory() as db:
+        assert db.execute(text('SELECT count(*) FROM owner_music_state')).scalar_one()==1
+        assert db.query(Favorite).filter_by(music_asset_id='owned1').count()==0

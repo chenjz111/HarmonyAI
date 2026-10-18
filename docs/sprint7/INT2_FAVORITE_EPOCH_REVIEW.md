@@ -1,6 +1,7 @@
 # INT-2 Favorite epoch repair and new-member audit
 
-Status: BLOCKED batch; Favorite subset retained for independent review only.
+Status: independent Favorite subset candidate for Draft review. Generation epoch
+remains OPEN and is not a prerequisite for publishing this separated subset.
 Base: `854ffae1f874d552f1d7d5dbdae8412eb2ee5bd3`.
 No deployment, production-route, authorization or Preference consent approval.
 
@@ -70,11 +71,13 @@ protect the background worker's broad exception handlers: epoch failure must not
 be classified as Provider failure and commit an already-flushed owned asset or
 fallback membership without invalidation. SQLite and MySQL locking differ.
 
-Per the Owner stop condition, Generation source and lifecycle are left unchanged.
+Per the original Owner stop condition, Generation source and lifecycle were left unchanged.
 Required next decision: authorize the minimal owner-scoped membership serialization
 and transaction-failure boundary, without Provider retry, then require independent
 connection races plus generated/fallback rollback and replay tests. New asset
-cursor invalidation remains a blocker; this combined candidate is not pushed.
+cursor invalidation remains an OPEN Gate. The earlier combined batch was not
+pushed; the new Owner scope permits an independent Favorite-only Draft PR after
+production-setting regression. Generation design is private and excluded.
 
 ## Verification record
 
@@ -118,7 +121,7 @@ actual missing epoch increment. No production Generation implementation changed.
 MySQL actual execution, H5/full App/device/production deployment remain NOT RUN.
 Real Windows symlink limitations stay distinct from controlled path tests.
 
-## Independent local-checkpoint review
+## Historical independent local-checkpoint review
 
 No definite Critical/Important defect was identified in the retained Favorite
 subset. This does not clear the stopped Generation blocker or approve a push.
@@ -137,3 +140,36 @@ constraint just to create a purported bound-failed-task case.
 Real MySQL locking/deadlocks, production deployment, live Provider behavior,
 PF-1B unpublished work and the stopped Generation implementation are not certified
 by this local checkpoint. No remote branch or Draft PR is published for the batch.
+
+## Production-session supplemental acceptance
+
+The earlier autoflush gap is addressed by running every new test with explicit
+autoflush=False (production) and autoflush=True (historical compatibility), both
+autocommit=False. Targeted result:52passed/0failed/0skipped/1warning;26 per config.
+No production Session setting or business implementation was changed this round.
+
+New true-connection races cover Feedback vs direct Favorite PUT/DELETE and the
+first owner-state INSERT unique collision. Existing PUT/DELETE and same/different
+Feedback idempotency-key races run under both configurations. SQL listeners only
+synchronize each connection before its first actual DML; no SQL/results/errors
+are replaced. This avoids artificial SQLite barrier deadlocks after a prior write.
+Real owner-state collision yields one row and one confirmed IntegrityError with
+rollback, zero Favorite/epoch side effects. Duplicate Favorite insertion and
+conditional deletion yield exactly one actual state change and epoch increment.
+No claim of equivalent real MySQL concurrency is made.
+
+Exception injection evidence is separate: a real epoch UPDATE executes and then
+an injected RuntimeError verifies rollback of Favorite/Feedback/state. Injected
+stage2 failure verifies durable stage1 remains and replay does not bump again.
+These tests are not represented as actual database lock failures.
+
+Generation production source,0011/0012 SQL, routes and permission policy remain
+unchanged. A separate private Generation transaction design is not in this PR.
+
+Fresh full supplemental command uses the same twelve files listed above, with
+expanded52case Favorite file and a new private basetemp/media root:
+**300passed/0failed/2skipped/2warnings**. Earlier271 counts are historical.
+Skip/warning explanations unchanged. Fresh Frontend Fixture2+Adapter6passed,
+0failed/0skipped, one known warning per Node process. Fresh guard7passed,
+0failed/0skipped/0warnings. AST2 and whitespace pass. No production settings,
+Generation implementation or historical fixtures were weakened to get this result.
