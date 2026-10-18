@@ -28,6 +28,9 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    BigInteger,
+    ForeignKeyConstraint,
+    column,
     String,
     UniqueConstraint,
 )
@@ -45,8 +48,7 @@ class MusicLibraryState(Base):
             "metadata_version >= 0", name="ck_music_library_state_version"
         ),
         CheckConstraint(
-            "user_title IS NULL OR (length(user_title) >= 1 "
-            "AND length(user_title) <= 120)",
+            column('user_title').is_(None) | ((func.char_length(column('user_title')) >= 1) & (func.char_length(column('user_title')) <= 120)),
             name="ck_music_library_state_title",
         ),
     )
@@ -62,7 +64,7 @@ class MusicLibraryState(Base):
         primary_key=True,
     )
     user_title = Column(String(120), nullable=True)
-    metadata_version = Column(Integer, nullable=False, default=0)
+    metadata_version = Column(BigInteger, nullable=False, default=0, server_default='0')
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -79,6 +81,11 @@ class MusicPlaybackEvent(Base):
 
     __tablename__ = "music_playback_events"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ['source_context_id','internal_user_pk','music_asset_id'],
+            ['generation_tasks.task_id','generation_tasks.internal_user_pk','generation_tasks.music_asset_id'],
+            name='fk_playback_owner_asset_context',
+        ),
         UniqueConstraint(
             "internal_user_pk", "event_id", name="uq_music_playback_events_owner_event"
         ),
@@ -93,6 +100,7 @@ class MusicPlaybackEvent(Base):
             "source_context_id IS NULL OR length(source_context_id) <= 64",
             name="ck_music_playback_events_context",
         ),
+        {'sqlite_autoincrement': True},
     )
 
     playback_event_row_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -135,8 +143,9 @@ class OwnerMusicState(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    library_epoch = Column(Integer, nullable=False, default=0)
-    feedback_evidence_epoch = Column(Integer, nullable=False, default=0)
+    library_epoch = Column(BigInteger, nullable=False, default=0, server_default='0')
+    feedback_evidence_epoch = Column(BigInteger, nullable=False, default=0, server_default='0')
+    preference_clear_cutoff = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

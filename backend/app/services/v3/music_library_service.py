@@ -583,6 +583,7 @@ def update_private_title(
 
     from sqlalchemy import update
     from sqlalchemy.exc import IntegrityError
+    from backend.app.services.v3.owner_music_state_service import advance_library_epoch
 
     current = read_private_title(db, internal_user_pk=internal_user_pk, asset=asset)
     if current.metadata_version != expected_version:
@@ -604,6 +605,7 @@ def update_private_title(
             # no longer current, so this is a conflict rather than a retry.
             db.rollback()
             raise TitleVersionConflict from None
+        advance_library_epoch(db, internal_user_pk=internal_user_pk)
         return PrivateTitleState(
             music_id=asset.music_asset_id,
             user_title=user_title,
@@ -623,6 +625,7 @@ def update_private_title(
     )
     if result.rowcount != 1:
         raise TitleVersionConflict
+    advance_library_epoch(db, internal_user_pk=internal_user_pk)
     default_title, _code, _origin = _default_title(asset, _utc(asset.created_at))
     return PrivateTitleState(
         music_id=asset.music_asset_id,

@@ -23,9 +23,11 @@ V3_MIGRATION_VERSIONS = [
     "0009_v3_five_tone_read_model",
     "0010_v3_generation_prompt_audit",
     "0011_v3_auth_foundation",
+    "0012_v3_music_library",
 ]
 
 _REQUIRED_TABLES = {
+    "owner_music_state", "music_library_state", "music_playback_events",
     "auth_sessions",
     # 0001 foundation
     "user_identities",
@@ -108,7 +110,427 @@ def preflight_v3_migrations(engine: Engine, *, migrations_root=None):
         if checksum != _checksum(sources[version]):
             raise MigrationChecksumMismatch(f'applied migration {version} checksum changed')
     _validate_auth_existing_schema(engine)
+    _validate_library_existing_schema(engine, library_applied='0012_v3_music_library' in applied)
     return sources
+
+
+def _library_sql_tokens(sql):
+    """Tokenize the bounded CHECK vocabulary; never evaluate SQL or ignore gaps."""
+    if not isinstance(sql, str) or len(sql) > 65536:
+        raise ValueError('unverifiable SQL')
+    pattern = r"\s+|--[^\n]*|/\*[\s\S]*?\*/|'(?:''|[^'])*'|`(?:``|[^`])*`|\"(?:\"\"|[^\"])*\"|\[[^\]]+\]|>=|<=|<>|!=|==|[=><(),.+-]|\d+|[A-Za-z_][A-Za-z_0-9]*"
+    tokens, offset = [], 0
+    for match in re.finditer(pattern, sql):
+        if match.start() != offset:
+            raise ValueError('unsupported SQL token')
+        value = match[0]
+        offset = match.end()
+        if value.isspace() or value.startswith(('--','/*')):
+            continue
+        if value.startswith(('`','"','[')):
+            value = value[1:-1].replace('``','`').replace('""','"').lower()
+        elif not value.startswith("'"):
+            value = value.lower()
+        tokens.append(value)
+    if offset != len(sql):
+        raise ValueError('unsupported SQL suffix')
+    return tokens
+
+
+def _library_check_signature(sql):
+    """Small structural parser, not a substring test or a general SQL solver.
+
+    Accept parentheses, quoting, commutative AND/OR, reversed comparisons,
+    integer boundary equivalents, BETWEEN and singleton IN. Unknown expressions
+    fail closed; an extra OR branch cannot masquerade as a required CHECK.
+    """
+    tokens = _library_sql_tokens(sql)
+    position = 0
+
+    def take(expected=None):
+        nonlocal position
+        if position >= len(tokens) or (expected is not None and tokens[position] != expected):
+            raise ValueError('unexpected CHECK token')
+        value = tokens[position]
+        position += 1
+        return value
+
+    def peek():
+        return tokens[position] if position < len(tokens) else None
+
+    def boolean(kind, children):
+        flat = []
+        for child in children:
+            flat.extend(child[1] if child[0] == kind else [child])
+        return flat[0] if len(flat) == 1 else (kind, tuple(sorted(flat, key=repr)))
+
+    def operand():
+        value = take()
+        if value in ('+','-'):
+            number = take()
+            if not number.isdigit():
+                raise ValueError('noninteger boundary')
+            return ('literal', int(number) * (-1 if value == '-' else 1))
+        if value.isdigit():
+            return ('literal', int(value))
+        if value in ('_utf8mb4','_utf8mb3','_utf8','_ascii','_latin1'):
+            value = take()
+            if not value.startswith("'"):
+                raise ValueError('invalid character introducer')
+        if value.startswith("'"):
+            return ('literal', value[1:-1].replace("''", "'"))
+        if not re.fullmatch('[a-z_][a-z_0-9]*', value):
+            raise ValueError('unsupported CHECK operand')
+        if peek() == '(':
+            if value not in ('length','char_length','character_length'):
+                raise ValueError('unsupported CHECK function')
+            take('(')
+            argument = operand()
+            take(')')
+            if argument[0] != 'column':
+                raise ValueError('unsupported function argument')
+            return ('char_length' if value == 'character_length' else value, argument)
+        return ('column', value)
+
+    def comparison(left, op, right):
+        if left[0] == 'literal' and right[0] != 'literal':
+            left, right = right, left
+            op = {'>=':'<=','<=':'>=','>':'<','<':'>','=':'=','==':'=','!=':'!=','<>':'!='}[op]
+        if op in ('==','<>'):
+            op = {'==':'=','<>':'!='}[op]
+        # SQLite INTEGER affinity does not exclude REAL values. Only length
+        # functions are guaranteed integral, so do not fold column boundaries.
+        if left[0] in ('length','char_length') and right[0] == 'literal' and isinstance(right[1],int) and op in ('>','<'):
+            op, right = ('>=',('literal',right[1]+1)) if op == '>' else ('<=',('literal',right[1]-1))
+        return ('compare', op, left, right)
+
+    def predicate():
+        if peek() == '(':
+            take('(')
+            value = disjunction()
+            take(')')
+            return value
+        left = operand()
+        op = take()
+        if op == 'is':
+            take('null')
+            return ('is_null', left)
+        if op == 'between':
+            low = operand()
+            take('and')
+            high = operand()
+            return boolean('and',[comparison(left,'>=',low),comparison(left,'<=',high)])
+        if op == 'in':
+            take('(')
+            values = [operand()]
+            while peek() == ',':
+                take(',')
+                values.append(operand())
+            take(')')
+            if len(values) == 1:
+                return comparison(left,'=',values[0])
+            return ('in',left,tuple(sorted(values,key=repr)))
+        if op not in ('>=','<=','>','<','=','==','!=','<>'):
+            raise ValueError('unsupported CHECK comparison')
+        return comparison(left,op,operand())
+
+    def conjunction():
+        values = [predicate()]
+        while peek() == 'and':
+            take('and')
+            values.append(predicate())
+        return boolean('and',values)
+
+    def disjunction():
+        values = [conjunction()]
+        while peek() == 'or':
+            take('or')
+            values.append(conjunction())
+        return boolean('or',values)
+
+    signature = disjunction()
+    if position != len(tokens):
+        raise ValueError('unparsed CHECK expression')
+    return signature
+
+
+def _library_full_unique(item, columns):
+    options = item.get('dialect_options') or {}
+    for key,value in options.items():
+        if key.endswith(('_where','_length','_prefix')) and value is not None and value is not False:
+            if not isinstance(value,dict) or value:
+                return False
+    return (item.get('unique', True) in (True,1)
+            and item.get('column_names') == columns
+            and not item.get('expressions'))
+
+
+def _library_sqlite_full_unique(engine, table, columns, *, index_name=None):
+    """Inspector omits SQLite expression/collation details; verify real keys."""
+    from sqlalchemy import text
+    with engine.connect() as connection:
+        indexes = connection.execute(text('SELECT name,"unique",partial FROM pragma_index_list(:table)'),{'table':table}).all()
+        for name,unique,partial in indexes:
+            if not unique or partial or (index_name is not None and name != index_name):
+                continue
+            rows = connection.execute(text('SELECT cid,name,coll,"key" FROM pragma_index_xinfo(:name) ORDER BY seqno'),{'name':name}).all()
+            keys = [row for row in rows if row[3]]
+            if ([row[1] for row in keys] == columns
+                    and all(row[0] >= 0 and str(row[2]).upper() == 'BINARY' for row in keys)):
+                return True
+    return False
+
+
+def _validate_library_existing_schema(engine, *, library_applied=False):
+    """Read-only complete 0012 contract check; unknown metadata is not approval."""
+    from sqlalchemy import BigInteger, text
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    contracts = {
+        'owner_music_state': {
+            'owner_internal_user_pk':(Integer,None,False), 'library_epoch':(BigInteger,None,False),
+            'feedback_evidence_epoch':(BigInteger,None,False), 'preference_clear_cutoff':(DateTime,None,True),
+            'created_at':(DateTime,None,False), 'updated_at':(DateTime,None,False),
+        },
+        'music_library_state': {
+            'owner_internal_user_pk':(Integer,None,False), 'music_asset_id':(String,64,False),
+            'user_title':(String,120,True), 'metadata_version':(BigInteger,None,False),
+            'created_at':(DateTime,None,False), 'updated_at':(DateTime,None,False),
+        },
+        'music_playback_events': {
+            'playback_event_row_id':(Integer,None,False), 'internal_user_pk':(Integer,None,False),
+            'event_id':(String,64,False), 'music_asset_id':(String,64,False),
+            'event_type':(String,24,False), 'source_context_id':(String,64,True),
+            'occurred_at':(DateTime,None,False), 'created_at':(DateTime,None,False),
+        },
+    }
+    existing = tables.intersection(contracts)
+    if library_applied and existing != set(contracts):
+        raise MigrationSchemaMismatch('recorded 0012 is missing required tables')
+    pks = {'owner_music_state':['owner_internal_user_pk'],
+           'music_library_state':['owner_internal_user_pk','music_asset_id'],
+           'music_playback_events':['playback_event_row_id']}
+    checks = {
+        'owner_music_state':['library_epoch>=0','feedback_evidence_epoch>=0'],
+        'music_library_state':['metadata_version>=0','user_title IS NULL OR (length(user_title)>=1 AND length(user_title)<=120)'],
+        'music_playback_events':["event_type IN ('play_started')",'length(event_id)>=1 AND length(event_id)<=64',
+                                 'source_context_id IS NULL OR length(source_context_id)<=64'],
+    }
+    expected_fks = {
+        'owner_music_state': [(['owner_internal_user_pk'],'users',['id'],'CASCADE')],
+        'music_library_state': [(['owner_internal_user_pk'],'users',['id'],'CASCADE'),
+                                (['music_asset_id'],'music_assets',['music_asset_id'],'CASCADE')],
+        'music_playback_events': [(['internal_user_pk'],'users',['id'],'CASCADE'),
+                                  (['music_asset_id'],'music_assets',['music_asset_id'],'CASCADE'),
+                                  (['source_context_id','internal_user_pk','music_asset_id'],'generation_tasks',
+                                   ['task_id','internal_user_pk','music_asset_id'],'NO ACTION')],
+    }
+    dialect = engine.dialect.name
+    if existing and dialect == 'sqlite':
+        with engine.connect() as connection:
+            if connection.exec_driver_sql('PRAGMA ignore_check_constraints').scalar() != 0:
+                raise MigrationSchemaMismatch('SQLite CHECK enforcement is unverifiable or disabled')
+    # First application also needs CHECK support, before any library DDL exists.
+    if dialect == 'mysql':
+        version = engine.dialect.server_version_info
+        if (not isinstance(version,tuple) or len(version) < 3
+                or any(type(part) is not int for part in version[:3])
+                or version[:3] < (8,0,16) or getattr(engine.dialect,'is_mariadb',False)):
+            raise MigrationSchemaMismatch('0012 requires verified MySQL >=8.0.16 CHECK enforcement')
+
+    def default_tokens(value):
+        tokens = _library_sql_tokens(str(value))
+        # Strip only parentheses enclosing the whole expression, not arbitrary
+        # parentheses within a function or malformed expression.
+        while tokens and tokens[0] == '(':
+            depth = 0
+            for index,token in enumerate(tokens):
+                depth += (token == '(') - (token == ')')
+                if depth == 0:
+                    break
+            if depth != 0 or index != len(tokens)-1:
+                break
+            tokens = tokens[1:-1]
+        return tokens
+
+    def time_default_valid(tokens):
+        if dialect == 'sqlite':
+            return tokens in (['current_timestamp'],['datetime','(',"'now'",')'])
+        if dialect == 'mysql' and tokens and tokens[0] in ('current_timestamp','now','localtimestamp'):
+            return (len(tokens) == 1 or tokens[1:] == ['(',')']
+                    or (len(tokens) == 4 and tokens[1] == '(' and tokens[3] == ')'
+                        and tokens[2] in ('0','1','2','3','4','5','6')))
+        return False
+
+    def terms(signature):
+        return set(signature[1]) if signature[0] == 'and' else {signature}
+
+    def normalized_check(sql, table):
+        signature = _library_check_signature(sql)
+        # The frozen ORM uses LENGTH for ASCII opaque event/context identifiers;
+        # the paired MySQL DDL uses CHAR_LENGTH. Both bound those identifiers.
+        def normalize(node):
+            if not isinstance(node,tuple):
+                return node
+            if (dialect == 'mysql' and table == 'music_playback_events' and node[0] == 'length'
+                    and node[1] in (('column','event_id'),('column','source_context_id'))):
+                return ('char_length',node[1])
+            return tuple(normalize(value) for value in node)
+        return normalize(signature)
+
+    for table in sorted(existing):
+        columns = {column['name']:column for column in inspector.get_columns(table)}
+        if set(columns) != set(contracts[table]):
+            raise MigrationSchemaMismatch(f'incompatible library columns: {table}')
+        for name,(kind,length,nullable) in contracts[table].items():
+            column = columns[name]
+            if (not isinstance(column['type'],kind) or column['nullable'] != nullable
+                    or (kind is Integer and isinstance(column['type'],BigInteger))
+                    or getattr(column['type'],'unsigned',False)
+                    or (length is not None and getattr(column['type'],'length',None) != length)):
+                raise MigrationSchemaMismatch(f'incompatible library column: {table}.{name}')
+            if name in ('library_epoch','feedback_evidence_epoch','metadata_version'):
+                try:
+                    default = _library_sql_tokens(str(column.get('default')))
+                except ValueError as error:
+                    raise MigrationSchemaMismatch(f'unverifiable library default: {table}.{name}') from error
+                if [token for token in default if token not in ('(',')')] not in (['0'],["'0'"]):
+                    raise MigrationSchemaMismatch(f'incompatible library default: {table}.{name}')
+            if name in ('created_at','updated_at','preference_clear_cutoff'):
+                value = column.get('default')
+                try:
+                    tokens = default_tokens(value) if value is not None else None
+                    valid = ((tokens is None or tokens == ['null']) if name == 'preference_clear_cutoff'
+                             else tokens is not None and time_default_valid(tokens))
+                except ValueError as error:
+                    raise MigrationSchemaMismatch(f'unverifiable library default: {table}.{name}') from error
+                if not valid:
+                    raise MigrationSchemaMismatch(f'incompatible library default: {table}.{name}')
+        if inspector.get_pk_constraint(table).get('constrained_columns') != pks[table]:
+            raise MigrationSchemaMismatch(f'incompatible library primary key: {table}')
+        fks = inspector.get_foreign_keys(table)
+        for local,target,remote,ondelete in expected_fks[table]:
+            if target not in tables:
+                raise MigrationSchemaMismatch(f'missing library foreign-key parent: {target}')
+            def matches(fk):
+                options = fk.get('options') or {}
+                return (fk.get('constrained_columns') == local and fk.get('referred_table') == target
+                        and fk.get('referred_columns') == remote
+                        and fk.get('referred_schema') in (None,engine.dialect.default_schema_name)
+                        and options.get('ondelete','NO ACTION').upper() == ondelete
+                        and options.get('onupdate','NO ACTION').upper() == 'NO ACTION'
+                        and not options.get('deferrable') and options.get('initially','IMMEDIATE').upper() == 'IMMEDIATE')
+            if not any(matches(fk) for fk in fks):
+                raise MigrationSchemaMismatch(f'incompatible library foreign key: {table}.{local[0]}')
+        if len(fks) != len(expected_fks[table]):
+            raise MigrationSchemaMismatch(f'unexpected library foreign key: {table}')
+        reflected_checks = inspector.get_check_constraints(table)
+        try:
+            expected = set()
+            actual = set()
+            for sql in checks[table]:
+                if dialect == 'mysql':
+                    sql = sql.replace('length(', 'char_length(')
+                expected.update(terms(normalized_check(sql,table)))
+            for check in reflected_checks:
+                actual.update(terms(normalized_check(check['sqltext'],table)))
+            if actual != expected:
+                raise ValueError('CHECK differs from approved contract')
+        except (ValueError,KeyError,TypeError,RecursionError) as error:
+            raise MigrationSchemaMismatch(f'unverifiable library CHECK: {table}') from error
+        if dialect == 'mysql':
+            try:
+                with engine.connect() as connection:
+                    rows = connection.execute(text("SELECT CONSTRAINT_NAME, ENFORCED FROM information_schema.TABLE_CONSTRAINTS "
+                                                   "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=:table AND CONSTRAINT_TYPE='CHECK'"),
+                                              {'table':table}).all()
+                enforced = dict(rows)
+                if any(not check.get('name') or enforced.get(check['name']) != 'YES' for check in reflected_checks):
+                    raise ValueError('CHECK enforcement not confirmed')
+            except Exception as error:
+                raise MigrationSchemaMismatch(f'MySQL CHECK enforcement unverifiable: {table}') from error
+        if table == 'music_playback_events':
+            indexes = inspector.get_indexes(table)
+            uniques = inspector.get_unique_constraints(table) + indexes
+            if not any(_library_full_unique(item,['internal_user_pk','event_id']) for item in uniques):
+                raise MigrationSchemaMismatch('missing playback owner/event uniqueness')
+            # MySQL UNIQUE-constraint reflection can omit prefix lengths. The
+            # physical index metadata must independently prove full uniqueness.
+            if dialect == 'mysql' and not any(_library_full_unique(item,['internal_user_pk','event_id']) for item in indexes):
+                raise MigrationSchemaMismatch('MySQL playback uniqueness is partial or unverifiable')
+            if dialect == 'sqlite' and not _library_sqlite_full_unique(engine,table,['internal_user_pk','event_id']):
+                raise MigrationSchemaMismatch('playback uniqueness has incompatible expression/collation')
+            if dialect == 'sqlite':
+                with engine.connect() as connection:
+                    ddl = connection.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name=:table"),{'table':table}).scalar_one()
+                tokens = _library_sql_tokens(ddl)
+                # Verify the actual inline rowid/autoincrement declaration, not a
+                # constraint name or a comment containing AUTOINCREMENT.
+                start = tokens.index('(') + 1
+                declarations, current, depth = [], [], 0
+                for token in tokens[start:]:
+                    if token == ')' and depth == 0:
+                        declarations.append(current)
+                        break
+                    if token == ',' and depth == 0:
+                        declarations.append(current)
+                        current = []
+                        continue
+                    current.append(token)
+                    depth += (token == '(') - (token == ')')
+                wanted = ['playback_event_row_id','integer','not','null','primary','key','autoincrement']
+                if wanted not in declarations:
+                    raise MigrationSchemaMismatch('playback SQLite autoincrement PK is incompatible')
+            elif not columns['playback_event_row_id'].get('autoincrement'):
+                raise MigrationSchemaMismatch('playback MySQL autoincrement is unverifiable')
+    if 'generation_tasks' in tables:
+        parent_columns = ['task_id','internal_user_pk','music_asset_id']
+        parent_name = 'uq_generation_tasks_owner_asset_context'
+        if dialect == 'sqlite':
+            with engine.connect() as connection:
+                physical_names = set(connection.execute(text('SELECT name FROM pragma_index_list(:table)'),{'table':'generation_tasks'}).scalars())
+        else:
+            try:
+                with engine.connect() as connection:
+                    physical_names = set(connection.execute(text('SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS '
+                                                                  'WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=:table'),
+                                                            {'table':'generation_tasks'}).scalars())
+            except Exception as error:
+                raise MigrationSchemaMismatch('task context index metadata unverifiable') from error
+        indexes = inspector.get_indexes('generation_tasks')
+        named = [item for item in indexes if item.get('name') == parent_name]
+        if parent_name in physical_names and not named:
+            raise MigrationSchemaMismatch('task context index omitted by Inspector; fail closed')
+        if any(not _library_full_unique(item,parent_columns) for item in named):
+            raise MigrationSchemaMismatch('conflicting task context parent index')
+        if dialect == 'sqlite' and named and not _library_sqlite_full_unique(engine,'generation_tasks',parent_columns,index_name=parent_name):
+            raise MigrationSchemaMismatch('task context parent index expression/collation differs')
+        if ('music_playback_events' in existing or library_applied) and not any(_library_full_unique(item,parent_columns) for item in indexes):
+            raise MigrationSchemaMismatch('missing task context parent unique index')
+        if dialect == 'sqlite' and ('music_playback_events' in existing or library_applied) and not _library_sqlite_full_unique(engine,'generation_tasks',parent_columns):
+            raise MigrationSchemaMismatch('no compatible full task context parent uniqueness')
+
+
+def rollback_music_library(engine):
+    """SQLite-only explicit candidate downgrade, refusing nonempty extension data."""
+    if engine.dialect.name!='sqlite':
+        raise RuntimeError('MySQL downgrade requires separately verified recovery')
+    preflight_v3_migrations(engine)
+    with engine.connect() as connection:
+        latest=connection.exec_driver_sql('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1').scalar()
+    if latest!='0012_v3_music_library':
+        raise MigrationOrderError('0012 must be the latest applied migration')
+    raw=engine.raw_connection()
+    try:
+        cursor=raw.cursor()
+        cursor.execute('BEGIN IMMEDIATE')
+        _execute_sqlite_statements(cursor,_read_migration('sqlite','0012_v3_music_library','down'))
+        raw.commit()
+    except Exception:
+        raw.rollback()
+        raise
+    finally:
+        raw.close()
 
 
 def _validate_auth_existing_schema(engine):
@@ -424,8 +846,9 @@ def _apply_sqlite_migration(
             rendered = _render_sqlite_generation_prompt_audit_migration(
                 engine, rendered
             )
-        if version == '0011_v3_auth_foundation':
-            rendered = _render_auth_foundation(engine,rendered)
+        if version in {'0011_v3_auth_foundation','0012_v3_music_library'}:
+            if version == '0011_v3_auth_foundation':
+                rendered = _render_auth_foundation(engine,rendered)
             # Unlike historical scripts, 0011 DDL and ledger are one transaction.
             cursor.execute('BEGIN IMMEDIATE')
             _execute_sqlite_statements(cursor,rendered)
@@ -489,6 +912,10 @@ def _apply_mysql_migration(
             rendered = _remove_marked_block(rendered, "V3_OWNER_FLOW_SESSION")
         if version == '0011_v3_auth_foundation':
             rendered = _render_auth_foundation(engine,rendered)
+        if version == '0012_v3_music_library':
+            indexes = inspect(engine).get_indexes('generation_tasks')
+            if any(i['name']=='uq_generation_tasks_owner_asset_context' for i in indexes):
+                rendered = '\n'.join(line for line in rendered.splitlines() if not line.startswith('CREATE UNIQUE INDEX uq_generation_tasks_owner_asset_context'))
         rendered = _render_mysql_model_columns(engine,version,rendered)
         statements = [item.strip() for item in rendered.split(";") if item.strip()]
         for statement in statements:
