@@ -241,7 +241,13 @@ def test_authenticated_jwt_required_and_valid_guest_can_stream(stream_case):
 def test_ranges_resume_retry_and_no_writes_or_path_leaks(stream_case, caplog):
     client, app, factory, media, audio = stream_case
     owner(app)
-    protected=('users','music_assets','generation_tasks','diagnosis_runs','prescription_v3','music_playback_events','owner_music_state','music_library_state')
+    with factory.begin() as db:
+        db.execute(text('INSERT INTO owner_music_state(owner_internal_user_pk,library_epoch,feedback_evidence_epoch) VALUES(7,5,9)'))
+        db.execute(text("INSERT INTO music_library_state(owner_internal_user_pk,music_asset_id,user_title,metadata_version) VALUES(7,'owned','Synthetic private title',2)"))
+    protected=('users','music_assets','generation_tasks','diagnosis_runs','prescription_v3',
+               'music_playback_events','owner_music_state','music_library_state',
+               'favorites','feedback_v3','user_music_preferences','user_music_preference_versions',
+               'user_preference_items','preference_events')
     def snapshot():
         with factory() as db:
             return {table:db.execute(text(f'SELECT * FROM {table} ORDER BY 1')).all() for table in protected}
@@ -273,3 +279,23 @@ def test_ranges_resume_retry_and_no_writes_or_path_leaks(stream_case, caplog):
     assert str(media) not in caplog.text
     assert str(media) not in str(first.headers)
     assert first.headers['content-type']=='audio/mpeg'
+
+
+def test_multi_range_actual_parts_and_bytes(stream_case):
+    """Characterize current framework behavior, not a new Player contract."""
+    from email.parser import BytesParser
+    from email.policy import default
+    client, app, _, _, audio = stream_case
+    owner(app)
+    response=client.get(url('owned'),headers={'Range':'bytes=0-9,100-109'})
+    assert response.status_code==206
+    assert response.headers['content-type'].startswith('multipart/byteranges; boundary=')
+    assert int(response.headers['content-length'])==len(response.content)
+    message=BytesParser(policy=default).parsebytes(
+        b'Content-Type: '+response.headers['content-type'].encode('ascii')+b'\r\n\r\n'+response.content)
+    parts=list(message.iter_parts())
+    assert len(parts)==2
+    for part,start,end in zip(parts,(0,100),(10,110)):
+        assert part.get_content_type()=='audio/mpeg'
+        assert part['Content-Range']==f'bytes {start}-{end-1}/{len(audio)}'
+        assert part.get_payload(decode=True)==audio[start:end]
