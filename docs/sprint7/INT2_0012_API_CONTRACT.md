@@ -2,23 +2,26 @@
 
 Status: isolated integration candidate for review, not production deployment approval.
 This is a minimal implementation contract, not approval of the entire R2-A draft.
+2026-10-18 reconciliation: the earlier constraint-probe blocker is resolved by
+read-only structural preflight validation and formal negative regressions below.
+This remains a Draft candidate, not permission to merge or deploy.
 
 ## Dependencies and scope
 
-Team base: `ff879f70a19328dbe492bf3aa9418e681a5db06b`.
-This candidate includes UNMERGED upstream PR #158
-(`a753e4d8bc95f337ada162f2564a63cd54378487`) and PR #159
-(`7f5b3eb5c7a77830607e46a927a1620f25322c1c`). It is not directly mergeable
-until those dependencies and the integration delta are reviewed together.
-Owner subsequently approved PR #159's exact incremental fix
-`067c67746a33c7e848fc522e4d50500b601698b6`. Its three-file delta is now
-integrated through an equivalent non-rewriting patch transfer, retaining the
-candidate's private-title epoch hook. Router and upstream API test content match
-that exact Backend revision; service differences are the existing title hook only.
-No ORM, migration SQL or DTO is changed by this increment. The upstream regression
-was first run against the old candidate and failed as expected (409 rather than
-200), then passed after integration. This closes the previously recorded upstream
-drift blocker, not the separate deployment and cross-database gates.
+Original team base: `ff879f70a19328dbe492bf3aa9418e681a5db06b`.
+Current reviewed team base: `d17ce83164b88bcb2bf34a0a3227d6379683523e`.
+PR #158 (`a753e4d8bc95f337ada162f2564a63cd54378487`) and PR #159
+(`067c67746a33c7e848fc522e4d50500b601698b6`) are now merged in that base.
+The 2026-10-18 reconciliation starts at the published PR #160 commit
+`30a36f81e98dfd4be27da4e118a27d769c87894f` and merges the current team base
+with a normal two-parent merge, preserving all existing public history.
+No conflict occurred and the automatic merge left the production/test code tree
+identical to that original PR #160 candidate. A separate repair adds only existing
+0012 schema validation, its regressions and this record. No repeated upstream
+patch transfer, rebase or squash is performed.
+Relative to the new base, this PR is the 0012 schema/DDL/exports/contracts/tests
+and private-title epoch increment; the merged Backend router and replay recovery
+are not duplicated changes. Separate deployment and cross-database gates remain.
 PR #155 (`31b62112d0c2d814ff13c17b67b5d555e4789a3f`) is a reference only;
 its DraftBase and 0013 are not imported or registered.
 
@@ -62,7 +65,15 @@ The executor validates the registered history prefix and checksums before new DD
 SQLite 0012 DDL and its ledger entry share one transaction; injected failure rolls
 back 0012 and permits retry without rewriting the separately committed 0011.
 create_all-first initialization and repeated startup are tested. Existing side tables
-with incompatible columns/types/defaults or context FK fail closed, not auto-repaired.
+with incompatible columns/types/defaults, PK, FK/CASCADE, CHECK or uniqueness
+fail closed, not auto-repaired. Recorded 0012 history also requires all three tables.
+CHECK validation uses a bounded expression grammar with exact structural matching
+of canonical conjunctions; unknown expressions fail closed. Column comparisons
+are not rounded to integer boundaries: SQLite INTEGER affinity permits REAL.
+SQLite physical index metadata verifies full, nonpartial, BINARY uniqueness and
+autoincrement structure. MySQL supplements reflection with physical index metadata
+and CHECK ENFORCED metadata on supported versions; inability to prove a constraint
+is a refusal, not a pass. These checks do not substitute real MySQL verification.
 
 SQLite downgrade refuses nonempty extension tables or higher migration history
 before destructive DDL. Empty 0012 downgrade/re-upgrade is tested. The upstream
@@ -162,14 +173,15 @@ not introduced. PF-1A stays off; no 0013 or automatic learning is implemented he
 
 ## Review and merge order
 
-Review PR #158 first, then PR #159 with this schema delta, then the candidate's
-0012/contracts/tests. Do not merge PR #155 wholesale: its isolated DraftBase and
-0013 are not the production schema. This stacked candidate preserves upstream
-commit identities and must not be treated as a directly mergeable replacement for
-those reviews. Resolve the upstream merge plan explicitly before promoting it.
+PR #158 and PR #159 are already merged; review this reconciled PR #160's net
+0012/contracts/tests increment against the exact current team base. Do not merge
+PR #155 wholesale: its isolated DraftBase and 0013 are not the production schema.
+PR #160 remains Draft pending Owner's review and explicit merge decision.
+PR #161 remains a separate Stream child; its unchanged branch must synchronize
+this new parent in a later, separately authorized task. No Stream code is included.
 No main/team-base update, automatic PR merge or production migration is authorized.
 
-## Actual verification record
+## Historical verification record (before reconciliation)
 
 Python 3.12 / SQLite 3.49.1, isolated temporary databases and strict offline guard:
 
@@ -234,3 +246,102 @@ forced here. Its direct shared-helper race and route error handling are verified
 separately. This is not MySQL race validation, an exhaustive scheduling proof,
 multi-process/load testing, or approval of database lock retry policy. Each test
 barrier/future is bounded; no sleeps, remote services or production data are used.
+
+## Earlier 2026-10-18 reconciliation attempt (historical)
+
+This record describes the earlier blocked attempt, not the repaired result below.
+The ordinary merge has parents: published PR #160
+`30a36f81e98dfd4be27da4e118a27d769c87894f` and approved team base
+`d17ce83164b88bcb2bf34a0a3227d6379683523e`. There were no Git conflicts and
+no production-code edits. These are the proposed merge parents; the merge remains
+uncommitted after the safety probe failed. Public history is not rewritten.
+
+Actual offline Python command (through the established private wrapper):
+
+```text
+pytest -q -p no:cacheprovider
+  tests/api/v3/test_int2_0012_contract.py
+  tests/api/v3/test_int2_playback_concurrency.py
+  tests/api/v3/test_s7_music_library_api.py
+  tests/api/v3/test_s7_music_library.py
+  tests/api/v3/test_0011_auth_foundation.py
+  tests/api/v3/test_v3_migrations.py
+  tests/api/v3/test_v3_business_migrations.py
+  tests/api/v3/test_guest_auth.py
+  tests/api/v3/test_generation.py
+  tests/api/v3/test_feedback.py
+  tests/api/v3/test_tokenhub_generation.py
+163 passed / 0 failed / 1 skipped / 1 warning
+```
+
+The skip is Windows real-symlink privilege unavailable; canonical-boundary
+protection still runs. Warning: known Starlette/httpx deprecation. No newly
+observed or unexplained failure; no assertion, fixture or test is changed here.
+Each Node file runs separately through the established Node offline guard:
+`node --test --test-reporter=tap --test-isolation=none` with
+`tests/contract/s7-library-adapter-contract.test.mjs` (2 passed / 0 failed /
+0 skipped) and `frontend/tests/s7-library-api.test.mjs` (6 passed / 0 failed /
+0 skipped). One known module-type warning per process. Guard self-tests:
+7 passed / 0 failed / 0 skipped / 0 warnings.
+
+Temporary SQLite, synthetic identities/audio and Fake dependencies only.
+Live TokenHub credentials are removed from the test child environment. Test
+external connections, real Provider calls and production DB operations are all
+zero. GitHub fetch/push/PR metadata operations are separate authorized network
+activity, not Provider testing. The prior single live MiniMax call is not repeated.
+No push or PR metadata write was ultimately performed in this reconciliation.
+
+Additional bounded existing-schema acceptance probe: **0 passed / 1 failed /
+0 skipped / 1 warning** (the same Starlette/httpx warning, in a separate process).
+A temporary pre-existing owner_music_state table with correct columns/types/
+defaults but missing its owner FK was accepted by preflight and migration.
+This is an existing PR #160 gap, not introduced by the ordinary merge. It blocks
+the Owner requirement that incompatible existing structures fail closed.
+The private probe and evidence are not added to the production/test Git tree.
+Needed follow-up: validate required PK, FK, CHECK and unique constraints before
+any pending DDL, add negative constraint regressions, and rerun the gates. Do not
+change frozen 0001..0011 SQL or automatically repair incompatible tables.
+
+0001..0011 published SQL/checksums, production route registration, GenerationSpec,
+Prompt Compiler, Provider, Stream and Feedback/Favorite write paths remain
+identical to the approved new base. MySQL SQL/DDL compilation remains static
+evidence only; real MySQL execution is NOT RUN. Full App/H5/private Corpus and
+device-release gates are not claimed. Favorite epoch, 0013, Stream child
+reconciliation and deployment approval remain OPEN; this PR stays Draft.
+
+## 2026-10-18 preflight repair and resumed reconciliation
+
+The missing-owner-FK probe was converted into tracked formal tests in
+`tests/api/v3/test_int2_0012_preflight_constraints.py`. Initial red evidence:
+41 failed / 9 passed. Review also identified that `epoch > -1` is weaker than
+`epoch >= 0` for REAL values stored in SQLite BIGINT columns; two real-database
+negative tests first failed, then the parser was narrowed to preserve that
+difference. No canonical SQL, ORM, existing assertion or business behavior was
+changed to obtain a pass.
+
+The new file has 64 tests. Coverage includes PK, FK targets/CASCADE, full owner
+event uniqueness, composite context FK and its parent index, CHECK removal and
+weakening, defaults/nullability, autoincrement, recorded-history corruption,
+read-only rejection with schema/data snapshots, valid alternative SQL forms,
+missing parents, expression/partial/collation index traps, and MySQL metadata
+enforcement/prefix-index cases. MySQL cases use synthetic metadata transports;
+they are not live MySQL execution. Existing suites cover fresh/create_all,
+0011 upgrade/retry, title CAS, owner isolation and independent SQLite connections.
+
+Final affected command adds this new file to the eleven Python files listed in
+the earlier attempt: **227 passed / 0 failed / 1 skipped / 2 warnings**.
+The skip is the existing Windows real-symlink privilege limitation. Warnings are
+Starlette/httpx deprecation and expected Inspector omission of a deliberately
+malformed expression index; the independent physical-index check rejects it.
+Node commands are unchanged and freshly run in separate guarded processes:
+shared Fixture 2 passed; original adapter 6 passed; 0 failed / 0 skipped.
+There is one known MODULE_TYPELESS_PACKAGE_JSON warning per Node process.
+Offline protection self-tests: 7 passed / 0 failed / 0 skipped / 0 warnings.
+All test data is synthetic and SQLite temporary; real Provider calls and
+production database operations remain zero. Private harnesses are not committed.
+
+The repair and normal merge preserve published history. Only the migration
+preflight, this contract and the new test file change relative to the previous
+PR #160 tree. 0001..0011 SQL/checksums and 0012 SQL/ORM remain byte-identical.
+Favorite epoch, 0013, Stream child reconciliation, real MySQL and deployment
+remain open; full App/H5/private Corpus validation is not claimed.
