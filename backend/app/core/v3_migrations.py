@@ -330,10 +330,37 @@ def _validate_library_existing_schema(engine, *, library_applied=False):
         with engine.connect() as connection:
             if connection.exec_driver_sql('PRAGMA ignore_check_constraints').scalar() != 0:
                 raise MigrationSchemaMismatch('SQLite CHECK enforcement is unverifiable or disabled')
-    if existing and dialect == 'mysql':
+    # First application also needs CHECK support, before any library DDL exists.
+    if dialect == 'mysql':
         version = engine.dialect.server_version_info
-        if not version or version < (8,0,16) or getattr(engine.dialect,'is_mariadb',False):
+        if (not isinstance(version,tuple) or len(version) < 3
+                or any(type(part) is not int for part in version[:3])
+                or version[:3] < (8,0,16) or getattr(engine.dialect,'is_mariadb',False)):
             raise MigrationSchemaMismatch('0012 requires verified MySQL >=8.0.16 CHECK enforcement')
+
+    def default_tokens(value):
+        tokens = _library_sql_tokens(str(value))
+        # Strip only parentheses enclosing the whole expression, not arbitrary
+        # parentheses within a function or malformed expression.
+        while tokens and tokens[0] == '(':
+            depth = 0
+            for index,token in enumerate(tokens):
+                depth += (token == '(') - (token == ')')
+                if depth == 0:
+                    break
+            if depth != 0 or index != len(tokens)-1:
+                break
+            tokens = tokens[1:-1]
+        return tokens
+
+    def time_default_valid(tokens):
+        if dialect == 'sqlite':
+            return tokens in (['current_timestamp'],['datetime','(',"'now'",')'])
+        if dialect == 'mysql' and tokens and tokens[0] in ('current_timestamp','now','localtimestamp'):
+            return (len(tokens) == 1 or tokens[1:] == ['(',')']
+                    or (len(tokens) == 4 and tokens[1] == '(' and tokens[3] == ')'
+                        and tokens[2] in ('0','1','2','3','4','5','6')))
+        return False
 
     def terms(signature):
         return set(signature[1]) if signature[0] == 'and' else {signature}
@@ -368,6 +395,16 @@ def _validate_library_existing_schema(engine, *, library_applied=False):
                 except ValueError as error:
                     raise MigrationSchemaMismatch(f'unverifiable library default: {table}.{name}') from error
                 if [token for token in default if token not in ('(',')')] not in (['0'],["'0'"]):
+                    raise MigrationSchemaMismatch(f'incompatible library default: {table}.{name}')
+            if name in ('created_at','updated_at','preference_clear_cutoff'):
+                value = column.get('default')
+                try:
+                    tokens = default_tokens(value) if value is not None else None
+                    valid = ((tokens is None or tokens == ['null']) if name == 'preference_clear_cutoff'
+                             else tokens is not None and time_default_valid(tokens))
+                except ValueError as error:
+                    raise MigrationSchemaMismatch(f'unverifiable library default: {table}.{name}') from error
+                if not valid:
                     raise MigrationSchemaMismatch(f'incompatible library default: {table}.{name}')
         if inspector.get_pk_constraint(table).get('constrained_columns') != pks[table]:
             raise MigrationSchemaMismatch(f'incompatible library primary key: {table}')

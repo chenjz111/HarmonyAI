@@ -152,6 +152,76 @@ def test_fractional_epoch_weakened_check_refused(upgraded,monkeypatch,column):
     refuse_without_writes(upgraded)
 
 
+@pytest.mark.parametrize('version,mariadb,allowed',[
+    (None,False,False),((8,0,15),False,False),((8,0,16),False,True),
+    ((8,4,0),False,True),((10,11,0),True,False),
+])
+def test_mysql_first_0012_requires_supported_check_version(monkeypatch,version,mariadb,allowed):
+    """Only metadata transport is synthetic; no MySQL connection or DDL."""
+    from types import SimpleNamespace
+    class Metadata:
+        def get_table_names(self):
+            return []
+    class Engine:
+        dialect=SimpleNamespace(name='mysql',server_version_info=version,is_mariadb=mariadb)
+        def connect(self):
+            raise AssertionError('first-table preflight must not execute DDL')
+    monkeypatch.setattr(migrations,'inspect',lambda _:Metadata())
+    if allowed:
+        migrations._validate_library_existing_schema(Engine())
+    else:
+        with pytest.raises(migrations.MigrationSchemaMismatch,match='MySQL'):
+            migrations._validate_library_existing_schema(Engine())
+
+
+TIME_DEFAULT_COLUMNS = [
+    ('owner_music_state','created_at'),('owner_music_state','updated_at'),
+    ('music_library_state','created_at'),('music_library_state','updated_at'),
+    ('music_playback_events','created_at'),
+]
+
+
+@pytest.mark.parametrize('table,column',TIME_DEFAULT_COLUMNS)
+@pytest.mark.parametrize('default',[''," DEFAULT '2000-01-01 00:00:00'"])
+def test_missing_or_fixed_time_default_refused_without_writes(upgraded,monkeypatch,table,column,default):
+    old_0011(upgraded,monkeypatch)
+    sql=replace_table((ROOT/'sqlite'/f'{VERSION}_up.sql').read_text(),table,
+                      f'{column} DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
+                      f'{column} DATETIME NOT NULL{default}')
+    run_sql(upgraded,sql)
+    # Explicit timestamps keep the synthetic pre-existing row valid even when
+    # defaults are missing; refusal must preserve that data, not just empty DDL.
+    run_sql(upgraded,"INSERT INTO owner_music_state(owner_internal_user_pk,created_at,updated_at) VALUES(7,'2001-01-01','2001-01-01');")
+    refuse_without_writes(upgraded)
+    with upgraded.connect() as connection:
+        assert connection.execute(text('SELECT count(*) FROM schema_migrations WHERE version=:v'),{'v':VERSION}).scalar_one()==0
+
+
+@pytest.mark.parametrize('default',["CURRENT_TIMESTAMP","'2000-01-01 00:00:00'"])
+def test_nonnull_cutoff_default_refused_without_writes(upgraded,monkeypatch,default):
+    old_0011(upgraded,monkeypatch)
+    sql=replace_table((ROOT/'sqlite'/f'{VERSION}_up.sql').read_text(),'owner_music_state',
+                      'preference_clear_cutoff DATETIME NULL',f'preference_clear_cutoff DATETIME NULL DEFAULT {default}')
+    run_sql(upgraded,sql)
+    run_sql(upgraded,'INSERT INTO owner_music_state(owner_internal_user_pk) VALUES(7);')
+    refuse_without_writes(upgraded)
+    with upgraded.connect() as connection:
+        assert connection.execute(text('SELECT count(*) FROM schema_migrations WHERE version=:v'),{'v':VERSION}).scalar_one()==0
+
+
+@pytest.mark.parametrize('default',['(current_timestamp)',"(datetime('now'))"])
+def test_equivalent_sqlite_time_and_null_cutoff_defaults_accepted(upgraded,monkeypatch,default):
+    old_0011(upgraded,monkeypatch)
+    sql=(ROOT/'sqlite'/f'{VERSION}_up.sql').read_text().replace('DEFAULT CURRENT_TIMESTAMP',f'DEFAULT {default}')
+    sql=sql.replace('preference_clear_cutoff DATETIME NULL','preference_clear_cutoff DATETIME NULL DEFAULT (NULL)')
+    run_sql(upgraded,sql)
+    assert migrations.apply_v3_migrations(upgraded)['applied_versions']==[VERSION]
+    with upgraded.begin() as connection:
+        connection.execute(text('INSERT INTO owner_music_state(owner_internal_user_pk) VALUES(7)'))
+        row=connection.execute(text('SELECT created_at,updated_at,preference_clear_cutoff FROM owner_music_state')).one()
+        assert row[0] is not None and row[1] is not None and row[2] is None
+
+
 def test_valid_readonly_preflight_and_equivalent_checks(upgraded,monkeypatch):
     old_0011(upgraded,monkeypatch)
     sql = (ROOT/'sqlite'/f'{VERSION}_up.sql').read_text()
@@ -250,7 +320,8 @@ def test_mysql_unverified_check_enforcement_is_blocked_without_network(upgraded,
 
 
 @pytest.mark.parametrize('prefix',[True,False])
-def test_mysql_prefix_unique_not_mistaken_for_full_unique(upgraded,monkeypatch,prefix):
+@pytest.mark.parametrize('time_default',['CURRENT_TIMESTAMP(6)','(now())','LOCALTiMeSTAMP(0)'])
+def test_mysql_prefix_unique_not_mistaken_for_full_unique(upgraded,monkeypatch,prefix,time_default):
     """Credential-free metadata boundary test, not real MySQL execution."""
     from types import SimpleNamespace
     from contextlib import contextmanager
@@ -260,7 +331,8 @@ def test_mysql_prefix_unique_not_mistaken_for_full_unique(upgraded,monkeypatch,p
         def __getattr__(self,name):
             return getattr(source,name)
         def get_columns(self,table):
-            return [dict(c,autoincrement=True) if c['name']=='playback_event_row_id' else dict(c)
+            return [dict(c,autoincrement=True) if c['name']=='playback_event_row_id'
+                    else dict(c,default=time_default) if c['name'] in ('created_at','updated_at') else dict(c)
                     for c in source.get_columns(table)]
         def get_check_constraints(self,table):
             return [dict(c,name=f'synthetic_{table}_{i}',
