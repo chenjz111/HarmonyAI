@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import uuid
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.models import Session as SessionModel
@@ -306,6 +307,63 @@ def _replay_output(
     )
 
 
+def _change_favorite(db: Session, *, owner_pk: int, music_id: str, desired: bool) -> bool:
+    """Apply an actual transition and its epoch in the caller's transaction."""
+    from backend.app.services.v3.owner_music_state_service import advance_library_epoch
+
+    query = db.query(Favorite).filter(
+        Favorite.internal_user_pk == owner_pk, Favorite.music_asset_id == music_id,
+    )
+    if desired:
+        if query.one_or_none() is not None:
+            return False
+        db.add(Favorite(favorite_id=f"fav_{uuid.uuid4().hex}",
+                        internal_user_pk=owner_pk, music_asset_id=music_id))
+        # The unique INSERT must succeed before an epoch can be advanced.
+        db.flush()
+    else:
+        # Count the actual deletion, not a stale ORM read from another writer.
+        if query.delete(synchronize_session=False) == 0:
+            return False
+    advance_library_epoch(db, internal_user_pk=owner_pk)
+    return True
+
+
+def _persist_feedback_stage1(db: Session, fb: FeedbackRow, favorite: bool | None) -> FeedbackRow | None:
+    """Commit durable feedback/favorite/epoch together; bounded race recovery.
+
+    Recovery retries only this database transaction, never learning or Providers.
+    A conflicting owner-state/favorite insertion must have a committed witness;
+    unrelated integrity errors are not treated as successful idempotent replay.
+    """
+    from backend.app.services.v3.owner_music_state_service import current_owner_music_state
+
+    owner_pk, music_id, key = fb.internal_user_pk, fb.music_asset_id, fb.idempotency_key
+    for attempt in range(2):
+        db.add(fb)
+        try:
+            if favorite is not None:
+                _change_favorite(db, owner_pk=owner_pk, music_id=music_id, desired=favorite)
+            db.commit()
+            return None
+        except IntegrityError:
+            db.rollback()
+            replay = db.query(FeedbackRow).filter(
+                FeedbackRow.internal_user_pk == owner_pk, FeedbackRow.idempotency_key == key,
+            ).one_or_none()
+            if replay is not None:
+                return replay
+            witnessed = (db.query(Favorite).filter(Favorite.internal_user_pk == owner_pk,
+                         Favorite.music_asset_id == music_id).one_or_none() is not None
+                         or current_owner_music_state(db, internal_user_pk=owner_pk) is not None)
+            if attempt or not witnessed:
+                raise
+        except Exception:
+            db.rollback()
+            raise
+    raise AssertionError('unreachable feedback persistence retry')
+
+
 def submit_feedback(
     db: Session,
     principal: AuthPrincipal,
@@ -363,39 +421,9 @@ def submit_feedback(
         idempotency_key=idempotency_key,
         preference_update_status="pending",
     )
-    db.add(fb)
-
-    # Stage 1 favorite linkage follows the feedback's explicit intent.
-    if request.favorite is True:
-        favorite = (
-            db.query(Favorite)
-            .filter(
-                Favorite.internal_user_pk == principal.internal_user_pk,
-                Favorite.music_asset_id == asset.music_asset_id,
-            )
-            .one_or_none()
-        )
-        if favorite is None:
-            db.add(
-                Favorite(
-                    favorite_id=f"fav_{uuid.uuid4().hex}",
-                    internal_user_pk=principal.internal_user_pk,
-                    music_asset_id=asset.music_asset_id,
-                )
-            )
-    elif request.favorite is False:
-        favorite = (
-            db.query(Favorite)
-            .filter(
-                Favorite.internal_user_pk == principal.internal_user_pk,
-                Favorite.music_asset_id == asset.music_asset_id,
-            )
-            .one_or_none()
-        )
-        if favorite is not None:
-            db.delete(favorite)
-
-    db.commit()
+    replay = _persist_feedback_stage1(db, fb, request.favorite)
+    if replay is not None:
+        return _replay_output(db, principal, replay), True
 
     # S7-CHANGE-003: feedback remains durable; M1 never schedules learning.
     _set_status(db, feedback_id, "skipped")
@@ -476,23 +504,18 @@ def set_favorite(
     db: Session, principal: AuthPrincipal, music_id: str
 ) -> FavoriteState:
     asset = _find_owned_asset(db, principal, music_id)
-    favorite = (
-        db.query(Favorite)
-        .filter(
-            Favorite.internal_user_pk == principal.internal_user_pk,
-            Favorite.music_asset_id == asset.music_asset_id,
-        )
-        .one_or_none()
-    )
-    if favorite is None:
-        db.add(
-            Favorite(
-                favorite_id=f"fav_{uuid.uuid4().hex}",
-                internal_user_pk=principal.internal_user_pk,
-                music_asset_id=asset.music_asset_id,
-            )
-        )
-        db.commit()
+    try:
+        if _change_favorite(db, owner_pk=principal.internal_user_pk, music_id=music_id, desired=True):
+            db.commit()
+    except IntegrityError:
+        db.rollback()
+        # A concurrent successful PUT is an idempotent success, not another bump.
+        if db.query(Favorite).filter(Favorite.internal_user_pk == principal.internal_user_pk,
+                                    Favorite.music_asset_id == music_id).one_or_none() is None:
+            raise
+    except Exception:
+        db.rollback()
+        raise
     return FavoriteState(
         music_ref=MusicRef(music_id=asset.music_asset_id, source_type=asset.source_type),
         is_favorite=True,
@@ -503,17 +526,12 @@ def remove_favorite(
     db: Session, principal: AuthPrincipal, music_id: str
 ) -> FavoriteState:
     asset = _find_owned_asset(db, principal, music_id)
-    favorite = (
-        db.query(Favorite)
-        .filter(
-            Favorite.internal_user_pk == principal.internal_user_pk,
-            Favorite.music_asset_id == asset.music_asset_id,
-        )
-        .one_or_none()
-    )
-    if favorite is not None:
-        db.delete(favorite)
-        db.commit()
+    try:
+        if _change_favorite(db, owner_pk=principal.internal_user_pk, music_id=music_id, desired=False):
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return FavoriteState(
         music_ref=MusicRef(music_id=asset.music_asset_id, source_type=asset.source_type),
         is_favorite=False,
