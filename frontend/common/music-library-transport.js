@@ -28,6 +28,7 @@ export function readV3AccessToken(uniApi = null) {
 export const TRANSPORT_ERROR = Object.freeze({
   UNAVAILABLE: "TRANSPORT_UNAVAILABLE",
   NETWORK: "NETWORK_ERROR",
+  AUTH_REQUIRED: "IDENTITY_REQUIRED",
 })
 
 function resolveBaseUrl(explicit) {
@@ -73,8 +74,13 @@ export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi
         return
       }
       let header = { "Content-Type": "application/json" }
-      const token = readToken()
-      if (token) header = Object.assign(header, { Authorization: "Bearer " + token })
+      let token = ""
+      try { token = readToken() } catch (e) { token = "" }
+      if (typeof token !== "string" || !token.trim()) {
+        resolve({ error: { code: TRANSPORT_ERROR.AUTH_REQUIRED, message: "请重新登录后重试" } })
+        return
+      }
+      header = Object.assign(header, { Authorization: "Bearer " + token })
       const args = { url: base + path, method, header }
       if (data !== undefined) args.data = data
       try {
