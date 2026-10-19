@@ -9,8 +9,8 @@
     </view>
 
     <view class="section-tabs" aria-label="音乐列表切换">
-      <view :class="['section-tab', { active: activeSection === 'history' }]" @click="activeSection = 'history'"><text>历史音乐</text></view>
-      <view :class="['section-tab', { active: activeSection === 'favorites' }]" @click="activeSection = 'favorites'"><text>我的收藏</text></view>
+      <view :class="['section-tab', { active: activeSection === 'history' }]" @click="selectSection('history')"><text>历史音乐</text></view>
+      <view :class="['section-tab', { active: activeSection === 'favorites' }]" @click="selectSection('favorites')"><text>我的收藏</text></view>
     </view>
 
     <view v-if="library.status === 'loading' && visibleItems.length === 0" class="state-card">
@@ -31,6 +31,7 @@
       <view v-for="item in visibleItems" :key="item.music_id" :class="['music-card', { unavailable: !item.can_open }]" @click="openMusic(item)">
         <view class="card-main">
           <text class="music-title">{{ item.display_title }}</text>
+          <view v-if="LIVE_SOURCE_ENABLED" class="title-action" @click.stop="editTitle(item)"><text>修改标题</text></view>
           <view class="music-meta">
             <text>{{ item.duration_label }}</text><text>·</text><text>{{ item.playback_label }}</text>
           </view>
@@ -67,6 +68,7 @@ import { createMusicLibraryApi } from "../../common/music-library-api.js"
 import {
   MUSIC_LIBRARY_LIVE_ENABLED,
   createUniMusicLibraryTransport,
+  readV3AccessToken,
 } from "../../common/music-library-transport.js"
 
 // W1 reserves the canonical Player URL, but the existing Player is still
@@ -94,6 +96,7 @@ export default {
       library: createMusicLibraryPreview("ready", MUSIC_CARD_V1_PREVIEW_FIXTURE),
       favoriteBusy: false,
       titleBusy: false,
+      liveGeneration: 0,
     }
   },
   computed: {
@@ -117,23 +120,31 @@ export default {
 
     setupLiveSource() {
       this.api = createMusicLibraryApi({
-        request: createUniMusicLibraryTransport({ getAccessToken: () => readOwnerId() }),
+        request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
         getOwnerId: readOwnerId,
         enabled: true,
       })
-      this.store = createMusicLibraryStore({
-        fetchPage: (args) => this.api.listMusicAssets(args),
-        getOwnerId: readOwnerId,
-      })
+      this.historyStore = createMusicLibraryStore({ fetchPage: (args) => this.api.listMusicAssets(args), getOwnerId: readOwnerId })
+      this.favoritesStore = createMusicLibraryStore({ fetchPage: (args) => this.api.listMusicFavorites(args), getOwnerId: readOwnerId })
+      this.store = this.historyStore
       this.reload()
+    },
+
+    selectSection(section) {
+      if (section !== "history" && section !== "favorites") return
+      this.activeSection = section
+      if (LIVE_SOURCE_ENABLED) {
+        this.store = section === "favorites" ? this.favoritesStore : this.historyStore
+        this.reload()
+      }
     },
 
     applyStoreState(state) {
       const history = (state.items || []).map(presentMusicCard)
       this.library = {
         status: state.status === "idle" ? "loading" : state.status,
-        history,
-        favorites: splitFavorites(history),
+        history: this.activeSection === "history" ? history : [],
+        favorites: this.activeSection === "favorites" ? history : [],
         error: state.error ? state.error.message || "暂时无法加载音乐记录" : null,
         hasMore: !!state.hasMore,
       }
@@ -142,12 +153,18 @@ export default {
     async reload() {
       if (!this.store) return
       this.library = Object.assign({}, this.library, { status: "loading", error: null })
-      this.applyStoreState(await this.store.loadFirstPage())
+      const generation = ++this.liveGeneration
+      const store = this.store
+      const state = await store.loadFirstPage()
+      if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
 
     async loadMore() {
       if (!this.store) return
-      this.applyStoreState(await this.store.loadMore())
+      const generation = ++this.liveGeneration
+      const store = this.store
+      const state = await store.loadMore()
+      if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
 
     // ===== 卡片交互 =====
@@ -172,6 +189,7 @@ export default {
         this.patchCard(item.music_id, { is_favorite: !target })
         uni.showToast({ title: e.message || "收藏操作失败，请重试", icon: "none" })
       } finally {
+        await this.reload()
         this.favoriteBusy = false
       }
     },
@@ -203,7 +221,7 @@ export default {
               : item.metadata_version,
         })
       } catch (e) {
-        if (e && e.code === "METADATA_VERSION_CONFLICT") {
+        if (e && e.code === "TITLE_VERSION_CONFLICT") {
           uni.showToast({ title: "标题已在别处更新，正在刷新", icon: "none" })
           await this.reload()
         } else {
@@ -215,13 +233,9 @@ export default {
     },
 
     patchCard(musicId, patch) {
-      const next = this.library.history.map((card) =>
-        card.music_id === musicId ? Object.freeze(Object.assign({}, card, patch)) : card
-      )
-      this.library = Object.assign({}, this.library, {
-        history: next,
-        favorites: splitFavorites(next),
-      })
+      const key = this.activeSection === "favorites" ? "favorites" : "history"
+      const next = this.library[key].map((card) => card.music_id === musicId ? Object.freeze(Object.assign({}, card, patch)) : card)
+      this.library = Object.assign({}, this.library, { [key]: next })
     },
 
     musicPlayerUrl,
