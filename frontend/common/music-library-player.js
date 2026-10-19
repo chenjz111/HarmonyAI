@@ -23,7 +23,7 @@ export const HISTORICAL_PLAYER_ERROR = Object.freeze({
   NOT_PLAYABLE: "MUSIC_NOT_PLAYABLE",
 })
 
-/** MusicDetailV1 是否可播放：audio_asset（LibraryAudioV1）存在且带 stream_url。 */
+/** MusicDetailV1 是否可播放：已授权卡片及 LibraryAudioV1 都为 ready。 */
 export function isDetailPlayable(detail) {
   const card = detail && detail.card
   const audio = detail && detail.audio
