@@ -19,14 +19,14 @@ const playerSource = readFileSync(new URL("../pages/v3-player/v3-player.vue", im
 const profileSource = readFileSync(new URL("../pages/v3-profile/v3-profile.vue", import.meta.url), "utf8")
 
 const playableDetail = {
-  music_id: "music_a",
-  schema_version: "music_library_detail_v1",
-  display_title: "午后安静",
-  source_type: "generated",
-  duration_seconds: 131,
-  is_favorite: true,
-  audio_asset: { stream_url: "/api/v3/music/assets/music_a/stream", duration_seconds: 131 },
-  playback_context: { selection_state: "resolved", contexts: [], selected_context_id: null },
+  card: {
+    music_id: "music_a", default_title: "午后安静", display_title: "午后安静",
+    source_type: "generated", duration_seconds: 131, availability: "ready", is_favorite: true,
+  },
+  audio: { availability: "ready", duration_seconds: 131, format: "mp3" },
+  source_contexts: [],
+  selected_context_id: null,
+  history_explanation: null,
 }
 
 test("FE2B: playable detail resolves LibraryAudioV1 without inventing fields", () => {
@@ -41,13 +41,13 @@ test("FE2B: playable detail resolves LibraryAudioV1 without inventing fields", (
 })
 
 test("FE2B: unavailable audio is not playable and carries no stream", () => {
-  const detail = { ...playableDetail, audio_asset: null, availability: "expired" }
+  const detail = { ...playableDetail, audio: { ...playableDetail.audio, availability: "expired" } }
   assert.equal(isDetailPlayable(detail), false)
   assert.equal(resolvePlayableAudio(detail), null)
 })
 
 test("FE2B: unknown duration stays null rather than a fabricated number", () => {
-  const detail = { ...playableDetail, duration_seconds: null, audio_asset: { stream_url: "/x" } }
+  const detail = { ...playableDetail, audio: { ...playableDetail.audio, duration_seconds: null } }
   assert.equal(resolvePlayableAudio(detail).duration_seconds, null)
 })
 
@@ -66,7 +66,7 @@ test("FE2B: open requires an owner and reads detail through the library api", as
 
   const session = createHistoricalMusicSession({ api, getOwnerId: () => "A", newEventId: () => "e1" })
   const detail = await session.open("music_a")
-  assert.equal(detail.music_id, "music_a")
+  assert.equal(detail.card.music_id, "music_a")
   assert.deepEqual(calls, [["music_a", { contextId: null }]])
 })
 
@@ -146,4 +146,29 @@ test("FE2B: My page keeps frozen preview by default and never renders HTML", () 
   assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = false/)
   assert.doesNotMatch(profileSource, /v-html/)
   assert.doesNotMatch(profileSource, /createInnerAudioContext|new Audio|audioCtx/)
+})
+
+test("FE2B: concurrent playback reports share one event and reset invalidates late reply", async () => {
+  let release
+  let calls = 0
+  const session = createHistoricalMusicSession({
+    api: {
+      getMusicAsset: async () => playableDetail,
+      recordPlayStarted: () => { calls++; return new Promise(resolve => { release = resolve }) },
+    },
+    getOwnerId: () => "A",
+    newEventId: () => "evt-onplay",
+  })
+  await session.open("music_a")
+  const first = session.reportPlayStarted("music_a")
+  const second = session.reportPlayStarted("music_a")
+  assert.equal(calls, 1)
+  session.reset()
+  release({ replayed: false })
+  await assert.rejects(first, { code: "OWNER_CHANGED" })
+  await assert.rejects(second, { code: "OWNER_CHANGED" })
+  assert.equal(session.getState().playReported, false)
+})
+test("FE2B: old mock detail cannot be treated as a valid backend response", () => {
+  assert.equal(isDetailPlayable({ audio_asset: { stream_url: "/untrusted" } }), false)
 })
