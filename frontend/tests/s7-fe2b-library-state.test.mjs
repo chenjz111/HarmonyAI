@@ -124,3 +124,34 @@ test("FE2B: normalizeUserTitle maps blank input to explicit null (clear)", () =>
   assert.equal(normalizeUserTitle(null), null)
   assert.equal(normalizeUserTitle(" 午后安静 "), "午后安静")
 })
+
+test("FE2B R2: switching owners clears previously loaded cards and cursor immediately on read", async () => {
+  let owner = "A"
+  const store = createMusicLibraryStore({
+    getOwnerId: () => owner,
+    fetchPage: async () => ({ items: [{ music_id: "private-A" }], next_cursor: "next-A", has_more: true }),
+  })
+  await store.loadFirstPage()
+  assert.deepEqual(store.getState().items.map(x => x.music_id), ["private-A"])
+  owner = "B"
+  const changed = store.getState()
+  assert.deepEqual(changed.items, [])
+  assert.equal(changed.nextCursor, null)
+  assert.equal(changed.hasMore, false)
+  assert.equal(changed.status, "idle")
+})
+test("FE2B R2: switching owners while request rejects discards stale error", async () => {
+  let owner = "A"
+  let rejectRequest
+  const store = createMusicLibraryStore({
+    getOwnerId: () => owner,
+    fetchPage: () => new Promise((_, reject) => { rejectRequest = reject }),
+  })
+  const pending = store.loadFirstPage()
+  owner = "B"
+  rejectRequest(Object.assign(Error("A private"), { code: "PRIVATE_A" }))
+  const state = await pending
+  assert.equal(state.status, "idle")
+  assert.equal(state.error, null)
+  assert.deepEqual(state.items, [])
+})
