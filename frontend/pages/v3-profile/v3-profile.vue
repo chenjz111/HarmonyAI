@@ -97,6 +97,7 @@ export default {
       favoriteBusy: false,
       titleBusy: false,
       liveGeneration: 0,
+      liveOwner: null,
     }
   },
   computed: {
@@ -116,10 +117,14 @@ export default {
   onLoad() {
     if (LIVE_SOURCE_ENABLED) this.setupLiveSource()
   },
+  onShow() {
+    if (LIVE_SOURCE_ENABLED && this.api) this.ensureLiveOwner()
+  },
   methods: {
     // ===== 数据源（门禁关闭时保持冻结预览 fixture） =====
 
     setupLiveSource() {
+      this.liveOwner = readOwnerId()
       this.api = createMusicLibraryApi({
         request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
         getOwnerId: readOwnerId,
@@ -131,8 +136,22 @@ export default {
       this.reload()
     },
 
+    ensureLiveOwner() {
+      if (!LIVE_SOURCE_ENABLED) return true
+      const owner = readOwnerId()
+      if (owner === this.liveOwner) return true
+      this.liveOwner = owner
+      this.liveGeneration += 1
+      if (this.historyStore) this.historyStore.invalidate()
+      if (this.favoritesStore) this.favoritesStore.invalidate()
+      this.library = createMusicLibraryPreview("empty")
+      if (this.store && owner) this.reload()
+      return false
+    },
+
     selectSection(section) {
       if (section !== "history" && section !== "favorites") return
+      if (LIVE_SOURCE_ENABLED && !this.ensureLiveOwner()) return
       this.activeSection = section
       if (LIVE_SOURCE_ENABLED) {
         this.store = section === "favorites" ? this.favoritesStore : this.historyStore
@@ -153,31 +172,41 @@ export default {
 
     async reload() {
       if (!this.store) return
+      if (LIVE_SOURCE_ENABLED && readOwnerId() !== this.liveOwner) { this.ensureLiveOwner(); return }
       this.library = Object.assign({}, this.library, { status: "loading", error: null })
       const generation = ++this.liveGeneration
       const store = this.store
+      const owner = this.liveOwner
       const state = await store.loadFirstPage()
+      if (LIVE_SOURCE_ENABLED && readOwnerId() !== owner) { this.ensureLiveOwner(); return }
       if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
 
     async loadMore() {
       if (!this.store) return
+      if (LIVE_SOURCE_ENABLED && readOwnerId() !== this.liveOwner) { this.ensureLiveOwner(); return }
       const generation = ++this.liveGeneration
       const store = this.store
+      const owner = this.liveOwner
       const state = await store.loadMore()
+      if (LIVE_SOURCE_ENABLED && readOwnerId() !== owner) { this.ensureLiveOwner(); return }
       if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
 
     // ===== 卡片交互 =====
 
     openMusic(item) {
+      if (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner)) return
       if (!item.can_open || !HISTORICAL_PLAYER_LINK_ENABLED) return
       uni.navigateTo({ url: musicPlayerUrl(item.music_id) })
     },
 
     // 收藏是独立 owner-scoped 变更：乐观更新 + 失败回滚，不作为偏好学习证据
     async toggleFavorite(item) {
+      if (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner)) return
       if (this.favoriteBusy || !this.api) return
+      const owner = readOwnerId()
+      const generation = this.liveGeneration
       this.favoriteBusy = true
       const target = !item.is_favorite
       this.patchCard(item.music_id, { is_favorite: target })
@@ -186,18 +215,24 @@ export default {
           { music_id: item.music_id, source_type: item.source_type },
           target
         )
+        if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
       } catch (e) {
+        if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
         this.patchCard(item.music_id, { is_favorite: !target })
         uni.showToast({ title: e.message || "收藏操作失败，请重试", icon: "none" })
       } finally {
-        await this.reload()
+        if (readOwnerId() === owner && generation === this.liveGeneration) await this.reload()
+        else this.ensureLiveOwner()
         this.favoriteBusy = false
       }
     },
 
     // 标题编辑：CAS（expected_version）+ 显式 null 清除；冲突时提示并刷新
     async editTitle(item) {
+      if (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner)) return
       if (this.titleBusy || !this.api) return
+      const owner = readOwnerId()
+      const generation = this.liveGeneration
       const result = await new Promise((resolve) => {
         uni.showModal({
           title: "修改标题",
@@ -208,11 +243,13 @@ export default {
           fail: () => resolve({ confirm: false }),
         })
       })
+      if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
       if (!result || !result.confirm) return
       const nextTitle = normalizeUserTitle(result.content)
       this.titleBusy = true
       try {
         const updated = await this.api.setMusicTitle(item.music_id, nextTitle, item.metadata_version)
+        if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
         this.patchCard(item.music_id, {
           user_title: nextTitle,
           display_title: nextTitle || item.default_title,
@@ -222,6 +259,7 @@ export default {
               : item.metadata_version,
         })
       } catch (e) {
+        if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
         if (e && e.code === "TITLE_VERSION_CONFLICT") {
           uni.showToast({ title: "标题已在别处更新，正在刷新", icon: "none" })
           await this.reload()
