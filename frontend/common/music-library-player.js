@@ -25,22 +25,23 @@ export const HISTORICAL_PLAYER_ERROR = Object.freeze({
 
 /** MusicDetailV1 是否可播放：audio_asset（LibraryAudioV1）存在且带 stream_url。 */
 export function isDetailPlayable(detail) {
-  const audio = detail && detail.audio_asset
-  return !!(audio && audio.stream_url)
+  const card = detail && detail.card
+  const audio = detail && detail.audio
+  return !!(card && card.music_id && card.availability === "ready" &&
+    audio && audio.availability === "ready")
 }
 
-/** 从 MusicDetailV1 取播放所需的最小信息（不构造处方、不发明字段）。 */
+/** LibraryAudioV1 deliberately contains no URL. Use the existing owner-authorized V3 stream route. */
 export function resolvePlayableAudio(detail) {
   if (!isDetailPlayable(detail)) return null
-  const audio = detail.audio_asset
+  const { card, audio } = detail
   return {
-    music_id: detail.music_id,
-    stream_url: audio.stream_url,
+    music_id: card.music_id,
+    stream_url: `/api/v3/music/assets/${encodeURIComponent(card.music_id)}/stream`,
     duration_seconds:
-      Number.isFinite(detail.duration_seconds) && detail.duration_seconds > 0
-        ? detail.duration_seconds
-        : null,
-    source_type: detail.source_type,
+      Number.isFinite(audio.duration_seconds) && audio.duration_seconds > 0
+        ? audio.duration_seconds : null,
+    source_type: card.source_type,
   }
 }
 
@@ -61,6 +62,8 @@ export function createHistoricalMusicSession({ api, getOwnerId, newEventId }) {
   let eventId = null
   let playReported = false
   let contextId = null
+  let generation = 0
+  let reportPromise = null
 
   function ownerChanged() {
     return openOwner !== null && readOwner() !== openOwner
@@ -78,12 +81,15 @@ export function createHistoricalMusicSession({ api, getOwnerId, newEventId }) {
     async open(musicId, { context = null } = {}) {
       const owner = readOwner()
       if (!owner) throw failure(HISTORICAL_PLAYER_ERROR.IDENTITY_REQUIRED, "请恢复当前身份后重试")
+      const opening = ++generation
       openOwner = owner
       contextId = context
       eventId = makeEventId()
       playReported = false
       const detail = await api.getMusicAsset(musicId, { contextId: context })
       assertOwner()
+      if (opening !== generation) throw failure(HISTORICAL_PLAYER_ERROR.OWNER_CHANGED, "历史播放会话已失效")
+      contextId = detail && detail.selected_context_id || null
       return detail
     },
 
@@ -94,15 +100,31 @@ export function createHistoricalMusicSession({ api, getOwnerId, newEventId }) {
      */
     async reportPlayStarted(musicId) {
       if (playReported) return { reported: false, reason: "already_reported" }
+      if (reportPromise) return reportPromise
       if (!eventId) throw failure(HISTORICAL_PLAYER_ERROR.FEATURE_NOT_READY, "播放会话尚未开始")
       assertOwner()
-      const result = await api.recordPlayStarted(musicId, eventId, contextId)
-      playReported = true
-      return { reported: true, eventId, result }
+      const reportingGeneration = generation
+      const reportingEventId = eventId
+      const reportingContext = contextId
+      const pending = (async () => {
+        const result = await api.recordPlayStarted(musicId, reportingEventId, reportingContext)
+        assertOwner()
+        if (reportingGeneration !== generation || eventId !== reportingEventId) {
+          throw failure(HISTORICAL_PLAYER_ERROR.OWNER_CHANGED, "历史播放会话已失效")
+        }
+        playReported = true
+        return { reported: true, eventId: reportingEventId, result }
+      })()
+      reportPromise = pending
+      try { return await pending } finally {
+        if (reportPromise === pending) reportPromise = null
+      }
     },
 
     /** owner 切换或页面卸载时重置会话（不触发任何网络调用）。 */
     reset() {
+      generation += 1
+      reportPromise = null
       openOwner = null
       eventId = null
       playReported = false
