@@ -31,7 +31,7 @@
       <view v-for="item in visibleItems" :key="item.music_id" :class="['music-card', { unavailable: !item.can_open }]" @click="openMusic(item)">
         <view class="card-main">
           <text class="music-title">{{ item.display_title }}</text>
-          <view v-if="LIVE_SOURCE_ENABLED" class="title-action" @click.stop="editTitle(item)"><text>修改标题</text></view>
+          <view v-if="liveSourceEnabled" class="title-action" @click.stop="editTitle(item)"><text>修改标题</text></view>
           <view class="music-meta">
             <text>{{ item.duration_label }}</text><text>·</text><text>{{ item.playback_label }}</text>
           </view>
@@ -100,6 +100,7 @@ export default {
     }
   },
   computed: {
+    liveSourceEnabled() { return LIVE_SOURCE_ENABLED },
     visibleItems() {
       return this.activeSection === "favorites" ? this.library.favorites : this.library.history
     },
