@@ -28,8 +28,8 @@ function loadPlayerPage({ apiV3, createPlayerController, uni }) {
       "const createMusicLibraryApi = __deps.createMusicLibraryApi\n",
     )
     .replace(
-      /import \{ createUniMusicLibraryTransport \} from [^\r\n]+\r?\n/,
-      "const createUniMusicLibraryTransport = __deps.createUniMusicLibraryTransport\n",
+      /import \\{ createUniMusicLibraryTransport, readV3AccessToken \\} from [^\\r\\n]+\\r?\\n/,
+      "const { createUniMusicLibraryTransport, readV3AccessToken } = __deps\\n",
     )
     .replace(
       /import \{\s*createHistoricalMusicSession,\s*resolvePlayableAudio,\s*\} from [^\r\n]+\r?\n/,
@@ -51,6 +51,7 @@ function loadPlayerPage({ apiV3, createPlayerController, uni }) {
         recordPlayStarted: async () => ({ ok: true }),
       }),
       createUniMusicLibraryTransport: () => async () => ({ data: {} }),
+      readV3AccessToken: () => "",
       createHistoricalMusicSession: () => ({
         open: async () => null,
         reportPlayStarted: async () => ({ reported: false }),
