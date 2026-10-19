@@ -21,6 +21,24 @@ import { apiV3 } from "../../common/api-v3.js"
 import { createPlayerController } from "../../common/player-controller.js"
 import { buildMusicPresentation, presentProgress } from "../../common/music-presentation.js"
 import { seekRatioFromEvent } from "../../common/player-seek.js"
+import { createMusicLibraryApi } from "../../common/music-library-api.js"
+import { createUniMusicLibraryTransport } from "../../common/music-library-transport.js"
+import {
+  createHistoricalMusicSession,
+  resolvePlayableAudio,
+} from "../../common/music-library-player.js"
+
+// 历史音乐导航门禁：等 BE-2B API + owner 隔离 + stream 安全 Gate 通过后由 Owner 开启。
+const HISTORICAL_LIBRARY_ENABLED = false
+
+function readOwnerId() {
+  try {
+    const id = uni.getStorageSync("v3_public_user_id")
+    return id || null
+  } catch (e) {
+    return null
+  }
+}
 
 export default {
   data() {
@@ -31,6 +49,8 @@ export default {
       basis: null,
       userGoal: null,
       playerController: null,
+      historicalMusicId: null,
+      historicalSession: null,
       playerState: {
         playing: false,
         currentTime: 0,
@@ -91,7 +111,8 @@ export default {
       return imageCode ? `/static/v31-player/${imageCode}-2.png` : ""
     },
   },
-  onLoad() {
+  onLoad(query) {
+    this.historicalMusicId = query && query.music_id ? decodeURIComponent(query.music_id) : null
     this.load()
   },
   onHide() {
@@ -99,17 +120,32 @@ export default {
   },
   onShow() {
     this.analysisExpanded = false
+    // owner 切换：停止旧音频并清理页面状态，迟到结果不得恢复旧数据
+    if (this.historicalSession && this.historicalSession.hasOwnerChanged()) {
+      if (this.playerController) this.playerController.dispose()
+      this.playerController = null
+      this.historicalSession.reset()
+      this.historicalSession = null
+      this.music = null
+      this.loadFailure = Object.assign(new Error("身份已切换，请重新加载"), { code: "OWNER_CHANGED" })
+    }
     if (this.playerController) this.playerController.handleShow()
   },
   onUnload() {
     if (this.playerController) this.playerController.dispose()
     this.playerController = null
+    if (this.historicalSession) this.historicalSession.reset()
+    this.historicalSession = null
   },
   methods: {
     async load() {
       this.loading = true
       this.loadFailure = null
       try {
+        if (this.historicalMusicId) {
+          await this.loadHistorical()
+          return
+        }
         this.music = await apiV3.getMusic()
         this.favorite = !!this.music.favorite
         this.simulated = !!apiV3.AGENT_SIMULATED
@@ -126,6 +162,45 @@ export default {
         this.loading = false
       }
     },
+    // 历史通道：music_id → 受控 MusicDetailV1（音频来自历史持久化上下文）。
+    // 不 ensureMusicBasis、不读取当前 session/UserGoal 替代旧资料。
+    async loadHistorical() {
+      if (!HISTORICAL_LIBRARY_ENABLED) {
+        throw Object.assign(new Error("历史音乐播放尚未开放，请稍后再试。"), {
+          code: "FEATURE_NOT_READY",
+        })
+      }
+      const api = createMusicLibraryApi({
+        request: createUniMusicLibraryTransport({ getAccessToken: () => readOwnerId() }),
+        getOwnerId: readOwnerId,
+        enabled: true,
+      })
+      const session = createHistoricalMusicSession({
+        api,
+        getOwnerId: readOwnerId,
+        newEventId: () => "play-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      })
+      const detail = await session.open(this.historicalMusicId)
+      const audio = resolvePlayableAudio(detail)
+      if (!audio) {
+        throw Object.assign(new Error("本次音乐暂时不可用，请稍后重试。"), {
+          code: "MUSIC_NOT_PLAYABLE",
+        })
+      }
+      this.historicalSession = session
+      this.basis = null // 历史播放不读取当前会话解析
+      this.userGoal = null
+      this.music = {
+        music_ref: { music_id: detail.music_id, source_type: detail.source_type },
+        title: detail.display_title,
+        stream_url: audio.stream_url,
+        duration_seconds: audio.duration_seconds,
+        favorite: detail.is_favorite === true,
+        disclaimer: "音乐调养不能替代专业医疗或心理帮助。",
+      }
+      this.favorite = detail.is_favorite === true
+      this.setupPlayerController()
+    },
     setupPlayerController() {
       if (this.playerController) this.playerController.dispose()
       this.playerController = createPlayerController({
@@ -141,9 +216,19 @@ export default {
       })
       this.playerState = this.playerController.getState()
     },
-    togglePlay() {
+    async togglePlay() {
       if (!this.playerController || !this.music) return
-      void this.playerController.toggle(this.music.stream_url)
+      const wasPlaying = !!this.playerState.playing
+      await this.playerController.toggle(this.music.stream_url)
+      // 仅真实 onPlay 成功时上报一次 play_started；重试复用同一 event id（由会话保证幂等）。
+      // 打开、预取、Seek、展开解析均不计播放、不生成。
+      if (!wasPlaying && this.playerState.playing && this.historicalSession) {
+        try {
+          await this.historicalSession.reportPlayStarted(this.music.music_ref.music_id)
+        } catch (e) {
+          /* 上报失败不阻塞播放；下次播放重试复用 event id */
+        }
+      }
     },
     seekToRatio(ratio) {
       if (!this.playerController) return false

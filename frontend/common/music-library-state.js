@@ -47,3 +47,125 @@ export function createMusicLibraryPreview(status, cards = []) {
 export function musicPlayerUrl(musicId) {
   return `/pages/v3-player/v3-player?music_id=${encodeURIComponent(musicId)}`
 }
+
+// ===== FE-2B：分页 / 去重 / cursor stale（纯逻辑，可被 node:test 直接驱动） =====
+
+/** cursor 失效（后端要求从头刷新）时视为 stale。 */
+export const CURSOR_STALE_CODES = Object.freeze([
+  "CURSOR_STALE",
+  "CURSOR_EXPIRED",
+  "INVALID_CURSOR",
+])
+
+export function isCursorStale(error) {
+  return !!error && CURSOR_STALE_CODES.includes(error.code)
+}
+
+/**
+ * 按 music_id 去重合并分页结果。
+ * 已存在的卡片优先（先到为准），避免旧 cursor 的迟到响应覆盖新数据。
+ */
+export function mergeMusicCards(existing = [], incoming = []) {
+  const merged = [...existing]
+  const seen = new Set(merged.map((card) => card && card.music_id).filter(Boolean))
+  for (const card of incoming) {
+    if (!card || !card.music_id || seen.has(card.music_id)) continue
+    seen.add(card.music_id)
+    merged.push(card)
+  }
+  return merged
+}
+
+/** 收藏是独立视图：仅按服务端 is_favorite 标记筛选，不推断偏好。 */
+export function splitFavorites(cards = []) {
+  return cards.filter((card) => card.is_favorite === true)
+}
+
+/**
+ * 标题编辑输入归一化：空/空白 → null（显式清除自定义标题），否则去空白保留原文。
+ * 不做任何富文本处理（页面纯文本渲染，无 v-html）。
+ */
+export function normalizeUserTitle(input) {
+  const raw = typeof input === "string" ? input.trim() : ""
+  return raw === "" ? null : raw
+}
+
+/**
+ * 音乐库分页 store（真实 transport 与合成 transport 共用）。
+ *
+ * - 分页：cursor + has_more
+ * - cursor stale：自动从头刷新（重置游标），不重复追加
+ * - 去重：mergeMusicCards 按 music_id
+ * - 迟到响应：requestToken 门禁，owner 切换/新请求会丢弃旧响应
+ * - 不发明字段：只透传后端 PageV1 的 items / next_cursor / has_more
+ *
+ * @param {object} options
+ * @param {(args: {cursor: string|null, limit: number}) => Promise<object>} options.fetchPage
+ * @param {number} [options.pageSize]
+ * @param {() => string|null} [options.getOwnerId] owner 切换保护（可选）
+ */
+export function createMusicLibraryStore({ fetchPage, pageSize = 20, getOwnerId = null } = {}) {
+  if (typeof fetchPage !== "function") {
+    throw new TypeError("createMusicLibraryStore: fetchPage is required")
+  }
+  let status = "idle" // idle | loading | ready | empty | error
+  let items = []
+  let nextCursor = null
+  let hasMore = false
+  let error = null
+  let requestToken = 0
+  let cursorStaleRefreshed = false
+
+  function snapshot() {
+    return { status, items, nextCursor, hasMore, error, cursorStaleRefreshed }
+  }
+
+  function currentOwner() {
+    return typeof getOwnerId === "function" ? getOwnerId() : null
+  }
+
+  async function load({ reset = false, staleRefresh = false } = {}) {
+    const token = ++requestToken
+    const owner = currentOwner()
+    if (reset) {
+      items = []
+      nextCursor = null
+      hasMore = false
+      error = null
+      if (!staleRefresh) cursorStaleRefreshed = false
+    }
+    status = "loading"
+    const cursor = reset ? null : nextCursor
+    try {
+      const page = await fetchPage({ cursor, limit: pageSize })
+      if (token !== requestToken) return snapshot() // 迟到响应丢弃
+      if (getOwnerId && currentOwner() !== owner) return snapshot() // owner 已切换
+      const incoming = Array.isArray(page && page.items) ? page.items : []
+      items = mergeMusicCards(items, incoming)
+      nextCursor = page && page.next_cursor !== undefined ? page.next_cursor : null
+      hasMore = !!(page && page.has_more === true && nextCursor)
+      status = items.length ? "ready" : "empty"
+      error = null
+    } catch (e) {
+      if (token !== requestToken) return snapshot()
+      if (isCursorStale(e) && !reset) {
+        // cursor 失效：从头刷新一次（不追加脏数据）
+        cursorStaleRefreshed = true
+        return load({ reset: true, staleRefresh: true })
+      }
+      error = e
+      status = "error"
+    }
+    return snapshot()
+  }
+
+  return Object.freeze({
+    loadFirstPage: () => load({ reset: true }),
+    loadMore: () => {
+      if (!hasMore) return Promise.resolve(snapshot())
+      return load({ reset: false })
+    },
+    refresh: () => load({ reset: true }),
+    getState: snapshot,
+  })
+}
