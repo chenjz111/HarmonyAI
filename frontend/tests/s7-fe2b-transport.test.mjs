@@ -42,6 +42,7 @@ test("FE2B: transport resolves the V3 envelope data payload", async () => {
 
 test("FE2B: transport forwards server error codes without inventing new ones", async () => {
   const request = createUniMusicLibraryTransport({
+    getAccessToken: () => "test-token",
     uniApi: fakeUni((args) => {
       args.success({
         statusCode: 409,
@@ -54,13 +55,14 @@ test("FE2B: transport forwards server error codes without inventing new ones", a
 })
 
 test("FE2B: transport degrades to a local error when uni is unavailable", async () => {
-  const request = createUniMusicLibraryTransport({ uniApi: null })
+  const request = createUniMusicLibraryTransport({ getAccessToken: () => "test-token", uniApi: null })
   const res = await request({ method: "GET", path: "/api/v3/me/music-assets" })
   assert.equal(res.error.code, TRANSPORT_ERROR.UNAVAILABLE)
 })
 
 test("FE2B: transport maps network failure to NETWORK_ERROR", async () => {
   const request = createUniMusicLibraryTransport({
+    getAccessToken: () => "test-token",
     uniApi: fakeUni((args) => args.fail({ errMsg: "request:fail" })),
   })
   const res = await request({ method: "GET", path: "/api/v3/me/music-assets" })
@@ -84,6 +86,7 @@ test("FE2B: live api stays fail-closed until the gate is explicitly enabled", as
     getOwnerId: () => "A",
     liveEnabled: true,
     transportOptions: {
+      getAccessToken: () => "test-token",
       uniApi: fakeUni((args) => {
         calls.push(args.url)
         args.success({ statusCode: 200, data: { ok: true, data: { items: [], next_cursor: null, has_more: false } } })
@@ -104,7 +107,19 @@ test("FE2B: bearer token comes from credential storage, never public user id", (
 })
 test("FE2B: HTTP 200 with ok=false cannot bypass V3 envelope error", async () => {
   const request = createUniMusicLibraryTransport({
+    getAccessToken: () => "test-token",
     uniApi: fakeUni(args => args.success({ statusCode: 200, data: { ok: false, data: { private: true }, error: { code: "ACCESS_DENIED" } } }))
   })
   assert.equal((await request({ method: "GET", path: "/x" })).error.code, "ACCESS_DENIED")
+})
+
+test("FE2B: missing bearer fails locally with no uni.request invocation", async () => {
+  let calls = 0
+  const request = createUniMusicLibraryTransport({
+    getAccessToken: () => "",
+    uniApi: fakeUni(() => { calls++ }),
+  })
+  const result = await request({ method: "GET", path: "/api/v3/me/music-assets" })
+  assert.equal(result.error.code, TRANSPORT_ERROR.AUTH_REQUIRED)
+  assert.equal(calls, 0)
 })
