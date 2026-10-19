@@ -16,7 +16,10 @@ export const MUSIC_LIBRARY_LIVE_ENABLED = false
 
 /** Read the actual V3 bearer credential, never the public owner identifier. */
 export function readV3AccessToken(uniApi = null) {
-  const source = resolveUni(uniApi)
+  let source = uniApi
+  if (!source) {
+    try { if (typeof uni !== "undefined") source = uni } catch (e) { return "" }
+  }
   if (!source || typeof source.getStorageSync !== "function") return ""
   try { return source.getStorageSync("v3_access_token") || "" } catch (e) { return "" }
 }
