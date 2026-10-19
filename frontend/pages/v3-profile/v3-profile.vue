@@ -89,6 +89,26 @@ function readOwnerId() {
   }
 }
 
+// A page operation belongs to one authentication instance, not just to a public
+// owner name. The credential and the monotonic login epoch stay in this private
+// closure, never in render data, to reject unobserved A -> B -> A transitions.
+function authEpoch() {
+  try {
+    const value = Number(uni.getStorageSync("v3_auth_epoch"))
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0
+  } catch (e) { return 0 }
+}
+function captureLiveIdentity() {
+  const owner = readOwnerId()
+  const token = readV3AccessToken()
+  const epoch = authEpoch()
+  return Object.freeze({
+    owner,
+    matches: () => readOwnerId() === owner &&
+      readV3AccessToken() === token && authEpoch() === epoch,
+  })
+}
+
 export default {
   data() {
     return {
@@ -98,11 +118,15 @@ export default {
       titleBusy: false,
       liveGeneration: 0,
       liveOwner: null,
+      liveIdentity: null,
     }
   },
   computed: {
     liveSourceEnabled() { return LIVE_SOURCE_ENABLED },
     visibleItems() {
+      // Computed render guard: never expose a stale page projection even when
+      // identity changed while the page stayed visible (no onShow yet).
+      if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) return []
       return this.activeSection === "favorites" ? this.library.favorites : this.library.history
     },
     sourceBadge() {
@@ -120,11 +144,19 @@ export default {
   onShow() {
     if (LIVE_SOURCE_ENABLED && this.api) this.ensureLiveOwner()
   },
+  onUnload() {
+    if (this.historyStore) this.historyStore.invalidate()
+    if (this.favoritesStore) this.favoritesStore.invalidate()
+    this.liveGeneration += 1
+    this.liveIdentity = null
+    this.library = createMusicLibraryPreview("empty")
+  },
   methods: {
     // ===== 数据源（门禁关闭时保持冻结预览 fixture） =====
 
     setupLiveSource() {
-      this.liveOwner = readOwnerId()
+      this.liveIdentity = captureLiveIdentity()
+      this.liveOwner = this.liveIdentity.owner
       this.api = createMusicLibraryApi({
         request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
         getOwnerId: readOwnerId,
@@ -138,8 +170,9 @@ export default {
 
     ensureLiveOwner() {
       if (!LIVE_SOURCE_ENABLED) return true
-      const owner = readOwnerId()
-      if (owner === this.liveOwner) return true
+      if (this.liveIdentity && this.liveIdentity.matches()) return true
+      this.liveIdentity = captureLiveIdentity()
+      const owner = this.liveIdentity.owner
       this.liveOwner = owner
       this.liveGeneration += 1
       if (this.historyStore) this.historyStore.invalidate()
@@ -172,24 +205,24 @@ export default {
 
     async reload() {
       if (!this.store) return
-      if (LIVE_SOURCE_ENABLED && readOwnerId() !== this.liveOwner) { this.ensureLiveOwner(); return }
+      if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) { this.ensureLiveOwner(); return }
       this.library = Object.assign({}, this.library, { status: "loading", error: null })
       const generation = ++this.liveGeneration
       const store = this.store
-      const owner = this.liveOwner
+      const identity = this.liveIdentity
       const state = await store.loadFirstPage()
-      if (LIVE_SOURCE_ENABLED && readOwnerId() !== owner) { this.ensureLiveOwner(); return }
+      if (LIVE_SOURCE_ENABLED && (!identity || !identity.matches())) { this.ensureLiveOwner(); return }
       if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
 
     async loadMore() {
       if (!this.store) return
-      if (LIVE_SOURCE_ENABLED && readOwnerId() !== this.liveOwner) { this.ensureLiveOwner(); return }
+      if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) { this.ensureLiveOwner(); return }
       const generation = ++this.liveGeneration
       const store = this.store
-      const owner = this.liveOwner
+      const identity = this.liveIdentity
       const state = await store.loadMore()
-      if (LIVE_SOURCE_ENABLED && readOwnerId() !== owner) { this.ensureLiveOwner(); return }
+      if (LIVE_SOURCE_ENABLED && (!identity || !identity.matches())) { this.ensureLiveOwner(); return }
       if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
 
@@ -205,7 +238,7 @@ export default {
     async toggleFavorite(item) {
       if (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner)) return
       if (this.favoriteBusy || !this.api) return
-      const owner = readOwnerId()
+      const identity = this.liveIdentity
       const generation = this.liveGeneration
       this.favoriteBusy = true
       const target = !item.is_favorite
@@ -215,14 +248,18 @@ export default {
           { music_id: item.music_id, source_type: item.source_type },
           target
         )
-        if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
+        if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
       } catch (e) {
-        if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
+        if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
+        if (generation !== this.liveGeneration) return // do not patch a different tab
         this.patchCard(item.music_id, { is_favorite: !target })
         uni.showToast({ title: e.message || "收藏操作失败，请重试", icon: "none" })
       } finally {
-        if (readOwnerId() === owner && generation === this.liveGeneration) await this.reload()
-        else this.ensureLiveOwner()
+        if (identity && identity.matches() && this.liveIdentity === identity) {
+          // A successful same-session mutation invalidates the selected list
+          // even if the user switched tabs while the write was in flight.
+          await this.reload()
+        } else this.ensureLiveOwner()
         this.favoriteBusy = false
       }
     },
@@ -231,7 +268,7 @@ export default {
     async editTitle(item) {
       if (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner)) return
       if (this.titleBusy || !this.api) return
-      const owner = readOwnerId()
+      const identity = this.liveIdentity
       const generation = this.liveGeneration
       const result = await new Promise((resolve) => {
         uni.showModal({
@@ -243,13 +280,13 @@ export default {
           fail: () => resolve({ confirm: false }),
         })
       })
-      if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
+      if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
       if (!result || !result.confirm) return
       const nextTitle = normalizeUserTitle(result.content)
       this.titleBusy = true
       try {
         const updated = await this.api.setMusicTitle(item.music_id, nextTitle, item.metadata_version)
-        if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
+        if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
         this.patchCard(item.music_id, {
           user_title: nextTitle,
           display_title: nextTitle || item.default_title,
@@ -259,7 +296,7 @@ export default {
               : item.metadata_version,
         })
       } catch (e) {
-        if (readOwnerId() !== owner || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
+        if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
         if (e && e.code === "TITLE_VERSION_CONFLICT") {
           uni.showToast({ title: "标题已在别处更新，正在刷新", icon: "none" })
           await this.reload()
