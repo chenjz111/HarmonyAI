@@ -14,6 +14,13 @@
 // 真实启用开关：默认关闭（fail-closed）。开启需显式注入 true 且通过 Backend Gate。
 export const MUSIC_LIBRARY_LIVE_ENABLED = false
 
+/** Read the actual V3 bearer credential, never the public owner identifier. */
+export function readV3AccessToken(uniApi = null) {
+  const source = resolveUni(uniApi)
+  if (!source || typeof source.getStorageSync !== "function") return ""
+  try { return source.getStorageSync("v3_access_token") || "" } catch (e) { return "" }
+}
+
 // 本地传输错误码（非后端合同错误码，仅表示前端环境/网络问题）
 export const TRANSPORT_ERROR = Object.freeze({
   UNAVAILABLE: "TRANSPORT_UNAVAILABLE",
@@ -73,7 +80,7 @@ export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi
             success(res) {
               const body = res && res.data ? res.data : {}
               const ok = res && res.statusCode >= 200 && res.statusCode < 300
-              if (ok && Object.hasOwn(body, "data")) {
+              if (ok && body.ok === true && Object.hasOwn(body, "data")) {
                 resolve({ data: body.data })
                 return
               }
