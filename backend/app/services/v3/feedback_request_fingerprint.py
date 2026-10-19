@@ -9,6 +9,8 @@ _DOMAIN = b"feedback_v3.1\0"
 
 
 def fingerprint_feedback_request(normalized_payload: Mapping[str, object]) -> str:
+    if not isinstance(normalized_payload, Mapping):
+        raise TypeError("normalized feedback payload must be a mapping")
     canonical = json.dumps(
         normalized_payload, sort_keys=True, separators=(",", ":"),
         ensure_ascii=False, allow_nan=False,

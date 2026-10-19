@@ -35,3 +35,8 @@ def test_fingerprint_changes_with_payload_and_never_returns_text():
 def test_fingerprint_rejects_non_json_payload(payload, error):
     with pytest.raises(error):
         fingerprint_feedback_request(payload)
+
+
+def test_fingerprint_requires_normalized_mapping():
+    with pytest.raises(TypeError):
+        fingerprint_feedback_request(["not-a-normalized-request"])
