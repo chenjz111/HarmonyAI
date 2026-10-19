@@ -22,7 +22,7 @@ import { createPlayerController } from "../../common/player-controller.js"
 import { buildMusicPresentation, presentProgress } from "../../common/music-presentation.js"
 import { seekRatioFromEvent } from "../../common/player-seek.js"
 import { createMusicLibraryApi } from "../../common/music-library-api.js"
-import { createUniMusicLibraryTransport } from "../../common/music-library-transport.js"
+import { createUniMusicLibraryTransport, readV3AccessToken } from "../../common/music-library-transport.js"
 import {
   createHistoricalMusicSession,
   resolvePlayableAudio,
@@ -171,7 +171,7 @@ export default {
         })
       }
       const api = createMusicLibraryApi({
-        request: createUniMusicLibraryTransport({ getAccessToken: () => readOwnerId() }),
+        request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
         getOwnerId: readOwnerId,
         enabled: true,
       })
@@ -188,17 +188,18 @@ export default {
         })
       }
       this.historicalSession = session
+      this.historicalLibraryApi = api
       this.basis = null // 历史播放不读取当前会话解析
       this.userGoal = null
       this.music = {
-        music_ref: { music_id: detail.music_id, source_type: detail.source_type },
-        title: detail.display_title,
+        music_ref: { music_id: detail.card.music_id, source_type: detail.card.source_type },
+        title: detail.card.display_title,
         stream_url: audio.stream_url,
         duration_seconds: audio.duration_seconds,
-        favorite: detail.is_favorite === true,
+        favorite: detail.card.is_favorite === true,
         disclaimer: "音乐调养不能替代专业医疗或心理帮助。",
       }
-      this.favorite = detail.is_favorite === true
+      this.favorite = detail.card.is_favorite === true
       this.setupPlayerController()
     },
     setupPlayerController() {
@@ -206,6 +207,11 @@ export default {
       this.playerController = createPlayerController({
         downloadAudio: apiV3.fetchAuthorizedAudio,
         createAudioContext: uni.createInnerAudioContext,
+        onPlaybackStarted: () => {
+          if (this.historicalSession && this.music && !this.historicalSession.hasOwnerChanged()) {
+            this.historicalSession.reportPlayStarted(this.music.music_ref.music_id).catch(() => {})
+          }
+        },
         onStateChange: snapshot => {
           this.playerState = snapshot
         },
@@ -218,17 +224,7 @@ export default {
     },
     async togglePlay() {
       if (!this.playerController || !this.music) return
-      const wasPlaying = !!this.playerState.playing
       await this.playerController.toggle(this.music.stream_url)
-      // 仅真实 onPlay 成功时上报一次 play_started；重试复用同一 event id（由会话保证幂等）。
-      // 打开、预取、Seek、展开解析均不计播放、不生成。
-      if (!wasPlaying && this.playerState.playing && this.historicalSession) {
-        try {
-          await this.historicalSession.reportPlayStarted(this.music.music_ref.music_id)
-        } catch (e) {
-          /* 上报失败不阻塞播放；下次播放重试复用 event id */
-        }
-      }
     },
     seekToRatio(ratio) {
       if (!this.playerController) return false
@@ -286,7 +282,11 @@ export default {
       this.favBusy = true
       const target = !this.favorite
       try {
-        if (target) {
+        if (this.historicalSession) {
+          const api = this.historicalLibraryApi
+          if (!api) throw new Error("历史收藏接口尚未就绪")
+          await api.setFavorite(ref, target)
+        } else if (target) {
           await apiV3.addFavorite(musicId, ref.source_type)
         } else {
           await apiV3.removeFavorite(musicId)
