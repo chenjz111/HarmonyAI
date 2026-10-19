@@ -69,7 +69,7 @@ test("FE2B: cursor stale refreshes from scratch without duplicating items", asyn
       call += 1
       if (call === 1) return { items: [cardA], next_cursor: "cur-1", has_more: true }
       if (cursor === "cur-1") {
-        throw Object.assign(new Error("cursor expired"), { code: "CURSOR_STALE" })
+        throw Object.assign(new Error("cursor expired"), { code: "LIBRARY_CURSOR_STALE" })
       }
       return { items: [cardA, cardB], next_cursor: null, has_more: false }
     },
@@ -83,6 +83,7 @@ test("FE2B: cursor stale refreshes from scratch without duplicating items", asyn
 
 test("FE2B: isCursorStale recognises frozen stale codes only", () => {
   assert.equal(isCursorStale({ code: "CURSOR_STALE" }), true)
+  assert.equal(isCursorStale({ code: "LIBRARY_CURSOR_STALE" }), true)
   assert.equal(isCursorStale({ code: "CURSOR_EXPIRED" }), true)
   assert.equal(isCursorStale({ code: "NETWORK_ERROR" }), false)
   assert.equal(isCursorStale(null), false)
