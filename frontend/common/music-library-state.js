@@ -117,17 +117,43 @@ export function createMusicLibraryStore({ fetchPage, pageSize = 20, getOwnerId =
   let requestToken = 0
   let cursorStaleRefreshed = false
 
-  function snapshot() {
-    return { status, items, nextCursor, hasMore, error, cursorStaleRefreshed }
-  }
-
   function currentOwner() {
     return typeof getOwnerId === "function" ? getOwnerId() : null
   }
 
+  // Owner identity is part of the store state, not only an async request check.
+  // Every public read/operation observes the owner, invalidating cached cards
+  // and outstanding cursors before a new account can see old private metadata.
+  let observedOwner = currentOwner()
+
+  function clearState() {
+    requestToken += 1
+    items = []
+    nextCursor = null
+    hasMore = false
+    error = null
+    cursorStaleRefreshed = false
+    status = "idle"
+  }
+
+  function syncOwner() {
+    if (typeof getOwnerId !== "function") return false
+    const nextOwner = currentOwner()
+    if (nextOwner === observedOwner) return false
+    observedOwner = nextOwner
+    clearState()
+    return true
+  }
+
+  function snapshot() {
+    syncOwner()
+    return { status, items, nextCursor, hasMore, error, cursorStaleRefreshed }
+  }
+
   async function load({ reset = false, staleRefresh = false } = {}) {
+    syncOwner()
     const token = ++requestToken
-    const owner = currentOwner()
+    const owner = observedOwner
     if (reset) {
       items = []
       nextCursor = null
@@ -139,8 +165,7 @@ export function createMusicLibraryStore({ fetchPage, pageSize = 20, getOwnerId =
     const cursor = reset ? null : nextCursor
     try {
       const page = await fetchPage({ cursor, limit: pageSize })
-      if (token !== requestToken) return snapshot() // 迟到响应丢弃
-      if (getOwnerId && currentOwner() !== owner) return snapshot() // owner 已切换
+      if (syncOwner() || token !== requestToken || observedOwner !== owner) return snapshot() // owner/请求失效
       const incoming = Array.isArray(page && page.items) ? page.items : []
       items = mergeMusicCards(items, incoming)
       nextCursor = page && page.next_cursor !== undefined ? page.next_cursor : null
@@ -148,7 +173,7 @@ export function createMusicLibraryStore({ fetchPage, pageSize = 20, getOwnerId =
       status = items.length ? "ready" : "empty"
       error = null
     } catch (e) {
-      if (token !== requestToken) return snapshot()
+      if (syncOwner() || token !== requestToken || observedOwner !== owner) return snapshot()
       if (isCursorStale(e) && !reset) {
         // cursor 失效：从头刷新一次（不追加脏数据）
         cursorStaleRefreshed = true
@@ -163,10 +188,13 @@ export function createMusicLibraryStore({ fetchPage, pageSize = 20, getOwnerId =
   return Object.freeze({
     loadFirstPage: () => load({ reset: true }),
     loadMore: () => {
+      syncOwner()
       if (!hasMore) return Promise.resolve(snapshot())
       return load({ reset: false })
     },
     refresh: () => load({ reset: true }),
+    // Page lifecycle may proactively discard the current view on logout/reentry.
+    invalidate: () => { observedOwner = currentOwner(); clearState(); return snapshot() },
     getState: snapshot,
   })
 }
