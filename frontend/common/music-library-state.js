@@ -52,6 +52,7 @@ export function musicPlayerUrl(musicId) {
 
 /** cursor 失效（后端要求从头刷新）时视为 stale。 */
 export const CURSOR_STALE_CODES = Object.freeze([
+  "LIBRARY_CURSOR_STALE",
   "CURSOR_STALE",
   "CURSOR_EXPIRED",
   "INVALID_CURSOR",
