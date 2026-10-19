@@ -28,8 +28,8 @@ function loadPlayerPage({ apiV3, createPlayerController, uni }) {
       "const createMusicLibraryApi = __deps.createMusicLibraryApi\n",
     )
     .replace(
-      /import \\{ createUniMusicLibraryTransport, readV3AccessToken \\} from [^\\r\\n]+\\r?\\n/,
-      "const { createUniMusicLibraryTransport, readV3AccessToken } = __deps\\n",
+      /import \{ createUniMusicLibraryTransport, readV3AccessToken \} from [^\r\n]+\r?\n/,
+      "const { createUniMusicLibraryTransport, readV3AccessToken } = __deps\n",
     )
     .replace(
       /import \{\s*createHistoricalMusicSession,\s*resolvePlayableAudio,\s*\} from [^\r\n]+\r?\n/,
