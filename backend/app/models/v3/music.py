@@ -15,6 +15,7 @@ from sqlalchemy import (
     JSON,
     String,
     UniqueConstraint,
+    Index,
 )
 from sqlalchemy.sql import func
 
@@ -92,6 +93,7 @@ class MusicAsset(Base):
 class GenerationTask(Base):
     __tablename__ = "generation_tasks"
     __table_args__ = (
+        Index('uq_generation_tasks_owner_asset_context','task_id','internal_user_pk','music_asset_id',unique=True),
         UniqueConstraint(
             "internal_user_pk", "idempotency_key", name="uq_generation_tasks_idem"
         ),
