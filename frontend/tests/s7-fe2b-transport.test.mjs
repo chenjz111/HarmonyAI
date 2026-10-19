@@ -13,6 +13,7 @@ import {
   TRANSPORT_ERROR,
   createLiveMusicLibraryApi,
   createUniMusicLibraryTransport,
+  readV3AccessToken,
 } from "../common/music-library-transport.js"
 
 function fakeUni(handler) {
@@ -92,4 +93,18 @@ test("FE2B: live api stays fail-closed until the gate is explicitly enabled", as
   const page = await open.listMusicAssets()
   assert.deepEqual(page.items, [])
   assert.equal(calls.length, 1)
+})
+
+test("FE2B: bearer token comes from credential storage, never public user id", () => {
+  const fake = { getStorageSync: key => ({
+    v3_access_token: "real-token", v3_public_user_id: "public-user-id"
+  })[key] }
+  assert.equal(readV3AccessToken(fake), "real-token")
+  assert.equal(readV3AccessToken({ getStorageSync() { throw Error("unavailable") } }), "")
+})
+test("FE2B: HTTP 200 with ok=false cannot bypass V3 envelope error", async () => {
+  const request = createUniMusicLibraryTransport({
+    uniApi: fakeUni(args => args.success({ statusCode: 200, data: { ok: false, data: { private: true }, error: { code: "ACCESS_DENIED" } } }))
+  })
+  assert.equal((await request({ method: "GET", path: "/x" })).error.code, "ACCESS_DENIED")
 })
