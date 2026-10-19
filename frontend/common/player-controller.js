@@ -47,7 +47,7 @@ export const PLAYER_STATE = Object.freeze({
  * @returns {object} controller 公共 API
  */
 export function createPlayerController(options = {}) {
-  const { downloadAudio, createAudioContext, onError, onStateChange } = options
+  const { downloadAudio, createAudioContext, onError, onStateChange, onPlaybackStarted } = options
 
   if (typeof downloadAudio !== "function") {
     throw new TypeError("createPlayerController: downloadAudio is required")
@@ -105,6 +105,16 @@ export function createPlayerController(options = {}) {
     if (audioCtx || disposed) return audioCtx
     audioCtx = createAudioContext()
     if (!audioCtx) return null
+    // Audio's actual onPlay is authoritative for playback-event recording.
+    // Calling play() or marking UI as playing is not evidence of a started stream.
+    if (typeof audioCtx.onPlay === "function") {
+      audioCtx.onPlay(() => {
+        if (disposed || !audioCtx) return
+        playing = true
+        emit()
+        if (typeof onPlaybackStarted === "function") onPlaybackStarted()
+      })
+    }
 
     if (typeof audioCtx.onCanplay === "function") {
       audioCtx.onCanplay(() => {
