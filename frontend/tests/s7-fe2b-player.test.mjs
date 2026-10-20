@@ -10,10 +10,16 @@ import { readFileSync } from "node:fs"
 import test from "node:test"
 
 import {
-  createHistoricalMusicSession,
+  createHistoricalMusicSession as createSession,
   isDetailPlayable,
   resolvePlayableAudio,
 } from "../common/music-library-player.js"
+
+// Real Session now requires explicit authentication proof. Keep all legacy
+// behavior assertions unchanged; inject only the synthetic credential fixture.
+function createHistoricalMusicSession(options) {
+  return createSession({ getAccessToken: () => "synthetic-session-token", getAuthEpoch: () => 0, ...options })
+}
 
 const playerSource = readFileSync(new URL("../pages/v3-player/v3-player.vue", import.meta.url), "utf8")
 const profileSource = readFileSync(new URL("../pages/v3-profile/v3-profile.vue", import.meta.url), "utf8")
