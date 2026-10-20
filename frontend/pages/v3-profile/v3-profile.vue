@@ -139,12 +139,18 @@ export default {
     },
   },
   onLoad() {
-    if (LIVE_SOURCE_ENABLED) this.setupLiveSource()
+    if (LIVE_SOURCE_ENABLED) {
+      this.authChangeHandler = () => this.ensureLiveOwner()
+      try { if (typeof uni.$on === "function") uni.$on("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
+      this.setupLiveSource()
+    }
   },
   onShow() {
     if (LIVE_SOURCE_ENABLED && this.api) this.ensureLiveOwner()
   },
   onUnload() {
+    try { if (this.authChangeHandler && typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
+    this.authChangeHandler = null
     if (this.historyStore) this.historyStore.invalidate()
     if (this.favoritesStore) this.favoritesStore.invalidate()
     this.liveGeneration += 1
