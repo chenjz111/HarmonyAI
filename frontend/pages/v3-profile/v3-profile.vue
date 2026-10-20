@@ -120,6 +120,7 @@ export default {
       liveOwner: null,
       liveIdentity: null,
       liveDisposed: false,
+      liveAuthReady: false,
     }
   },
   computed: {
@@ -127,13 +128,14 @@ export default {
     visibleItems() {
       // Computed render guard: never expose a stale page projection even when
       // identity changed while the page stayed visible (no onShow yet).
-      if (LIVE_SOURCE_ENABLED && (this.liveDisposed || !this.liveIdentity || !this.liveIdentity.matches())) return []
+      if (LIVE_SOURCE_ENABLED && (this.liveDisposed || !this.liveAuthReady || !this.liveIdentity || !this.liveIdentity.matches())) return []
       return this.activeSection === "favorites" ? this.library.favorites : this.library.history
     },
     sourceBadge() {
       return LIVE_SOURCE_ENABLED ? "我的音乐" : "界面预览 · 虚构数据"
     },
     sourceNote() {
+      if (LIVE_SOURCE_ENABLED && !this.liveAuthReady) return "当前环境无法安全同步身份，音乐库暂不可用。"
       return LIVE_SOURCE_ENABLED
         ? "音乐记录来自你的账号；音频可用性以服务端状态为准。"
         : "当前仅展示冻结 DTO 的本地 Mock，不代表后端已联调。"
@@ -142,8 +144,18 @@ export default {
   onLoad() {
     this.liveDisposed = false
     if (LIVE_SOURCE_ENABLED) {
+      this.liveAuthReady = false
+      this.library = createMusicLibraryPreview("empty")
       this.authChangeHandler = () => this.ensureLiveOwner()
-      try { if (typeof uni.$on === "function") uni.$on("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
+      try {
+        if (typeof uni.$on !== "function" || typeof uni.$off !== "function" || typeof uni.$emit !== "function") return
+        if (uni.$on("harmonyai:v3-auth-changed", this.authChangeHandler) === false) throw new Error("Authentication subscription rejected")
+        this.liveAuthReady = true
+      } catch (e) {
+        // A partial/failed subscription never authorizes live reads or writes.
+        try { if (typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (ignored) { /* unavailable */ }
+        return
+      }
       this.setupLiveSource()
     }
   },
@@ -152,6 +164,7 @@ export default {
   },
   onUnload() {
     this.liveDisposed = true
+    this.liveAuthReady = false
     try { if (this.authChangeHandler && typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
     this.authChangeHandler = null
     if (this.historyStore) this.historyStore.invalidate()
@@ -164,6 +177,7 @@ export default {
     // ===== 数据源（门禁关闭时保持冻结预览 fixture） =====
 
     setupLiveSource() {
+      if (this.liveDisposed || !this.liveAuthReady) return
       this.liveIdentity = captureLiveIdentity()
       this.liveOwner = this.liveIdentity.owner
       this.api = createMusicLibraryApi({
@@ -180,6 +194,7 @@ export default {
     ensureLiveOwner() {
       if (this.liveDisposed) return false
       if (!LIVE_SOURCE_ENABLED) return true
+      if (!this.liveAuthReady) return false
       if (this.liveIdentity && this.liveIdentity.matches()) return true
       this.liveIdentity = captureLiveIdentity()
       const owner = this.liveIdentity.owner
@@ -204,7 +219,7 @@ export default {
     },
 
     applyStoreState(state) {
-      if (this.liveDisposed) return
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && !this.liveAuthReady)) return
       const history = (state.items || []).map(presentMusicCard)
       this.library = {
         status: state.status === "idle" ? "loading" : state.status,
@@ -224,7 +239,6 @@ export default {
       const identity = this.liveIdentity
       const state = await store.loadFirstPage()
       if (this.liveDisposed) return
-      if (this.liveDisposed) return
       if (LIVE_SOURCE_ENABLED && (!identity || !identity.matches())) { this.ensureLiveOwner(); return }
       if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
@@ -236,6 +250,7 @@ export default {
       const store = this.store
       const identity = this.liveIdentity
       const state = await store.loadMore()
+      if (this.liveDisposed) return
       if (LIVE_SOURCE_ENABLED && (!identity || !identity.matches())) { this.ensureLiveOwner(); return }
       if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
@@ -256,27 +271,30 @@ export default {
       const generation = this.liveGeneration
       this.favoriteBusy = true
       const target = !item.is_favorite
-      this.patchCard(item.music_id, { is_favorite: target })
       try {
-        await this.api.setFavorite(
-          { music_id: item.music_id, source_type: item.source_type },
-          target
-        )
-        if (this.liveDisposed) return
-        if (this.liveDisposed) return
-        if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
-      } catch (e) {
-        if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
-        if (generation !== this.liveGeneration) return // do not patch a different tab
-        this.patchCard(item.music_id, { is_favorite: !target })
-        uni.showToast({ title: e.message || "收藏操作失败，请重试", icon: "none" })
-      } finally {
-        if (this.liveDisposed) { this.favoriteBusy = false; return }
-        if (identity && identity.matches() && this.liveIdentity === identity) {
+        this.patchCard(item.music_id, { is_favorite: target })
+        try {
+          await this.api.setFavorite(
+            { music_id: item.music_id, source_type: item.source_type },
+            target
+          )
+          if (this.liveDisposed) return
+          if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
+        } catch (e) {
+          if (this.liveDisposed) return
+          if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
+          if (generation === this.liveGeneration) {
+            this.patchCard(item.music_id, { is_favorite: !target })
+            uni.showToast({ title: e.message || "收藏操作失败，请重试", icon: "none" })
+          }
+        }
+        if (!this.liveDisposed && identity && identity.matches() && this.liveIdentity === identity) {
           // A successful same-session mutation invalidates the selected list
           // even if the user switched tabs while the write was in flight.
           await this.reload()
-        } else this.ensureLiveOwner()
+        } else if (!this.liveDisposed) this.ensureLiveOwner()
+      } finally {
+        // Cleanup must not replace an exception from UI handling or refresh.
         this.favoriteBusy = false
       }
     },
@@ -297,8 +315,6 @@ export default {
           fail: () => resolve({ confirm: false }),
         })
       })
-      if (this.liveDisposed) return
-      if (this.liveDisposed) return
       if (this.liveDisposed) return
       if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
       if (!result || !result.confirm) return
