@@ -119,6 +119,7 @@ export default {
       liveGeneration: 0,
       liveOwner: null,
       liveIdentity: null,
+      liveDisposed: false,
     }
   },
   computed: {
@@ -126,7 +127,7 @@ export default {
     visibleItems() {
       // Computed render guard: never expose a stale page projection even when
       // identity changed while the page stayed visible (no onShow yet).
-      if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) return []
+      if (LIVE_SOURCE_ENABLED && (this.liveDisposed || !this.liveIdentity || !this.liveIdentity.matches())) return []
       return this.activeSection === "favorites" ? this.library.favorites : this.library.history
     },
     sourceBadge() {
@@ -139,6 +140,7 @@ export default {
     },
   },
   onLoad() {
+    this.liveDisposed = false
     if (LIVE_SOURCE_ENABLED) {
       this.authChangeHandler = () => this.ensureLiveOwner()
       try { if (typeof uni.$on === "function") uni.$on("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
@@ -146,9 +148,10 @@ export default {
     }
   },
   onShow() {
-    if (LIVE_SOURCE_ENABLED && this.api) this.ensureLiveOwner()
+    if (LIVE_SOURCE_ENABLED && !this.liveDisposed && this.api) this.ensureLiveOwner()
   },
   onUnload() {
+    this.liveDisposed = true
     try { if (this.authChangeHandler && typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
     this.authChangeHandler = null
     if (this.historyStore) this.historyStore.invalidate()
@@ -175,6 +178,7 @@ export default {
     },
 
     ensureLiveOwner() {
+      if (this.liveDisposed) return false
       if (!LIVE_SOURCE_ENABLED) return true
       if (this.liveIdentity && this.liveIdentity.matches()) return true
       this.liveIdentity = captureLiveIdentity()
@@ -189,6 +193,7 @@ export default {
     },
 
     selectSection(section) {
+      if (this.liveDisposed) return
       if (section !== "history" && section !== "favorites") return
       if (LIVE_SOURCE_ENABLED && !this.ensureLiveOwner()) return
       this.activeSection = section
@@ -199,6 +204,7 @@ export default {
     },
 
     applyStoreState(state) {
+      if (this.liveDisposed) return
       const history = (state.items || []).map(presentMusicCard)
       this.library = {
         status: state.status === "idle" ? "loading" : state.status,
@@ -210,19 +216,21 @@ export default {
     },
 
     async reload() {
-      if (!this.store) return
+      if (this.liveDisposed || !this.store) return
       if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) { this.ensureLiveOwner(); return }
       this.library = Object.assign({}, this.library, { status: "loading", error: null })
       const generation = ++this.liveGeneration
       const store = this.store
       const identity = this.liveIdentity
       const state = await store.loadFirstPage()
+      if (this.liveDisposed) return
+      if (this.liveDisposed) return
       if (LIVE_SOURCE_ENABLED && (!identity || !identity.matches())) { this.ensureLiveOwner(); return }
       if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
 
     async loadMore() {
-      if (!this.store) return
+      if (this.liveDisposed || !this.store) return
       if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) { this.ensureLiveOwner(); return }
       const generation = ++this.liveGeneration
       const store = this.store
@@ -235,14 +243,14 @@ export default {
     // ===== 卡片交互 =====
 
     openMusic(item) {
-      if (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner)) return
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner))) return
       if (!item.can_open || !HISTORICAL_PLAYER_LINK_ENABLED) return
       uni.navigateTo({ url: musicPlayerUrl(item.music_id) })
     },
 
     // 收藏是独立 owner-scoped 变更：乐观更新 + 失败回滚，不作为偏好学习证据
     async toggleFavorite(item) {
-      if (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner)) return
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner))) return
       if (this.favoriteBusy || !this.api) return
       const identity = this.liveIdentity
       const generation = this.liveGeneration
@@ -254,6 +262,8 @@ export default {
           { music_id: item.music_id, source_type: item.source_type },
           target
         )
+        if (this.liveDisposed) return
+        if (this.liveDisposed) return
         if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
       } catch (e) {
         if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
@@ -261,6 +271,7 @@ export default {
         this.patchCard(item.music_id, { is_favorite: !target })
         uni.showToast({ title: e.message || "收藏操作失败，请重试", icon: "none" })
       } finally {
+        if (this.liveDisposed) { this.favoriteBusy = false; return }
         if (identity && identity.matches() && this.liveIdentity === identity) {
           // A successful same-session mutation invalidates the selected list
           // even if the user switched tabs while the write was in flight.
@@ -272,7 +283,7 @@ export default {
 
     // 标题编辑：CAS（expected_version）+ 显式 null 清除；冲突时提示并刷新
     async editTitle(item) {
-      if (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner)) return
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner))) return
       if (this.titleBusy || !this.api) return
       const identity = this.liveIdentity
       const generation = this.liveGeneration
@@ -286,6 +297,9 @@ export default {
           fail: () => resolve({ confirm: false }),
         })
       })
+      if (this.liveDisposed) return
+      if (this.liveDisposed) return
+      if (this.liveDisposed) return
       if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
       if (!result || !result.confirm) return
       const nextTitle = normalizeUserTitle(result.content)
