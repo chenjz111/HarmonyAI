@@ -5,21 +5,22 @@
         <text class="eyebrow">MY HARMONY</text>
         <text class="profile-title">我的音乐</text>
       </view>
-      <text class="mock-badge">界面预览 · 虚构数据</text>
+      <text class="mock-badge">{{ sourceBadge }}</text>
     </view>
 
     <view class="section-tabs" aria-label="音乐列表切换">
-      <view :class="['section-tab', { active: activeSection === 'history' }]" @click="activeSection = 'history'"><text>历史音乐</text></view>
-      <view :class="['section-tab', { active: activeSection === 'favorites' }]" @click="activeSection = 'favorites'"><text>我的收藏</text></view>
+      <view :class="['section-tab', { active: activeSection === 'history' }]" @click="selectSection('history')"><text>历史音乐</text></view>
+      <view :class="['section-tab', { active: activeSection === 'favorites' }]" @click="selectSection('favorites')"><text>我的收藏</text></view>
     </view>
 
-    <view v-if="library.status === 'loading'" class="state-card">
+    <view v-if="library.status === 'loading' && visibleItems.length === 0" class="state-card">
       <text class="state-title">正在加载音乐记录</text>
       <text class="state-copy">请稍候。</text>
     </view>
     <view v-else-if="library.status === 'error'" class="state-card error-card">
       <text class="state-title">加载失败</text>
       <text class="state-copy">{{ library.error }}</text>
+      <view class="state-action" @click="reload"><text class="state-action-text">重试</text></view>
     </view>
     <view v-else-if="visibleItems.length === 0" class="state-card">
       <text class="state-title">{{ activeSection === 'favorites' ? '还没有收藏' : '还没有历史音乐' }}</text>
@@ -30,48 +31,327 @@
       <view v-for="item in visibleItems" :key="item.music_id" :class="['music-card', { unavailable: !item.can_open }]" @click="openMusic(item)">
         <view class="card-main">
           <text class="music-title">{{ item.display_title }}</text>
+          <view v-if="liveSourceEnabled" class="title-action" @click.stop="editTitle(item)"><text>修改标题</text></view>
           <view class="music-meta">
             <text>{{ item.duration_label }}</text><text>·</text><text>{{ item.playback_label }}</text>
           </view>
         </view>
         <view class="card-side">
-          <text v-if="item.is_favorite" class="favorite-mark" aria-label="已收藏">♥</text>
+          <view class="favorite-toggle" :class="{ active: item.is_favorite }" @click.stop="toggleFavorite(item)">
+            <text class="favorite-mark" aria-label="收藏">{{ item.is_favorite ? '♥' : '♡' }}</text>
+          </view>
           <text :class="['availability', item.availability]">{{ item.availability_label }}</text>
         </view>
       </view>
     </view>
 
-    <text class="preview-note">当前仅展示冻结 DTO 的本地 Mock，不代表后端已联调。</text>
+    <view v-if="library.hasMore && library.status !== 'loading'" class="load-more" @click="loadMore">
+      <text class="load-more-text">加载更多</text>
+    </view>
+
+    <text class="preview-note">{{ sourceNote }}</text>
   </view>
 </template>
 
 <script>
 import { MUSIC_CARD_V1_PREVIEW_FIXTURE } from "../../common/music-card-v1-preview-fixture.js"
-import { createMusicLibraryPreview, musicPlayerUrl } from "../../common/music-library-state.js"
+import {
+  createMusicLibraryPreview,
+  createMusicLibraryStore,
+  mergeMusicCards,
+  musicPlayerUrl,
+  normalizeUserTitle,
+  presentMusicCard,
+  splitFavorites,
+} from "../../common/music-library-state.js"
+import { createMusicLibraryApi } from "../../common/music-library-api.js"
+import {
+  MUSIC_LIBRARY_LIVE_ENABLED,
+  createUniMusicLibraryTransport,
+  readV3AccessToken,
+} from "../../common/music-library-transport.js"
 
 // W1 reserves the canonical Player URL, but the existing Player is still
 // session-scoped and does not consume music_id. Keep cards inert until the
 // historical read integration and permission tests are approved.
 const HISTORICAL_PLAYER_LINK_ENABLED = false
 
+// 数据源门禁：默认关闭 → 使用冻结预览 fixture；显式开启后才走真实 Music Library API。
+// 真实启用仍需 Backend API + owner 隔离 + stream 安全 Gate。
+const LIVE_SOURCE_ENABLED = MUSIC_LIBRARY_LIVE_ENABLED === true
+
+function readOwnerId() {
+  try {
+    const id = uni.getStorageSync("v3_public_user_id")
+    return id || null
+  } catch (e) {
+    return null
+  }
+}
+
+// A page operation belongs to one authentication instance, not just to a public
+// owner name. The credential and the monotonic login epoch stay in this private
+// closure, never in render data, to reject unobserved A -> B -> A transitions.
+function authEpoch() {
+  try {
+    const value = Number(uni.getStorageSync("v3_auth_epoch"))
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0
+  } catch (e) { return 0 }
+}
+function captureLiveIdentity() {
+  const owner = readOwnerId()
+  const token = readV3AccessToken()
+  const epoch = authEpoch()
+  return Object.freeze({
+    owner,
+    matches: () => readOwnerId() === owner &&
+      readV3AccessToken() === token && authEpoch() === epoch,
+  })
+}
+
 export default {
   data() {
     return {
       activeSection: "history",
       library: createMusicLibraryPreview("ready", MUSIC_CARD_V1_PREVIEW_FIXTURE),
+      favoriteBusy: false,
+      titleBusy: false,
+      liveGeneration: 0,
+      liveOwner: null,
+      liveIdentity: null,
+      liveDisposed: false,
+      liveAuthReady: false,
     }
   },
   computed: {
+    liveSourceEnabled() { return LIVE_SOURCE_ENABLED },
     visibleItems() {
+      // Computed render guard: never expose a stale page projection even when
+      // identity changed while the page stayed visible (no onShow yet).
+      if (LIVE_SOURCE_ENABLED && (this.liveDisposed || !this.liveAuthReady || !this.liveIdentity || !this.liveIdentity.matches())) return []
       return this.activeSection === "favorites" ? this.library.favorites : this.library.history
     },
+    sourceBadge() {
+      return LIVE_SOURCE_ENABLED ? "我的音乐" : "界面预览 · 虚构数据"
+    },
+    sourceNote() {
+      if (LIVE_SOURCE_ENABLED && !this.liveAuthReady) return "当前环境无法安全同步身份，音乐库暂不可用。"
+      return LIVE_SOURCE_ENABLED
+        ? "音乐记录来自你的账号；音频可用性以服务端状态为准。"
+        : "当前仅展示冻结 DTO 的本地 Mock，不代表后端已联调。"
+    },
+  },
+  onLoad() {
+    this.liveDisposed = false
+    if (LIVE_SOURCE_ENABLED) {
+      this.liveAuthReady = false
+      this.library = createMusicLibraryPreview("empty")
+      this.authChangeHandler = () => this.ensureLiveOwner()
+      try {
+        if (typeof uni.$on !== "function" || typeof uni.$off !== "function" || typeof uni.$emit !== "function") return
+        if (uni.$on("harmonyai:v3-auth-changed", this.authChangeHandler) === false) throw new Error("Authentication subscription rejected")
+        this.liveAuthReady = true
+      } catch (e) {
+        // A partial/failed subscription never authorizes live reads or writes.
+        try { if (typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (ignored) { /* unavailable */ }
+        return
+      }
+      this.setupLiveSource()
+    }
+  },
+  onShow() {
+    if (LIVE_SOURCE_ENABLED && !this.liveDisposed && this.api) this.ensureLiveOwner()
+  },
+  onUnload() {
+    this.liveDisposed = true
+    this.liveAuthReady = false
+    try { if (this.authChangeHandler && typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
+    this.authChangeHandler = null
+    if (this.historyStore) this.historyStore.invalidate()
+    if (this.favoritesStore) this.favoritesStore.invalidate()
+    this.liveGeneration += 1
+    this.liveIdentity = null
+    this.library = createMusicLibraryPreview("empty")
   },
   methods: {
+    // ===== 数据源（门禁关闭时保持冻结预览 fixture） =====
+
+    setupLiveSource() {
+      if (this.liveDisposed || !this.liveAuthReady) return
+      this.liveIdentity = captureLiveIdentity()
+      this.liveOwner = this.liveIdentity.owner
+      this.api = createMusicLibraryApi({
+        request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
+        getOwnerId: readOwnerId,
+        enabled: true,
+      })
+      this.historyStore = createMusicLibraryStore({ fetchPage: (args) => this.api.listMusicAssets(args), getOwnerId: readOwnerId })
+      this.favoritesStore = createMusicLibraryStore({ fetchPage: (args) => this.api.listMusicFavorites(args), getOwnerId: readOwnerId })
+      this.store = this.historyStore
+      this.reload()
+    },
+
+    ensureLiveOwner() {
+      if (this.liveDisposed) return false
+      if (!LIVE_SOURCE_ENABLED) return true
+      if (!this.liveAuthReady) return false
+      if (this.liveIdentity && this.liveIdentity.matches()) return true
+      this.liveIdentity = captureLiveIdentity()
+      const owner = this.liveIdentity.owner
+      this.liveOwner = owner
+      this.liveGeneration += 1
+      if (this.historyStore) this.historyStore.invalidate()
+      if (this.favoritesStore) this.favoritesStore.invalidate()
+      this.library = createMusicLibraryPreview("empty")
+      if (this.store && owner) this.reload()
+      return false
+    },
+
+    selectSection(section) {
+      if (this.liveDisposed) return
+      if (section !== "history" && section !== "favorites") return
+      if (LIVE_SOURCE_ENABLED && !this.ensureLiveOwner()) return
+      this.activeSection = section
+      if (LIVE_SOURCE_ENABLED) {
+        this.store = section === "favorites" ? this.favoritesStore : this.historyStore
+        this.reload()
+      }
+    },
+
+    applyStoreState(state) {
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && !this.liveAuthReady)) return
+      const history = (state.items || []).map(presentMusicCard)
+      this.library = {
+        status: state.status === "idle" ? "loading" : state.status,
+        history: this.activeSection === "history" ? history : [],
+        favorites: this.activeSection === "favorites" ? history : [],
+        error: state.error ? state.error.message || "暂时无法加载音乐记录" : null,
+        hasMore: !!state.hasMore,
+      }
+    },
+
+    async reload() {
+      if (this.liveDisposed || !this.store) return
+      if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) { this.ensureLiveOwner(); return }
+      this.library = Object.assign({}, this.library, { status: "loading", error: null })
+      const generation = ++this.liveGeneration
+      const store = this.store
+      const identity = this.liveIdentity
+      const state = await store.loadFirstPage()
+      if (this.liveDisposed) return
+      if (LIVE_SOURCE_ENABLED && (!identity || !identity.matches())) { this.ensureLiveOwner(); return }
+      if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
+    },
+
+    async loadMore() {
+      if (this.liveDisposed || !this.store) return
+      if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) { this.ensureLiveOwner(); return }
+      const generation = ++this.liveGeneration
+      const store = this.store
+      const identity = this.liveIdentity
+      const state = await store.loadMore()
+      if (this.liveDisposed) return
+      if (LIVE_SOURCE_ENABLED && (!identity || !identity.matches())) { this.ensureLiveOwner(); return }
+      if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
+    },
+
+    // ===== 卡片交互 =====
+
     openMusic(item) {
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner))) return
       if (!item.can_open || !HISTORICAL_PLAYER_LINK_ENABLED) return
       uni.navigateTo({ url: musicPlayerUrl(item.music_id) })
     },
+
+    // 收藏是独立 owner-scoped 变更：乐观更新 + 失败回滚，不作为偏好学习证据
+    async toggleFavorite(item) {
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner))) return
+      if (this.favoriteBusy || !this.api) return
+      const identity = this.liveIdentity
+      const generation = this.liveGeneration
+      this.favoriteBusy = true
+      const target = !item.is_favorite
+      try {
+        this.patchCard(item.music_id, { is_favorite: target })
+        try {
+          await this.api.setFavorite(
+            { music_id: item.music_id, source_type: item.source_type },
+            target
+          )
+          if (this.liveDisposed) return
+          if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
+        } catch (e) {
+          if (this.liveDisposed) return
+          if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
+          if (generation === this.liveGeneration) {
+            this.patchCard(item.music_id, { is_favorite: !target })
+            uni.showToast({ title: e.message || "收藏操作失败，请重试", icon: "none" })
+          }
+        }
+        if (!this.liveDisposed && identity && identity.matches() && this.liveIdentity === identity) {
+          // A successful same-session mutation invalidates the selected list
+          // even if the user switched tabs while the write was in flight.
+          await this.reload()
+        } else if (!this.liveDisposed) this.ensureLiveOwner()
+      } finally {
+        // Cleanup must not replace an exception from UI handling or refresh.
+        this.favoriteBusy = false
+      }
+    },
+
+    // 标题编辑：CAS（expected_version）+ 显式 null 清除；冲突时提示并刷新
+    async editTitle(item) {
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner))) return
+      if (this.titleBusy || !this.api) return
+      const identity = this.liveIdentity
+      const generation = this.liveGeneration
+      const result = await new Promise((resolve) => {
+        uni.showModal({
+          title: "修改标题",
+          editable: true,
+          placeholderText: "留空并确认可清除自定义标题",
+          content: item.user_title || "",
+          success: (res) => resolve(res),
+          fail: () => resolve({ confirm: false }),
+        })
+      })
+      if (this.liveDisposed) return
+      if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
+      if (!result || !result.confirm) return
+      const nextTitle = normalizeUserTitle(result.content)
+      this.titleBusy = true
+      try {
+        const updated = await this.api.setMusicTitle(item.music_id, nextTitle, item.metadata_version)
+        if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
+        this.patchCard(item.music_id, {
+          user_title: nextTitle,
+          display_title: nextTitle || item.default_title,
+          metadata_version:
+            updated && updated.metadata_version !== undefined
+              ? updated.metadata_version
+              : item.metadata_version,
+        })
+      } catch (e) {
+        if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
+        if (e && e.code === "TITLE_VERSION_CONFLICT") {
+          uni.showToast({ title: "标题已在别处更新，正在刷新", icon: "none" })
+          await this.reload()
+        } else {
+          uni.showToast({ title: e.message || "标题修改失败，请重试", icon: "none" })
+        }
+      } finally {
+        this.titleBusy = false
+      }
+    },
+
+    patchCard(musicId, patch) {
+      const key = this.activeSection === "favorites" ? "favorites" : "history"
+      const next = this.library[key].map((card) => card.music_id === musicId ? Object.freeze(Object.assign({}, card, patch)) : card)
+      this.library = Object.assign({}, this.library, { [key]: next })
+    },
+
     musicPlayerUrl,
+    mergeMusicCards,
   },
 }
 </script>
@@ -92,12 +372,18 @@ export default {
 .music-title { display: block; overflow: hidden; color: #183f38; font-size: 31rpx; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .music-meta { display: flex; gap: 10rpx; margin-top: 16rpx; color: #758580; font-size: 23rpx; }
 .card-side { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 18rpx; }
-.favorite-mark { color: #c9785c; font-size: 31rpx; }
+.favorite-toggle { padding: 6rpx 10rpx; }
+.favorite-mark { color: #a9b6b1; font-size: 31rpx; }
+.favorite-toggle.active .favorite-mark { color: #c9785c; }
 .availability { color: #26735f; font-size: 21rpx; white-space: nowrap; }
 .availability.expired, .availability.deleted, .availability.missing, .availability.quarantined { color: #8a7670; }
 .state-card { margin-top: 28rpx; padding: 64rpx 32rpx; border-radius: 26rpx; background: rgba(255,255,255,.82); text-align: center; }
 .state-title { display: block; color: #244b43; font-size: 31rpx; font-weight: 650; }
 .state-copy { display: block; margin-top: 16rpx; color: #7a8984; font-size: 24rpx; line-height: 1.7; }
+.state-action { display: inline-block; margin-top: 28rpx; padding: 14rpx 44rpx; border-radius: 999rpx; background: #2f806b; }
+.state-action-text { color: #fff; font-size: 26rpx; }
 .error-card { border: 1rpx solid rgba(168,94,73,.18); }
+.load-more { margin-top: 26rpx; padding: 22rpx; border-radius: 20rpx; background: rgba(255,255,255,.72); text-align: center; }
+.load-more-text { color: #2f806b; font-size: 26rpx; }
 .preview-note { display: block; margin: 34rpx 12rpx 0; color: #87948f; font-size: 21rpx; line-height: 1.6; text-align: center; }
 </style>

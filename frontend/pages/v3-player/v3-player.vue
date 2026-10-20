@@ -21,6 +21,33 @@ import { apiV3 } from "../../common/api-v3.js"
 import { createPlayerController } from "../../common/player-controller.js"
 import { buildMusicPresentation, presentProgress } from "../../common/music-presentation.js"
 import { seekRatioFromEvent } from "../../common/player-seek.js"
+import { createMusicLibraryApi } from "../../common/music-library-api.js"
+import { createUniMusicLibraryTransport, readV3AccessToken } from "../../common/music-library-transport.js"
+import {
+  createHistoricalMusicSession,
+  resolvePlayableAudio,
+} from "../../common/music-library-player.js"
+
+// 历史音乐导航门禁：等 BE-2B API + owner 隔离 + stream 安全 Gate 通过后由 Owner 开启。
+const HISTORICAL_LIBRARY_ENABLED = false
+
+function readOwnerId() {
+  try {
+    const id = uni.getStorageSync("v3_public_user_id")
+    return id || null
+  } catch (e) {
+    return null
+  }
+}
+
+function readAuthEpoch() {
+  try {
+    const raw = uni.getStorageSync("v3_auth_epoch")
+    if (raw === "" || raw === null || raw === undefined) return null
+    const value = Number(raw)
+    return Number.isSafeInteger(value) && value >= 0 ? value : null
+  } catch (e) { return null }
+}
 
 export default {
   data() {
@@ -31,6 +58,12 @@ export default {
       basis: null,
       userGoal: null,
       playerController: null,
+      historicalMusicId: null,
+      historicalSession: null,
+      historicalLibraryApi: null,
+      historicalAuthReady: false,
+      pageDisposed: false,
+      loadGeneration: 0,
       playerState: {
         playing: false,
         currentTime: 0,
@@ -91,61 +124,193 @@ export default {
       return imageCode ? `/static/v31-player/${imageCode}-2.png` : ""
     },
   },
-  onLoad() {
+  onLoad(query) {
+    this.pageDisposed = false
+    this.historicalMusicId = query && query.music_id ? decodeURIComponent(query.music_id) : null
     this.load()
   },
   onHide() {
+    if (this.pageDisposed) return
     if (this.playerController) this.playerController.handleHide()
   },
   onShow() {
+    if (this.pageDisposed) return
     this.analysisExpanded = false
+    // owner 切换：停止旧音频并清理页面状态，迟到结果不得恢复旧数据
+    if (this.historicalSession && this.historicalSession.hasOwnerChanged()) {
+      this.invalidateHistoricalIdentity()
+    }
     if (this.playerController) this.playerController.handleShow()
   },
   onUnload() {
-    if (this.playerController) this.playerController.dispose()
-    this.playerController = null
+    this.pageDisposed = true
+    this.loadGeneration += 1
+    try { if (this.historicalAuthHandler && typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.historicalAuthHandler) } catch (e) { /* unavailable */ }
+    this.historicalAuthHandler = null
+    this.historicalAuthReady = false
+    this.releasePlayerLoad()
   },
   methods: {
+    isCurrentLoad(generation) {
+      return !this.pageDisposed && generation === this.loadGeneration
+    },
+    releasePlayerLoad() {
+      if (this.historicalSession) this.historicalSession.reset()
+      this.historicalSession = null
+      this.historicalLibraryApi = null
+      const controller = this.playerController
+      this.playerController = null
+      if (controller) controller.dispose()
+      this.playerState = { playing: false, currentTime: 0, duration: 0, error: null }
+      this.music = null
+      this.basis = null
+      this.userGoal = null
+      this.favorite = false
+      this.favBusy = false
+    },
+    invalidateHistoricalIdentity() {
+      if (this.pageDisposed) return
+      this.loadGeneration += 1
+      this.releasePlayerLoad()
+      this.loading = false
+      this.loadFailure = Object.assign(new Error("身份已切换，请重新加载"), { code: "OWNER_CHANGED" })
+    },
+    ensureHistoricalAuthEvents() {
+      if (this.pageDisposed) return false
+      if (this.historicalAuthReady) return true
+      this.historicalAuthHandler = () => this.invalidateHistoricalIdentity()
+      try {
+        if (typeof uni.$on !== "function" || typeof uni.$off !== "function" || typeof uni.$emit !== "function") return false
+        if (uni.$on("harmonyai:v3-auth-changed", this.historicalAuthHandler) === false) throw new Error("Authentication subscription rejected")
+        this.historicalAuthReady = true
+        return true
+      } catch (e) {
+        try { if (typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.historicalAuthHandler) } catch (ignored) { /* unavailable */ }
+        return false
+      }
+    },
+    canUseHistoricalPlayer() {
+      if (this.pageDisposed) return false
+      if (!this.historicalMusicId) return true
+      if (!this.historicalAuthReady || !this.historicalSession || this.historicalSession.hasOwnerChanged()) {
+        this.invalidateHistoricalIdentity()
+        return false
+      }
+      return true
+    },
     async load() {
+      if (this.pageDisposed) return
+      const generation = ++this.loadGeneration
+      this.releasePlayerLoad()
       this.loading = true
       this.loadFailure = null
       try {
-        this.music = await apiV3.getMusic()
+        if (this.historicalMusicId) {
+          await this.loadHistorical(generation)
+          return
+        }
+        const music = await apiV3.getMusic()
+        if (!this.isCurrentLoad(generation)) return
+        this.music = music
         this.favorite = !!this.music.favorite
         this.simulated = !!apiV3.AGENT_SIMULATED
-        try {
-          this.basis = await apiV3.getMusicBasis()
-        } catch (e) {
-          this.basis = null
-        }
+        let basis = null
+        try { basis = await apiV3.getMusicBasis() } catch (e) { /* optional read */ }
+        if (!this.isCurrentLoad(generation)) return
+        this.basis = basis
         this.userGoal = apiV3.getCurrentUserGoal()
-        this.setupPlayerController()
+        this.setupPlayerController(generation)
       } catch (e) {
-        this.loadFailure = e
+        if (this.isCurrentLoad(generation)) this.loadFailure = e
       } finally {
-        this.loading = false
+        if (this.isCurrentLoad(generation)) this.loading = false
       }
     },
-    setupPlayerController() {
+    // 历史通道：music_id → 受控 MusicDetailV1（音频来自历史持久化上下文）。
+    // 不 ensureMusicBasis、不读取当前 session/UserGoal 替代旧资料。
+    async loadHistorical(generation = this.loadGeneration) {
+      if (!this.isCurrentLoad(generation)) return
+      if (!HISTORICAL_LIBRARY_ENABLED) {
+        throw Object.assign(new Error("历史音乐播放尚未开放，请稍后再试。"), {
+          code: "FEATURE_NOT_READY",
+        })
+      }
+      if (!this.ensureHistoricalAuthEvents()) {
+        throw Object.assign(new Error("当前环境无法安全同步身份，历史播放暂不可用。"), { code: "FEATURE_NOT_READY" })
+      }
+      const api = createMusicLibraryApi({
+        request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
+        getOwnerId: readOwnerId,
+        enabled: true,
+      })
+      const session = createHistoricalMusicSession({
+        api,
+        getOwnerId: readOwnerId,
+        getAccessToken: () => readV3AccessToken(),
+        getAuthEpoch: readAuthEpoch,
+        newEventId: () => "play-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      })
+      // Register pending work before await so unload/auth change can reset it.
+      this.historicalSession = session
+      this.historicalLibraryApi = api
+      const detail = await session.open(this.historicalMusicId)
+      if (!this.isCurrentLoad(generation) || this.historicalSession !== session || session.hasOwnerChanged()) return
+      const audio = resolvePlayableAudio(detail)
+      if (!audio) {
+        throw Object.assign(new Error("本次音乐暂时不可用，请稍后重试。"), {
+          code: "MUSIC_NOT_PLAYABLE",
+        })
+      }
+      this.basis = null // 历史播放不读取当前会话解析
+      this.userGoal = null
+      this.music = {
+        music_ref: { music_id: detail.card.music_id, source_type: detail.card.source_type },
+        title: detail.card.display_title,
+        stream_url: audio.stream_url,
+        duration_seconds: audio.duration_seconds,
+        favorite: detail.card.is_favorite === true,
+        disclaimer: "音乐调养不能替代专业医疗或心理帮助。",
+      }
+      this.favorite = detail.card.is_favorite === true
+      this.setupPlayerController(generation)
+    },
+    setupPlayerController(generation = this.loadGeneration) {
+      if (!this.isCurrentLoad(generation)) return
       if (this.playerController) this.playerController.dispose()
-      this.playerController = createPlayerController({
+      const session = this.historicalSession
+      const musicId = this.music && this.music.music_ref && this.music.music_ref.music_id
+      let controller = null
+      const isCurrent = () => controller && this.isCurrentLoad(generation) && this.playerController === controller &&
+        (!session || (this.historicalSession === session && !session.hasOwnerChanged()))
+      controller = createPlayerController({
         downloadAudio: apiV3.fetchAuthorizedAudio,
         createAudioContext: uni.createInnerAudioContext,
+        onPlaybackStarted: () => {
+          if (!isCurrent()) return
+          if (this.historicalSession && this.music && !this.historicalSession.hasOwnerChanged()) {
+            this.historicalSession.reportPlayStarted(musicId).catch(() => {})
+          }
+        },
         onStateChange: snapshot => {
+          if (!isCurrent()) return
           this.playerState = snapshot
         },
         onError: error => {
+          if (!isCurrent()) return
           const failure = buildMusicPresentation({ failure: error })
           uni.showToast({ title: failure.failure.message, icon: "none" })
         },
       })
+      this.playerController = controller
       this.playerState = this.playerController.getState()
     },
-    togglePlay() {
+    async togglePlay() {
+      if (!this.canUseHistoricalPlayer()) return
       if (!this.playerController || !this.music) return
-      void this.playerController.toggle(this.music.stream_url)
+      await this.playerController.toggle(this.music.stream_url)
     },
     seekToRatio(ratio) {
+      if (!this.canUseHistoricalPlayer()) return false
       if (!this.playerController) return false
       return this.playerController.seek(ratio)
     },
@@ -153,11 +318,14 @@ export default {
       return Number.isFinite(this.playerState.duration) && this.playerState.duration > 0
     },
     seekFromProgressEvent(event) {
+      if (!this.canUseHistoricalPlayer()) return false
+      const generation = this.loadGeneration
       if (!this.hasSeekableDuration()) return false
       uni.createSelectorQuery()
         .in(this)
         .select("#player-progress-track")
         .boundingClientRect(rect => {
+          if (!this.isCurrentLoad(generation) || !this.canUseHistoricalPlayer()) return
           const ratio = seekRatioFromEvent(event, rect)
           if (ratio !== null) this.seekToRatio(ratio)
         })
@@ -191,6 +359,7 @@ export default {
       this.analysisExpanded = !this.analysisExpanded
     },
     async toggleFavorite() {
+      if (!this.canUseHistoricalPlayer() || !this.music) return
       if (this.favBusy) return
       const ref = this.music.music_ref || {}
       const musicId = ref.music_id
@@ -200,18 +369,26 @@ export default {
       }
       this.favBusy = true
       const target = !this.favorite
+      const generation = this.loadGeneration
+      const session = this.historicalSession
+      const isCurrent = () => this.isCurrentLoad(generation) && (!session || (this.historicalSession === session && !session.hasOwnerChanged()))
       try {
-        if (target) {
+        if (this.historicalSession) {
+          const api = this.historicalLibraryApi
+          if (!api) throw new Error("历史收藏接口尚未就绪")
+          await api.setFavorite(ref, target)
+        } else if (target) {
           await apiV3.addFavorite(musicId, ref.source_type)
         } else {
           await apiV3.removeFavorite(musicId)
         }
+        if (!isCurrent()) return
         this.favorite = target
         uni.showToast({ title: target ? "已收藏" : "已取消收藏", icon: "none" })
       } catch (e) {
-        uni.showToast({ title: e.message || "操作失败，请重试", icon: "none" })
+        if (isCurrent()) uni.showToast({ title: e.message || "操作失败，请重试", icon: "none" })
       } finally {
-        this.favBusy = false
+        if (isCurrent()) this.favBusy = false
       }
     },
     goFeedback() {
