@@ -9,8 +9,8 @@
     </view>
 
     <view class="section-tabs" aria-label="音乐列表切换">
-      <view :class="['section-tab', { active: activeSection === 'history' }]" @click="activeSection = 'history'"><text>历史音乐</text></view>
-      <view :class="['section-tab', { active: activeSection === 'favorites' }]" @click="activeSection = 'favorites'"><text>我的收藏</text></view>
+      <view :class="['section-tab', { active: activeSection === 'history' }]" @click="selectSection('history')"><text>历史音乐</text></view>
+      <view :class="['section-tab', { active: activeSection === 'favorites' }]" @click="selectSection('favorites')"><text>我的收藏</text></view>
     </view>
 
     <view v-if="library.status === 'loading' && visibleItems.length === 0" class="state-card">
@@ -31,6 +31,7 @@
       <view v-for="item in visibleItems" :key="item.music_id" :class="['music-card', { unavailable: !item.can_open }]" @click="openMusic(item)">
         <view class="card-main">
           <text class="music-title">{{ item.display_title }}</text>
+          <view v-if="liveSourceEnabled" class="title-action" @click.stop="editTitle(item)"><text>修改标题</text></view>
           <view class="music-meta">
             <text>{{ item.duration_label }}</text><text>·</text><text>{{ item.playback_label }}</text>
           </view>
@@ -67,6 +68,7 @@ import { createMusicLibraryApi } from "../../common/music-library-api.js"
 import {
   MUSIC_LIBRARY_LIVE_ENABLED,
   createUniMusicLibraryTransport,
+  readV3AccessToken,
 } from "../../common/music-library-transport.js"
 
 // W1 reserves the canonical Player URL, but the existing Player is still
@@ -87,6 +89,26 @@ function readOwnerId() {
   }
 }
 
+// A page operation belongs to one authentication instance, not just to a public
+// owner name. The credential and the monotonic login epoch stay in this private
+// closure, never in render data, to reject unobserved A -> B -> A transitions.
+function authEpoch() {
+  try {
+    const value = Number(uni.getStorageSync("v3_auth_epoch"))
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0
+  } catch (e) { return 0 }
+}
+function captureLiveIdentity() {
+  const owner = readOwnerId()
+  const token = readV3AccessToken()
+  const epoch = authEpoch()
+  return Object.freeze({
+    owner,
+    matches: () => readOwnerId() === owner &&
+      readV3AccessToken() === token && authEpoch() === epoch,
+  })
+}
+
 export default {
   data() {
     return {
@@ -94,91 +116,195 @@ export default {
       library: createMusicLibraryPreview("ready", MUSIC_CARD_V1_PREVIEW_FIXTURE),
       favoriteBusy: false,
       titleBusy: false,
+      liveGeneration: 0,
+      liveOwner: null,
+      liveIdentity: null,
+      liveDisposed: false,
+      liveAuthReady: false,
     }
   },
   computed: {
+    liveSourceEnabled() { return LIVE_SOURCE_ENABLED },
     visibleItems() {
+      // Computed render guard: never expose a stale page projection even when
+      // identity changed while the page stayed visible (no onShow yet).
+      if (LIVE_SOURCE_ENABLED && (this.liveDisposed || !this.liveAuthReady || !this.liveIdentity || !this.liveIdentity.matches())) return []
       return this.activeSection === "favorites" ? this.library.favorites : this.library.history
     },
     sourceBadge() {
       return LIVE_SOURCE_ENABLED ? "我的音乐" : "界面预览 · 虚构数据"
     },
     sourceNote() {
+      if (LIVE_SOURCE_ENABLED && !this.liveAuthReady) return "当前环境无法安全同步身份，音乐库暂不可用。"
       return LIVE_SOURCE_ENABLED
         ? "音乐记录来自你的账号；音频可用性以服务端状态为准。"
         : "当前仅展示冻结 DTO 的本地 Mock，不代表后端已联调。"
     },
   },
   onLoad() {
-    if (LIVE_SOURCE_ENABLED) this.setupLiveSource()
+    this.liveDisposed = false
+    if (LIVE_SOURCE_ENABLED) {
+      this.liveAuthReady = false
+      this.library = createMusicLibraryPreview("empty")
+      this.authChangeHandler = () => this.ensureLiveOwner()
+      try {
+        if (typeof uni.$on !== "function" || typeof uni.$off !== "function" || typeof uni.$emit !== "function") return
+        if (uni.$on("harmonyai:v3-auth-changed", this.authChangeHandler) === false) throw new Error("Authentication subscription rejected")
+        this.liveAuthReady = true
+      } catch (e) {
+        // A partial/failed subscription never authorizes live reads or writes.
+        try { if (typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (ignored) { /* unavailable */ }
+        return
+      }
+      this.setupLiveSource()
+    }
+  },
+  onShow() {
+    if (LIVE_SOURCE_ENABLED && !this.liveDisposed && this.api) this.ensureLiveOwner()
+  },
+  onUnload() {
+    this.liveDisposed = true
+    this.liveAuthReady = false
+    try { if (this.authChangeHandler && typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
+    this.authChangeHandler = null
+    if (this.historyStore) this.historyStore.invalidate()
+    if (this.favoritesStore) this.favoritesStore.invalidate()
+    this.liveGeneration += 1
+    this.liveIdentity = null
+    this.library = createMusicLibraryPreview("empty")
   },
   methods: {
     // ===== 数据源（门禁关闭时保持冻结预览 fixture） =====
 
     setupLiveSource() {
+      if (this.liveDisposed || !this.liveAuthReady) return
+      this.liveIdentity = captureLiveIdentity()
+      this.liveOwner = this.liveIdentity.owner
       this.api = createMusicLibraryApi({
-        request: createUniMusicLibraryTransport({ getAccessToken: () => readOwnerId() }),
+        request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
         getOwnerId: readOwnerId,
         enabled: true,
       })
-      this.store = createMusicLibraryStore({
-        fetchPage: (args) => this.api.listMusicAssets(args),
-        getOwnerId: readOwnerId,
-      })
+      this.historyStore = createMusicLibraryStore({ fetchPage: (args) => this.api.listMusicAssets(args), getOwnerId: readOwnerId })
+      this.favoritesStore = createMusicLibraryStore({ fetchPage: (args) => this.api.listMusicFavorites(args), getOwnerId: readOwnerId })
+      this.store = this.historyStore
       this.reload()
     },
 
+    ensureLiveOwner() {
+      if (this.liveDisposed) return false
+      if (!LIVE_SOURCE_ENABLED) return true
+      if (!this.liveAuthReady) return false
+      if (this.liveIdentity && this.liveIdentity.matches()) return true
+      this.liveIdentity = captureLiveIdentity()
+      const owner = this.liveIdentity.owner
+      this.liveOwner = owner
+      this.liveGeneration += 1
+      if (this.historyStore) this.historyStore.invalidate()
+      if (this.favoritesStore) this.favoritesStore.invalidate()
+      this.library = createMusicLibraryPreview("empty")
+      if (this.store && owner) this.reload()
+      return false
+    },
+
+    selectSection(section) {
+      if (this.liveDisposed) return
+      if (section !== "history" && section !== "favorites") return
+      if (LIVE_SOURCE_ENABLED && !this.ensureLiveOwner()) return
+      this.activeSection = section
+      if (LIVE_SOURCE_ENABLED) {
+        this.store = section === "favorites" ? this.favoritesStore : this.historyStore
+        this.reload()
+      }
+    },
+
     applyStoreState(state) {
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && !this.liveAuthReady)) return
       const history = (state.items || []).map(presentMusicCard)
       this.library = {
         status: state.status === "idle" ? "loading" : state.status,
-        history,
-        favorites: splitFavorites(history),
+        history: this.activeSection === "history" ? history : [],
+        favorites: this.activeSection === "favorites" ? history : [],
         error: state.error ? state.error.message || "暂时无法加载音乐记录" : null,
         hasMore: !!state.hasMore,
       }
     },
 
     async reload() {
-      if (!this.store) return
+      if (this.liveDisposed || !this.store) return
+      if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) { this.ensureLiveOwner(); return }
       this.library = Object.assign({}, this.library, { status: "loading", error: null })
-      this.applyStoreState(await this.store.loadFirstPage())
+      const generation = ++this.liveGeneration
+      const store = this.store
+      const identity = this.liveIdentity
+      const state = await store.loadFirstPage()
+      if (this.liveDisposed) return
+      if (LIVE_SOURCE_ENABLED && (!identity || !identity.matches())) { this.ensureLiveOwner(); return }
+      if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
 
     async loadMore() {
-      if (!this.store) return
-      this.applyStoreState(await this.store.loadMore())
+      if (this.liveDisposed || !this.store) return
+      if (LIVE_SOURCE_ENABLED && (!this.liveIdentity || !this.liveIdentity.matches())) { this.ensureLiveOwner(); return }
+      const generation = ++this.liveGeneration
+      const store = this.store
+      const identity = this.liveIdentity
+      const state = await store.loadMore()
+      if (this.liveDisposed) return
+      if (LIVE_SOURCE_ENABLED && (!identity || !identity.matches())) { this.ensureLiveOwner(); return }
+      if (generation === this.liveGeneration && store === this.store) this.applyStoreState(state)
     },
 
     // ===== 卡片交互 =====
 
     openMusic(item) {
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner))) return
       if (!item.can_open || !HISTORICAL_PLAYER_LINK_ENABLED) return
       uni.navigateTo({ url: musicPlayerUrl(item.music_id) })
     },
 
     // 收藏是独立 owner-scoped 变更：乐观更新 + 失败回滚，不作为偏好学习证据
     async toggleFavorite(item) {
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner))) return
       if (this.favoriteBusy || !this.api) return
+      const identity = this.liveIdentity
+      const generation = this.liveGeneration
       this.favoriteBusy = true
       const target = !item.is_favorite
-      this.patchCard(item.music_id, { is_favorite: target })
       try {
-        await this.api.setFavorite(
-          { music_id: item.music_id, source_type: item.source_type },
-          target
-        )
-      } catch (e) {
-        this.patchCard(item.music_id, { is_favorite: !target })
-        uni.showToast({ title: e.message || "收藏操作失败，请重试", icon: "none" })
+        this.patchCard(item.music_id, { is_favorite: target })
+        try {
+          await this.api.setFavorite(
+            { music_id: item.music_id, source_type: item.source_type },
+            target
+          )
+          if (this.liveDisposed) return
+          if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
+        } catch (e) {
+          if (this.liveDisposed) return
+          if (!identity || !identity.matches()) { this.ensureLiveOwner(); return }
+          if (generation === this.liveGeneration) {
+            this.patchCard(item.music_id, { is_favorite: !target })
+            uni.showToast({ title: e.message || "收藏操作失败，请重试", icon: "none" })
+          }
+        }
+        if (!this.liveDisposed && identity && identity.matches() && this.liveIdentity === identity) {
+          // A successful same-session mutation invalidates the selected list
+          // even if the user switched tabs while the write was in flight.
+          await this.reload()
+        } else if (!this.liveDisposed) this.ensureLiveOwner()
       } finally {
+        // Cleanup must not replace an exception from UI handling or refresh.
         this.favoriteBusy = false
       }
     },
 
     // 标题编辑：CAS（expected_version）+ 显式 null 清除；冲突时提示并刷新
     async editTitle(item) {
+      if (this.liveDisposed || (LIVE_SOURCE_ENABLED && (!this.ensureLiveOwner() || !this.liveOwner))) return
       if (this.titleBusy || !this.api) return
+      const identity = this.liveIdentity
+      const generation = this.liveGeneration
       const result = await new Promise((resolve) => {
         uni.showModal({
           title: "修改标题",
@@ -189,11 +315,14 @@ export default {
           fail: () => resolve({ confirm: false }),
         })
       })
+      if (this.liveDisposed) return
+      if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
       if (!result || !result.confirm) return
       const nextTitle = normalizeUserTitle(result.content)
       this.titleBusy = true
       try {
         const updated = await this.api.setMusicTitle(item.music_id, nextTitle, item.metadata_version)
+        if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
         this.patchCard(item.music_id, {
           user_title: nextTitle,
           display_title: nextTitle || item.default_title,
@@ -203,7 +332,8 @@ export default {
               : item.metadata_version,
         })
       } catch (e) {
-        if (e && e.code === "METADATA_VERSION_CONFLICT") {
+        if (!identity || !identity.matches() || generation !== this.liveGeneration) { this.ensureLiveOwner(); return }
+        if (e && e.code === "TITLE_VERSION_CONFLICT") {
           uni.showToast({ title: "标题已在别处更新，正在刷新", icon: "none" })
           await this.reload()
         } else {
@@ -215,13 +345,9 @@ export default {
     },
 
     patchCard(musicId, patch) {
-      const next = this.library.history.map((card) =>
-        card.music_id === musicId ? Object.freeze(Object.assign({}, card, patch)) : card
-      )
-      this.library = Object.assign({}, this.library, {
-        history: next,
-        favorites: splitFavorites(next),
-      })
+      const key = this.activeSection === "favorites" ? "favorites" : "history"
+      const next = this.library[key].map((card) => card.music_id === musicId ? Object.freeze(Object.assign({}, card, patch)) : card)
+      this.library = Object.assign({}, this.library, { [key]: next })
     },
 
     musicPlayerUrl,
