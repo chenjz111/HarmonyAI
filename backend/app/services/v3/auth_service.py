@@ -94,16 +94,33 @@ def _resolve_principal(token: str, db: Session) -> AuthPrincipal:
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
         )
-    except (ExpiredSignatureError, JWTError):
+    except (ExpiredSignatureError, JWTError, TypeError, ValueError, OverflowError):
         raise _unauthenticated() from None
 
     public_user_id = payload.get("sub")
-    if not isinstance(public_user_id, str) or not public_user_id:
+    auth_type = payload.get("auth_type")
+    issued_at, expires_at = payload.get("iat"), payload.get("exp")
+    now = int(_utc_now().timestamp())
+    # These are the existing issuer's four claims, not a new token version.
+    # Reject coercible strings, floats and bools as well as absent claims.
+    if (
+        not isinstance(public_user_id, str)
+        or not public_user_id
+        or public_user_id.strip() != public_user_id
+        or not isinstance(auth_type, str)
+        or auth_type not in {"guest", "registered"}
+        or type(issued_at) is not int
+        or type(expires_at) is not int
+        or issued_at < 0
+        or issued_at > now
+        or expires_at <= issued_at
+        or expires_at <= now
+    ):
         raise _unauthenticated()
     identity = db.query(UserIdentity).filter(
         UserIdentity.public_user_id == public_user_id
     ).one_or_none()
-    if identity is None:
+    if identity is None or identity.auth_type != auth_type:
         raise _unauthenticated()
     if identity.auth_type == "guest" and (
         identity.guest_expires_at is None
