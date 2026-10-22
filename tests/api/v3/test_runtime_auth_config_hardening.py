@@ -352,3 +352,43 @@ def test_sqlite_engine_path_still_works_without_ca(clean_config_env):
             assert connection.execute(text('SELECT 1')).scalar_one() == 1
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize('url', [
+    'postgresql+psycopg://synthetic:synthetic@db.synthetic.invalid/example',
+    'mysql://synthetic:synthetic@db.synthetic.invalid/example',
+    'mysql+mysqldb://synthetic:synthetic@db.synthetic.invalid/example',
+    'sqlite:///:memory:',
+    'sqlite+pysqlite:///:memory:',
+])
+def test_mysql_ca_rejected_for_other_drivers_before_engine_creation(clean_config_env, url):
+    from backend.app.core import database
+    conf = Settings(_env_file=None, DATABASE_URL=url)
+    calls = []
+    # Stop at the engine-factory boundary; no optional DBAPI imports or sockets.
+    clean_config_env.setattr(database, 'create_engine', lambda *args, **kwargs: calls.append((args, kwargs)))
+    with pytest.raises(ValueError) as error:
+        database.build_database_engine(conf)
+    assert calls == []
+    assert 'synthetic' not in str(error.value)
+    assert conf.MYSQL_TLS_CA_FILE not in str(error.value)
+
+
+@pytest.mark.parametrize('url', [
+    'postgresql+psycopg://synthetic:synthetic@db.synthetic.invalid/example',
+    'mssql+pyodbc://synthetic:synthetic@db.synthetic.invalid/example',
+])
+def test_non_mysql_development_engine_has_no_mysql_connect_args(clean_config_env, url):
+    from backend.app.core import database
+    clean_config_env.delenv('MYSQL_TLS_CA_FILE')
+    conf = Settings(_env_file=None, DATABASE_URL=url)
+    calls = []
+    sentinel = object()
+    def capture(target, **options):
+        calls.append((target, options))
+        return sentinel
+    clean_config_env.setattr(database, 'create_engine', capture)
+    assert database.build_database_engine(conf) is sentinel
+    assert len(calls) == 1 and calls[0][0] == url
+    assert 'connect_args' not in calls[0][1]
+    assert calls[0][1]['pool_pre_ping'] is True
