@@ -111,11 +111,10 @@ def save_unconsented_feedback(
 
 def list_owned_feedback(db: Session, principal: AuthPrincipal) -> list[FeedbackCandidate]:
     """Read-only owner listing; tombstones never appear."""
+    from .feedback_v31_candidate_queries import visible_feedback_query
     return list(db.scalars(
-        select(FeedbackCandidate).where(
-            FeedbackCandidate.internal_user_pk == principal.internal_user_pk,
-            FeedbackCandidate.deleted_at.is_(None),
-        ).order_by(FeedbackCandidate.created_at.desc(), FeedbackCandidate.feedback_id.desc())
+        visible_feedback_query(principal).order_by(
+            FeedbackCandidate.created_at.desc(), FeedbackCandidate.feedback_id.desc())
     ))
 
 
