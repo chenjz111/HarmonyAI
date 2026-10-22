@@ -4,6 +4,7 @@ No new token fields, login/logout endpoints, session revocation or migrations.
 """
 from datetime import datetime, timedelta, timezone
 import json
+import ssl
 import pytest
 from jose import jwt
 
@@ -81,9 +82,30 @@ def test_claim_auth_type_must_match_current_identity(real_app):
 
 
 @pytest.fixture
-def clean_config_env(monkeypatch):
-    for key in ['APP_ENV', 'DEBUG', 'JWT_SECRET_KEY', 'JWT_ALGORITHM', 'DATABASE_URL', 'CORS_ORIGINS']:
+def synthetic_ca(tmp_path):
+    # Locally generated public CA only; no private key is written or reused.
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'Synthetic offline CA')])
+    now = datetime.now(timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
+            .public_key(key.public_key()).serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .sign(key, hashes.SHA256()))
+    path = tmp_path / 'synthetic-ca.pem'
+    path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    return path
+
+
+@pytest.fixture
+def clean_config_env(monkeypatch, synthetic_ca):
+    for key in ['APP_ENV', 'DEBUG', 'JWT_SECRET_KEY', 'JWT_ALGORITHM', 'DATABASE_URL', 'CORS_ORIGINS', 'MYSQL_TLS_CA_FILE']:
         monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv('MYSQL_TLS_CA_FILE', str(synthetic_ca))
     return monkeypatch
 
 
@@ -220,3 +242,113 @@ def test_production_pattern_screen_accepts_nonperiodic_synthetic_keys(clean_conf
 def test_development_periodic_key_compatibility_is_unchanged(clean_config_env):
     conf = Settings(_env_file=None, JWT_SECRET_KEY='0123456789abcdef' * 4)
     assert conf.APP_ENV == 'development'
+
+
+@pytest.mark.parametrize('query', [
+    'charset=utf8mb4', 'connect_timeout=1', 'read_timeout=600', 'write_timeout=30',
+    'charset=utf8mb4&connect_timeout=10&read_timeout=20&write_timeout=30',
+])
+def test_mysql_approved_parameters_are_accepted(clean_config_env, query):
+    conf = _production(clean_config_env, DATABASE_URL='mysql+pymysql://user:synthetic@db.synthetic.invalid/harmonyai?' + query)
+    assert conf.APP_ENV == 'production'
+
+
+@pytest.mark.parametrize('query', [
+    'charset=utf8', 'charset=', 'charset=utf8mb4&charset=utf8mb4',
+    'connect_timeout=0', 'connect_timeout=601', 'read_timeout=-1',
+    'write_timeout=1.5', 'read_timeout=true', 'write_timeout=',
+    'read_timeout=1&read_timeout=2', 'unknown=1', 'host=other.invalid',
+    'db=other', 'database=other', 'user=other', 'passwd=other',
+    'port=1', 'unix_socket=other', 'ssl_disabled=true', 'ssl_check_hostname=false',
+    'ssl_ca=other', 'local_infile=true', 'init_command=SELECT+1',
+    'read_timeout=1&password=', 'read_timeout=1&broken',
+])
+def test_mysql_unapproved_parameters_are_rejected(clean_config_env, query):
+    with pytest.raises(ValueError):
+        _production(clean_config_env, DATABASE_URL='mysql+pymysql://user:synthetic@db.synthetic.invalid/harmonyai?' + query)
+
+
+@pytest.mark.parametrize('driver', ['mysql', 'mysql+mysqldb', 'mysql+mysqlconnector'])
+def test_production_mysql_requires_explicit_pymysql(clean_config_env, driver):
+    with pytest.raises(ValueError):
+        _production(clean_config_env, DATABASE_URL=driver + '://user:synthetic@db.synthetic.invalid/harmonyai')
+
+
+@pytest.mark.parametrize('case', ['missing', 'blank', 'nonexistent', 'directory', 'invalid-pem', 'relative'])
+def test_production_mysql_invalid_ca_is_rejected(clean_config_env, tmp_path, case):
+    clean_config_env.delenv('MYSQL_TLS_CA_FILE')
+    if case == 'missing':
+        values = {}
+    else:
+        invalid = tmp_path / 'invalid.pem'
+        invalid.write_text('not a CA certificate', encoding='utf-8')
+        values = {'MYSQL_TLS_CA_FILE': {
+            'blank': '', 'nonexistent': str(tmp_path/'absent.pem'),
+            'directory': str(tmp_path), 'invalid-pem': str(invalid),
+            'relative': 'relative-ca.pem',
+        }[case]}
+    with pytest.raises(ValueError) as error:
+        _production(clean_config_env, **values)
+    assert 'synthetic-password' not in str(error.value)
+
+
+def test_tls_context_failure_is_redacted_and_never_falls_back(clean_config_env):
+    def unavailable(*args, **kwargs):
+        raise OSError('synthetic-private-tls-error')
+    clean_config_env.setattr(ssl, 'create_default_context', unavailable)
+    with pytest.raises(ValueError) as error:
+        _production(clean_config_env)
+    assert 'synthetic-private-tls-error' not in str(error.value)
+
+
+def test_actual_engine_parameters_and_pymysql_context(clean_config_env):
+    from sqlalchemy import event
+    from backend.app.core import database
+    from pymysql import Connection
+    conf = _production(clean_config_env, DATABASE_URL='mysql+pymysql://user:synthetic@db.synthetic.invalid:3306/harmonyai?charset=utf8mb4&connect_timeout=10&read_timeout=20&write_timeout=30')
+    engine = database.build_database_engine(conf)
+    captured = {}
+    class StopBeforeNetwork(Exception):
+        pass
+    def capture(dialect, connection_record, args, kwargs):
+        captured.update(kwargs)
+        raise StopBeforeNetwork()
+    event.listen(engine, 'do_connect', capture)
+    try:
+        with pytest.raises(StopBeforeNetwork):
+            engine.raw_connection()
+        assert captured['host'] == 'db.synthetic.invalid'
+        assert captured['database'] == 'harmonyai'
+        assert captured['port'] == 3306
+        assert captured['charset'] == 'utf8mb4'
+        assert [captured[k] for k in ('connect_timeout', 'read_timeout', 'write_timeout')] == [10, 20, 30]
+        ctx = captured['ssl']
+        assert isinstance(ctx, ssl.SSLContext)
+        assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname is True
+        assert ctx.cert_store_stats()['x509_ca'] >= 1
+        # Actual installed driver consumes the context, without opening a socket.
+        driver = Connection(defer_connect=True, **captured)
+        assert driver.ctx is ctx and driver.ssl is True
+    finally:
+        engine.dispose()
+
+
+def test_engine_rechecks_ca_disappearance_without_plaintext_fallback(clean_config_env, synthetic_ca):
+    from backend.app.core import database
+    conf = _production(clean_config_env)
+    synthetic_ca.unlink()  # Only this test's generated public certificate.
+    with pytest.raises(ValueError):
+        database.build_database_engine(conf)
+
+
+def test_sqlite_engine_path_still_works_without_ca(clean_config_env):
+    from backend.app.core import database
+    from sqlalchemy import text
+    clean_config_env.delenv('MYSQL_TLS_CA_FILE')
+    conf = Settings(_env_file=None, DATABASE_URL='sqlite:///:memory:')
+    engine = database.build_database_engine(conf)
+    try:
+        with engine.connect() as connection:
+            assert connection.execute(text('SELECT 1')).scalar_one() == 1
+    finally:
+        engine.dispose()

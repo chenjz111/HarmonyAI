@@ -2,19 +2,23 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-from backend.app.core.config import settings
+from backend.app.core.config import Settings, settings
 
 
-_engine_options = {
-    "echo": settings.DEBUG,
-    "pool_pre_ping": True,
-}
-if settings.DATABASE_URL.startswith("sqlite"):
-    _engine_options["connect_args"] = {"check_same_thread": False}
-else:
-    _engine_options.update({"pool_size": 5, "max_overflow": 10})
+def build_database_engine(configuration: Settings):
+    """Construct without connecting; TLS failures must stop engine creation."""
+    options = {"echo": configuration.DEBUG, "pool_pre_ping": True}
+    if configuration.DATABASE_URL.startswith('sqlite'):
+        options['connect_args'] = {'check_same_thread': False}
+    else:
+        options.update({'pool_size': 5, 'max_overflow': 10})
+        if (configuration.APP_ENV == 'production'
+                or configuration.MYSQL_TLS_CA_FILE is not None):
+            options['connect_args'] = {'ssl': configuration.build_mysql_tls_context()}
+    return create_engine(configuration.DATABASE_URL, **options)
 
-engine = create_engine(settings.DATABASE_URL, **_engine_options)
+
+engine = build_database_engine(settings)
 if settings.DATABASE_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")
     def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):

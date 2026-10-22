@@ -1,12 +1,30 @@
 """Application configuration."""
 from pathlib import Path
+import ssl
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
+
+
+def _valid_mysql_query(raw_query: str) -> bool:
+    """Only non-target PyMySQL options; seconds are deliberately bounded."""
+    pairs = parse_qsl(raw_query, keep_blank_values=True, strict_parsing=True)
+    if len({name for name, _ in pairs}) != len(pairs):
+        return False
+    for name, value in pairs:
+        if name == 'charset':
+            if value != 'utf8mb4':
+                return False
+        elif name in {'connect_timeout', 'read_timeout', 'write_timeout'}:
+            if not value.isascii() or not value.isdecimal() or not 1 <= int(value) <= 600:
+                return False
+        else:
+            return False
+    return True
 
 
 def _has_obvious_key_pattern(key: str) -> bool:
@@ -53,6 +71,8 @@ class Settings(BaseSettings):
 
     # Portable competition/demo default. Deployments can override DATABASE_URL.
     DATABASE_URL: str = Field(default="sqlite:///./harmonyai.db", repr=False)
+    # Independent of the URL: query options may never disable/override TLS.
+    MYSQL_TLS_CA_FILE: str | None = Field(default=None, repr=False)
 
     # Retained for backward-compatible environment documentation only.
     MYSQL_HOST: str = "localhost"
@@ -89,6 +109,20 @@ class Settings(BaseSettings):
             rejected = True
         if rejected:
             raise ValueError("Runtime configuration rejected; verify APP_ENV and explicit production settings")
+
+    def build_mysql_tls_context(self) -> ssl.SSLContext:
+        """Revalidate CA at engine construction; never downgrade on failure."""
+        try:
+            path = Path(self.MYSQL_TLS_CA_FILE or '')
+            if not self.MYSQL_TLS_CA_FILE or not path.is_absolute() or not path.is_file():
+                raise ValueError('Invalid CA target')
+            context = ssl.create_default_context(cafile=str(path))
+            context.verify_mode = ssl.CERT_REQUIRED
+            context.check_hostname = True
+        except (OSError, ValueError, ssl.SSLError):
+            # No file path, URL, credentials or underlying OpenSSL error leaks.
+            raise ValueError('MySQL TLS configuration rejected') from None
+        return context
 
     @model_validator(mode="after")
     def validate_production_runtime(self) -> "Settings":
@@ -144,11 +178,11 @@ class Settings(BaseSettings):
                     and not url.host and not url.username and not url.password
                     and not url.query and not raw_query
                 )
-            elif url.drivername in {"mysql", "mysql+pymysql"}:
+            elif url.drivername == "mysql+pymysql":
                 valid = (
                     all(isinstance(v, str) and bool(v.strip()) and v == v.strip()
                         for v in (url.host, url.database, url.username, url.password))
-                    and not url.query and not raw_query  # Driver options can override the target.
+                    and _valid_mysql_query(raw_query)
                     and not any(c.isspace() for c in url.host)
                     and (url.port is None or 1 <= url.port <= 65535)
                 )
@@ -158,6 +192,8 @@ class Settings(BaseSettings):
             valid = False
         if not valid:
             raise ValueError("Production DATABASE_URL must identify a complete supported database target")
+        if url.drivername == 'mysql+pymysql':
+            self.build_mysql_tls_context()
         return self
 
 
