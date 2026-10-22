@@ -22,6 +22,19 @@ function loadPlayerPage({ apiV3, createPlayerController, uni }) {
       /import \{ seekRatioFromEvent \} from [^\r\n]+\r?\n/,
       "const seekRatioFromEvent = __deps.seekRatioFromEvent\n",
     )
+    // Sprint 7 FE-2B：历史音乐通道依赖（本测试不驱动历史分支，注入安全 stub）
+    .replace(
+      /import \{ createMusicLibraryApi \} from [^\r\n]+\r?\n/,
+      "const createMusicLibraryApi = __deps.createMusicLibraryApi\n",
+    )
+    .replace(
+      /import \{ createUniMusicLibraryTransport, readV3AccessToken \} from [^\r\n]+\r?\n/,
+      "const { createUniMusicLibraryTransport, readV3AccessToken } = __deps\n",
+    )
+    .replace(
+      /import \{\s*createHistoricalMusicSession,\s*resolvePlayableAudio,\s*\} from [^\r\n]+\r?\n/,
+      "const { createHistoricalMusicSession, resolvePlayableAudio } = __deps\n",
+    )
     .replace("export default {", "__pageOptions = {")
 
   const context = {
@@ -32,6 +45,20 @@ function loadPlayerPage({ apiV3, createPlayerController, uni }) {
       buildMusicPresentation,
       presentProgress,
       seekRatioFromEvent: () => null,
+      createMusicLibraryApi: () => ({
+        listMusicAssets: async () => ({ items: [], next_cursor: null, has_more: false }),
+        getMusicAsset: async () => null,
+        recordPlayStarted: async () => ({ ok: true }),
+      }),
+      createUniMusicLibraryTransport: () => async () => ({ data: {} }),
+      readV3AccessToken: () => "",
+      createHistoricalMusicSession: () => ({
+        open: async () => null,
+        reportPlayStarted: async () => ({ reported: false }),
+        reset() {},
+        hasOwnerChanged: () => false,
+      }),
+      resolvePlayableAudio: () => null,
     },
     uni,
   }

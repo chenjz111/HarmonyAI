@@ -127,6 +127,20 @@ function safeRemove(key) {
   try { uni.removeStorageSync(key) } catch (e) { /* ignore */ }
 }
 
+/** Every new V3 authentication instance gets a monotonically increasing revision.
+ * The public user ID and even a reused bearer can be identical across logins.
+ * No secret is broadcast; listeners use the epoch to invalidate private views.
+ */
+function announceV3AuthChange() {
+  const raw = Number(safeGet("v3_auth_epoch"))
+  const next = Number.isSafeInteger(raw) && raw >= 0 && raw < Number.MAX_SAFE_INTEGER
+    ? raw + 1 : 1
+  safeSet("v3_auth_epoch", next)
+  try {
+    if (typeof uni.$emit === "function") uni.$emit("harmonyai:v3-auth-changed")
+  } catch (e) { /* no event bus in Node/unit environments */ }
+}
+
 // ===== 真实会话流转状态（跨页面共享；所有 revision 均来自后端响应） =====
 
 const FLOW_STATE_KEY = "v3_flow_state"
@@ -256,6 +270,7 @@ const realInputApi = {
     const data = await realRequest("/api/v3/auth/guest", { method: "POST" })
     safeSet("v3_access_token", data.access_token)
     safeSet("v3_public_user_id", data.public_user_id)
+    announceV3AuthChange()
     return data
   },
 
@@ -1194,6 +1209,8 @@ const mockApi = {
       public_user_id: "u_guest_mock",
     }
     safeSet("v3_access_token", MOCK.token.access_token)
+    safeSet("v3_public_user_id", MOCK.token.public_user_id)
+    announceV3AuthChange()
     return clone(MOCK.token)
   },
 
