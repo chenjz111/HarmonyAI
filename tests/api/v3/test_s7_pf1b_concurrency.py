@@ -98,3 +98,37 @@ def test_delete_rejects_non_utc_and_propagates_state_creation_conflict(database,
         db.rollback()
     with database.connect() as conn:
         assert conn.exec_driver_sql("SELECT deleted_at FROM feedback_v3 WHERE feedback_id='old-feedback'").scalar() is None
+
+
+@pytest.mark.parametrize("different", [False, True])
+def test_two_connections_same_key_have_one_row_and_one_epoch(database, different):
+    from tests.api.v3.test_int2_pf1b_contract import body, play
+    from backend.drafts.s7_feedback_consent.contracts import FeedbackV31, FeedbackFingerprintConflict
+    from backend.app.services.v3.feedback_v31_candidate_service import save_unconsented_feedback
+    candidate().install_sqlite(database)
+    play(database)
+    gate = Barrier(2)
+    def worker(index):
+        payload = body(post_state={"change_label": "worse"}) if different and index else body()
+        with Session(database, autoflush=False) as db:
+            gate.wait(timeout=10)
+            db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                result = save_unconsented_feedback(db, principal=principal(),
+                    request=FeedbackV31.model_validate(payload), idempotency_key="racing-key", now_utc=NOW)
+                db.commit()
+                return result
+            except FeedbackFingerprintConflict:
+                db.rollback()
+                return "conflict"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(worker, i) for i in range(2)]
+        results = [f.result(timeout=20) for f in futures]
+    if different:
+        assert results.count("conflict") == 1
+    else:
+        assert results[0].feedback_id == results[1].feedback_id
+        assert sorted(r.replayed for r in results) == [False, True]
+    with database.connect() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM feedback_v3 WHERE idempotency_key='racing-key'").scalar() == 1
+        assert conn.exec_driver_sql("SELECT feedback_evidence_epoch FROM owner_music_state").scalar() == 1
