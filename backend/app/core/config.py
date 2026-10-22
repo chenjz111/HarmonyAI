@@ -9,6 +9,40 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
 
+def _has_obvious_key_pattern(key: str) -> bool:
+    """Screen obvious patterns, not entropy; production keys still need CSPRNGs.
+
+    Reject a whole-key period with at least two blocks (allowing a trailing
+    partial block). Local repetition in an otherwise nonperiodic key is not
+    sufficient. The prefix-function keeps the scan linear in key length.
+    """
+    prefixes = [0] * len(key)
+    for i in range(1, len(key)):
+        matched = prefixes[i - 1]
+        while matched and key[i] != key[matched]:
+            matched = prefixes[matched - 1]
+        if key[i] == key[matched]:
+            matched += 1
+        prefixes[i] = matched
+    if key and len(key) - prefixes[-1] <= len(key) // 2:
+        return True
+
+    # Deliberately finite denylist: ascending/descending alphabet, digit and
+    # keyboard cycles, including rotated starts. Not a general strength meter.
+    lowered = key.lower()
+    for alphabet in (
+        '0123456789abcdef',
+        'abcdefghijklmnopqrstuvwxyz0123456789',
+        '0123456789abcdefghijklmnopqrstuvwxyz',
+        'qwertyuiopasdfghjklzxcvbnm0123456789',
+    ):
+        for sequence in (alphabet, alphabet[::-1]):
+            cycle = sequence * (len(lowered) // len(sequence) + 2)
+            if lowered and lowered in cycle:
+                return True
+    return False
+
+
 class Settings(BaseSettings):
     """App settings loaded from environment variables / .env file."""
 
@@ -77,6 +111,7 @@ class Settings(BaseSettings):
             or key != key.strip()
             or len(key.encode("utf-8")) < 32
             or len(set(key)) < 12
+            or _has_obvious_key_pattern(key)
             or key.lower() in {"change-me-in-production", "changeme", "secret", "password"}
         ):
             raise ValueError("Production requires an approved HS256 signing key, not a default or weak value")

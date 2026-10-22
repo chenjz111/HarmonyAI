@@ -184,3 +184,39 @@ def test_production_database_query_cannot_override_target(clean_config_env, quer
     target = 'mysql+pymysql://user:synthetic@db.synthetic.invalid/harmonyai?' + query
     with pytest.raises(ValueError):
         _production(clean_config_env, DATABASE_URL=target)
+
+
+@pytest.mark.parametrize('key', [
+    '0123456789abcdef' * 4,
+    ('0123456789abcdef' * 4) + '012',
+    'fE7!aQ2@rT9#uI4$' * 2,
+    'fedcba9876543210' * 4,
+    'abcdefghijklmnopqrstuvwxyz0123456789',
+    '9876543210zyxwvutsrqponmlkjihgfedcba',
+    '0123456789abcdefghijklmnopqrstuvwxyz',
+    'qwertyuiopasdfghjklzxcvbnm0123456789',
+], ids=['hex-period', 'truncated-period', 'mixed-block', 'reverse-period',
+        'alphabet-sequence', 'reverse-sequence', 'digit-sequence', 'keyboard-sequence'])
+def test_production_rejects_obvious_predictable_keys(clean_config_env, key):
+    # These synthetic inputs pass the old length/distinct-character screens.
+    # Removing the predictable-pattern gate must make these tests fail.
+    with pytest.raises(ValueError) as error:
+        _production(clean_config_env, JWT_SECRET_KEY=key)
+    assert key not in str(error.value)
+    assert key not in repr(error.value.args)
+
+
+@pytest.mark.parametrize('key', [
+    'a74d910fb8c530e96d42af035c8e710ed16f75ac2089b46d13cf804eab692f07',
+    'V7!mQ2@zL9#bR4$xN8%wC3^pH6&kD1*s',
+    'synthetic-prefix-0123456789abcdef-0123456789abcdef-tail',
+])
+def test_production_pattern_screen_accepts_nonperiodic_synthetic_keys(clean_config_env, key):
+    # Acceptance is configuration compatibility, not proof of key entropy.
+    conf = _production(clean_config_env, JWT_SECRET_KEY=key)
+    assert conf.JWT_SECRET_KEY == key
+
+
+def test_development_periodic_key_compatibility_is_unchanged(clean_config_env):
+    conf = Settings(_env_file=None, JWT_SECRET_KEY='0123456789abcdef' * 4)
+    assert conf.APP_ENV == 'development'
