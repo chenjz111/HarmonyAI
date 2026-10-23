@@ -43,6 +43,8 @@ jobs:
         run: python -B tools/ci/run.py --suite regression --evidence-dir "$RUNNER_TEMP/harmonyai-ci/regression"
       - name: Runtime auth/config specialty (explicit NOT_INCLUDED if absent)
         run: python -B tools/ci/run.py --suite hardening --evidence-dir "$RUNNER_TEMP/harmonyai-ci/hardening"
+      - name: BE-2B PlaybackProof and Epoch CAS specialty
+        run: python -B tools/ci/run.py --suite be2b --evidence-dir "$RUNNER_TEMP/harmonyai-ci/be2b"
       - name: Upload sanitized logs and counts, never databases or credentials
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4, verified official tag

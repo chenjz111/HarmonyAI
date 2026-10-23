@@ -23,10 +23,13 @@ controlled media root; unknown or remote locators fail closed.
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.models.session import Session as ConversationSession
 from backend.app.models.v3.music import GenerationTask, MusicAsset
 from backend.app.models.v3.music_library import MusicPlaybackEvent
+from backend.app.schemas.v3.common import AuthPrincipal
 
 
 LIBRARY_TERMINAL_TASK_STATUSES = ("succeeded", "matched_fallback")
@@ -45,6 +48,23 @@ class LibraryAccessDenied(RuntimeError):
 
 class FeedbackContextUnavailable(RuntimeError):
     """The requested feedback context is not an owned, legal, played context."""
+
+
+class PlaybackProofUnavailable(RuntimeError):
+    """Uniform failure: the specified owned event/task/session is not provable."""
+
+
+@dataclass(frozen=True)
+class PlaybackProof:
+    """Internal persisted association, not a client credential or listening measurement."""
+
+    playback_event_row_id: int
+    playback_event_id: str
+    internal_user_pk: int
+    music_asset_id: str
+    source_context_id: str
+    session_row_id: int
+    occurred_at: datetime
 
 
 @dataclass(frozen=True)
@@ -175,3 +195,61 @@ def resolve_feedback_context(
     if played is None:
         raise FeedbackContextUnavailable
     return context_id
+
+
+def resolve_feedback_playback_proof(
+    db: Session,
+    *,
+    principal: AuthPrincipal,
+    music_id: str,
+    source_context_id: str,
+    playback_event_id: str,
+    session_id: str,
+) -> PlaybackProof:
+    """Resolve the SPECIFIED persisted play, task and session for this principal.
+
+    Read-only even with autoflush enabled. No owner-state creation, transaction
+    completion, current-session inference or availability/file access. A later
+    Feedback write must preserve this association in its caller transaction and
+    the forthcoming 0013 constraints; this value is not a durable grant.
+    """
+
+    if any(not isinstance(value, str) or not value or len(value) > 64
+           for value in (music_id, source_context_id, playback_event_id, session_id)):
+        raise PlaybackProofUnavailable
+    owner = principal.internal_user_pk
+    with db.no_autoflush:
+        try:
+            require_library_access(db, internal_user_pk=owner, music_id=music_id)
+        except LibraryAccessDenied:
+            raise PlaybackProofUnavailable from None
+        # Scalar columns deliberately read database authority rather than stale
+        # mapped task/event/session attributes in the caller's identity map.
+        row = db.execute(
+            select(
+                MusicPlaybackEvent.playback_event_row_id,
+                MusicPlaybackEvent.event_id,
+                MusicPlaybackEvent.internal_user_pk,
+                MusicPlaybackEvent.music_asset_id,
+                MusicPlaybackEvent.source_context_id,
+                ConversationSession.id,
+                MusicPlaybackEvent.occurred_at,
+            )
+            .join(GenerationTask, MusicPlaybackEvent.source_context_id == GenerationTask.task_id)
+            .join(ConversationSession, GenerationTask.session_row_id == ConversationSession.id)
+            .where(
+                MusicPlaybackEvent.internal_user_pk == owner,
+                MusicPlaybackEvent.event_id == playback_event_id,
+                MusicPlaybackEvent.music_asset_id == music_id,
+                MusicPlaybackEvent.source_context_id == source_context_id,
+                MusicPlaybackEvent.event_type == 'play_started',
+                GenerationTask.internal_user_pk == owner,
+                GenerationTask.music_asset_id == music_id,
+                GenerationTask.status.in_(LIBRARY_TERMINAL_TASK_STATUSES),
+                ConversationSession.user_id == owner,
+                ConversationSession.session_id == session_id,
+            )
+        ).one_or_none()
+    if row is None:
+        raise PlaybackProofUnavailable
+    return PlaybackProof(*row)
