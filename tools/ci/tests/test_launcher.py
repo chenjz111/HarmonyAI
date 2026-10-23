@@ -238,6 +238,85 @@ def test_extension():
         self.assertEqual(record['status'], 'FAILED')
         self.assertEqual(record['failed'], 1)
 
+    def be2b_probe(self, body):
+        """Synthetic launcher contract probes, not the 45 real BE-2B tests."""
+        source = self.folder/'be2b-source'
+        source.mkdir()
+        (source/'pytest.ini').write_text('[pytest]\n', encoding='utf-8')
+        if body is not None:
+            test = source/'tests/api/v3/test_be2b_playback_proof_cas.py'
+            test.parent.mkdir(parents=True)
+            test.write_text(body, encoding='utf-8')
+        evidence = self.folder/'be2b-evidence'
+        result = self.invoke('run.py', '--suite', 'be2b', '--source-root', source,
+                             '--evidence-dir', evidence)
+        return result, evidence
+
+    def test_be2b_missing_test_fails_instead_of_not_included(self):
+        result, evidence = self.be2b_probe(None)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Required suite files missing', result.stderr)
+        self.assertNotIn('NOT_INCLUDED', result.stdout)
+        self.assertFalse((evidence/'result.json').exists())
+
+    def test_be2b_runs_fixed_path_under_guard_and_requires_45_passes(self):
+        body = 'import pytest\n@pytest.mark.parametrize("case", range(45))\ndef test_case(case):\n    assert case >= 0\n'
+        result, evidence = self.be2b_probe(body)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        record = json.loads((evidence/'result.json').read_text(encoding='utf-8'))
+        self.assertEqual((record['passed'], record['failed'], record['skipped']), (45, 0, 0))
+        self.assertEqual(record['status'], 'PASSED')
+        command = json.loads((evidence/'command.json').read_text(encoding='utf-8'))
+        self.assertEqual(Path(command['command'][2]), TOOLS/'guarded_pytest.py')
+        self.assertIn('tests/api/v3/test_be2b_playback_proof_cas.py', command['command'])
+
+    def test_be2b_reduced_test_count_is_nonzero_even_when_child_passes(self):
+        body = 'import pytest\n@pytest.mark.parametrize("case", range(44))\ndef test_case(case):\n    assert case >= 0\n'
+        result, evidence = self.be2b_probe(body)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((evidence/'result.json').is_file(), result.stdout + result.stderr)
+        record = json.loads((evidence/'result.json').read_text(encoding='utf-8'))
+        self.assertEqual(record['child_exit_code'], 0)
+        self.assertEqual(record['passed'], 44)
+        self.assertEqual(record['status'], 'FAILED')
+        self.assertEqual(record['failure_reason'], 'be2b_acceptance_mismatch')
+
+    def test_be2b_test_failure_propagates(self):
+        result, evidence = self.be2b_probe('def test_failure():\n    assert False, "synthetic BE-2B failure"\n')
+        self.assertEqual(result.returncode, 1)
+        record = json.loads((evidence/'result.json').read_text(encoding='utf-8'))
+        self.assertEqual((record['child_exit_code'], record['final_exit_code']), (1, 1))
+        self.assertEqual(record['failed'], 1)
+
+    def test_be2b_collection_failure_propagates(self):
+        result, evidence = self.be2b_probe('raise RuntimeError("synthetic collection failure")\n')
+        self.assertEqual(result.returncode, 2)
+        self.assertTrue((evidence/'result.json').is_file(), result.stdout + result.stderr)
+        record = json.loads((evidence/'result.json').read_text(encoding='utf-8'))
+        self.assertEqual(record['status'], 'FAILED')
+        self.assertEqual(record['failure_reason'], 'child_nonzero')
+        self.assertEqual(record['failed'], 1)
+
+    def test_be2b_runtime_skip_is_not_a_green_specialty(self):
+        result, evidence = self.be2b_probe('import pytest\ndef test_skip():\n    pytest.skip("synthetic unexpected skip")\n')
+        self.assertEqual(result.returncode, 91)
+        record = json.loads((evidence/'result.json').read_text(encoding='utf-8'))
+        self.assertEqual(record['status'], 'FAILED')
+        self.assertEqual(record['skipped'], 1)
+
+    def test_be2b_caught_guard_denial_is_still_nonzero(self):
+        result, evidence = self.be2b_probe('import socket, sys\ndef test_caught():\n'
+            '    sock = socket.socket()\n    try:\n'
+            '        try: sys.audit("socket.connect", sock, ("192.0.2.1", 443))\n'
+            '        except RuntimeError: pass\n    finally: sock.close()\n')
+        self.assertEqual(result.returncode, 90)
+        record = json.loads((evidence/'result.json').read_text(encoding='utf-8'))
+        self.assertEqual(record['status'], 'FAILED')
+        self.assertEqual(record['passed'], 1)
+        telemetry = json.loads((evidence/'telemetry.json').read_text(encoding='utf-8'))
+        self.assertEqual(telemetry['pytest_exit_code'], 0)
+        self.assertTrue(telemetry['unrecognized_denials'])
+
 
 class ReliabilityTests(unittest.TestCase):
     """Injected transport/filesystem outcomes, not real network/timeout evidence."""

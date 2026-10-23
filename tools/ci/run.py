@@ -13,6 +13,8 @@ import time
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 HARDENING = 'tests/api/v3/test_runtime_auth_config_hardening.py'
+BE2B = 'tests/api/v3/test_be2b_playback_proof_cas.py'
+BE2B_EXPECTED_PASSED = 45
 REGRESSION = ['tests/api/v3/' + name for name in (
     'test_s7_music_library_router_wiring.py', 'test_s7_music_library.py',
     'test_s7_music_library_api.py', 'test_int2_stream_gate.py', 'test_guest_auth.py',
@@ -116,7 +118,7 @@ def read_telemetry(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', required=True, choices=('guard', 'regression', 'hardening'))
+    parser.add_argument('--suite', required=True, choices=('guard', 'regression', 'hardening', 'be2b'))
     parser.add_argument('--source-root', type=Path, default=ROOT)
     parser.add_argument('--evidence-dir', type=Path, required=True)
     args = parser.parse_args()
@@ -134,7 +136,8 @@ def main():
         sandbox = evidence/'sandbox'
         sandbox.mkdir()
         tests = ([str(HERE/'tests/test_guard.py')] if args.suite == 'guard'
-                 else [HARDENING] if args.suite == 'hardening' else REGRESSION)
+                 else [HARDENING] if args.suite == 'hardening'
+                 else [BE2B] if args.suite == 'be2b' else REGRESSION)
         missing = [test for test in tests if not (source/test).is_file()]
         if missing:
             parser.error('Required suite files missing: ' + ', '.join(missing))
@@ -172,6 +175,13 @@ def main():
             code, reason = 91, 'unexpected_skip'
         elif details['exit_code'] != child_code:
             code, reason = 92, 'telemetry_exit_mismatch'
+        elif args.suite == 'be2b' and (
+                len(details['tests']) != BE2B_EXPECTED_PASSED
+                or len({row['nodeid'] for row in details['tests']
+                        if row['phase'] == 'call' and row['outcome'] == 'passed'
+                        and row['nodeid'].replace('\\', '/').split('::', 1)[0] == BE2B}) != BE2B_EXPECTED_PASSED):
+            # Pin the reviewed R1 inventory: no partial/duplicate/foreign tests.
+            code, reason = 93, 'be2b_acceptance_mismatch'
         else:
             code, reason = 0, None
         exits = {'child_exit_code': child_code, 'final_exit_code': code,
