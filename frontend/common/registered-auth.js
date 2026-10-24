@@ -4,7 +4,7 @@
  */
 const failure=code=>Object.assign(new Error(code),{code})
 export function createRegisteredAuthClient({request,secureStore,enabled=false,platform='android',now=Date.now}) {
-  let memory=null,generation=0,queue=Promise.resolve(),refreshing=null
+  let memory=null,generation=0,queue=Promise.resolve(),refreshing=null,reauthenticationRequired=false
   function gate(){
     if(enabled!==true || platform!=='android' || secureStore?.verified!==true || secureStore?.keystoreBacked!==true ||
       !['write','read','clear'].every(name=>typeof secureStore?.[name]==='function'))throw failure('ACCOUNT_FEATURE_UNAVAILABLE')
@@ -22,7 +22,7 @@ export function createRegisteredAuthClient({request,secureStore,enabled=false,pl
   }
   async function discard(g){
     if(g!==generation)return
-    generation++;memory=null
+    generation++;memory=null;reauthenticationRequired=true
     await serialized(()=>secureStore.clear())
   }
   async function adopt(data,g){
@@ -31,6 +31,7 @@ export function createRegisteredAuthClient({request,secureStore,enabled=false,pl
       current(g);gate()
       await secureStore.write(data.refresh_token)
       if(g!==generation){await secureStore.clear();throw failure('OWNER_CHANGED')}
+      reauthenticationRequired=false
       memory=Object.freeze({owner:data.public_user_id,access:data.access_token,expires:Date.parse(data.expires_at)})
     })
     return {public_user_id:data.public_user_id}
@@ -55,6 +56,7 @@ export function createRegisteredAuthClient({request,secureStore,enabled=false,pl
   }
   function startRefresh(restore=false){
     try{gate()}catch(error){return Promise.reject(error)}
+    if(reauthenticationRequired)return Promise.reject(failure('REAUTHENTICATION_REQUIRED'))
     if(refreshing?.generation===generation)return refreshing.promise
     if(restore && !memory)generation++
     const entry={generation,promise:null}
@@ -66,10 +68,10 @@ export function createRegisteredAuthClient({request,secureStore,enabled=false,pl
     bind:(body,guestToken)=>{if(!guestToken)return Promise.reject(failure('IDENTITY_REQUIRED'));return authenticate('register-bind',body,guestToken)},
     refresh:()=>startRefresh(),
     restore:()=>startRefresh(true),
-    async invalidate(){generation++;memory=null;if(secureStore?.clear)await serialized(()=>secureStore.clear())},
+    async invalidate(){generation++;memory=null;reauthenticationRequired=true;if(secureStore?.clear)await serialized(()=>secureStore.clear())},
     async logout({allDevices=false}={}){
       gate();if(typeof allDevices!=='boolean')throw failure('INVALID_REQUEST')
-      const access=memory?.access;generation++;memory=null
+      const access=memory?.access;generation++;memory=null;reauthenticationRequired=true
       const results=await Promise.allSettled([serialized(()=>secureStore.clear()),access?call('logout',{all_devices:allDevices},access):Promise.reject(failure('REAUTHENTICATION_REQUIRED'))])
       const failed=results.find(result=>result.status==='rejected')
       if(failed)throw failed.reason

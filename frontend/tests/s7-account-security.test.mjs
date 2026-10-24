@@ -83,3 +83,15 @@ test('restart restore authenticates persisted proof through one server rotation'
  assert.equal(calls[0].data.refresh_token,'synthetic-proof');assert.equal(store.value(),'restored-proof')
  assert.equal(restarted.owner(),'a')
 })
+
+
+test('unknown restore requires reauthentication even if secure clearing fails',async()=>{
+ const store=storage()
+ const first=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async()=>response()})
+ await first.login({username:'alice',password:'synthetic-long-password'})
+ store.clear=async()=>{throw new Error('synthetic unavailable key')}
+ let calls=0
+ const restarted=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async()=>{calls++;throw new Error('synthetic lost ACK')}})
+ await assert.rejects(restarted.restore());await assert.rejects(restarted.restore())
+ assert.equal(calls,1);assert.equal(restarted.accessToken(),'')
+})

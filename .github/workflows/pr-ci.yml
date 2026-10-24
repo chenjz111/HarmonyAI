@@ -60,7 +60,7 @@ jobs:
       - name: Install locked frontend test dependencies (networked setup, NOT offline evidence)
         working-directory: frontend
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Offline frontend feedback and single Player specialty (92 fixed tests)
+      - name: Offline frontend feedback and single Player specialty (93 fixed tests)
         run: python -B tools/ci/run_frontend.py --suite feedback --evidence-dir "$RUNNER_TEMP/harmonyai-ci/frontend"
       - name: Upload sanitized logs and counts, never databases or credentials
         if: always()
