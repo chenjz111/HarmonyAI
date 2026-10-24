@@ -69,3 +69,17 @@ test('late secure write cannot overwrite a newer identity credential',async()=>{
  release();await rejected;await clearing;await b
  assert.equal(client.accessToken(),'synthetic-access-b');assert.equal(store.value(),'proof-b')
 })
+
+
+test('restart restore authenticates persisted proof through one server rotation',async()=>{
+ const store=storage()
+ const first=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async()=>response()})
+ await first.login({username:'alice',password:'synthetic-long-password'})
+ const calls=[]
+ const restarted=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async args=>{calls.push(args);return response('a','restored-proof')}})
+ assert.equal(restarted.accessToken(),'')
+ await restarted.restore()
+ assert.equal(calls.length,1);assert.equal(calls[0].path,'/api/v3/auth/refresh')
+ assert.equal(calls[0].data.refresh_token,'synthetic-proof');assert.equal(store.value(),'restored-proof')
+ assert.equal(restarted.owner(),'a')
+})

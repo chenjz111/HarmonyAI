@@ -42,24 +42,30 @@ export function createRegisteredAuthClient({request,secureStore,enabled=false,pl
       return await adopt(await call(path,body,guestToken),g)
     } catch(error){await discard(g);throw error}
   }
-  async function doRefresh(){
-    gate();const g=generation
-    if(!memory)throw failure('REAUTHENTICATION_REQUIRED')
+  async function doRefresh(restore=false){
+    gate();const g=generation,expectedOwner=memory?.owner
+    if(!memory && !restore)throw failure('REAUTHENTICATION_REQUIRED')
     try {
       const proof=await serialized(()=>secureStore.read());current(g)
       if(!proof)throw failure('REAUTHENTICATION_REQUIRED')
       const result=await call('refresh',{refresh_token:proof})
-      if(result.public_user_id!==memory?.owner)throw failure('OWNER_CHANGED')
+      if(expectedOwner && result.public_user_id!==expectedOwner)throw failure('OWNER_CHANGED')
       return await adopt(result,g)
     } catch(error){await discard(g);throw error}
+  }
+  function startRefresh(restore=false){
+    try{gate()}catch(error){return Promise.reject(error)}
+    if(refreshing?.generation===generation)return refreshing.promise
+    if(restore && !memory)generation++
+    const entry={generation,promise:null}
+    entry.promise=doRefresh(restore).finally(()=>{if(refreshing===entry)refreshing=null})
+    refreshing=entry;return entry.promise
   }
   return Object.freeze({
     login:body=>authenticate('login',body),
     bind:(body,guestToken)=>{if(!guestToken)return Promise.reject(failure('IDENTITY_REQUIRED'));return authenticate('register-bind',body,guestToken)},
-    refresh(){
-      if(refreshing?.generation===generation)return refreshing.promise
-      const entry={generation,promise:null};entry.promise=doRefresh().finally(()=>{if(refreshing===entry)refreshing=null});refreshing=entry;return entry.promise
-    },
+    refresh:()=>startRefresh(),
+    restore:()=>startRefresh(true),
     async invalidate(){generation++;memory=null;if(secureStore?.clear)await serialized(()=>secureStore.clear())},
     async logout({allDevices=false}={}){
       gate();if(typeof allDevices!=='boolean')throw failure('INVALID_REQUEST')
