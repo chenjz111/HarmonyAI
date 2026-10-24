@@ -1,31 +1,25 @@
-# 原始文档（已消化为 docs/*.md）
-*.docx
-
-# Python
+# Local credentials and runtime artifacts; never stage these for the showcase.
+.env
+.env.*
+!.env.example
+.venv/
+venv/
 __pycache__/
 *.py[cod]
-*.egg-info/
-venv/
-.env
-
-# 前端
+.pytest_cache/
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+uploads/
+media/
+logs/
+backups/
+artifacts/
 node_modules/
 dist/
 .unpackage/
-
-# IDE
 .idea/
 .vscode/
-*.swp
-*.swo
-
-# 日志
-logs/*.log
-
-# 系统
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# 部署
-deploy/data/
