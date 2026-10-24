@@ -1,0 +1,40 @@
+{
+  "notice": "Synthetic contract samples only; not a published consent policy or implemented endpoint.",
+  "request": {
+    "schema_version": "feedback_v3.1",
+    "session_id": "sess_legacy",
+    "music_ref": {"music_id": "music_shared", "source_type": "matched"},
+    "source_context_id": "ctx_a",
+    "playback_event_id": "event-a",
+    "expected_evidence_epoch": 0,
+    "pre_state_snapshot": {"snapshot_id": "synthetic", "source": "player_session", "captured_at": "2026-10-19T00:00:00Z"},
+    "post_state": {"change_label": "no_change"},
+    "learning_consent": false,
+    "consent_policy_version": null
+  },
+  "saved": {"feedback_id": "synthetic-feedback", "status": "saved", "current_feedback_epoch": 1, "replayed": false, "learning_applied": false},
+  "record": {
+    "schema_version": "feedback_record_v3.1",
+    "feedback_id": "synthetic-feedback",
+    "session_id": "sess_legacy",
+    "music_ref": {"music_id": "music_shared", "source_type": "matched"},
+    "source_context_id": "ctx_a",
+    "playback_event_id": "event-a",
+    "pre_state_snapshot": {"snapshot_id": "synthetic", "source": "player_session", "captured_at": "2026-10-19T00:00:00Z"},
+    "post_state": {"change_label": "no_change"},
+    "experience": null,
+    "continue_use": null,
+    "liked_features": [],
+    "adjustment_preferences": [],
+    "favorite_current": null,
+    "learning_consent": false,
+    "consent_policy_version": null,
+    "consented_at": null,
+    "evidence_epoch": 0,
+    "submitted_at": "2026-10-19T00:00:01Z",
+    "comment_visibility": "not_supported",
+    "learning_effective": false
+  },
+  "clear_request": {"expected_evidence_epoch": 1},
+  "clear_result": {"status": "cleared", "current_feedback_epoch": 2, "cutoff": "2026-10-19T00:00:02Z"}
+}
