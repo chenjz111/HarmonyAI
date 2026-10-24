@@ -1,0 +1,124 @@
+{
+  "pages": [
+    {
+      "path": "pages/entry/entry",
+      "style": { "navigationBarTitleText": "开始评估", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/welcome/welcome",
+      "style": { "navigationBarTitleText": "HarmonyAI", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/material/material",
+      "style": { "navigationBarTitleText": "健康材料" }
+    },
+    {
+      "path": "pages/narrative/narrative",
+      "style": { "navigationBarTitleText": "说说近况" }
+    },
+    {
+      "path": "pages/survey-v2/survey-v2",
+      "style": { "navigationBarTitleText": "状态问卷" }
+    },
+    {
+      "path": "pages/feedback-v2/feedback-v2",
+      "style": { "navigationBarTitleText": "体验反馈" }
+    },
+    {
+      "path": "pages/complete/complete",
+      "style": { "navigationBarTitleText": "本次完成" }
+    },
+    {
+      "path": "pages/index/index",
+      "style": { "navigationBarTitleText": "HarmonyAI" }
+    },
+    {
+      "path": "pages/emotion/emotion",
+      "style": { "navigationBarTitleText": "情绪选择" }
+    },
+    {
+      "path": "pages/survey/survey",
+      "style": { "navigationBarTitleText": "健康评估" }
+    },
+    {
+      "path": "pages/questionnaire-v2/questionnaire-v2",
+      "style": { "navigationBarTitleText": "状态评估", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/quick-state/quick-state",
+      "style": { "navigationBarTitleText": "快速状态", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/safety-support/safety-support",
+      "style": { "navigationBarTitleText": "安全支持" }
+    },
+    {
+      "path": "pages/v3-material/v3-material",
+      "style": { "navigationBarTitleText": "上传就诊资料", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-material-error/v3-material-error",
+      "style": { "navigationBarTitleText": "资料异常", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-summary/v3-summary",
+      "style": { "navigationBarTitleText": "确认资料摘要", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-supplement/v3-supplement",
+      "style": { "navigationBarTitleText": "补充近况", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-questionnaire/v3-questionnaire",
+      "style": { "navigationBarTitleText": "五脏状态问卷", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-goal/v3-goal",
+      "style": { "navigationBarTitleText": "疗愈诉求", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-confirm/v3-confirm",
+      "style": { "navigationBarTitleText": "状态确认", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-generation/v3-generation",
+      "style": { "navigationBarTitleText": "生成音乐", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-basis/v3-basis",
+      "style": { "navigationBarTitleText": "音乐生成", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-player/v3-player",
+      "style": { "navigationBarTitleText": "音乐调养", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-feedback/v3-feedback",
+      "style": { "navigationBarTitleText": "听后反馈", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/v3-profile/v3-profile",
+      "style": { "navigationBarTitleText": "我的", "navigationStyle": "custom" }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "HarmonyAI",
+    "navigationBarBackgroundColor": "#4A6B5C",
+    "backgroundColor": "#F7F3EB"
+  },
+  "tabBar": {
+    "color": "#989fa0",
+    "selectedColor": "#079777",
+    "backgroundColor": "#ffffff",
+    "fontSize": "13px",
+    "iconWidth": "27px",
+    "height": "66px",
+    "spacing": "4px",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/entry/entry", "text": "首页", "iconPath": "static/v31-home/nav-home.png", "selectedIconPath": "static/v31-home/nav-home-selected.png" },
+      { "pagePath": "pages/v3-profile/v3-profile", "text": "我的", "iconPath": "static/v31-home/nav-profile.png", "selectedIconPath": "static/v31-home/nav-profile-selected.png" }
+    ]
+  }
+}
