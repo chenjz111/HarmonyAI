@@ -14,6 +14,11 @@ FIELDS = {'learning_consent', 'consent_policy_version', 'consented_at', 'deleted
           'source_task_id', 'playback_event_row_id', 'evidence_epoch', 'request_fingerprint'}
 
 
+@pytest.fixture(autouse=True)
+def historical0013_registry(monkeypatch):
+    monkeypatch.setattr(core,'V3_MIGRATION_VERSIONS',core.V3_MIGRATION_VERSIONS[:13])
+
+
 @pytest.fixture
 def legacy(tmp_path, monkeypatch):
     engine = create_engine(f'sqlite:///{tmp_path / "feedback.sqlite"}')

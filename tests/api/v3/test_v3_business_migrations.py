@@ -142,9 +142,10 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0011_v3_auth_foundation",
         "0012_v3_music_library",
         "0013_v3_feedback_consent",
+        "0014_v3_account_security",
     ]
     assert second["applied_versions"] == []
-    assert second["current_version"] == "0013_v3_feedback_consent"
+    assert second["current_version"] == "0014_v3_account_security"
 
     tables = set(inspect(engine).get_table_names())
     assert BUSINESS_TABLES <= tables
@@ -169,6 +170,7 @@ def test_sqlite_business_migration_is_idempotent_and_registers_all_tables(tmp_pa
         "0011_v3_auth_foundation",
         "0012_v3_music_library",
         "0013_v3_feedback_consent",
+        "0014_v3_account_security",
     }
 
 

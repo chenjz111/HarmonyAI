@@ -25,6 +25,7 @@ V3_MIGRATION_VERSIONS = [
     "0011_v3_auth_foundation",
     "0012_v3_music_library",
     "0013_v3_feedback_consent",
+    "0014_v3_account_security",
 ]
 
 _REQUIRED_TABLES = {
@@ -116,6 +117,9 @@ def preflight_v3_migrations(engine: Engine, *, migrations_root=None):
         from .feedback_migration import validate
         validate(engine, applied='0013_v3_feedback_consent' in applied,
                  sql=sources['0013_v3_feedback_consent'])
+    if '0014_v3_account_security' in sources:
+        from .account_security_migration import validate as validate_accounts
+        validate_accounts(engine,applied='0014_v3_account_security' in applied)
     return sources
 
 
@@ -854,7 +858,10 @@ def _apply_sqlite_migration(
         if version == '0013_v3_feedback_consent':
             from .feedback_migration import render_sqlite
             rendered = render_sqlite(engine, rendered)
-        if version in {'0011_v3_auth_foundation','0012_v3_music_library','0013_v3_feedback_consent'}:
+        if version == '0014_v3_account_security':
+            from .account_security_migration import render
+            rendered = render(engine,rendered)
+        if version in {'0011_v3_auth_foundation','0012_v3_music_library','0013_v3_feedback_consent','0014_v3_account_security'}:
             if version == '0011_v3_auth_foundation':
                 rendered = _render_auth_foundation(engine,rendered)
             # Unlike historical scripts, 0011 DDL and ledger are one transaction.
@@ -1028,6 +1035,9 @@ def _apply_mysql_migration(
         if version == '0013_v3_feedback_consent':
             from .feedback_mysql_migration import render_for_engine
             rendered = render_for_engine(engine, connection, rendered)
+        if version == '0014_v3_account_security':
+            from .account_security_migration import render
+            rendered = render(engine,rendered,connection)
         statements = _mysql_migration_statements(rendered)
         for statement in statements:
             connection.exec_driver_sql(statement)
