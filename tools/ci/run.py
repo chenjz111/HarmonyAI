@@ -23,6 +23,14 @@ FEEDBACK_INVENTORY = {
     'tests/api/v3/test_feedback_clear_receipt.py': 5,
     'tests/api/v3/test_feedback_v31_api.py': 6,
 }
+ACCOUNT_INVENTORY = {
+    'tests/api/v3/test_0014_account_security.py':13,
+    'tests/api/v3/test_account_password_r1.py':17,
+    'tests/api/v3/test_account_security_r1.py':13,
+    'tests/api/v3/test_account_session_r1.py':15,
+    'tests/api/v3/test_account_router_r1.py':7,
+    'tests/api/v3/test_account_browser_gate.py':7,
+}
 REGRESSION = ['tests/api/v3/' + name for name in (
     'test_s7_music_library_router_wiring.py', 'test_s7_music_library.py',
     'test_s7_music_library_api.py', 'test_int2_stream_gate.py', 'test_guest_auth.py',
@@ -126,7 +134,7 @@ def read_telemetry(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', required=True, choices=('guard', 'regression', 'hardening', 'be2b', 'feedback'))
+    parser.add_argument('--suite', required=True, choices=('guard', 'regression', 'hardening', 'be2b', 'feedback', 'account'))
     parser.add_argument('--source-root', type=Path, default=ROOT)
     parser.add_argument('--evidence-dir', type=Path, required=True)
     args = parser.parse_args()
@@ -143,9 +151,10 @@ def main():
     else:
         sandbox = evidence/'sandbox'
         sandbox.mkdir()
+        inventory = ACCOUNT_INVENTORY if args.suite == 'account' else FEEDBACK_INVENTORY
         tests = ([str(HERE/'tests/test_guard.py')] if args.suite == 'guard'
                  else [HARDENING] if args.suite == 'hardening'
-                 else list(FEEDBACK_INVENTORY) if args.suite == 'feedback'
+                 else list(inventory) if args.suite in {'feedback','account'}
                  else [BE2B] if args.suite == 'be2b' else REGRESSION)
         missing = [test for test in tests if not (source/test).is_file()]
         if missing:
@@ -191,13 +200,13 @@ def main():
                         and row['nodeid'].replace('\\', '/').split('::', 1)[0] == BE2B}) != BE2B_EXPECTED_PASSED):
             # Pin the reviewed R1 inventory: no partial/duplicate/foreign tests.
             code, reason = 93, 'be2b_acceptance_mismatch'
-        elif args.suite == 'feedback' and (
-                len(details['tests']) != sum(FEEDBACK_INVENTORY.values())
+        elif args.suite in {'feedback','account'} and (
+                len(details['tests']) != sum(inventory.values())
                 or any(len({row['nodeid'] for row in details['tests']
                             if row['phase'] == 'call' and row['outcome'] == 'passed'
                             and row['nodeid'].replace('\\', '/').split('::', 1)[0] == path}) != count
-                       for path, count in FEEDBACK_INVENTORY.items())):
-            code, reason = 93, 'feedback_acceptance_mismatch'
+                       for path, count in inventory.items())):
+            code, reason = 93, args.suite+'_acceptance_mismatch'
         else:
             code, reason = 0, None
         exits = {'child_exit_code': child_code, 'final_exit_code': code,

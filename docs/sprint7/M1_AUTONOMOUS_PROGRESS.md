@@ -43,3 +43,7 @@ Real MySQL/TLS/concurrency; Android device/build acceptance; Hosted CI for new b
 - Draft PR171: https://github.com/chenjz111/HarmonyAI/pull/171, target unchanged baseline; no merge.
 - First Hosted run40097773966 failed at action resolution, tests NOT RUN. Inherited setup-python/upload-artifact SHAs were invalid; corrected using read-only live official tag verification. Re-run next.
 - Final local fixed suites and H5 compiler verified; true consent remains fail-closed pending active policy, and separate Auth safety contract requested asynchronously. No new R1 decision requested.
+
+## Continuation — Account Security R1 approved and implemented
+
+PR171 source branch remains at fab8b50 with Linux/Windows Hosted run40106717516 fully green. Account continuation uses `codex/s7-m1-account-security-r1-20261024`, based on that verified commit; see `ACCOUNT_R1_PROGRESS_20261024.md` and `ACCOUNT_R1_DELIVERY_20261024.md`. Owner account security R1 is approved, no longer pending; recorded separately without overwriting the earlier Draft. Real deployment Origin/Keystore/blocklist/resource acceptance remain unavailable, so public account routes and H5 registered login/refresh stay closed. Latest internal account72p, frontend91p, process3 scenarios/12 guarded children, integration193p/2 permitted symlink skips, migration145p, Feedback72p and launcher44p. New Draft/Hosted exact-head results next; no M1_GO.

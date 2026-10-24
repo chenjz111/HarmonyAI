@@ -49,6 +49,10 @@ jobs:
         run: python -B tools/ci/run.py --suite feedback --evidence-dir "$RUNNER_TEMP/harmonyai-ci/feedback"
       - name: Five independent-process feedback/Clear race scenarios
         run: python -B tools/ci/run_feedback_processes.py --evidence-dir "$RUNNER_TEMP/harmonyai-ci/feedback-processes"
+      - name: Account Security R1 (72 fixed tests, public routes remain closed)
+        run: python -B tools/ci/run.py --suite account --evidence-dir "$RUNNER_TEMP/harmonyai-ci/account"
+      - name: Account independent-process refresh/bind/limit races
+        run: python -B tools/ci/run_account_processes.py --evidence-dir "$RUNNER_TEMP/harmonyai-ci/account-processes"
       - name: Node 24 for offline frontend specialty
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4, verified official tag
         with:
@@ -56,7 +60,7 @@ jobs:
       - name: Install locked frontend test dependencies (networked setup, NOT offline evidence)
         working-directory: frontend
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Offline frontend feedback and single Player specialty (84 fixed tests)
+      - name: Offline frontend feedback and single Player specialty (91 fixed tests)
         run: python -B tools/ci/run_frontend.py --suite feedback --evidence-dir "$RUNNER_TEMP/harmonyai-ci/frontend"
       - name: Upload sanitized logs and counts, never databases or credentials
         if: always()
@@ -71,5 +75,7 @@ jobs:
             ${{ runner.temp }}/harmonyai-ci/*/command.json
             ${{ runner.temp }}/harmonyai-ci/*/result.json
             ${{ runner.temp }}/harmonyai-ci/*/telemetry.json
+            ${{ runner.temp }}/harmonyai-ci/account-processes/*.log
+            ${{ runner.temp }}/harmonyai-ci/account-processes/*/*.telemetry.json
             ${{ runner.temp }}/harmonyai-ci/feedback-processes/*.log
             ${{ runner.temp }}/harmonyai-ci/feedback-processes/*/*.telemetry.json
