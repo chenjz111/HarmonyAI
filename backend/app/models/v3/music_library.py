@@ -28,6 +28,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Index,
     BigInteger,
     ForeignKeyConstraint,
     column,
@@ -35,6 +36,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.mysql import DATETIME as MySQLDateTime
 
 from backend.app.core.database import Base
 
@@ -81,6 +83,7 @@ class MusicPlaybackEvent(Base):
 
     __tablename__ = "music_playback_events"
     __table_args__ = (
+        Index('int2_0013_playback_proof_key', 'playback_event_row_id', 'internal_user_pk', 'music_asset_id', 'source_context_id', unique=True).ddl_if(dialect='mysql'),
         ForeignKeyConstraint(
             ['source_context_id','internal_user_pk','music_asset_id'],
             ['generation_tasks.task_id','generation_tasks.internal_user_pk','generation_tasks.music_asset_id'],
@@ -145,7 +148,7 @@ class OwnerMusicState(Base):
     )
     library_epoch = Column(BigInteger, nullable=False, default=0, server_default='0')
     feedback_evidence_epoch = Column(BigInteger, nullable=False, default=0, server_default='0')
-    preference_clear_cutoff = Column(DateTime(timezone=True), nullable=True)
+    preference_clear_cutoff = Column(DateTime(timezone=True).with_variant(MySQLDateTime(fsp=6), "mysql"), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -27,6 +27,7 @@ from .music import GenerationTask, MusicAsset
 from .music_library import MusicLibraryState, MusicPlaybackEvent, OwnerMusicState
 from .feedback import (
     Favorite,
+    FeedbackClearReceipt,
     FeedbackV3,
     PreferenceEvent,
     UserMusicPreference,
@@ -66,6 +67,7 @@ __all__ = [
     "GenerationTask",
     "MusicAsset",
     "FeedbackV3",
+    "FeedbackClearReceipt",
     "UserMusicPreference",
     "UserMusicPreferenceVersion",
     "UserPreferenceItem",

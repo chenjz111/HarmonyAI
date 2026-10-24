@@ -77,6 +77,7 @@ def test_sqlite_v3_migration_is_versioned_idempotent_and_preserves_sessions(tmp_
         "0010_v3_generation_prompt_audit",
         "0011_v3_auth_foundation",
         "0012_v3_music_library",
+        "0013_v3_feedback_consent",
     ]
     assert second["applied_versions"] == []
     status = v3_migration_status(engine)
@@ -138,7 +139,7 @@ def test_0009_is_idempotent_after_local_model_schema_creation(tmp_path):
 
     result = apply_v3_migrations(engine)
 
-    assert result["applied_versions"][-1] == "0012_v3_music_library"
+    assert result["applied_versions"][-1] == "0013_v3_feedback_consent"
     with engine.connect() as connection:
         assert connection.execute(
             text(
@@ -346,6 +347,7 @@ def test_v3_migration_upgrades_an_existing_0008_database_incrementally(
         "0010_v3_generation_prompt_audit",
         "0011_v3_auth_foundation",
         "0012_v3_music_library",
+        "0013_v3_feedback_consent",
     ]
 
     columns = {

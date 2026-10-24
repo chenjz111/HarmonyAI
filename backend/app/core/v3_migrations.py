@@ -24,6 +24,7 @@ V3_MIGRATION_VERSIONS = [
     "0010_v3_generation_prompt_audit",
     "0011_v3_auth_foundation",
     "0012_v3_music_library",
+    "0013_v3_feedback_consent",
 ]
 
 _REQUIRED_TABLES = {
@@ -111,6 +112,10 @@ def preflight_v3_migrations(engine: Engine, *, migrations_root=None):
             raise MigrationChecksumMismatch(f'applied migration {version} checksum changed')
     _validate_auth_existing_schema(engine)
     _validate_library_existing_schema(engine, library_applied='0012_v3_music_library' in applied)
+    if '0013_v3_feedback_consent' in sources:
+        from .feedback_migration import validate
+        validate(engine, applied='0013_v3_feedback_consent' in applied,
+                 sql=sources['0013_v3_feedback_consent'])
     return sources
 
 
@@ -846,7 +851,10 @@ def _apply_sqlite_migration(
             rendered = _render_sqlite_generation_prompt_audit_migration(
                 engine, rendered
             )
-        if version in {'0011_v3_auth_foundation','0012_v3_music_library'}:
+        if version == '0013_v3_feedback_consent':
+            from .feedback_migration import render_sqlite
+            rendered = render_sqlite(engine, rendered)
+        if version in {'0011_v3_auth_foundation','0012_v3_music_library','0013_v3_feedback_consent'}:
             if version == '0011_v3_auth_foundation':
                 rendered = _render_auth_foundation(engine,rendered)
             # Unlike historical scripts, 0011 DDL and ledger are one transaction.
@@ -878,7 +886,8 @@ def _mysql_migration_statements(sql: str) -> list[str]:
     This is not a stored-program parser. Unsupported control flow and client
     DELIMITER directives fail before any migration DDL is sent. Comments and
     quoted strings/identifiers never contribute delimiters or block keywords.
-    Both MySQL backslash escapes and doubled quote escapes are recognized.
+    Doubled quote escapes are supported. Backslashes in quoted values are
+    rejected because NO_BACKSLASH_ESCAPES changes their statement boundaries.
     """
     tokens = []
     i = 0
@@ -906,7 +915,7 @@ def _mysql_migration_statements(sql: str) -> list[str]:
             i += 1
             while i < len(sql):
                 if sql[i] == '\\':
-                    i += 2
+                    raise ValueError('SQL-mode-dependent quoted backslash is unsupported')
                 elif sql[i] == quote:
                     i += 1
                     if i < len(sql) and sql[i] == quote:
@@ -939,6 +948,8 @@ def _mysql_migration_statements(sql: str) -> list[str]:
         if word == 'DELIMITER':
             raise ValueError('client DELIMITER directives are unsupported')
         words.append(word)
+        if word == 'DEFINER' or (word == 'TRIGGER' and words[:2] != ['CREATE', 'TRIGGER']):
+            raise ValueError('unsupported MySQL trigger declaration')
         if words[:2] == ['CREATE', 'TRIGGER']:
             trigger = True
         if trigger:
@@ -1014,6 +1025,9 @@ def _apply_mysql_migration(
             if any(i['name']=='uq_generation_tasks_owner_asset_context' for i in indexes):
                 rendered = '\n'.join(line for line in rendered.splitlines() if not line.startswith('CREATE UNIQUE INDEX uq_generation_tasks_owner_asset_context'))
         rendered = _render_mysql_model_columns(engine,version,rendered)
+        if version == '0013_v3_feedback_consent':
+            from .feedback_mysql_migration import render_for_engine
+            rendered = render_for_engine(engine, connection, rendered)
         statements = _mysql_migration_statements(rendered)
         for statement in statements:
             connection.exec_driver_sql(statement)
@@ -1068,6 +1082,12 @@ def apply_v3_migrations(
         "current_version": V3_MIGRATION_VERSIONS[-1],
         "checksum": last_checksum,
     }
+
+
+def rollback_feedback_consent(engine: Engine):
+    """Explicit evidence-preserving 0013 downgrade; never called at startup."""
+    from .feedback_migration import rollback
+    return rollback(engine)
 
 
 def v3_migration_status(engine: Engine) -> dict[str, object]:

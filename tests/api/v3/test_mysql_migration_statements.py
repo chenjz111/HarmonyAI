@@ -28,7 +28,7 @@ class RecordingEngine:
 def apply(sql, *, fail_on=None):
     engine = RecordingEngine(fail_on)
     migrations._apply_mysql_migration(
-        engine, '0013_v3_feedback_consent', sql, 'synthetic-checksum',
+        engine, 'test_driver_boundary', sql, 'synthetic-checksum',
         session_upgrade=False,
     )
     return engine
@@ -68,11 +68,13 @@ def test_comments_do_not_create_phantom_statements_or_block_tokens():
     'CREATE TRIGGER t BEFORE DELETE ON a FOR EACH ROW BEGIN SELECT 1;',
     'DELIMITER $$\nCREATE TABLE a(id INT)$$',
     '/*!50003 CREATE TRIGGER t BEFORE DELETE ON a FOR EACH ROW SET @x=1 */;',
+    'CREATE TABLE a(id INT); CREATE DEFINER=`u`@`h` TRIGGER t BEFORE DELETE ON a FOR EACH ROW BEGIN SELECT 1; SELECT 2; END;',
+    "CREATE TABLE a(id INT); SELECT 'ambiguous\\'; SELECT 1; -- ';",
 ])
 def test_unverifiable_script_rejected_before_migration_ddl_or_ledger(sql):
     engine = RecordingEngine()
     with pytest.raises(ValueError):
-        migrations._apply_mysql_migration(engine, '0013_v3_feedback_consent', sql,
+        migrations._apply_mysql_migration(engine, 'test_driver_boundary', sql,
                                          'synthetic-checksum', session_upgrade=False)
     assert len(engine.calls) == 2  # ledger creation/read only, no migration DDL
 
@@ -81,7 +83,7 @@ def test_driver_failure_never_records_successful_migration():
     engine = RecordingEngine(fail_on='CREATE TRIGGER')
     with pytest.raises(RuntimeError, match='synthetic DDL failure'):
         migrations._apply_mysql_migration(
-            engine, '0013_v3_feedback_consent',
+            engine, 'test_driver_boundary',
             'CREATE TABLE a(id INT); CREATE TRIGGER t BEFORE DELETE ON a FOR EACH ROW '
             "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='blocked';",
             'synthetic-checksum', session_upgrade=False,
