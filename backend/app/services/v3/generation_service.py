@@ -405,6 +405,7 @@ def _persist_task_outcome(
     provider_task_id: str | None,
     provider_name: str | None = None,
 ) -> None:
+    previously_visible = task.status in {'succeeded','matched_fallback'} and task.music_asset_id is not None
     task.status = music_task.status
     task.progress_value = (
         music_task.progress.value
@@ -426,6 +427,9 @@ def _persist_task_outcome(
         task.music_asset_id = music_task.audio_asset.music_ref.music_id
     if music_task.status in _TERMINAL_STATUSES:
         task.completed_at = _utc_now()
+    if not previously_visible and task.status in {'succeeded','matched_fallback'} and task.music_asset_id is not None:
+        from .owner_music_state_service import advance_library_epoch
+        advance_library_epoch(db, internal_user_pk=task.internal_user_pk)
     db.flush()
 
 
