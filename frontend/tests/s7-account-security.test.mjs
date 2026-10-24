@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {createRegisteredAuthClient} from '../common/registered-auth.js'
 
 const response=(owner='a',proof='synthetic-proof')=>({data:{public_user_id:owner,access_token:'synthetic-access-'+owner,refresh_token:proof,expires_at:'2026-10-24T20:00:00Z'}})
-function storage(){let value=null;return {verified:true,keystoreBacked:true,async write(v){value=v},async read(){return value},async clear(){value=null},value:()=>value}}
+function storage(){let value=null;return {verified:true,keystoreBacked:true,atomicConsume:true,async take(){const taken=value;value=null;return taken},async write(v){value=v},async read(){return value},async clear(){value=null},value:()=>value}}
 
 test('registered credentials stay in memory/verified secure store and never ordinary storage',async()=>{
  const store=storage(),calls=[]
@@ -15,7 +15,7 @@ test('registered credentials stay in memory/verified secure store and never ordi
 })
 
 test('missing verified Keystore or H5 transport fails closed',async()=>{
- for(const options of [{enabled:false,secureStore:storage()},{enabled:true,secureStore:{...storage(),verified:false}},{enabled:true,platform:'h5',secureStore:storage()}]){
+ for(const options of [{enabled:false,secureStore:storage()},{enabled:true,secureStore:{...storage(),verified:false}},{enabled:true,platform:'h5',secureStore:storage()},{enabled:true,secureStore:{...storage(),atomicConsume:false}}]){
   const client=createRegisteredAuthClient({now:()=>0,...options,request:()=>{throw new Error('must not request')}})
   await assert.rejects(client.login({username:'alice',password:'synthetic-long-password'}),{code:'ACCOUNT_FEATURE_UNAVAILABLE'})
  }
@@ -94,4 +94,54 @@ test('unknown restore requires reauthentication even if secure clearing fails',a
  const restarted=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async()=>{calls++;throw new Error('synthetic lost ACK')}})
  await assert.rejects(restarted.restore());await assert.rejects(restarted.restore())
  assert.equal(calls,1);assert.equal(restarted.accessToken(),'')
+})
+
+
+test('unknown server outcome cannot reuse an old proof through a restarted client',async()=>{
+ const store=storage()
+ const first=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async()=>response()})
+ await first.login({username:'alice',password:'synthetic-long-password'})
+ store.clear=async()=>{throw new Error('synthetic unavailable key')}
+ let calls=0
+ const request=async()=>{calls++;throw new Error('synthetic unknown server outcome')}
+ const uncertain=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request})
+ await assert.rejects(uncertain.restore())
+ const restarted=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request})
+ await assert.rejects(restarted.restore())
+ assert.equal(calls,1);assert.equal(store.value(),null)
+})
+
+test('process loss during refresh leaves no old proof for a restarted client',async()=>{
+ const store=storage()
+ const first=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async()=>response()})
+ await first.login({username:'alice',password:'synthetic-long-password'})
+ let rejectPending,started=false,calls=0
+ const pending=new Promise((resolve,reject)=>{rejectPending=reject})
+ const request=()=>{calls++;started=true;return pending}
+ const uncertain=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request})
+ const restoring=uncertain.restore();const observed=assert.rejects(restoring)
+ while(!started)await new Promise(setImmediate)
+ const restarted=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request})
+ const attempt=restarted.restore();const rejected=assert.rejects(attempt)
+ await new Promise(setImmediate)
+ rejectPending(new Error('synthetic process lost ACK'));await observed;await rejected
+ assert.equal(calls,1);assert.equal(store.value(),null)
+})
+
+
+test('logout and invalidation destroy old proof across restart despite clear and network failure',async()=>{
+ for(const action of ['logout','invalidate']){
+  const store=storage()
+  const client=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async args=>{
+   if(args.path.endsWith('/login'))return response()
+   throw new Error('synthetic unavailable network')
+  }})
+  await client.login({username:'alice',password:'synthetic-long-password'})
+  store.clear=async()=>{throw new Error('synthetic clear unavailable')}
+  await assert.rejects(client[action]())
+  let calls=0
+  const restarted=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async()=>{calls++;return response()}})
+  await assert.rejects(restarted.restore())
+  assert.equal(calls,0);assert.equal(store.value(),null);assert.equal(restarted.owner(),null)
+ }
 })

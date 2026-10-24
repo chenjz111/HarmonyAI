@@ -6,7 +6,7 @@
 - Implemented: registered sid/epoch/session checks, Guest compatibility, fixed Argon2id/NFC/password-blocklist adapter, same-owner binding, login/no merge, durable rate buckets, refresh proof rotation/family replay revocation, idle/absolute expiry, logout/all/password-change revocation, explicit unknown-commit reauthentication.
 - Formal0014 new account tables reuse0011 AuthSession. Paired SQL/registry/preflight present; no0001–0013 checksum changes. Partial schema fails closed; SQLite DDL/ledger atomic; MySQL engine/check/type enforcement and recovery refusal.
 - Evidence: registered/Guest14p; password17p; initial lifecycle10p; combined expanded account51p. Review found missing InnoDB enforcement: RED3f -> implementation added;51p includes fix. No real MySQL claim.
-- Verified: previous-key rotation plus runtime safety140p; three process scenarios12 children passed; backend fixed72p, frontend fixed93p; integration193p/2 permitted Windows symlink skips.
+- Verified: previous-key rotation plus runtime safety140p; three process scenarios12 children passed; backend fixed72p, frontend fixed96p; integration193p/2 permitted Windows symlink skips.
 - Next: migration145p/Feedback72p/launcher44p confirmed; commit reviewed account milestone, own Draft PR targeting team baseline with dependency171, verify Hosted CI. Native router/H5/Keystore adapters are implemented but remain closed/unaccepted.
 - Gaps: reviewed production password blocklist distribution, H5 production Origin/preauth-CSRF deployment, verified Android Keystore adapter/device and target resource/load acceptance. Registered/refresh public routes remain unexposed and H5 service stays fail-closed. No ordinary-storage credential fallback.
 - NOT RUN: real MySQL/TLS/concurrency, Android, production HTTPS/CSRF/cookie and real Provider. No learning/live/release enabled.
@@ -17,3 +17,7 @@
 ## 2026-10-25 continuation
 - Account Draft PR173 opened against the team baseline, depending on PR171. Added explicit restart restore: persisted Refresh proof must complete one server rotation before runtime authority is restored; no trusted identity is read from ordinary storage.
 - MySQL8.0.44 binary exists locally; no existing database was accessed and no isolated daemon/TLS/concurrency channel has been validated. Real MySQL remains NOT RUN; original Guard was not loosened.
+
+- Final client review found restart reuse after an unknown Refresh outcome when local clear failed. RED8p/3f; fixed by mandatory durable atomic secure-store take-before-network (no read fallback), GREEN11p; full fixed frontend96p. Real adapter capability remains unaccepted/off.
+
+- Follow-up review extended durable consumption to logout/invalidate and all local proof erasure before best-effort clear. Logout network+clear failure restart regression RED11p/1f -> GREEN12p; fixed frontend96p. A real secure adapter must demonstrate atomic durable consume and safe unavailable-key behavior; none is enabled.
