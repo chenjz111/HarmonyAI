@@ -11,14 +11,13 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from backend.app.schemas.v3.common import AuthPrincipal
+from backend.app.services.v3 import music_library_access, owner_music_state_service
 from backend.app.services.v3.owner_music_state_service import (
-    advance_feedback_epoch,
-    feedback_evidence_epoch_for,
     lock_owner_music_state,
 )
 from backend.drafts.s7_feedback_consent.contracts import (
     EvidenceEpochConflict, FeedbackV31, FeedbackSavedV31, PlaybackProofUnavailable,
-    request_fingerprint, replay_decision, resolve_feedback_playback_proof,
+    request_fingerprint, replay_decision,
     verify_persisted_feedback_content,
 )
 from backend.drafts.s7_feedback_consent.models import FeedbackCandidate
@@ -31,6 +30,14 @@ class FeedbackNotFound(LookupError):
 
 class CandidateConsentNotEnabled(ValueError):
     """True-consent writes await approved policy and production integration."""
+
+
+def _compare_and_advance(db: Session, *, owner: int, expected_epoch: int) -> int:
+    try:
+        return owner_music_state_service.compare_and_advance_feedback_epoch(
+            db, internal_user_pk=owner, expected_epoch=expected_epoch)
+    except owner_music_state_service.FeedbackEpochConflict:
+        raise EvidenceEpochConflict from None
 
 
 def save_unconsented_feedback(
@@ -64,9 +71,12 @@ def save_unconsented_feedback(
                         stored_fingerprint=existing["request_fingerprint"],
                         incoming_fingerprint=fingerprint, persisted_content=existing, request=request)
 
-    proof = resolve_feedback_playback_proof(db, principal=principal,
-        music_id=request.music_ref.music_id, source_context_id=request.source_context_id,
-        playback_event_id=request.playback_event_id, session_id=request.session_id)
+    try:
+        proof = music_library_access.resolve_feedback_playback_proof(db, principal=principal,
+            music_id=request.music_ref.music_id, source_context_id=request.source_context_id,
+            playback_event_id=request.playback_event_id, session_id=request.session_id)
+    except music_library_access.PlaybackProofUnavailable:
+        raise PlaybackProofUnavailable from None
     source_type = db.scalar(select(MusicAsset.__table__.c.source_type).where(
         MusicAsset.__table__.c.music_asset_id == request.music_ref.music_id))
     if source_type != request.music_ref.source_type:
@@ -104,7 +114,8 @@ def save_unconsented_feedback(
     db.flush()
     persisted = db.execute(select(table).where(table.c.feedback_id == feedback_id)).mappings().one()
     verify_persisted_feedback_content(persisted, request)
-    epoch = advance_feedback_epoch(db, internal_user_pk=principal.internal_user_pk)
+    epoch = _compare_and_advance(db, owner=principal.internal_user_pk,
+                                 expected_epoch=request.expected_evidence_epoch)
     return FeedbackSavedV31(feedback_id=feedback_id, status="saved",
                             current_feedback_epoch=epoch, replayed=False)
 
@@ -141,4 +152,4 @@ def tombstone_owned_feedback(
     if changed.rowcount != 1:
         return int(state.feedback_evidence_epoch)
     db.flush()
-    return advance_feedback_epoch(db, internal_user_pk=principal.internal_user_pk)
+    return _compare_and_advance(db, owner=principal.internal_user_pk, expected_epoch=expected_epoch)

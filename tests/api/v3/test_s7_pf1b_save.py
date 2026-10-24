@@ -156,3 +156,30 @@ def test_service_requires_exact_dto(ready):
         with pytest.raises(TypeError):
             service.save_unconsented_feedback(db, principal=principal(), request=body(),
                                               idempotency_key="raw", now_utc=NOW)
+
+
+def test_backend_proof_failure_prevents_candidate_save(ready, monkeypatch):
+    from backend.app.services.v3 import music_library_access
+    def deny(db, **kwargs):
+        assert kwargs["playback_event_id"] == "event-a"
+        assert kwargs["principal"].internal_user_pk == 7
+        raise music_library_access.PlaybackProofUnavailable
+    monkeypatch.setattr(music_library_access, "resolve_feedback_playback_proof", deny)
+    with pytest.raises(PlaybackProofUnavailable):
+        save(ready)
+    with ready.connect() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM feedback_v3 WHERE idempotency_key='new-key'").scalar() == 0
+
+
+def test_backend_atomic_cas_failure_rolls_back_candidate_save(ready, monkeypatch):
+    from backend.app.services.v3 import owner_music_state_service as owner_state
+    from backend.drafts.s7_feedback_consent.contracts import EvidenceEpochConflict
+    def conflict(db, *, internal_user_pk, expected_epoch):
+        assert (internal_user_pk, expected_epoch) == (7, 0)
+        raise owner_state.FeedbackEpochConflict
+    monkeypatch.setattr(owner_state, "compare_and_advance_feedback_epoch", conflict)
+    with pytest.raises(EvidenceEpochConflict):
+        save(ready)
+    with ready.connect() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM feedback_v3 WHERE idempotency_key='new-key'").scalar() == 0
+        assert conn.exec_driver_sql("SELECT count(*) FROM owner_music_state").scalar() == 0
