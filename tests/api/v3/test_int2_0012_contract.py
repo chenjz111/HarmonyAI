@@ -15,6 +15,12 @@ from tests.api.v3.test_v3_migrations import _create_legacy_foundation
 VERSION = '0012_v3_music_library'
 FIXTURES = Path(__file__).parent / 'fixtures'
 
+@pytest.fixture(autouse=True)
+def historical_0012_registry(monkeypatch):
+    """Keep historical 0012 downgrade/recovery assertions; 0013 has its own suite."""
+    monkeypatch.setattr(migrations, 'V3_MIGRATION_VERSIONS', migrations.V3_MIGRATION_VERSIONS[:12])
+
+
 
 @pytest.fixture
 def upgraded(tmp_path,monkeypatch):

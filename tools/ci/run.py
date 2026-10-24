@@ -15,6 +15,14 @@ ROOT = HERE.parents[1]
 HARDENING = 'tests/api/v3/test_runtime_auth_config_hardening.py'
 BE2B = 'tests/api/v3/test_be2b_playback_proof_cas.py'
 BE2B_EXPECTED_PASSED = 45
+FEEDBACK_INVENTORY = {
+    'tests/api/v3/test_0013_feedback_foundation.py': 13,
+    'tests/api/v3/test_0013_mysql_contract.py': 22,
+    'tests/api/v3/test_mysql_migration_statements.py': 11,
+    'tests/api/v3/test_feedback_v31_transactions.py': 15,
+    'tests/api/v3/test_feedback_clear_receipt.py': 5,
+    'tests/api/v3/test_feedback_v31_api.py': 6,
+}
 REGRESSION = ['tests/api/v3/' + name for name in (
     'test_s7_music_library_router_wiring.py', 'test_s7_music_library.py',
     'test_s7_music_library_api.py', 'test_int2_stream_gate.py', 'test_guest_auth.py',
@@ -118,7 +126,7 @@ def read_telemetry(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', required=True, choices=('guard', 'regression', 'hardening', 'be2b'))
+    parser.add_argument('--suite', required=True, choices=('guard', 'regression', 'hardening', 'be2b', 'feedback'))
     parser.add_argument('--source-root', type=Path, default=ROOT)
     parser.add_argument('--evidence-dir', type=Path, required=True)
     args = parser.parse_args()
@@ -137,6 +145,7 @@ def main():
         sandbox.mkdir()
         tests = ([str(HERE/'tests/test_guard.py')] if args.suite == 'guard'
                  else [HARDENING] if args.suite == 'hardening'
+                 else list(FEEDBACK_INVENTORY) if args.suite == 'feedback'
                  else [BE2B] if args.suite == 'be2b' else REGRESSION)
         missing = [test for test in tests if not (source/test).is_file()]
         if missing:
@@ -182,6 +191,13 @@ def main():
                         and row['nodeid'].replace('\\', '/').split('::', 1)[0] == BE2B}) != BE2B_EXPECTED_PASSED):
             # Pin the reviewed R1 inventory: no partial/duplicate/foreign tests.
             code, reason = 93, 'be2b_acceptance_mismatch'
+        elif args.suite == 'feedback' and (
+                len(details['tests']) != sum(FEEDBACK_INVENTORY.values())
+                or any(len({row['nodeid'] for row in details['tests']
+                            if row['phase'] == 'call' and row['outcome'] == 'passed'
+                            and row['nodeid'].replace('\\', '/').split('::', 1)[0] == path}) != count
+                       for path, count in FEEDBACK_INVENTORY.items())):
+            code, reason = 93, 'feedback_acceptance_mismatch'
         else:
             code, reason = 0, None
         exits = {'child_exit_code': child_code, 'final_exit_code': code,

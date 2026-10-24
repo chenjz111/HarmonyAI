@@ -39,6 +39,7 @@ from backend.app.routers import (
 from backend.app.routers.v3 import assessment_router as assessment_v3_router
 from backend.app.routers.v3 import auth_router as auth_v3_router
 from backend.app.routers.v3 import diagnosis_router as diagnosis_v3_router
+from backend.app.routers.v3 import feedback_records_router
 from backend.app.routers.v3 import feedback_router as feedback_v3_router
 from backend.app.routers.v3 import generation_router as generation_v3_router
 from backend.app.routers.v3 import music_library_router as music_library_v3_router
@@ -127,6 +128,7 @@ app.include_router(prescription_v3_router.router, prefix="/api/v3", tags=["Sprin
 app.include_router(generation_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Music Generation"])
 app.include_router(music_library_v3_router.router, prefix="/api/v3", tags=["Sprint 7 — Music Library"])
 app.include_router(feedback_v3_router.router, prefix="/api/v3", tags=["Sprint 5 — V3 Feedback"])
+app.include_router(feedback_records_router.router, prefix="/api/v3", tags=["Sprint 7 — Feedback V3.1"])
 app.add_exception_handler(V3APIError, v3_api_error_handler)
 
 

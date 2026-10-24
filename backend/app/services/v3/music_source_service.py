@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from backend.app.models.v3.music import GenerationTask
+from backend.app.models.session import Session as ConversationSession
 from backend.app.schemas.v3.music_library import (
     MusicHistoryExplanationV1,
     MusicSourceContextV1,
@@ -47,6 +48,7 @@ class LibraryContext:
     completed_at: datetime | None
     prescription_id: str
     music_id: str
+    session_id: str | None = None
 
 
 def _utc(value: datetime | None) -> datetime | None:
@@ -78,6 +80,9 @@ def list_asset_contexts(
         )
         .all()
     )
+    sessions = {row.id: row.session_id for row in db.query(ConversationSession.id, ConversationSession.session_id).filter(
+        ConversationSession.id.in_([task.session_row_id for task in rows]),
+        ConversationSession.user_id == internal_user_pk).all()}
     contexts = [
         LibraryContext(
             context_id=row.task_id,
@@ -87,6 +92,7 @@ def list_asset_contexts(
             completed_at=_utc(row.completed_at),
             prescription_id=row.prescription_id,
             music_id=music_id,
+            session_id=sessions.get(row.session_row_id),
         )
         for row in rows
     ]
@@ -122,6 +128,7 @@ def context_choices(
             context_id=context.context_id,
             kind="unknown",
             availability="unknown",
+            session_id=context.session_id,
         )
         for context in contexts
     ]

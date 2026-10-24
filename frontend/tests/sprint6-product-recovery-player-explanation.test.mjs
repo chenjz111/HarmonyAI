@@ -35,11 +35,13 @@ function loadPlayerPage({ apiV3, createPlayerController, uni }) {
       /import \{\s*createHistoricalMusicSession,\s*resolvePlayableAudio,\s*\} from [^\r\n]+\r?\n/,
       "const { createHistoricalMusicSession, resolvePlayableAudio } = __deps\n",
     )
+    .replace(/import \{ putHistoricalFeedback \} from [^\r\n]+\r?\n/, "const putHistoricalFeedback = __deps.putHistoricalFeedback\n")
     .replace("export default {", "__pageOptions = {")
 
   const context = {
     __pageOptions: null,
     __deps: {
+      putHistoricalFeedback: () => { throw new Error("Historical branch not configured in legacy fixture") },
       apiV3,
       createPlayerController,
       buildMusicPresentation,

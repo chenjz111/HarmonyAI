@@ -348,6 +348,12 @@ def test_unconfigured_provider_degrades_to_matched_fallback(tmp_path):
     body = _poll_until(headers, created["task_id"], _is_terminal_task)
     # explicit fallback, never a fake success
     assert body["status"] == "matched_fallback"
+    with _seed_db() as epoch_db:
+        from backend.app.models.v3.music_library import OwnerMusicState
+        owner, _ = _row_ids(epoch_db, public_user_id, session_id)
+        state = epoch_db.get(OwnerMusicState, owner)
+        assert state is not None and state.library_epoch == 1
+        assert state.feedback_evidence_epoch == 0
     assert body["fallback"] == {
         "applied": True,
         "reason_code": "GENERATION_PROVIDER_UNAVAILABLE",
@@ -1029,3 +1035,29 @@ def test_duplicate_idempotency_key_reuses_task_and_never_starts_second_generatio
     assert second_replayed is True
     assert second.task_id == first.task_id
     assert provider.create_calls == 0
+
+
+def test_generation_library_visibility_epoch_is_atomic_and_not_replayed(tmp_path):
+    from backend.app.models.v3.music_library import OwnerMusicState
+    headers, session_id = _setup_guest(idempotency_key='visibility-session')
+    public_user_id = _public_user_id(headers['Authorization'].split()[1])
+    audio_path=tmp_path/'visibility.mp3';audio_path.write_bytes(_mp3_bytes())
+    with _seed_db() as db:
+        owner, session_row = _row_ids(db,public_user_id,session_id)
+        asset = _seed_catalog_asset(db,audio_path=audio_path,title='synthetic')
+        rx = _seed_chain(db,public_user_id=public_user_id,session_id=session_id,generation_spec=_generation_spec())
+        task=GenerationTask(task_id='visibility-task',internal_user_pk=owner,session_row_id=session_row,
+            prescription_id=rx,idempotency_key='visibility',status='matched_fallback',provider='synthetic',
+            progress_value=100,progress_indeterminate=0,message_code='gen.matched_fallback',fallback_applied=1,
+            fallback_reason_code='catalog_match',music_asset_id=asset)
+        db.add(task);db.commit()
+        outcome=generation_service._music_task_from_db(db,task)
+        task.status='running';task.music_asset_id=None;db.commit()
+        generation_service._persist_task_outcome(db,task,outcome,None)
+        assert db.get(OwnerMusicState,owner).library_epoch == 1
+        db.rollback()
+        assert db.get(OwnerMusicState,owner) is None
+        db.refresh(task)
+        generation_service._persist_task_outcome(db,task,outcome,None);db.commit()
+        generation_service._persist_task_outcome(db,task,outcome,None);db.commit()
+        assert db.get(OwnerMusicState,owner).library_epoch == 1

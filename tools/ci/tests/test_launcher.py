@@ -259,6 +259,16 @@ def test_extension():
         self.assertNotIn('NOT_INCLUDED', result.stdout)
         self.assertFalse((evidence/'result.json').exists())
 
+    def test_feedback_missing_suite_refuses_instead_of_silent_success(self):
+        source = self.folder/'feedback-source'
+        source.mkdir()
+        evidence = self.folder/'feedback-evidence'
+        result = self.invoke('run.py', '--suite', 'feedback', '--source-root', source,
+                             '--evidence-dir', evidence)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Required suite files missing', result.stderr)
+        self.assertNotIn('NOT_INCLUDED', result.stdout)
+
     def test_be2b_runs_fixed_path_under_guard_and_requires_45_passes(self):
         body = 'import pytest\n@pytest.mark.parametrize("case", range(45))\ndef test_case(case):\n    assert case >= 0\n'
         result, evidence = self.be2b_probe(body)

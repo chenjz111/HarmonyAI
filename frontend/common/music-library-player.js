@@ -72,6 +72,8 @@ export function createHistoricalMusicSession({ api, getOwnerId, getAccessToken, 
   let invalidated = false
   let openedMusicId = null
   let detailReady = false
+  let feedbackContext = null
+  let feedbackReady = false
 
   function captureIdentity() {
     let owner, token, epoch
@@ -106,6 +108,8 @@ export function createHistoricalMusicSession({ api, getOwnerId, getAccessToken, 
       openOwner = identity.owner
       openedMusicId = musicId
       detailReady = false
+      feedbackContext = null
+      feedbackReady = false
       contextId = context
       eventId = makeEventId()
       playReported = false
@@ -119,6 +123,14 @@ export function createHistoricalMusicSession({ api, getOwnerId, getAccessToken, 
       assertOwner()
       if (opening !== generation) throw failure(HISTORICAL_PLAYER_ERROR.OWNER_CHANGED, "历史播放会话已失效")
       contextId = detail && detail.selected_context_id || null
+      const selected = detail && Array.isArray(detail.source_contexts)
+        ? detail.source_contexts.find(choice => choice.context_id === contextId) : null
+      if (contextId && selected && selected.session_id && detail.card?.music_id === musicId) {
+        feedbackContext = Object.freeze({ session_id:selected.session_id,
+          music_ref:Object.freeze({music_id:musicId,source_type:detail.card.source_type}),
+          source_context_id:contextId,playback_event_id:eventId,
+          pre_state_snapshot:Object.freeze({snapshot_id:'snap_'+eventId,source:'player_session',captured_at:new Date().toISOString()}) })
+      }
       detailReady = true
       return detail
     },
@@ -143,6 +155,7 @@ export function createHistoricalMusicSession({ api, getOwnerId, getAccessToken, 
           throw failure(HISTORICAL_PLAYER_ERROR.OWNER_CHANGED, "历史播放会话已失效")
         }
         playReported = true
+        feedbackReady = result?.event_id === reportingEventId && result?.music_id === musicId && result?.event_type === 'play_started'
         return { reported: true, eventId: reportingEventId, result }
       })()
       reportPromise = pending
@@ -162,10 +175,18 @@ export function createHistoricalMusicSession({ api, getOwnerId, getAccessToken, 
       eventId = null
       playReported = false
       contextId = null
+      feedbackContext = null
+      feedbackReady = false
     },
 
     getState() {
       return { eventId, playReported, contextId, owner: openOwner }
+    },
+
+    getFeedbackContext() {
+      assertOwner()
+      if (!feedbackContext || !feedbackReady || !playReported) throw failure(HISTORICAL_PLAYER_ERROR.FEATURE_NOT_READY, '请先选择来源记录并实际播放')
+      return feedbackContext
     },
 
     hasOwnerChanged: ownerChanged,
