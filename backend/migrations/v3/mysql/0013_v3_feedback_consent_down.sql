@@ -1,0 +1,17 @@
+-- NOT RUN / NOT standalone executable. Operator preflight must prove:
+-- complete 0012 prefix, exact 0013 checksum/rendered DDL inventory, no extension
+-- values/tombstones, no external FK/View/Trigger dependencies, exclusive writers.
+-- Any partial installation or unknown object: stop; never rerun DDL blindly.
+-- MySQL DDL has implicit commits; take verified backup and checkpoint each step.
+SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='0013 MySQL down requires reviewed operator recovery plan';
+-- Reviewed reverse DDL plan (not silently executable):
+-- DROP TRIGGER int2_0013_event_proof_immutable;
+-- DROP TRIGGER int2_0013_task_proof_immutable;
+-- DROP TRIGGER int2_0013_feedback_no_replace;
+-- DROP TRIGGER int2_0013_feedback_no_delete;
+-- DROP TRIGGER int2_0013_feedback_immutable;
+-- ALTER TABLE feedback_v3 DROP FOREIGN KEY int2_0013_event_fk, DROP FOREIGN KEY int2_0013_task_fk;
+-- DROP INDEX int2_0013_playback_proof_key ON music_playback_events;
+-- ALTER TABLE feedback_v3 DROP CHECK int2_0013_consent, DROP CHECK int2_0013_epoch, DROP CHECK int2_0013_fingerprint, DROP CHECK int2_0013_event_context;
+-- ALTER TABLE feedback_v3 DROP INDEX int2_0013_feedback_owner_deleted, DROP COLUMN learning_consent, DROP COLUMN request_fingerprint, DROP COLUMN evidence_epoch, DROP COLUMN playback_event_row_id, DROP COLUMN source_task_id, DROP COLUMN deleted_at, DROP COLUMN consented_at, DROP COLUMN consent_policy_version;
+-- ALTER TABLE user_music_preference_versions DROP CHECK int2_0013_version_epoch, DROP COLUMN evidence_epoch;

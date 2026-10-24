@@ -17,6 +17,7 @@
  *   - 播放按钮改为朱砂印章大按钮
  *   - 业务逻辑 togglePlay/toggleFavorite/goFeedback/exitSession 完全保留
  */
+import { putHistoricalFeedback } from "../../common/feedback-context.js"
 import { apiV3 } from "../../common/api-v3.js"
 import { createPlayerController } from "../../common/player-controller.js"
 import { buildMusicPresentation, presentProgress } from "../../common/music-presentation.js"
@@ -59,6 +60,7 @@ export default {
       userGoal: null,
       playerController: null,
       historicalMusicId: null,
+      historicalContexts: [], selectedHistoricalContext: null,
       historicalSession: null,
       historicalLibraryApi: null,
       historicalAuthReady: false,
@@ -170,6 +172,7 @@ export default {
     },
     invalidateHistoricalIdentity() {
       if (this.pageDisposed) return
+      this.historicalContexts = []; this.selectedHistoricalContext = null
       this.loadGeneration += 1
       this.releasePlayerLoad()
       this.loading = false
@@ -253,8 +256,10 @@ export default {
       // Register pending work before await so unload/auth change can reset it.
       this.historicalSession = session
       this.historicalLibraryApi = api
-      const detail = await session.open(this.historicalMusicId)
+      const detail = await session.open(this.historicalMusicId, {context:this.selectedHistoricalContext})
       if (!this.isCurrentLoad(generation) || this.historicalSession !== session || session.hasOwnerChanged()) return
+      this.historicalContexts = detail.source_contexts || []
+      this.selectedHistoricalContext = detail.selected_context_id || null
       const audio = resolvePlayableAudio(detail)
       if (!audio) {
         throw Object.assign(new Error("本次音乐暂时不可用，请稍后重试。"), {
@@ -391,7 +396,25 @@ export default {
         if (isCurrent()) this.favBusy = false
       }
     },
+    async selectHistoricalContext(event) {
+      const choice = this.historicalContexts[Number(event.detail.value)]
+      if (!choice || choice.context_id === this.selectedHistoricalContext) return
+      if (this.playerController) this.playerController.dispose()
+      if (this.historicalSession) this.historicalSession.reset()
+      this.selectedHistoricalContext = choice.context_id
+      await this.load()
+    },
     goFeedback() {
+      if (this.historicalMusicId || this.historicalSession) {
+        try {
+          const context = this.historicalSession.getFeedbackContext()
+          const owner = readOwnerId(), token = readV3AccessToken(), epoch = readAuthEpoch()
+          const handoff = putHistoricalFeedback(context,()=>readOwnerId() === owner && readV3AccessToken() === token && readAuthEpoch() === epoch)
+          if (this.playerController) this.playerController.dispose()
+          uni.navigateTo({url:"/pages/v3-feedback/v3-feedback?handoff="+encodeURIComponent(handoff)})
+        } catch (error) { uni.showToast({title:"请先选择来源记录并实际播放",icon:"none"}) }
+        return
+      }
       if (this.playerController) this.playerController.dispose()
       uni.navigateTo({ url: "/pages/v3-feedback/v3-feedback" })
     },
@@ -413,6 +436,9 @@ export default {
         <view class="brand-motto"><text>五音和鸣</text><text>心自安宁</text><text class="motto-seal">和</text></view>
       </view>
 
+      <picker v-if="historicalContexts.length" :range="historicalContexts" range-key="context_id" @change="selectHistoricalContext">
+        <view>{{ selectedHistoricalContext ? '来源记录：'+selectedHistoricalContext : '选择来源记录后可提交反馈' }}</view>
+      </picker>
       <view v-if="loading" class="loading-wrap">
         <view class="loading-ring"></view>
         <text class="loading-text">正在准备音乐…</text>

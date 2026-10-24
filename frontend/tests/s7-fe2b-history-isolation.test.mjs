@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { createHistoricalMusicSession, resolvePlayableAudio } from '../common/music-library-player.js'
 import { createPlayerController } from '../common/player-controller.js'
+import {putHistoricalFeedback,consumeHistoricalFeedback} from '../common/feedback-context.js'
 import * as transport from '../common/music-library-transport.js'
 import { createMusicLibraryApi } from '../common/music-library-api.js'
 import * as presentation from '../common/music-presentation.js'
@@ -85,13 +86,14 @@ test('History R1: absent authentication proof fails closed before detail request
 function pageHarness({ handler = null, missing = null, subscriptionFalse = false, live = true } = {}) {
   const storage = new Map([['v3_public_user_id', 'A'], ['v3_access_token', 'synthetic-A'], ['v3_auth_epoch', 0]])
   const listeners = new Set()
-  const h = { storage, requests: [], callbacks: [], contexts: [], toasts: [], loads: [], normalReads: 0, controllerCreations: 0, downloads: 0 }
+  const h = { storage, requests: [], callbacks: [], contexts: [], toasts: [], loads: [], navigations: [], normalReads: 0, controllerCreations: 0, downloads: 0 }
   const uni = {
     getStorageSync: key => storage.get(key) ?? '',
     $on: (event, fn) => { assert.equal(event, 'harmonyai:v3-auth-changed'); listeners.add(fn); if (subscriptionFalse) return false },
     $off: (event, fn) => { listeners.delete(fn) },
     $emit: () => { for (const fn of [...listeners]) fn() },
     showToast: args => h.toasts.push(args.title),
+    navigateTo: args => h.navigations.push(args.url),
     createInnerAudioContext() {
       const events = {}, ctx = { events, src: '', duration: 120, currentTime: 0, plays: 0, destroyed: 0,
         play() { this.plays++ }, pause() {}, seek(value) { this.currentTime = value }, destroy() { this.destroyed++ } }
@@ -119,7 +121,7 @@ function pageHarness({ handler = null, missing = null, subscriptionFalse = false
     fetchAuthorizedAudio: async () => { h.downloads++; return '/synthetic/local.wav' },
   }
   const context = { uni, pageOptions: null, deps: { apiV3, ...presentation, ...seek, createMusicLibraryApi,
-    createHistoricalMusicSession, resolvePlayableAudio,
+    createHistoricalMusicSession, resolvePlayableAudio, putHistoricalFeedback,
     readV3AccessToken: () => transport.readV3AccessToken(uni),
     createUniMusicLibraryTransport: options => transport.createUniMusicLibraryTransport({ ...options, uniApi: uni }),
     createPlayerController: options => { h.controllerCreations++; h.callbacks.push(options); return createPlayerController(options) },
@@ -226,4 +228,29 @@ test('History R1: production historical gate remains closed', async () => {
   const h = pageHarness({ live: false }); await h.start(); await h.finish()
   assert.equal(h.requests.length, 0); assert.equal(h.page.loadFailure?.code, 'FEATURE_NOT_READY')
   h.unload()
+})
+
+test('M1: historical feedback never falls back to the current flow session', async () => {
+  const h = pageHarness(); await h.start(); await h.finish()
+  h.page.goFeedback()
+  assert.deepEqual(h.navigations, [])
+  assert.equal(h.contexts[0]?.destroyed || 0, 0)
+  assert.equal(h.toasts.length, 1)
+  h.unload()
+})
+
+
+test('History R1: existing Player hands off only selected server context and acknowledged event', async () => {
+  const h = pageHarness({handler:args => {
+    if (args.method === 'POST') return {event_id:args.data.event_id,music_id:'music_a',event_type:'play_started'}
+    const data=detail();data.source_contexts=[{context_id:'ctx-a',session_id:'old-session'}];data.selected_context_id='ctx-a';return data
+  }})
+  await h.start();await h.finish()
+  await h.page.historicalSession.reportPlayStarted('music_a')
+  h.page.goFeedback()
+  assert.equal(h.navigations.length,1)
+  const key=h.navigations[0].split('handoff=')[1]
+  const context=consumeHistoricalFeedback(decodeURIComponent(key))
+  assert.equal(context.session_id,'old-session');assert.equal(context.source_context_id,'ctx-a')
+  assert.equal(context.music_ref.music_id,'music_a');h.unload()
 })

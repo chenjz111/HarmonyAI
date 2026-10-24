@@ -33,3 +33,7 @@ chromadb>=1.2
 
 # Dev
 python-dotenv>=1.0.0
+
+# Owner Account Security R1 (routes remain gated pending acceptance)
+argon2-cffi==25.1.0
+argon2-cffi-bindings==26.1.0

@@ -67,7 +67,7 @@ export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi
   const uniRef = resolveUni(uniApi)
   const readToken = typeof getAccessToken === "function" ? getAccessToken : () => ""
 
-  return function request({ method, path, data }) {
+  return function request({ method, path, data, idempotencyKey }) {
     return new Promise((resolve) => {
       if (!uniRef || typeof uniRef.request !== "function") {
         resolve({ error: { code: TRANSPORT_ERROR.UNAVAILABLE, message: "网络能力不可用" } })
@@ -81,6 +81,13 @@ export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi
         return
       }
       header = Object.assign(header, { Authorization: "Bearer " + token })
+      if (idempotencyKey !== undefined) {
+        if (typeof idempotencyKey !== 'string' || !idempotencyKey.trim() || idempotencyKey.length > 128) {
+          resolve({error:{code:'IDEMPOTENCY_KEY_REQUIRED',message:'需要提供合法幂等键'}})
+          return
+        }
+        header['Idempotency-Key'] = idempotencyKey
+      }
       const args = { url: base + path, method, header }
       if (data !== undefined) args.data = data
       try {

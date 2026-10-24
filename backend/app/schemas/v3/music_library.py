@@ -81,6 +81,7 @@ class MusicSourceContextV1(V3BaseModel):
     context_id: Annotated[str, Field(min_length=1, max_length=CONTEXT_ID_MAX_LENGTH)]
     kind: Literal["uploaded_documents", "questionnaire", "none", "unknown"]
     availability: Literal["available", "unavailable", "unknown"]
+    session_id: NonEmptyString | None = None
 
 
 class MusicHistoryExplanationV1(V3BaseModel):

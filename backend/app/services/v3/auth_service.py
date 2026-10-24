@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.config import settings
 from backend.app.core.database import get_db
 from backend.app.models.user import User
-from backend.app.models.v3.identity import UserIdentity, UserProfile
+from backend.app.models.v3.identity import UserIdentity, UserProfile, AuthSession
 from backend.app.routers.v3.transport import V3APIError
 from backend.app.schemas.v3.common import AuthPrincipal, GuestAuthResponse
 
@@ -82,20 +82,27 @@ def create_guest_principal(db: Session) -> GuestAuthResponse:
     )
 
 
-def _resolve_principal(token: str, db: Session) -> AuthPrincipal:
+def _decode_verified_claims(token):
+    payload = None
+    for signing_key in [settings.JWT_SECRET_KEY,*settings.JWT_PREVIOUS_SECRET_KEYS]:
+        try:
+            payload = jwt.decode(token,signing_key,algorithms=[settings.JWT_ALGORITHM])
+            break
+        except (ExpiredSignatureError,JWTError,TypeError,ValueError,OverflowError):
+            continue
+    if payload is None:
+        raise _unauthenticated()
+
+    return payload
+
+
+def _resolve_principal(token: str, db: Session, *, exclusive: bool = False) -> AuthPrincipal:
     """Decode a bearer token and resolve the identity behind it.
 
     Any unusable token (malformed, expired, unknown subject, expired guest)
     raises the standard 401 UNAUTHENTICATED error.
     """
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM],
-        )
-    except (ExpiredSignatureError, JWTError, TypeError, ValueError, OverflowError):
-        raise _unauthenticated() from None
+    payload = _decode_verified_claims(token)
 
     public_user_id = payload.get("sub")
     auth_type = payload.get("auth_type")
@@ -117,9 +124,10 @@ def _resolve_principal(token: str, db: Session) -> AuthPrincipal:
         or expires_at <= now
     ):
         raise _unauthenticated()
-    identity = db.query(UserIdentity).filter(
-        UserIdentity.public_user_id == public_user_id
-    ).one_or_none()
+    identity_query = db.query(UserIdentity).filter(UserIdentity.public_user_id == public_user_id).populate_existing()
+    if auth_type == "registered":
+        identity_query = identity_query.with_for_update(read=not exclusive)
+    identity = identity_query.one_or_none()
     if identity is None or identity.auth_type != auth_type:
         raise _unauthenticated()
     if identity.auth_type == "guest" and (
@@ -127,6 +135,16 @@ def _resolve_principal(token: str, db: Session) -> AuthPrincipal:
         or _as_utc(identity.guest_expires_at) <= _utc_now()
     ):
         raise _unauthenticated()
+    if auth_type == "registered":
+        sid, epoch = payload.get("sid"), payload.get("auth_epoch")
+        if (payload.get("token_type") != "access" or not isinstance(sid,str)
+            or not 1 <= len(sid) <= 64 or sid.strip() != sid
+            or type(epoch) is not int or epoch < 0 or epoch != identity.auth_epoch):
+            raise _unauthenticated()
+        auth_session = db.query(AuthSession).filter(AuthSession.auth_session_id == sid).populate_existing().with_for_update(read=True).one_or_none()
+        if (auth_session is None or auth_session.internal_user_pk != identity.internal_user_pk
+            or auth_session.revoked_at is not None or _as_utc(auth_session.expires_at) <= _utc_now()):
+            raise _unauthenticated()
     return AuthPrincipal(
         internal_user_pk=identity.internal_user_pk,
         public_user_id=identity.public_user_id,
