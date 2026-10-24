@@ -22,6 +22,11 @@
  * 视觉：共享水墨山水背景 + 宣纸卡片 + 青绿色主按钮
  */
 import { apiV3 } from "../../common/api-v3.js"
+import { createFeedbackApi } from "../../common/feedback-api.js"
+import { consumeHistoricalFeedback } from "../../common/feedback-context.js"
+import { MUSIC_LIBRARY_LIVE_ENABLED, createUniMusicLibraryTransport, readV3AccessToken } from "../../common/music-library-transport.js"
+let operationSequence = 0
+function operationKey() { return `feedback-${Date.now()}-${++operationSequence}` }
 
 const ADJUSTMENT_PAYLOAD_MAP = {
   slower_tempo: "slower_tempo",
@@ -37,6 +42,16 @@ const REQUIRED_QUESTION_MESSAGE = "请先选择听完这段音乐后的感受"
  * 其余错误保留原提示。避免把原始 FastAPI 报文当作常规校验 UX。
  */
 export function describeFeedbackSubmitError(error) {
+  const messages = {
+    FEATURE_NOT_READY:"反馈功能尚未开放，请稍后再试", OWNER_CHANGED:"身份已切换，请重新进入反馈页面",
+    IDENTITY_REQUIRED:"请重新登录后进入反馈页面", FEEDBACK_DELETED:"此反馈已删除",
+    FEEDBACK_SOURCE_NOT_FOUND:"此播放来源不可用，请重新选择记录", FEEDBACK_NOT_FOUND:"反馈不存在或已不可访问",
+    FEEDBACK_EPOCH_CONFLICT:"反馈状态已更新，请检查后重新提交", FEEDBACK_CURSOR_STALE:"列表已更新，请重新进入历史页",
+    FEEDBACK_COMMIT_UNVERIFIED:"提交结果待确认，请保留当前页面并重试原请求", NETWORK_ERROR:"网络中断，请在当前页面重试",
+    STALE_RESPONSE:"记录已更新，请重新加载", IDEMPOTENCY_CONFLICT:"请求内容冲突，请重新进入反馈页面",
+    CONSENT_POLICY_UNAVAILABLE:"授权政策暂不可用，请稍后重试",
+  }
+  if (error && messages[error.code]) return messages[error.code]
   const status = Number((error && (error.status || error.status_code || error.statusCode)) || 0)
   const raw = String((error && error.message) || "")
   if (status === 422 || status === 400 || /422|validation|unprocessable/i.test(raw)) {
@@ -48,6 +63,9 @@ export function describeFeedbackSubmitError(error) {
 export default {
   data() {
     return {
+      feedbackMode: "legacy", feedbackContext: null, feedbackItems: [], feedbackEpoch: 0,
+      feedbackApi: null, feedbackGeneration: 0, feedbackReady: false, feedbackAuthHandler: null,
+      feedbackDraft: null, clearDraft: null, feedbackCursor: null, feedbackDetail: null, feedbackDetailSequence: 0,
       changeLabel: "", // 选填：much_better | slightly_better | no_change | worse
       changeOptions: [
         { value: "much_better", label: "明显好转", subtitle: "感觉轻松了很多", icon: "/static/v31-feedback/feedback-1-1.png" },
@@ -85,6 +103,35 @@ export default {
       requiredMessage: REQUIRED_QUESTION_MESSAGE,
     }
   },
+  async onLoad(query = {}) {
+    if (!query.handoff && query.mode !== "history") return
+    this.feedbackMode = query.mode === "history" ? "history" : "v31"
+    try {
+      if (!MUSIC_LIBRARY_LIVE_ENABLED) throw new Error("FEATURE_NOT_READY")
+      if (typeof uni.$on !== "function" || typeof uni.$off !== "function" || typeof uni.$emit !== "function") throw new Error("IDENTITY_REQUIRED")
+      this.feedbackAuthHandler = () => this.invalidateFeedback()
+      if (uni.$on("harmonyai:v3-auth-changed", this.feedbackAuthHandler) === false) throw new Error("IDENTITY_REQUIRED")
+      const token = () => readV3AccessToken()
+      this.feedbackApi = createFeedbackApi({request:createUniMusicLibraryTransport({getAccessToken:token}),
+        getOwnerId:()=>uni.getStorageSync("v3_public_user_id"),getAccessToken:token,
+        getAuthEpoch:()=>uni.getStorageSync("v3_auth_epoch"),enabled:true})
+      if (this.feedbackMode === "v31") this.feedbackContext = consumeHistoricalFeedback(query.handoff)
+      await this.refreshFeedback()
+      this.feedbackReady = this.feedbackApi.isCurrent()
+    } catch (error) {
+      if (this.feedbackAuthHandler) uni.$off("harmonyai:v3-auth-changed",this.feedbackAuthHandler)
+      this.feedbackAuthHandler = null
+      this.invalidateFeedback()
+      this.submitError = describeFeedbackSubmitError(error)
+    }
+  },
+  onShow() {
+    if (this.feedbackApi && !this.feedbackApi.isCurrent()) this.invalidateFeedback()
+  },
+  onUnload() {
+    if (this.feedbackAuthHandler) uni.$off("harmonyai:v3-auth-changed",this.feedbackAuthHandler)
+    this.invalidateFeedback()
+  },
   computed: {
     canSubmit() {
       return !this.submitting
@@ -95,6 +142,70 @@ export default {
     },
   },
   methods: {
+    invalidateFeedback() {
+      if (this.feedbackApi) this.feedbackApi.invalidate()
+      this.feedbackGeneration++; this.feedbackDetailSequence++
+      this.feedbackReady = false; this.feedbackContext = null; this.feedbackItems = []
+      this.feedbackDraft = null; this.clearDraft = null; this.feedbackDetail = null
+      this.changeLabel = ""; this.continueUse = ""; this.likedFeatures = []; this.adjustments = []; this.comment = ""
+      this.submitted = false; this.submitting = false; this.submitError = "请重新进入反馈页面"
+    },
+    async refreshFeedback(append = false) {
+      const generation = this.feedbackGeneration
+      const data = await this.feedbackApi.list({cursor:append ? this.feedbackCursor : null})
+      if (generation !== this.feedbackGeneration) return
+      this.feedbackItems = append ? this.feedbackItems.concat(data.items) : data.items
+      this.feedbackEpoch = data.current_feedback_epoch; this.feedbackCursor = data.next_cursor
+    },
+    async viewFeedback(id) {
+      const sequence = ++this.feedbackDetailSequence
+      const generation = this.feedbackGeneration
+      try { const detail = await this.feedbackApi.get(id); if (generation === this.feedbackGeneration && sequence === this.feedbackDetailSequence) this.feedbackDetail = detail }
+      catch (error) { if (generation === this.feedbackGeneration) this.submitError = describeFeedbackSubmitError(error) }
+    },
+    async deleteFeedback(id) {
+      if (!this.feedbackReady || this.submitting) return
+      const generation = this.feedbackGeneration
+      const confirmed = await new Promise(resolve=>uni.showModal({title:"删除反馈",content:"删除后无法通过历史或重放恢复。",success:result=>resolve(result.confirm),fail:()=>resolve(false)}))
+      if (!confirmed || generation !== this.feedbackGeneration || !this.feedbackApi.isCurrent()) return
+      this.submitting = true
+      try { await this.feedbackApi.remove(id,this.feedbackEpoch); if (generation === this.feedbackGeneration) {this.feedbackDetailSequence++; this.feedbackDetail = null; await this.refreshFeedback()} }
+      catch (error) { if (generation === this.feedbackGeneration) this.submitError = describeFeedbackSubmitError(error) }
+      finally { if (generation === this.feedbackGeneration) this.submitting = false }
+    },
+    async recoverDefinitiveConflict(error, generation, draft) {
+      if (generation !== this.feedbackGeneration) return
+      if (error.code === "FEEDBACK_EPOCH_CONFLICT") {
+        this[draft] = null
+        this.feedbackReady = false
+        try { await this.refreshFeedback(); if (generation === this.feedbackGeneration) this.feedbackReady = this.feedbackApi.isCurrent() }
+        catch (refreshError) { /* leave disabled until page re-entry */ }
+      }
+    },
+    async clearEvidence() {
+      if (!this.feedbackReady || this.submitting) return
+      const generation = this.feedbackGeneration
+      const confirmed = await new Promise(resolve=>uni.showModal({title:"清除学习证据资格",content:"此前反馈将不再作为未来长期学习证据，历史反馈仍可查看。当前长期学习未开启。",success:result=>resolve(result.confirm),fail:()=>resolve(false)}))
+      if (!confirmed || generation !== this.feedbackGeneration || !this.feedbackApi.isCurrent()) return
+      if (!this.clearDraft) this.clearDraft = {key:operationKey(),body:{expected_evidence_epoch:this.feedbackEpoch}}
+      this.submitting = true
+      try { await this.feedbackApi.clear(this.clearDraft.body,this.clearDraft.key); if (generation === this.feedbackGeneration) {this.clearDraft = null; await this.refreshFeedback()} }
+      catch (error) { await this.recoverDefinitiveConflict(error,generation,"clearDraft"); if (generation === this.feedbackGeneration) this.submitError = describeFeedbackSubmitError(error) }
+      finally { if (generation === this.feedbackGeneration) this.submitting = false }
+    },
+    async submitHistorical() {
+      if (!this.feedbackReady || !this.feedbackContext || this.submitting) return
+      if (!this.changeLabel && !this.feedbackDraft) { this.showValidation = true; this.scrollToFirstQuestion(); return }
+      if (!this.feedbackDraft) this.feedbackDraft = {key:operationKey(),body:{...this.feedbackContext,
+        schema_version:"feedback_v3.1",expected_evidence_epoch:this.feedbackEpoch,learning_consent:false,
+        post_state:{change_label:this.changeLabel},continue_use:this.continueUse || null,favorite:null,
+        liked_features:this.likedFeatures.slice(),adjustment_preferences:[...new Set(this.adjustments.map(value=>ADJUSTMENT_PAYLOAD_MAP[value]).filter(Boolean))],comment:null}}
+      const generation = this.feedbackGeneration
+      this.submitting = true; this.submitError = ""
+      try { await this.feedbackApi.save(this.feedbackDraft.body,this.feedbackDraft.key); if (generation === this.feedbackGeneration) this.submitted = true }
+      catch (error) { await this.recoverDefinitiveConflict(error,generation,"feedbackDraft"); if (generation === this.feedbackGeneration) this.submitError = describeFeedbackSubmitError(error) }
+      finally { if (generation === this.feedbackGeneration) this.submitting = false }
+    },
     back() {
       uni.navigateBack()
     },
@@ -140,6 +251,7 @@ export default {
       }
     },
     async submit() {
+      if (this.feedbackMode !== "legacy") return this.submitHistorical()
       if (!this.canSubmit) return
       // Q1 必填：缺失时 0 POST，就地校验并滚动到 Q1
       if (!this.changeLabel) {
@@ -223,6 +335,18 @@ export default {
         </view>
       </view>
 
+      <view v-else-if="feedbackMode === 'history'" class="feedback-history">
+        <text class="page-title">反馈历史</text>
+        <text class="section-hint">长期偏好学习当前未开启；清除证据资格不会删除历史。</text>
+        <view v-for="item in feedbackItems" :key="item.feedback_id" class="feedback-section-card">
+          <text @click="viewFeedback(item.feedback_id)">{{ item.submitted_at }} · {{ item.post_state ? item.post_state.change_label : '历史反馈' }}</text>
+          <button :disabled="submitting || !feedbackReady" @click="deleteFeedback(item.feedback_id)">删除</button>
+        </view>
+        <view v-if="feedbackDetail" class="feedback-section-card"><text>{{ feedbackDetail.post_state ? feedbackDetail.post_state.change_label : '历史反馈' }}</text><text>{{ feedbackDetail.continue_use || '' }}</text></view>
+        <button v-if="feedbackCursor" @click="refreshFeedback(true)">加载更多</button>
+        <button :disabled="submitting || !feedbackReady" @click="clearEvidence">清除学习证据资格</button>
+        <text v-if="submitError" class="error-text">{{ submitError }}</text>
+      </view>
       <view v-else>
         <!-- 1. 状态变化（Q1 必填，P6-D4） -->
         <view
@@ -324,7 +448,7 @@ export default {
         </view>
 
         <!-- 5. 补充说明（选填） -->
-        <view class="feedback-section-card comment-section ink-fade-up">
+        <view v-if="feedbackMode === 'legacy'" class="feedback-section-card comment-section ink-fade-up">
           <view class="feedback-section-head">
             <text class="feedback-index">5</text>
             <text class="feedback-question">还有什么想说的？</text>

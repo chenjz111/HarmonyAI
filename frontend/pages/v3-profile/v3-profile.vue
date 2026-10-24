@@ -8,6 +8,8 @@
       <text class="mock-badge">{{ sourceBadge }}</text>
     </view>
 
+    <button v-if="liveSourceEnabled" @click="openFeedbackHistory">反馈历史与学习证据</button>
+
     <view class="section-tabs" aria-label="音乐列表切换">
       <view :class="['section-tab', { active: activeSection === 'history' }]" @click="selectSection('history')"><text>历史音乐</text></view>
       <view :class="['section-tab', { active: activeSection === 'favorites' }]" @click="selectSection('favorites')"><text>我的收藏</text></view>
@@ -174,6 +176,10 @@ export default {
     this.library = createMusicLibraryPreview("empty")
   },
   methods: {
+    openFeedbackHistory() {
+      if (!LIVE_SOURCE_ENABLED || !this.liveAuthReady || !this.liveIdentity || !this.liveIdentity.matches()) return
+      uni.navigateTo({url:"/pages/v3-feedback/v3-feedback?mode=history"})
+    },
     // ===== 数据源（门禁关闭时保持冻结预览 fixture） =====
 
     setupLiveSource() {
