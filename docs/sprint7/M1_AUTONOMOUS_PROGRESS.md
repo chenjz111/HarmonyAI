@@ -1,7 +1,7 @@
 # S7 M1 autonomous progress — 2026-10-24
 
 - Baseline: `9a6d472cd7324b51e8fe48cca88eebeee6f2ba14`; live GitHub verified; PR170 merged.
-- Workspace: `C:/Users/ASUS/HarmonyAI-s7-m1-autonomous-20261024`.
+- Workspace: `isolated task worktree (absolute mapping kept in local RESUME_STATE.json)`.
 - Branch: `codex/s7-m1-autonomous-20261024`; implementation commits: `eaee367` parser, `1b73e28` formal0013/R1, `ec46387` frontend, `2d3f41b` visibility epoch, `0d61838` CI.
 - PR164: OPEN Draft at `31f6aef1b31946c81f3e9ac8785595e9b6bb644d`. Reviewed before selective reuse; no merge/duplicate PlaybackProof, OwnerMusicState or CAS.
 - Handoff fully read. Six requested JSON companions absent from attachment directory; facts recovered from live GitHub and read-only local checks.
@@ -21,7 +21,7 @@ Owner approved R1 and Clear option A on 2026-10-24: see `OWNER_APPROVAL_20261024
 
 ## Verification and review
 
-Original offline Guard unchanged. Evidence outside repository: `C:/Users/ASUS/HarmonyAI-s7-m1-evidence-20261024`.
+Original offline Guard unchanged. Evidence outside repository: `external local evidence directory (absolute mapping kept locally)`.
 - Latest fixed R1 CI selection:72 passed (`review-r1-green`); migration regressions125p (`migration-r1-final2`).
 - Latest portable frontend specialty84p (`frontend-portable-reviewed`).
 - Earlier fixed suites: Guard24p; regression192p/2 permitted Windows symlink skips; hardening127p; BE2B45p; launcher44p. Final security127p, launcher44p and generation+BE2B59p passed. Final integration193p/2 permitted symlink skips passed.
@@ -36,7 +36,7 @@ Push own reviewed branch and open Draft PR; inspect Hosted Linux/Windows CI, fix
 
 ## NOT RUN / remaining gates
 
-Real MySQL/TLS/concurrency; Android device/build acceptance; Hosted CI for new branch; production migrations/deployments/providers (not authorized). Full repository green is not established. Auth sid/epoch revocation and generation visibility security contracts, missing frontend approved materials and #154 medical evidence/signoff require acceptance work; no M1_GO declared.
+Real MySQL/TLS/concurrency; Android device/build acceptance; Hosted CI for new branch; production migrations/deployments/providers (not authorized). Full repository green is not established. Auth sid/epoch revocation security contract, missing frontend approved materials and #154 medical evidence/signoff require acceptance work; no M1_GO declared.
 
 ## Draft checkpoint
 
