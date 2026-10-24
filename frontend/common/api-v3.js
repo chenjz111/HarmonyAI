@@ -1773,9 +1773,29 @@ export const apiV3 = {
   fetchAuthorizedAudio(streamUrl) {
     if (!streamUrl) return Promise.resolve("")
     const absolute = resolveMusicStreamUrl(streamUrl)
-    if (absolute.indexOf(BASE_URL) !== 0) {
+    const invalidUrl = () => Promise.reject(apiError("音频地址不可用", "AUDIO_FETCH_FAILED"))
+    // Never infer credential authority from a string prefix. Reject ambiguous
+    // network syntax before platform downloaders can interpret it differently.
+    if (typeof absolute !== "string" || /[\u0000-\u001f\u007f\\]/.test(absolute) || absolute.startsWith("//")) {
+      return invalidUrl()
+    }
+    if (!/^https?:/i.test(absolute)) {
+      // Preserve local/static and platform temporary resources, without headers.
+      if (/^[a-z][a-z0-9+.-]*:/i.test(absolute) && !/^(file|blob|wxfile):/i.test(absolute)) return invalidUrl()
       return Promise.resolve(absolute)
     }
+    let target, backend
+    try {
+      if (/\s/.test(absolute)) return invalidUrl()
+      target = new URL(absolute)
+      backend = new URL(BASE_URL)
+      if (!/^https?:\/\//i.test(absolute) || target.username || target.password ||
+          backend.username || backend.password || !["http:", "https:"].includes(backend.protocol)) return invalidUrl()
+    } catch (e) {
+      // Missing URL support is not permission to fall back to prefix matching.
+      return invalidUrl()
+    }
+    if (target.origin !== backend.origin) return Promise.resolve(absolute)
     return new Promise((resolve, reject) => {
       let downloadFile = null
       try {
@@ -1788,7 +1808,7 @@ export const apiV3 = {
         return
       }
       downloadFile({
-        url: absolute,
+        url: target.href,
         header: authHeaders(),
         success: (res) => {
           if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
