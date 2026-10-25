@@ -618,6 +618,14 @@ export function buildAnalysisViewModel(basis, { userGoal, disclaimerFallback = "
 // ------------------------------------------------------------------ 播放器视图模型
 
 /** 全中性空状态：任何输入都没有时，页面拿到的是一个"什么都不断言"的模型。 */
+function instrumentIllustration(track) {
+  const allowed = ['dizi', 'guqin', 'guzheng', 'erhu', 'pipa', 'xiao', 'sheng', 'yangqin']
+  const trusted = track && ['persisted', 'legacy_single'].includes(track.primary_instrument_origin)
+  const code = trusted && allowed.includes(track.primary_instrument_code) ? track.primary_instrument_code : 'unknown'
+  // Approved artwork has not been supplied. Never substitute tone artwork or infer an instrument.
+  return { code, imageSrc: '', neutral: true }
+}
+
 export function emptyMusicPresentation() {
   return {
     isEmpty: true,
@@ -630,6 +638,7 @@ export function emptyMusicPresentation() {
     primaryTone: presentPrimaryTone("", ""),
     secondaryTone: presentSecondaryTone("", ""),
     title: presentText(""),
+    instrumentIllustration: instrumentIllustration(null),
     sourceLabel: "",
     fallback: { applied: null, reasonCode: "", label: "", displayText: NEUTRAL_DISPLAY },
     instruments: presentInstruments(null),
@@ -706,6 +715,7 @@ export function buildMusicPresentation({ music, basis, failure, measuredSeconds,
     primaryTone,
     secondaryTone,
     title: presentTitle(track ? track.title : ""),
+    instrumentIllustration: instrumentIllustration(track),
     sourceLabel: presentSourceLabel({
       sourceLabel: track ? track.source_label : "",
       sourceType: track && track.music_ref ? track.music_ref.source_type : "",

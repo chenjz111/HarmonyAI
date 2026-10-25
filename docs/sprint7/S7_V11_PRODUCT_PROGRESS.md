@@ -24,14 +24,14 @@ Layer: OFFLINE_VERIFIED. NOT RUN: actual frontend-to-backend platform integratio
 |002|No self/other or patient profiles; preserve|
 |003|Subject/negation safety review154 open|
 |004|My five regions incomplete; remove global feedback navigation|
-|005|Single Player exists; title/favorite/share controls incomplete|
+|005|W3 visible safe title/favorite and disabled-share candidate; platform/layout acceptance incomplete|
 |006|Backend title/CAS exists; user entry/cross-page consistency incomplete|
 |007|Backend history exists; default UI still preview|
 |008|Same Player candidate exists; navigation/integration gate closed|
 |009|R1 backend exists; generated and historical per-song UI incomplete|
 |010|Learning OFF; status/clear product integration incomplete|
 |011|No free tone/instrument recipe UI; preserve|
-|012|Main-instrument illustration not connected; approved material gap|
+|012|W3 reads canonical primary-instrument metadata, neutral illustration fallback; approved material gap remains|
 |013|Original-image linkage/access/policy gate open|
 |014|No patient grouping; preserve|
 |015|No duplicate original-image Player block; list source entry incomplete|
@@ -50,6 +50,16 @@ Library navigation and historical Player now share the existing central gate (st
 Evidence: navigation RED2f→GREEN; independent review found the pending-read return race, RED1f→GREEN17 profile tests. Fixed frontend specialty114p. Full frontend577p/7f/0skip; unchanged Guard. Seven pre-existing material/evidence failures remain visible. Seek test harness now supplies the imported disabled gate and is included in the specialty.
 
 Layer: WIRED_BUT_DISABLED / OFFLINE_VERIFIED under controlled test configuration. Actual backend/platform integration, Android and default live user path NOT RUN. Remaining Player controls and primary-instrument illustration are W3, not completed by this milestone.
+
+## W3 — visible controls on the existing Player
+
+Player displays the safe persisted default/private title, uses the existing favorite operation without naming, and shows disabled sharing. Favorite is below playback controls, share aligned right. Fresh generated music reads the current owned library card through the existing detail endpoint; history consumes its own card. No second Player or generation write. Central illustration no longer chooses its instrument from the tone. Approved art is absent: known canonical instrument or unknown both retain a neutral illustration, not a fabricated picture.
+
+RED7f→GREEN7p; envelope regression RED→GREEN; independent review found whole-load identity exposure and optional metadata outage blocking playback. Review fixes RED→GREEN: identity is checked across metadata and basis awaits, auth events clear the controller/private view, non-auth metadata outage preserves existing audio but disables unverified favorites. Final specialty129p; full589p/7f/0skip, original Guard unchanged. Old S6 assertions requiring a hidden title/tone central image were versioned explicitly to Owner PD005/012; read-only/seek/explanation safety assertions retained.
+
+H5 compiler exited0 and generated index.html in v11-w3-h5; manifest hash unchanged. This is not a clean build acceptance: missing approved static assets remain unresolved, and the existing build wrapper exited1 because Guard denied Rollup report-header spawnSync and Vite `net use` discovery. Neither process ran; no network allowed and Guard was not relaxed. The final small control-placement adjustment is covered by final specialty/full tests; H5 compiler snapshot predates that layout adjustment. Android/HTTPS/platform layout/audio acceptance NOT RUN.
+
+Layer: OFFLINE_VERIFIED candidate; no whole-W3/device acceptance. Sharing remains a required full-S7 feature, policy/permission gated. Next W4: five My regions and per-song feedback scope; normal-generation V3.1 handoff and account bridge still incomplete.
 
 ## Unchanged boundaries
 

@@ -1787,6 +1787,16 @@ export const apiV3 = {
     return mockApi.getMusic()
   },
 
+  async getMusicPresentation(musicId) {
+    if (AGENT_MOCK) return null
+    const unchanged = captureAuthentication()
+    const detail = await realRequest(`/api/v3/music/assets/${encodeURIComponent(musicId)}`)
+    unchanged()
+    const card = detail && detail.card
+    if (!card || card.music_id !== musicId) throw apiError("音乐信息不可用", "INVALID_RESPONSE")
+    return card
+  },
+
   // 反馈：真实接口已交付（需要真实 music asset）；mock/hybrid 走演示状态机
   submitFeedback(payload) {
     return INPUT_REAL && !AGENT_MOCK ? realInputApi.submitFeedback(payload) : mockApi.submitFeedback(payload)

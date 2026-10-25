@@ -415,7 +415,9 @@ test("PR-024/PR-030: explanation remains local presentation and Player stays rea
   assert.match(playerSource, /playerPresentation\.sourceLabel\.isFallback/)
   assert.doesNotMatch(playerSource, /\{\{\s*playerPresentation\.sourceLabel\s*\}\}/)
   assert.match(playerSource, /neutral-hero-frame/)
-  assert.match(playerSource, /v-if="playerPresentation\.hasPrimaryTone" class="tone-hero-frame"/)
+  // S7-PD-012 supersedes the S6 tone-selected central illustration.
+  assert.match(playerSource, /v-if="toneHeroSrc" class="tone-hero-frame"/)
+  assert.match(playerSource, /return this\.playerPresentation\.instrumentIllustration\.imageSrc/)
   const template = playerSource.match(/<template>([\s\S]*?)<\/template>/)[1]
   const top = template.split('<view class="music-summary-card">')[0]
   for (const duplicatedBinding of [
@@ -436,14 +438,14 @@ test("PR-024/PR-030: explanation remains local presentation and Player stays rea
   assert.match(playerSource, /secondaryTone\.explanation\.text/)
 })
 
-test("Player places progress after the cover without a visible title row", () => {
+test("S7-PD-005 restores the safe title while preserving cover/progress/control order", () => {
   const presentation = buildMusicPresentation({
     music: { title: "生成音频 84 BPM" },
   })
   const template = playerSource.match(/<template>([\s\S]*?)<\/template>/)[1]
 
   assert.equal(presentation.title.displayText, "五音调适音乐")
-  assert.doesNotMatch(template, /class="music-title"|playerPresentation\.title\.displayText/)
+  assert.match(template, /class="music-title"[\s\S]*playerPresentation\.title\.displayText/)
   assert.match(template, /class="hero-wrap"[\s\S]*class="progress-wrap"[\s\S]*class="controls"/)
   assert.match(template, /class="summary-heading"[\s\S]*?<text>本次音乐<\/text>/)
   assert.notEqual(presentation.title.displayText, "本次音乐")

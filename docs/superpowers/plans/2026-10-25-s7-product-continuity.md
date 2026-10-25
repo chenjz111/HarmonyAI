@@ -20,7 +20,7 @@ Spec: Owner Freeze V1.0 (2026-10-12), PD001–020; Owner Autonomy Contract V1.1 
 - [x] Add authenticated read-only identity projection using existing get_current_v3_principal. No token renewal, no patient inference or registered issuance.
 - [x] Implement ensureIdentity in existing facade, validate on server, keep Guest four-claim compatibility. Entry uses ensureIdentity. Never trust public_user_id as authority, never extend token.
 - [x] GREEN: frontend behavior + original Guard, backend HTTP identity/Guest/registered tests and relevant regressions. Record layer honestly; device remains NOT RUN.
-- [ ] Commit, then continue W2 after verified boundary. Current full-scope task ledger remains external for resumability.
+- [x] Commit abcba90; W2 committed5c53f83. W3 offline candidate complete; platform gates remain open. Current full-scope task ledger remains external for resumability.
 
 ## Remaining product stages
 

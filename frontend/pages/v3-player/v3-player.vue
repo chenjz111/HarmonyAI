@@ -73,6 +73,8 @@ export default {
         error: null,
       },
       favorite: false,
+      favoriteReady: true,
+      identityCheck: null,
       favBusy: false,
       simulated: false,
       analysisExpanded: false,
@@ -122,8 +124,7 @@ export default {
       return style
     },
     toneHeroSrc() {
-      const imageCode = this.playerPresentation.primaryTone.imageCode
-      return imageCode ? `/static/v31-player/${imageCode}-2.png` : ""
+      return this.playerPresentation.instrumentIllustration.imageSrc
     },
   },
   onLoad(query) {
@@ -137,6 +138,7 @@ export default {
   },
   onShow() {
     if (this.pageDisposed) return
+    if (!this.hasCurrentIdentity()) { this.invalidateHistoricalIdentity(); return }
     this.analysisExpanded = false
     // owner 切换：停止旧音频并清理页面状态，迟到结果不得恢复旧数据
     if (this.historicalSession && this.historicalSession.hasOwnerChanged()) {
@@ -153,6 +155,9 @@ export default {
     this.releasePlayerLoad()
   },
   methods: {
+    hasCurrentIdentity() {
+      try { if (this.identityCheck) this.identityCheck(); return true } catch (e) { return false }
+    },
     isCurrentLoad(generation) {
       return !this.pageDisposed && generation === this.loadGeneration
     },
@@ -194,6 +199,7 @@ export default {
     },
     canUseHistoricalPlayer() {
       if (this.pageDisposed) return false
+      if (!this.hasCurrentIdentity()) { this.invalidateHistoricalIdentity(); return false }
       if (!this.historicalMusicId) return true
       if (!this.historicalAuthReady || !this.historicalSession || this.historicalSession.hasOwnerChanged()) {
         this.invalidateHistoricalIdentity()
@@ -212,14 +218,33 @@ export default {
           await this.loadHistorical(generation)
           return
         }
-        const music = await apiV3.getMusic()
+        const unchanged = typeof apiV3.captureIdentity === "function" ? apiV3.captureIdentity() : () => {}
+        this.identityCheck = unchanged
+        this.ensureHistoricalAuthEvents()
+        let music = await apiV3.getMusic()
+        unchanged()
         if (!this.isCurrentLoad(generation)) return
-        this.music = music
-        this.favorite = !!this.music.favorite
-        this.simulated = !!apiV3.AGENT_SIMULATED
+        let favoriteReady = typeof apiV3.getMusicPresentation !== "function"
+        if (typeof apiV3.getMusicPresentation === "function" && music && music.music_ref) {
+          let card = null
+          try { card = await apiV3.getMusicPresentation(music.music_ref.music_id) }
+          catch (e) {
+            if (e.code === "OWNER_CHANGED" || e.status === 401 || e.status === 403) throw e
+          }
+          unchanged()
+          if (!this.isCurrentLoad(generation)) return
+          if (card) music = { ...music, title: card.display_title, favorite: card.is_favorite === true,
+            primary_instrument_code: card.primary_instrument_code, primary_instrument_origin: card.primary_instrument_origin }
+          favoriteReady = !!card || apiV3.AGENT_SIMULATED === true
+        }
         let basis = null
         try { basis = await apiV3.getMusicBasis() } catch (e) { /* optional read */ }
+        unchanged()
         if (!this.isCurrentLoad(generation)) return
+        this.music = music
+        this.favorite = !!music.favorite
+        this.favoriteReady = favoriteReady
+        this.simulated = !!apiV3.AGENT_SIMULATED
         this.basis = basis
         this.userGoal = apiV3.getCurrentUserGoal()
         this.setupPlayerController(generation)
@@ -271,6 +296,8 @@ export default {
       this.music = {
         music_ref: { music_id: detail.card.music_id, source_type: detail.card.source_type },
         title: detail.card.display_title,
+        primary_instrument_code: detail.card.primary_instrument_code,
+        primary_instrument_origin: detail.card.primary_instrument_origin,
         stream_url: audio.stream_url,
         duration_seconds: audio.duration_seconds,
         favorite: detail.card.is_favorite === true,
@@ -365,6 +392,7 @@ export default {
     },
     async toggleFavorite() {
       if (!this.canUseHistoricalPlayer() || !this.music) return
+      if (!this.favoriteReady) return
       if (this.favBusy) return
       const ref = this.music.music_ref || {}
       const musicId = ref.music_id
@@ -376,7 +404,7 @@ export default {
       const target = !this.favorite
       const generation = this.loadGeneration
       const session = this.historicalSession
-      const isCurrent = () => this.isCurrentLoad(generation) && (!session || (this.historicalSession === session && !session.hasOwnerChanged()))
+      const isCurrent = () => this.isCurrentLoad(generation) && this.hasCurrentIdentity() && (!session || (this.historicalSession === session && !session.hasOwnerChanged()))
       try {
         if (this.historicalSession) {
           const api = this.historicalLibraryApi
@@ -457,13 +485,15 @@ export default {
       </view>
 
       <view v-else class="player-content ink-fade-up">
+        <text class="music-title">{{ playerPresentation.title.displayText }}</text>
+        <button class="share-control" :disabled="true">分享暂未开放</button>
         <view v-if="simulated" class="demo-banner">
           <text class="demo-banner-text">演示模式：当前音乐为模拟数据</text>
         </view>
 
         <view class="hero-wrap" :class="{ 'hero-wrap--neutral': !playerPresentation.hasPrimaryTone }">
           <view class="wave-ring" :class="{ 'wave-ring--playing': playing }">
-            <view v-if="playerPresentation.hasPrimaryTone" class="tone-hero-frame">
+            <view v-if="toneHeroSrc" class="tone-hero-frame">
               <image v-if="toneHeroSrc" class="tone-hero-image" :src="toneHeroSrc" mode="aspectFill" />
               <view class="tone-copy">
                 <view class="tone-glyph-row"><text class="tone-glyph">{{ playerPresentation.primaryTone.glyph }}</text><text class="tone-seal">{{ toneSealText }}</text></view>
@@ -492,6 +522,9 @@ export default {
           </view>
         </view>
 
+        <view class="music-actions">
+          <button class="favorite-control" :disabled="favBusy || !favoriteReady" @click="toggleFavorite">{{ favoriteReady ? (favorite ? '已收藏' : '收藏') : '收藏状态暂不可用' }}</button>
+        </view>
         <view class="music-summary-card">
           <view class="summary-heading"><view class="summary-note">♫</view><text>本次音乐</text></view>
           <view class="music-summary-grid">
@@ -623,6 +656,10 @@ export default {
 </template>
 
 <style scoped>
+.music-title { display:block; text-align:center; padding:12px; overflow-wrap:anywhere; font-size:20px; }
+.music-actions { display:flex; justify-content:center; gap:12px; padding-bottom:12px; }
+.music-actions button { margin:0; font-size:14px; }
+.share-control { margin-right:0; font-size:12px; }
 .page {
   min-height: 100vh;
   box-sizing: border-box;
