@@ -6,6 +6,8 @@ Latest Owner material instruction2026-10-25: source located and approved; see [r
 
 ## W0 baseline
 
+Latest integration stage: [actual My/Player/Feedback scripts against real API](S7_REAL_API_JOURNEY_20261025.md). Guest JWT/session, private history/title/favorite, authorized download/Range, exact playback proof and page Feedback save/read/Clear/delete now run together against fresh formal SQLite under unchanged Guards. Default library remains false/preview; account unregistered. Sharing implementation paused by latest Owner instruction, PD016 retained. Device/audio codec/HTTP-platform acceptance NOT RUN; five full-backend collection failures remain separately classified.
+
 Started from0ab274e in an existing clean own isolated worktree; branch codex/s7-v11-product-continuity-20261025. Team Base9a6d472; PR173 depends on171,164 remains independent Draft,170 merged. No automatic integration. No report package or separate Demo build.
 
 ## W1: PD001 / U01,U08,U10
