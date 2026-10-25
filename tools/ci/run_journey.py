@@ -34,7 +34,7 @@ def child_deadline(children, seconds):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence-dir',required=True,type=Path)
-    parser.add_argument('--scenario',choices=['music','account'],default='music')
+    parser.add_argument('--scenario',choices=['music','account','android'],default='music')
     args=parser.parse_args()
     evidence=args.evidence_dir.resolve()
     if evidence.is_relative_to(ROOT) or ROOT.is_relative_to(evidence):parser.error('evidence outside source required')
@@ -42,6 +42,7 @@ def main():
     sandbox=evidence/'sandbox';sandbox.mkdir()
     env=environment(ROOT,sandbox)
     env.update(CHECKPOINT_NODE_EVIDENCE=str(evidence/'node-denials.jsonl'),HARMONYAI_V3_MODE='real')
+    env['S7_JOURNEY_PLATFORM']='android' if args.scenario=='android' else 'asgi'
     events=queue.Queue();children=[];logs={'backend':[],'frontend':[]};trace=[]
     def launch(name,command,cwd):
         child=subprocess.Popen(command,cwd=cwd,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,

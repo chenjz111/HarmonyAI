@@ -56,6 +56,7 @@
 import { QUESTIONNAIRE_MANIFEST } from "./questionnaire-v3-manifest.js"
 import { readV3AccessToken } from "./music-library-transport.js"
 import { waitForAccountStartup, hasAccountStartup, hasAccountRuntime, startAccountStartup, prepareAccountRequest } from "./auth-runtime.js"
+import { getApiOrigin, nativeTlsOptions, platformNetworkApi } from './api-origin.js'
 import {
   isPersonalizedMode,
   modeLabelFor,
@@ -202,8 +203,9 @@ async function realRequest(path, { method = "GET", data = null, headers = {} } =
   }
   return new Promise((resolve, reject) => {
     try {
-      uni.request({
-        url: BASE_URL + path,
+      platformNetworkApi(uni).request({
+        url: getApiOrigin({fallback:BASE_URL}) + path,
+        ...nativeTlsOptions(),
         method,
         data: data || undefined,
         header: Object.assign({ "Content-Type": "application/json" }, authHeaders(), headers),
@@ -229,7 +231,7 @@ async function realRequest(path, { method = "GET", data = null, headers = {} } =
       })
     } catch (e) {
       // uni 不可用（Node 测试环境）：按网络错误降级，不静默返回 mock 数据
-      reject(apiError(FRIENDLY_ERRORS.NETWORK_ERROR, "NETWORK_ERROR"))
+      reject(e.code==='PLATFORM_API_UNAVAILABLE'?apiError(e.message,e.code):apiError(FRIENDLY_ERRORS.NETWORK_ERROR, "NETWORK_ERROR"))
     }
   })
 }
@@ -239,8 +241,9 @@ function realUploadDocument(filePath, fileName) {
   return new Promise((resolve, reject) => {
     const state = loadFlowState()
     try {
-      uni.uploadFile({
-        url: BASE_URL + "/api/v2/documents",
+      platformNetworkApi(uni).uploadFile({
+        url: getApiOrigin({fallback:BASE_URL}) + "/api/v2/documents",
+        ...nativeTlsOptions(),
         filePath,
         name: "file",
         formData: {
@@ -1016,7 +1019,7 @@ function musicBasisModel(assessment, diagnosis, prescription) {
 
 function resolveMusicStreamUrl(streamUrl) {
   if (!streamUrl) return ""
-  return streamUrl.indexOf("/api/") === 0 ? BASE_URL + streamUrl : streamUrl
+  return streamUrl.indexOf("/api/") === 0 ? getApiOrigin({fallback:BASE_URL}) + streamUrl : streamUrl
 }
 
 // 生成任务成功后保存 asset（播放页只播放后端返回的 Music Asset）
@@ -1869,7 +1872,8 @@ export const apiV3 = {
   // 本地资源与外部直链原样返回。失败时如实报错，不降级为无鉴权直连。
   fetchAuthorizedAudio(streamUrl) {
     if (!streamUrl) return Promise.resolve("")
-    const absolute = resolveMusicStreamUrl(streamUrl)
+    let absolute
+    try{absolute=resolveMusicStreamUrl(streamUrl)}catch(error){return Promise.reject(error)}
     const invalidUrl = () => Promise.reject(apiError("音频地址不可用", "AUDIO_FETCH_FAILED"))
     // Never infer credential authority from a string prefix. Reject ambiguous
     // network syntax before platform downloaders can interpret it differently.
@@ -1885,18 +1889,20 @@ export const apiV3 = {
     try {
       if (/\s/.test(absolute)) return invalidUrl()
       target = new URL(absolute)
-      backend = new URL(BASE_URL)
+      backend = new URL(getApiOrigin({fallback:BASE_URL}))
       if (!/^https?:\/\//i.test(absolute) || target.username || target.password ||
           backend.username || backend.password || !["http:", "https:"].includes(backend.protocol)) return invalidUrl()
     } catch (e) {
       // Missing URL support is not permission to fall back to prefix matching.
       return invalidUrl()
     }
+    if (nativeTlsOptions().sslVerify && target.protocol !== 'https:') return invalidUrl()
     if (target.origin !== backend.origin) return Promise.resolve(absolute)
     return new Promise((resolve, reject) => {
       let downloadFile = null
       try {
-        downloadFile = uni.downloadFile
+        const network=platformNetworkApi(uni)
+        downloadFile = typeof network.downloadFile==='function'?network.downloadFile.bind(network):null
       } catch (e) {
         downloadFile = null // uni 不可用（Node 测试环境）
       }
@@ -1906,6 +1912,7 @@ export const apiV3 = {
       }
       downloadFile({
         url: target.href,
+        ...nativeTlsOptions(),
         header: authHeaders(),
         success: (res) => {
           if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {

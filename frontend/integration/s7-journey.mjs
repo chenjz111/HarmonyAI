@@ -13,6 +13,7 @@ import * as musicPresentation from '../common/music-presentation.js'
 import {seekRatioFromEvent} from '../common/player-seek.js'
 import * as libraryPlayer from '../common/music-library-player.js'
 import * as feedbackContext from '../common/feedback-context.js'
+import {initializeAndroidPlatform} from '../common/android-platform.js'
 import {createMusicLibraryApi} from '../common/music-library-api.js'
 import {createUniMusicLibraryTransport, MUSIC_LIBRARY_LIVE_ENABLED} from '../common/music-library-transport.js'
 import {createMusicLibraryStore} from '../common/music-library-state.js'
@@ -20,6 +21,7 @@ import {createHistoricalMusicSession} from '../common/music-library-player.js'
 import {createFeedbackApi} from '../common/feedback-api.js'
 
 const pending=new Map(), storage=new Map()
+const androidContext=process.env.S7_JOURNEY_PLATFORM==='android'
 let serial=0
 const input=createInterface({input:process.stdin})
 input.on('line',line=>{const response=JSON.parse(line);const callback=pending.get(response.id);assert.ok(callback);pending.delete(response.id);callback(response)})
@@ -29,7 +31,12 @@ let disconnected=false
 globalThis.uni={getStorageSync:key=>storage.get(key)||'',setStorageSync:(key,value)=>storage.set(key,value),removeStorageSync:key=>storage.delete(key),
  $on:(name,callback)=>listeners.set(name,callback),$off:name=>listeners.delete(name),$emit:name=>listeners.get(name)?.(),
  navigateTo:args=>navigation.push(args.url),showToast(){},showModal:args=>args.success({confirm:true,content:'Page title'}),
- request(args){if(disconnected){args.fail();return}const url=new URL(args.url);rpc({method:args.method,path:url.pathname+url.search,data:args.data,header:args.header}).then(args.success,args.fail)}}
+ request(args){if(disconnected){args.fail();return}const url=new URL(args.url);if(androidContext){assert.equal(url.origin,'https://testserver');assert.equal(args.sslVerify,true)}rpc({method:args.method,path:url.pathname+url.search,data:args.data,header:args.header}).then(args.success,args.fail)}}
+if(androidContext){
+ globalThis.uni.getSystemInfoSync=()=>({uniPlatform:'app',osName:'android'})
+ const readiness=initializeAndroidPlatform({uniApi:globalThis.uni,target:'app',apiOrigin:'https://testserver'})
+ assert.equal(readiness.accountInstalled,false);assert.equal(readiness.deviceAcceptance,'NOT_RUN')
+}
 const {apiV3}=await import('../common/api-v3.js')
 assert.equal(apiV3.MODE,'real')
 assert.equal(MUSIC_LIBRARY_LIVE_ENABLED,false)
@@ -40,7 +47,7 @@ await apiV3.ensureIdentity()
 assert.ok(storage.get('v3_access_token')===token,'reopen must retain actual Guest credential')
 await apiV3.createSession()
 const identity={getOwnerId:()=>storage.get('v3_public_user_id'),getAccessToken:()=>storage.get('v3_access_token'),getAuthEpoch:()=>storage.get('v3_auth_epoch')||0}
-const request=createUniMusicLibraryTransport({baseUrl:'http://isolated.invalid',uniApi:globalThis.uni,getAccessToken:identity.getAccessToken})
+const request=createUniMusicLibraryTransport({baseUrl:androidContext?'https://testserver':'http://isolated.invalid',uniApi:globalThis.uni,getAccessToken:identity.getAccessToken})
 const disabled=createMusicLibraryApi({request,...identity})
 await assert.rejects(disabled.listMusicAssets(),{code:'FEATURE_NOT_READY'})
 const api=createMusicLibraryApi({request,...identity,enabled:true}) // isolated test injection only
@@ -148,6 +155,7 @@ globalThis.uni.createInnerAudioContext=()=>{
 }
 globalThis.uni.downloadFile=args=>{
  const url=new URL(args.url)
+ if(androidContext){assert.equal(url.origin,'https://testserver');assert.equal(args.sslVerify,true)}
  rpc({method:'GET',path:url.pathname,header:args.header}).then(response=>{
   if(response.statusCode!==200){args.success({statusCode:response.statusCode});return}
   const bytes=Buffer.from(response.data.bytes_base64,'base64');assert.equal(bytes.subarray(0,4).toString(),'RIFF')

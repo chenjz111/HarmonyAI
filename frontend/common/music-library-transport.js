@@ -13,6 +13,7 @@
 
 // 真实启用开关：默认关闭（fail-closed）。开启需显式注入 true 且通过 Backend Gate。
 import { readRuntimeV3Credential, hasAccountRuntime, prepareAccountRequest } from './auth-runtime.js'
+import { getApiOrigin, nativeTlsOptions, platformNetworkApi } from './api-origin.js'
 export const MUSIC_LIBRARY_LIVE_ENABLED = false
 
 /** Read the actual V3 bearer credential, never the public owner identifier. */
@@ -33,15 +34,7 @@ export const TRANSPORT_ERROR = Object.freeze({
 })
 
 function resolveBaseUrl(explicit) {
-  if (explicit) return explicit
-  try {
-    if (import.meta && import.meta.env && import.meta.env.VITE_API_BASE_URL) {
-      return import.meta.env.VITE_API_BASE_URL
-    }
-  } catch (e) {
-    /* import.meta 不可用（Node 测试环境） */
-  }
-  return "http://localhost:8000"
+  return getApiOrigin({explicit})
 }
 
 function resolveUni(explicit) {
@@ -64,11 +57,12 @@ function resolveUni(explicit) {
  * @returns {(args: {method: string, path: string, data?: object}) => Promise<{data?: object, error?: {code: string, message: string}}>}
  */
 export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi, prepareAuthentication=true } = {}) {
-  const base = resolveBaseUrl(baseUrl)
   const uniRef = resolveUni(uniApi)
   const readToken = typeof getAccessToken === "function" ? getAccessToken : () => ""
 
   return async function request({ method, path, data, idempotencyKey }) {
+    let base
+    try{base=resolveBaseUrl(baseUrl)}catch(error){return {error:{code:error.code,message:error.message}}}
     if (prepareAuthentication && hasAccountRuntime(uniRef)) {
       try {
         const owner=uniRef.getStorageSync('v3_public_user_id'),epoch=uniRef.getStorageSync('v3_auth_epoch'),token=readToken()
@@ -98,10 +92,10 @@ export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi
         }
         header['Idempotency-Key'] = idempotencyKey
       }
-      const args = { url: base + path, method, header }
+      const args = { url: base + path, method, header, ...nativeTlsOptions() }
       if (data !== undefined) args.data = data
       try {
-        uniRef.request(
+        platformNetworkApi(uniRef).request(
           Object.assign({}, args, {
             success(res) {
               const body = res && res.data ? res.data : {}

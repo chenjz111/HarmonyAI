@@ -175,6 +175,10 @@ export function hasAccountStartup(uniApi) {return !!uniApi && startups.has(uniAp
 
 export function hasAccountRuntime(uniApi) {return !!uniApi && instances.has(uniApi)}
 
+export function discardUninstalledAccountRuntime(uniApi,runtime) {
+  if(instances.get(uniApi)===runtime && !runtime.owner())instances.delete(uniApi)
+}
+
 export async function prepareAccountRequest(uniApi) {
   await startAccountStartup(uniApi)
 }

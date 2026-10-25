@@ -20,7 +20,7 @@ export function createNativeAccountTransport({baseUrl,uniApi,accepted=false,plat
     return new Promise((resolve,reject)=>{
       const header={'Content-Type':'application/json',...(accessToken?{Authorization:'Bearer '+accessToken}:{})}
       try {
-        uniApi.request({url:base+path,method,data,header,timeout:15000,
+        uniApi.request({url:base+path,method,data,header,timeout:15000,sslVerify:true,
           success(response) {
             const status=response?.statusCode,body=response?.data
             if (status>=300 && status<400) {reject(failure('ACCOUNT_TRANSPORT_UNAVAILABLE'));return}
@@ -37,13 +37,14 @@ export function createNativeAccountTransport({baseUrl,uniApi,accepted=false,plat
 
 export function createNativeAccountRuntime(options={}) {
   const {uniApi,secureStore}=options
-  const request=createNativeAccountTransport(options)
+  const networkApi=options.networkApi||uniApi
+  const request=createNativeAccountTransport({...options,uniApi:networkApi})
   const accepted=request.available && secureStore?.verified===true && secureStore?.keystoreBacked===true && secureStore?.atomicConsume===true &&
     ['take','write','clear'].every(key=>typeof secureStore[key]==='function') &&
     ['getStorageSync','setStorageSync','removeStorageSync','$emit'].every(key=>typeof uniApi[key]==='function')
   const client=createRegisteredAuthClient({request,secureStore,enabled:accepted,platform:options.platform||'android'})
   const verifyGuest=async token=>{
-    const response=await createUniMusicLibraryTransport({baseUrl:options.baseUrl,uniApi,getAccessToken:()=>token,prepareAuthentication:false})({method:'GET',path:'/api/v3/auth/identity'})
+    const response=await createUniMusicLibraryTransport({baseUrl:options.baseUrl,uniApi:networkApi,getAccessToken:()=>token,prepareAuthentication:false})({method:'GET',path:'/api/v3/auth/identity'})
     if(response.error)throw failure(response.error.code)
     return response.data
   }
