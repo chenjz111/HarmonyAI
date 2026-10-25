@@ -43,6 +43,14 @@ Layer: OFFLINE_VERIFIED. NOT RUN: actual frontend-to-backend platform integratio
 
 Next: W2 existing library→single Player/title/favorite path with explicit isolated integration configuration, no permanent Live Flag activation. Preserve existing schemas/state/controllers. Every stage records default-path reachability separately from injected/offline/platform evidence.
 
+## W2 — existing history to the single Player
+
+Library navigation and historical Player now share the existing central gate (still false). Returning to My starts a new read even if an earlier read remains pending; stale results cannot overwrite the returned view. No new Player, write request, or flag activation.
+
+Evidence: navigation RED2f→GREEN; independent review found the pending-read return race, RED1f→GREEN17 profile tests. Fixed frontend specialty114p. Full frontend577p/7f/0skip; unchanged Guard. Seven pre-existing material/evidence failures remain visible. Seek test harness now supplies the imported disabled gate and is included in the specialty.
+
+Layer: WIRED_BUT_DISABLED / OFFLINE_VERIFIED under controlled test configuration. Actual backend/platform integration, Android and default live user path NOT RUN. Remaining Player controls and primary-instrument illustration are W3, not completed by this milestone.
+
 ## Unchanged boundaries
 
 No merge/base or main push, force push, deployment, public account activation, paid Provider, real MySQL instance or Android installation. Original Guard unchanged. Learning OFF; source retention/share/consent policy/medical approval gates stay closed. init_database can automatically apply0013/0014 even when an account router is unregistered: no deployment or existing-database startup is authorized. Known full backend5 collection errors and frontend7 material/evidence gaps remain unresolved, not hidden by specialty CI.

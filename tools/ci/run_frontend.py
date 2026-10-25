@@ -19,10 +19,11 @@ if evidence.is_relative_to(source.parent) or source.parent.is_relative_to(eviden
 evidence.mkdir(parents=True,exist_ok=False)
 inventory = {
  'tests/s7-guest-continuity.test.mjs':10,
+ 'tests/sprint6-player-seek-interaction.test.mjs':5,
  'tests/s7-account-security.test.mjs':12,
  'tests/s7-fe2b-history-isolation.test.mjs':25,
  'tests/s7-fe2b-player.test.mjs':11,
- 'tests/s7-fe2b-profile-auth.test.mjs':14,
+ 'tests/s7-fe2b-profile-auth.test.mjs':17,
  'tests/s7-fe2b-transport.test.mjs':8,
  'tests/s7-feedback-page.test.mjs':6,
  'tests/s7-feedback-v31.test.mjs':5,

@@ -68,6 +68,7 @@ test("My page labels preview data and preserves one existing Player", () => {
 
 test("My page consumes the one frozen preview fixture and keeps historical Player navigation disabled", () => {
   assert.match(profileSource, /import \{ MUSIC_CARD_V1_PREVIEW_FIXTURE \} from "\.\.\/\.\.\/common\/music-card-v1-preview-fixture\.js"/)
-  assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = false/)
+  assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = LIVE_SOURCE_ENABLED/)
+  assert.match(readFileSync(new URL('../common/music-library-transport.js', import.meta.url), 'utf8'), /MUSIC_LIBRARY_LIVE_ENABLED = false/)
   assert.match(profileSource, /if \(!item\.can_open \|\| !HISTORICAL_PLAYER_LINK_ENABLED\) return/)
 })

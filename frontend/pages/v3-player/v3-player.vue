@@ -23,14 +23,14 @@ import { createPlayerController } from "../../common/player-controller.js"
 import { buildMusicPresentation, presentProgress } from "../../common/music-presentation.js"
 import { seekRatioFromEvent } from "../../common/player-seek.js"
 import { createMusicLibraryApi } from "../../common/music-library-api.js"
-import { createUniMusicLibraryTransport, readV3AccessToken } from "../../common/music-library-transport.js"
+import { createUniMusicLibraryTransport, readV3AccessToken, MUSIC_LIBRARY_LIVE_ENABLED } from "../../common/music-library-transport.js"
 import {
   createHistoricalMusicSession,
   resolvePlayableAudio,
 } from "../../common/music-library-player.js"
 
 // 历史音乐导航门禁：等 BE-2B API + owner 隔离 + stream 安全 Gate 通过后由 Owner 开启。
-const HISTORICAL_LIBRARY_ENABLED = false
+const HISTORICAL_LIBRARY_ENABLED = MUSIC_LIBRARY_LIVE_ENABLED
 
 function readOwnerId() {
   try {

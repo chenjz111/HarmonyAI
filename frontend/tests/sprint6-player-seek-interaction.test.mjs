@@ -22,6 +22,7 @@ function loadPlayerComponent(seekRatioFromEvent) {
     "buildMusicPresentation",
     "presentProgress",
     "seekRatioFromEvent",
+    "MUSIC_LIBRARY_LIVE_ENABLED",
     executable,
   )(
     {},
@@ -29,6 +30,7 @@ function loadPlayerComponent(seekRatioFromEvent) {
     () => ({}),
     () => ({}),
     seekRatioFromEvent,
+    false,
   )
 }
 

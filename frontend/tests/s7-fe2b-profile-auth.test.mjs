@@ -22,12 +22,13 @@ let sequence = 0
 async function harness({ missing = null, subscribeThrows = false, subscribeReturnsFalse = false, handler = null } = {}) {
   const storage = new Map([['v3_public_user_id', 'A'], ['v3_access_token', 'synthetic-reused'], ['v3_auth_epoch', 0]])
   const listeners = new Map()
-  const h = { storage, requests: [], modals: [], toasts: [], nextAuth: null }
+  const h = { storage, requests: [], modals: [], toasts: [], navigations: [], nextAuth: null }
   const uni = {
     getStorageSync: key => storage.get(key) ?? '',
     setStorageSync: (key, value) => storage.set(key, value),
     showModal: args => h.modals.push(args),
     showToast: args => h.toasts.push(args.title),
+    navigateTo: args => h.navigations.push(args.url),
     $on(name, fn) {
       if (subscribeThrows) throw new Error('synthetic subscription rejected')
       if (!listeners.has(name)) listeners.set(name, new Set())
@@ -84,6 +85,20 @@ async function harness({ missing = null, subscribeThrows = false, subscribeRetur
   h.listenerCount = () => [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0)
   return h
 }
+
+test('W2: approved isolated live list opens its actual card in the single historical Player',async()=>{
+ const h=await harness();try{await h.start();h.page.openMusic(h.page.visibleItems[0]);assert.deepEqual(h.navigations,['/pages/v3-player/v3-player?music_id=A-music']);assert.equal(h.requests.filter(x=>x.method==='POST').length,0)}finally{h.close()}
+})
+test('W2: returning from Player refreshes favorite and private title for the same owner',async()=>{
+ let changed=false
+ const h=await harness({handler:()=>({items:[{...card('A'),is_favorite:changed,display_title:changed?'Evening music':'Original title'}],has_more:false,next_cursor:null})})
+ try{await h.start();assert.equal(h.page.visibleItems[0].is_favorite,false);changed=true;h.options.onShow.call(h.page);await flush();assert.equal(h.page.visibleItems[0].is_favorite,true);assert.equal(h.page.visibleItems[0].display_title,'Evening music');assert.equal(h.requests.length,2)}finally{h.close()}
+})
+test('W2: Player return supersedes an older pending list read',async()=>{
+ let reads=0;const old=deferred()
+ const h=await harness({handler:()=>++reads===2?old.promise:{items:[{...card('A'),display_title:reads>2?'Changed in Player':'Old title'}],has_more:false,next_cursor:null}})
+ try{await h.start();const stale=h.page.reload();await flush();h.options.onShow.call(h.page);await flush();old.resolve({items:[{...card('A'),display_title:'Stale title'}],has_more:false,next_cursor:null});await stale;await flush();assert.equal(h.page.visibleItems[0].display_title,'Changed in Player');assert.equal(reads,3)}finally{h.close()}
+})
 
 test('R5: partial registration returning false is removed immediately without private requests', async () => {
   const h = await harness({ subscribeReturnsFalse: true })

@@ -133,7 +133,7 @@ test("FE2B: historical player keeps a single controller and never reads session 
   // 历史通道只读 MusicDetailV1；不得用当前会话解析/UserGoal 替代旧资料
   assert.match(playerSource, /loadHistorical/)
   assert.match(playerSource, /resolvePlayableAudio/)
-  assert.match(playerSource, /HISTORICAL_LIBRARY_ENABLED = false/)
+  assert.match(playerSource, /HISTORICAL_LIBRARY_ENABLED = MUSIC_LIBRARY_LIVE_ENABLED/)
   assert.match(playerSource, /onLoad\(query\)/)
   assert.match(playerSource, /query\.music_id/)
   assert.match(playerSource, /historicalSession\.reportPlayStarted/)
@@ -149,7 +149,8 @@ test("FE2B: historical player keeps a single controller and never reads session 
 test("FE2B: My page keeps frozen preview by default and never renders HTML", () => {
   assert.match(profileSource, /MUSIC_LIBRARY_LIVE_ENABLED/)
   assert.match(profileSource, /界面预览 · 虚构数据/)
-  assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = false/)
+  assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = LIVE_SOURCE_ENABLED/)
+  assert.match(readFileSync(new URL('../common/music-library-transport.js', import.meta.url), 'utf8'), /MUSIC_LIBRARY_LIVE_ENABLED = false/)
   assert.doesNotMatch(profileSource, /v-html/)
   assert.doesNotMatch(profileSource, /createInnerAudioContext|new Audio|audioCtx/)
 })

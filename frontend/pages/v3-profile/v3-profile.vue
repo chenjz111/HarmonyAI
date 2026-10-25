@@ -73,14 +73,11 @@ import {
   readV3AccessToken,
 } from "../../common/music-library-transport.js"
 
-// W1 reserves the canonical Player URL, but the existing Player is still
-// session-scoped and does not consume music_id. Keep cards inert until the
-// historical read integration and permission tests are approved.
-const HISTORICAL_PLAYER_LINK_ENABLED = false
-
 // 数据源门禁：默认关闭 → 使用冻结预览 fixture；显式开启后才走真实 Music Library API。
 // 真实启用仍需 Backend API + owner 隔离 + stream 安全 Gate。
 const LIVE_SOURCE_ENABLED = MUSIC_LIBRARY_LIVE_ENABLED === true
+// One capability governs list, navigation and Player; production remains closed.
+const HISTORICAL_PLAYER_LINK_ENABLED = LIVE_SOURCE_ENABLED
 
 function readOwnerId() {
   try {
@@ -162,7 +159,7 @@ export default {
     }
   },
   onShow() {
-    if (LIVE_SOURCE_ENABLED && !this.liveDisposed && this.api) this.ensureLiveOwner()
+    if (LIVE_SOURCE_ENABLED && !this.liveDisposed && this.api && this.ensureLiveOwner()) this.reload()
   },
   onUnload() {
     this.liveDisposed = true

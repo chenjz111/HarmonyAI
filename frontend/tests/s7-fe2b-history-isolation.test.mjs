@@ -113,7 +113,7 @@ function pageHarness({ handler = null, missing = null, subscriptionFalse = false
   const script = src.match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/import\s*\{([\s\S]*?)\}\s*from\s*["'][^"']+["'];?/g, (_, names) => `const {${names}}=deps;`)
     // VM-only branch injection, not a change to the production feature flag.
-    .replace('const HISTORICAL_LIBRARY_ENABLED = false', `const HISTORICAL_LIBRARY_ENABLED = ${live}`)
+    .replace('const HISTORICAL_LIBRARY_ENABLED = MUSIC_LIBRARY_LIVE_ENABLED', `const HISTORICAL_LIBRARY_ENABLED = ${live}`)
     .replace('export default {', 'pageOptions = {')
   const apiV3 = {
     getMusic: async () => { h.normalReads++; return { music_ref: { music_id: 'normal' }, stream_url: '/synthetic', favorite: false } },
