@@ -18,7 +18,10 @@ def test_current_identity_preserves_owner_token_expiry_and_row_count(db_session_
         response=client.get('/api/v3/auth/identity',headers={'Authorization':'Bearer '+token})
         assert response.status_code==200
         assert response.headers.get('cache-control')=='no-store'
-        assert response.headers.get('vary')=='Authorization'
+        # Vary is a field-name list; CORS may append Origin on hosted middleware.
+        vary={name.strip().lower() for name in response.headers.get('vary','').split(',')}
+        assert 'authorization' in vary
+        assert '*' not in vary
         assert response.json()['data']=={'public_user_id':issued['public_user_id'],'auth_type':'guest'}
         assert 'access_token' not in response.json()['data']
     with db_session_factory() as db:

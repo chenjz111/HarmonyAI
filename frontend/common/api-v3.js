@@ -54,6 +54,7 @@
  */
 
 import { QUESTIONNAIRE_MANIFEST } from "./questionnaire-v3-manifest.js"
+import { readV3AccessToken } from "./music-library-transport.js"
 import {
   isPersonalizedMode,
   modeLabelFor,
@@ -164,7 +165,7 @@ function clearFlowState() {
 }
 
 function authHeaders() {
-  const token = safeGet("v3_access_token") || ""
+  const token = readV3AccessToken()
   return token ? { Authorization: "Bearer " + token } : {}
 }
 
@@ -269,8 +270,9 @@ let identityStartup = null
 function captureAuthentication() {
   const keys = ['v3_access_token', 'v3_public_user_id', 'v3_auth_epoch']
   const values = keys.map(key => safeGet(key))
+  const credential = readV3AccessToken()
   return () => {
-    if (!keys.every((key, i) => safeGet(key) === values[i])) {
+    if (readV3AccessToken() !== credential || !keys.every((key, i) => safeGet(key) === values[i])) {
       throw apiError('身份已切换，请重新进入。', 'OWNER_CHANGED')
     }
   }
@@ -282,8 +284,9 @@ const realInputApi = {
     const unchanged = captureAuthentication()
     const pending = Promise.resolve().then(async () => {
       unchanged()
-      const token = safeGet('v3_access_token')
+    const token = readV3AccessToken()
       if (!token) {
+      if (safeGet('v3_auth_mode') === 'registered') throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
         // A label alone cannot recover ownership. Never silently abandon it.
         if (safeGet('v3_public_user_id')) throw apiError('当前身份凭据不可用，请恢复身份后重试。', 'IDENTITY_REQUIRED')
         return realInputApi.guestAuth()
@@ -305,6 +308,7 @@ const realInputApi = {
     return pending
   },
   async guestAuth() {
+    if (safeGet('v3_auth_mode') === 'registered') throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
     const unchanged = captureAuthentication()
     const data = await realRequest("/api/v3/auth/guest", { method: "POST" })
     unchanged()

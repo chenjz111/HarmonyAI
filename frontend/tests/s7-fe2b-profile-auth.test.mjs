@@ -19,7 +19,7 @@ function deferred() {
 }
 const card = (owner, id = `${owner}-music`) => ({ ...fixture.MUSIC_CARD_V1_PREVIEW_FIXTURE[0], music_id: id, availability: 'ready' })
 let sequence = 0
-async function harness({ missing = null, subscribeThrows = false, subscribeReturnsFalse = false, handler = null } = {}) {
+async function harness({ missing = null, subscribeThrows = false, subscribeReturnsFalse = false, handler = null, accountRuntime = {available:false} } = {}) {
   const storage = new Map([['v3_public_user_id', 'A'], ['v3_access_token', 'synthetic-reused'], ['v3_auth_epoch', 0]])
   const listeners = new Map()
   const h = { storage, requests: [], modals: [], toasts: [], navigations: [], nextAuth: null }
@@ -53,6 +53,7 @@ async function harness({ missing = null, subscribeThrows = false, subscribeRetur
     .replace(/import\s*\{([\s\S]*?)\}\s*from\s*["'][^"']+["'];?/g, (_, names) => `const {${names}}=deps;`)
     .replace('export default {', 'pageOptions = {')
   const context = { uni, pageOptions: null, deps: { ...state, ...adapter, ...fixture, ...transport,
+    registeredAccountRuntime: accountRuntime,
     MUSIC_LIBRARY_LIVE_ENABLED: true,
     readV3AccessToken: () => transport.readV3AccessToken(uni),
     createUniMusicLibraryTransport: options => transport.createUniMusicLibraryTransport({ ...options, uniApi: uni }),
@@ -85,6 +86,15 @@ async function harness({ missing = null, subscribeThrows = false, subscribeRetur
   h.listenerCount = () => [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0)
   return h
 }
+
+test('W5: disabled account form cannot issue an operation and erases entered password',async()=>{
+ const h=await harness();try{h.page.accountPassword='synthetic-long-password';await h.page.submitAccount();assert.equal(h.requests.length,0);assert.equal(h.page.accountPassword,'');assert.equal(h.page.accountBusy,false)}finally{h.close()}
+})
+
+test('W5: candidate login uses the existing runtime, clears credentials and never requests a data merge',async()=>{
+ const calls=[],accountRuntime={available:true,login:async body=>{calls.push(body);return {public_user_id:'registered-B'}}}
+ const h=await harness({accountRuntime});try{await h.start();h.page.selectSection('account');h.page.accountMode='login';h.page.accountUsername='Alice';h.page.accountPassword='synthetic-long-password';await h.page.submitAccount();assert.equal(calls.length,1);assert.equal(calls[0].username,'alice');assert.deepEqual(Object.keys(calls[0]).sort(),['password','username']);assert.equal(h.page.accountPassword,'');assert.equal(h.page.accountBusy,false);assert.match(source,/@click="submitAccount"/)}finally{h.close()}
+})
 
 test('W4: preference/account/about regions are reachable without issuing authentication or learning writes',async()=>{
  const h=await harness();try{await h.start();const before=h.requests.length

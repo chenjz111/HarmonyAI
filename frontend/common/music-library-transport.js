@@ -12,6 +12,7 @@
  */
 
 // 真实启用开关：默认关闭（fail-closed）。开启需显式注入 true 且通过 Backend Gate。
+import { readRuntimeV3Credential } from './auth-runtime.js'
 export const MUSIC_LIBRARY_LIVE_ENABLED = false
 
 /** Read the actual V3 bearer credential, never the public owner identifier. */
@@ -21,7 +22,7 @@ export function readV3AccessToken(uniApi = null) {
     try { if (typeof uni !== "undefined") source = uni } catch (e) { return "" }
   }
   if (!source || typeof source.getStorageSync !== "function") return ""
-  try { return source.getStorageSync("v3_access_token") || "" } catch (e) { return "" }
+  return readRuntimeV3Credential(source)
 }
 
 // 本地传输错误码（非后端合同错误码，仅表示前端环境/网络问题）

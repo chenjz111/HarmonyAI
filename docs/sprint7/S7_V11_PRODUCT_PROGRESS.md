@@ -20,7 +20,7 @@ Layer: OFFLINE_VERIFIED. NOT RUN: actual frontend-to-backend platform integratio
 
 | PD | Current product state / remaining work |
 |---|---|
-|001|W1 offline candidate; account UI/platform acceptance incomplete|
+|001|W1 continuity + W5 gated account UI/runtime candidate; verified platform integration incomplete|
 |002|No self/other or patient profiles; preserve|
 |003|Subject/negation safety review154 open|
 |004|W4 five visible regions and scoped music feedback navigation; account/preference functionality still gated|
@@ -70,6 +70,18 @@ Generated Player reuses the existing library playback session/proof helper only 
 Evidence: regions/scope RED4f→GREEN; generated proof RED2f→GREEN. Final frontend specialty135p; full595p/7f/0skip. Guard unchanged. Existing backend Feedback/receipt/migration specialty72p under original offline Guard. Independent W4 read-only review found no new P1/P2. H5 compiler snapshot v11-w4-h5 exited0/index generated/manifest unchanged; wrapper still failed on blocked local compiler discovery probes, and approved static assets remain missing. Actual default live library/registered UI, platform E2E, Android, MySQL/TLS and production HTTPS NOT RUN.
 
 W4 layer: OFFLINE_VERIFIED / WIRED_BUT_DISABLED, not full product acceptance. No claim that disabled binding, inactive learning or seven existing frontend failures are complete. Next W5 runtime registered/Guest bridge and candidate account interaction; W6 historical stored explanation/source, W7 policy/medical, W8 CI and acceptance.
+
+## W5 — registered credential bridge and candidate account interaction
+
+One runtime coordinator reuses the existing registered-auth secure client; the legacy facade and library transport now read its memory bearer. Only mode/owner/UI-epoch markers persist; no registered Access/Refresh is written to ordinary storage. Expired/restarted/failed registered selection never falls back to a leftover Guest bearer or mints a new Guest. Bind captures the existing legitimate Guest credential; login sends no merge/import instructions. Same-owner refresh preserves the current assessment flow and advances UI isolation; unknown outcome removes local authority and proof.
+
+My account region contains candidate bind/login and current/all-device logout controls, generic credential errors, password recovery limitation, NFC handling and explicit length validation without truncation. Default coordinator is unavailable: forms cannot send requests, account router remains unregistered, no verified Keystore or H5 Origin/CSRF/cookie deployment is assumed. The credential bridge has only been tested with explicit secure-store/platform substitutes. Automatic app startup restore/platform transport configuration, real UI/backend account E2E and actual device acceptance remain unfinished.
+
+Evidence: initial runtime RED6f→GREEN7p; concurrent refresh/Guest overwrite/UI RED4f→GREEN; independent review found same-owner flow loss and UI-storage-blocked logout, both reproduced RED2f→GREEN. Secure logout now runs independently from fallible UI bookkeeping. Final specialty148p; full608p/7f/0skip, unchanged Node Guard. Backend fixed account74p. One initial test accidentally awaited an unanswered synthetic route; bounded replacement preserved the intended failing assertion before implementation; no false passing evidence used.
+
+Hosted CI run40153170415 on777f214 failed identically on Linux/Windows: identity test assumed Vary was a scalar, hosted CORS added Origin. Fixed required Authorization membership while retaining no-store and forbidding wildcard; local74p. Guard24, regression195, hardening127, BE2B45, Feedback72 and five independent-process Feedback scenarios passed on that hosted run; later steps were skipped, not passed. Replacement hosted run still required after this commit.
+
+W5 layer: OFFLINE_VERIFIED / WIRED_BUT_DISABLED. NOT RUN: real Keystore, Android, native account HTTPS integration, browser Origin/CSRF/cookie, target Argon2 resource/latency and reviewed production password-blocklist acceptance. No account-system completion claim. UI password input uses documented uni maxlength=-1 and rejects >1024 NFC characters consistently with existing server limits (https://zh.uniapp.dcloud.io/component/input.html); platform input acceptance still NOT RUN.
 
 ## Unchanged boundaries
 

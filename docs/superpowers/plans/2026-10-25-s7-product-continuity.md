@@ -34,4 +34,6 @@ W8: cross-module/CI acceptance matrix; actual device/MySQL/HTTPS need separate p
 
 ## Review focus
 
+W5 implementation ruling: reuse the existing registered-auth client and verified secure-store gate. A runtime coordinator owns no credentials: it bridges that client's memory reader to both existing transports, advances the frontend epoch and clears assessment/private projections on transitions. Registered selection must never fall back to a stale Guest token after expiry/restart/failure. Only nonsecret mode/owner/epoch markers persist. Binding uses the captured existing Guest bearer; login never merges assets. Default coordinator remains unavailable until accepted platform dependencies exist; candidate UI must state this. No native plugin installation, account route registration, or H5 credential fallback is authorized by this plan.
+
 Token expiry/server identity vs client labels; asynchronous A→B→A; failed startup retaining recoverable authority; default page controls vs fixture-only tests; no silent new owner after network failure; no paid operation on re-entry. One independent whole-branch review after the product work package.

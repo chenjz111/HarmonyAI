@@ -24,8 +24,21 @@
     <view v-else-if="activeSection === 'account'" class="state-card">
       <text class="state-title">账号与数据</text>
       <text class="state-copy">游客可直接体验。游客数据依赖当前有效身份，凭据丢失或过期后不能保证恢复。</text>
-      <button :disabled="true">绑定账号以保留数据（尚未开放）</button>
-      <text class="state-copy">注册与登录正在进行安全验收；目前不能在此切换账号。</text>
+      <view class="account-modes">
+        <button :disabled="!accountAvailable || accountBusy" @click="accountMode = 'bind'">绑定账号以保留数据</button>
+        <button :disabled="!accountAvailable || accountBusy" @click="accountMode = 'login'">登录已有账号</button>
+      </view>
+      <text v-if="!accountAvailable" class="state-copy">注册与登录尚未开放：安全存储和平台连接尚未完成验收。目前不能在此切换账号。</text>
+      <view v-if="accountAvailable" class="account-form">
+        <text class="state-copy">{{ accountMode === 'bind' ? '主动绑定当前游客身份，保留合法归属的数据。' : '登录已有账号不会合并或转移当前游客数据。' }}</text>
+        <text class="state-copy">没有已验证的邮箱或手机号时不支持自助找回密码，请妥善保存凭据。</text>
+        <input v-model="accountUsername" :disabled="accountBusy" maxlength="32" placeholder="用户名：3–32 位字母、数字或下划线" />
+        <input v-model="accountPassword" :disabled="accountBusy" :password="true" :maxlength="-1" placeholder="密码：15–1024 个字符，不截断" />
+        <button :disabled="accountBusy" @click="submitAccount">{{ accountBusy ? '正在处理' : (accountMode === 'bind' ? '注册并绑定' : '登录') }}</button>
+        <button v-if="accountOwner" :disabled="accountBusy" @click="logoutAccount(false)">退出当前设备</button>
+        <button v-if="accountOwner" :disabled="accountBusy" @click="logoutAccount(true)">退出所有设备</button>
+      </view>
+      <text v-if="accountError" class="state-copy">{{ accountError }}</text>
     </view>
     <view v-else-if="activeSection === 'about'" class="state-card">
       <text class="state-title">HarmonyAI</text>
@@ -76,6 +89,7 @@
 
 <script>
 import { MUSIC_CARD_V1_PREVIEW_FIXTURE } from "../../common/music-card-v1-preview-fixture.js"
+import { registeredAccountRuntime } from "../../common/auth-runtime.js"
 import {
   createMusicLibraryPreview,
   createMusicLibraryStore,
@@ -131,6 +145,8 @@ export default {
   data() {
     return {
       activeSection: "history",
+      accountAvailable: !!(registeredAccountRuntime && registeredAccountRuntime.available),
+      accountMode: "bind", accountUsername: "", accountPassword: "", accountBusy: false, accountError: "", accountOwner: null, accountSequence: 0,
       library: createMusicLibraryPreview("ready", MUSIC_CARD_V1_PREVIEW_FIXTURE),
       favoriteBusy: false,
       titleBusy: false,
@@ -182,6 +198,7 @@ export default {
     if (LIVE_SOURCE_ENABLED && !this.liveDisposed && this.api && this.ensureLiveOwner()) this.reload()
   },
   onUnload() {
+    this.accountSequence++; this.accountPassword = ""; this.accountUsername = ""
     this.liveDisposed = true
     this.liveAuthReady = false
     try { if (this.authChangeHandler && typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
@@ -193,6 +210,34 @@ export default {
     this.library = createMusicLibraryPreview("empty")
   },
   methods: {
+    async submitAccount() {
+      if (!this.accountAvailable || this.accountBusy) { this.accountPassword = ""; this.accountError = "账号功能尚未完成平台安全验收"; return }
+      const username = this.accountUsername.toLowerCase(), password = this.accountPassword.normalize("NFC")
+      if (!/^[a-z0-9_]{3,32}$/.test(username) || [...password].length < 15 || [...password].length > 1024) {
+        this.accountError = "请检查用户名格式和密码长度"; this.accountPassword = ""; return
+      }
+      const sequence = ++this.accountSequence
+      this.accountBusy = true; this.accountError = ""
+      try {
+        const result = await registeredAccountRuntime[this.accountMode === "bind" ? "bind" : "login"]({username,password})
+        if (sequence !== this.accountSequence || this.liveDisposed) return
+        this.accountOwner = result.public_user_id
+        uni.showToast({title:"身份验证已完成",icon:"none"})
+      } catch (error) {
+        if (sequence === this.accountSequence && !this.liveDisposed) this.accountError = "身份验证未能确认，请检查凭据并重新认证。"
+      } finally {
+        this.accountPassword = ""
+        if (sequence === this.accountSequence) this.accountBusy = false
+      }
+    },
+    async logoutAccount(allDevices) {
+      if (!this.accountAvailable || this.accountBusy) return
+      const sequence = ++this.accountSequence
+      this.accountBusy = true; this.accountError = ""
+      try { await registeredAccountRuntime.logout({allDevices}) }
+      catch (error) { if (sequence === this.accountSequence && !this.liveDisposed) this.accountError = "本地身份已关闭，服务端撤销结果未能确认，请重新认证。" }
+      finally { this.accountPassword = ""; if (sequence === this.accountSequence) { this.accountOwner = null; this.accountBusy = false } }
+    },
     openMusicFeedback(item) {
       if (!LIVE_SOURCE_ENABLED || !this.liveAuthReady || !this.liveIdentity || !this.liveIdentity.matches()) return
       if (!item || !item.music_id) return
