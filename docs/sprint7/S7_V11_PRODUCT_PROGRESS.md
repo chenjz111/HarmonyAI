@@ -6,6 +6,8 @@ Latest Owner material instruction2026-10-25: source located and approved; see [r
 
 ## W0 baseline
 
+账号传输/启动恢复后续工作包：[用户流程与正式启用阻塞](ACCOUNT_STARTUP_ENABLEMENT_20261025.md)。候选原生HTTPS传输、Guest转换隔离journal、App/Home恢复屏障与普通请求安全续期已接线；真实 R1 ASGI/SQLite 验证失败绑定/登录恢复、重启、刷新丢响应、撤销及跨账号隔离。H5仍不可用、Android仅替身；未知绑定+失效Guest不被误判为注册成功。默认账号/音乐库继续关闭，不能据此宣布S7完成。
+
 Latest integration stage: [actual My/Player/Feedback scripts against real API](S7_REAL_API_JOURNEY_20261025.md). Guest JWT/session, private history/title/favorite, authorized download/Range, exact playback proof and page Feedback save/read/Clear/delete now run together against fresh formal SQLite under unchanged Guards. Default library remains false/preview; account unregistered. Sharing implementation paused by latest Owner instruction, PD016 retained. Device/audio codec/HTTP-platform acceptance NOT RUN; five full-backend collection failures remain separately classified.
 
 Started from0ab274e in an existing clean own isolated worktree; branch codex/s7-v11-product-continuity-20261025. Team Base9a6d472; PR173 depends on171,164 remains independent Draft,170 merged. No automatic integration. No report package or separate Demo build.

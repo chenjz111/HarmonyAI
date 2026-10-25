@@ -12,7 +12,7 @@
  */
 
 // 真实启用开关：默认关闭（fail-closed）。开启需显式注入 true 且通过 Backend Gate。
-import { readRuntimeV3Credential } from './auth-runtime.js'
+import { readRuntimeV3Credential, hasAccountRuntime, prepareAccountRequest } from './auth-runtime.js'
 export const MUSIC_LIBRARY_LIVE_ENABLED = false
 
 /** Read the actual V3 bearer credential, never the public owner identifier. */
@@ -63,12 +63,21 @@ function resolveUni(explicit) {
  * @param {object} [options.uniApi] 注入 uni（测试用）
  * @returns {(args: {method: string, path: string, data?: object}) => Promise<{data?: object, error?: {code: string, message: string}}>}
  */
-export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi } = {}) {
+export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi, prepareAuthentication=true } = {}) {
   const base = resolveBaseUrl(baseUrl)
   const uniRef = resolveUni(uniApi)
   const readToken = typeof getAccessToken === "function" ? getAccessToken : () => ""
 
-  return function request({ method, path, data, idempotencyKey }) {
+  return async function request({ method, path, data, idempotencyKey }) {
+    if (prepareAuthentication && hasAccountRuntime(uniRef)) {
+      try {
+        const owner=uniRef.getStorageSync('v3_public_user_id'),epoch=uniRef.getStorageSync('v3_auth_epoch'),token=readToken()
+        await prepareAccountRequest(uniRef)
+        if (owner!==uniRef.getStorageSync('v3_public_user_id') || epoch!==uniRef.getStorageSync('v3_auth_epoch') || token!==readToken()) {
+          return {error:{code:owner===uniRef.getStorageSync('v3_public_user_id')?'AUTH_REFRESHED':'OWNER_CHANGED',message:'身份状态已更新，请重试；本次操作尚未发送'}}
+        }
+      } catch(error) {return {error:{code:error.code||TRANSPORT_ERROR.NETWORK,message:'身份暂时无法确认，请重新认证或重试'}}}
+    }
     return new Promise((resolve) => {
       if (!uniRef || typeof uniRef.request !== "function") {
         resolve({ error: { code: TRANSPORT_ERROR.UNAVAILABLE, message: "网络能力不可用" } })

@@ -9,7 +9,7 @@ function harness({accepted=true,request=null}={}){
  const uni={getStorageSync:k=>values.get(k)??'',setStorageSync:(k,v)=>values.set(k,v),removeStorageSync:k=>values.delete(k),$emit:name=>events.push(name)}
  let proof=null,clock=0
  const secureStore={verified:true,keystoreBacked:true,atomicConsume:true,async take(){const v=proof;proof=null;return v},async clear(){proof=null},async write(v){proof=v}}
- const client=createRegisteredAuthClient({enabled:true,secureStore,now:()=>clock,request:async args=>{calls.push(args);if(request)return request(args);return {data:{public_user_id:'registered-B',access_token:'memory-access',refresh_token:'secure-proof',expires_at:'2026-10-25T12:00:00Z'}}}})
+ const client=createRegisteredAuthClient({enabled:true,secureStore,now:()=>clock,request:async args=>{calls.push(args);if(request)return request(args);return {data:{public_user_id:args.path.endsWith('/register-bind')?'guest-A':'registered-B',access_token:'memory-access',refresh_token:'secure-proof',expires_at:'2026-10-25T12:00:00Z'}}}})
  const runtime=createRegisteredIdentityRuntime({client,uniApi:uni,accepted})
  return {values,events,calls,uni,runtime,client,proof:()=>proof,expire:()=>{clock=Date.parse('2026-10-26T00:00:00Z')}}
 }
@@ -44,8 +44,8 @@ test('binding captures the legitimate Guest bearer and never sends it as a data 
  const h=harness();await h.runtime.bind({username:'alice',password:'synthetic-long-password'});assert.equal(h.calls[0].path,'/api/v3/auth/register-bind');assert.equal(h.calls[0].accessToken,'old-guest');assert.deepEqual(Object.keys(h.calls[0].data).sort(),['password','username']);assert.equal(h.values.has('v3_access_token'),false)
 })
 
-test('unknown login result clears local authority and cannot restore the old Guest',async()=>{
- const h=harness({request:async()=>{throw new Error('lost response')}});await assert.rejects(h.runtime.login({}));assert.equal(readV3AccessToken(h.uni),'');assert.equal(h.values.get('v3_auth_mode'),'registered');assert.equal(h.proof(),null)
+test('unknown login result quarantines original Guest until authenticated server verification',async()=>{
+ const h=harness({request:async()=>{throw new Error('lost response')}});await assert.rejects(h.runtime.login({}));assert.equal(readV3AccessToken(h.uni),'');assert.equal(h.values.get('v3_auth_mode'),'binding');assert.equal(h.values.get('v3_access_token'),'old-guest');assert.equal(h.proof(),null)
 })
 
 test('refresh advances UI isolation epoch without persisting the new access',async()=>{

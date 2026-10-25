@@ -1,9 +1,12 @@
 <script>
+import { startAccountStartup } from './common/auth-runtime.js'
 export default {
   onLaunch: function() {
+    startAccountStartup(uni).catch(() => { /* preserve selected identity; Home offers reauthentication */ })
     console.log('HarmonyAI App Launch')
   },
   onShow: function() {
+    startAccountStartup(uni).catch(() => { /* no Guest fallback on unavailable or revoked account */ })
     console.log('App Show')
   },
   onHide: function() {

@@ -55,6 +55,7 @@
 
 import { QUESTIONNAIRE_MANIFEST } from "./questionnaire-v3-manifest.js"
 import { readV3AccessToken } from "./music-library-transport.js"
+import { waitForAccountStartup, hasAccountStartup, hasAccountRuntime, startAccountStartup, prepareAccountRequest } from "./auth-runtime.js"
 import {
   isPersonalizedMode,
   modeLabelFor,
@@ -191,7 +192,14 @@ function apiError(message, code, extra) {
 
 // ===== 真实请求 =====
 
-function realRequest(path, { method = "GET", data = null, headers = {} } = {}) {
+async function realRequest(path, { method = "GET", data = null, headers = {} } = {}) {
+  if (path !== '/api/v3/auth/guest' && typeof uni !== 'undefined' && hasAccountRuntime(uni)) {
+    const unchanged=captureAuthentication(),owner=safeGet('v3_public_user_id')
+    await prepareAccountRequest(uni)
+    try {unchanged()} catch(error) {
+      throw apiError('身份状态已更新，请重试；本次操作尚未发送。',owner===safeGet('v3_public_user_id')?'AUTH_REFRESHED':'OWNER_CHANGED')
+    }
+  }
   return new Promise((resolve, reject) => {
     try {
       uni.request({
@@ -281,12 +289,16 @@ function captureAuthentication() {
 const realInputApi = {
   ensureIdentity() {
     if (identityStartup) return identityStartup
-    const unchanged = captureAuthentication()
+    if (typeof uni !== 'undefined' && hasAccountRuntime(uni)) startAccountStartup(uni).catch(()=>{})
+    const restoring=hasAccountStartup(typeof uni === 'undefined' ? null : uni)
+    let unchanged=captureAuthentication()
     const pending = Promise.resolve().then(async () => {
-      unchanged()
+      await waitForAccountStartup(typeof uni === 'undefined' ? null : uni)
+      if (restoring) unchanged=captureAuthentication()
+      else unchanged()
     const token = readV3AccessToken()
       if (!token) {
-      if (safeGet('v3_auth_mode') === 'registered') throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
+      if (['registered','binding'].includes(safeGet('v3_auth_mode'))) throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
         // A label alone cannot recover ownership. Never silently abandon it.
         if (safeGet('v3_public_user_id')) throw apiError('当前身份凭据不可用，请恢复身份后重试。', 'IDENTITY_REQUIRED')
         return realInputApi.guestAuth()
@@ -308,7 +320,7 @@ const realInputApi = {
     return pending
   },
   async guestAuth(options = {}) {
-    if (safeGet('v3_auth_mode') === 'registered') throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
+    if (['registered','binding'].includes(safeGet('v3_auth_mode'))) throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
     const unchanged = captureAuthentication()
     const data = await realRequest("/api/v3/auth/guest", { method: "POST" })
     unchanged()
@@ -1700,7 +1712,7 @@ export const apiV3 = {
     return INPUT_REAL ? realInputApi.ensureIdentity() : MOCK.token ? Promise.resolve(clone(MOCK.token)) : mockApi.guestAuth()
   },
   captureIdentity: captureAuthentication,
-  canStartNewGuest: () => safeGet('v3_auth_mode') !== 'registered',
+  canStartNewGuest: () => !['registered','binding'].includes(safeGet('v3_auth_mode')),
   createSession() {
     return INPUT_REAL ? realInputApi.createSession() : mockApi.createSession()
   },
