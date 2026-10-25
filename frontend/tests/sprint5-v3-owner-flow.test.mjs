@@ -1181,12 +1181,17 @@ test("api-v3 real mode (default): agent functions use real state and never retur
 
 test("api-v3 real mode: guest auth and session creation use real endpoints", async () => {
   const prev = process.env.HARMONYAI_V3_MODE
+  const previousUni = globalThis.uni
+  let requestedPath = null
+  globalThis.uni = { getStorageSync() { return "" }, request(args) { requestedPath = new URL(args.url).pathname; args.fail() } }
   delete process.env.HARMONYAI_V3_MODE
   try {
     const { apiV3 } = await import("../common/api-v3.js?mode=real-endpoints")
     // 无后端运行时应抛网络错误，而不是静默返回 mock 数据
     await assert.rejects(() => apiV3.guestAuth(), (e) => e.code === "NETWORK_ERROR" || e.code === "REQUEST_FAILED")
+    assert.equal(requestedPath, "/api/v3/auth/guest")
   } finally {
+    globalThis.uni = previousUni
     process.env.HARMONYAI_V3_MODE = prev
   }
 })
