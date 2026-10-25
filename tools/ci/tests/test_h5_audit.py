@@ -1,9 +1,18 @@
 """The compiler can acknowledge known BLOCKED probes, never allowed network."""
 import unittest
-from tools.ci.run_h5 import validate_compiler_denials
+from tools.ci.run_h5 import validate_compiler_denials,compiler_environment
 
 
 class CompilerAuditTests(unittest.TestCase):
+    def test_missing_host_locale_never_requires_a_system_probe(self):
+        self.assertEqual(compiler_environment({}).get('LC_ALL'),'C.UTF-8')
+
+    def test_compiler_locale_is_deterministic_and_credentials_are_not_inherited(self):
+        env=compiler_environment({'LC_ALL':'zh_CN.UTF-8','LANG':'fr_FR.UTF-8','PROVIDER_KEY':'synthetic-secret','PATH':'synthetic-path'})
+        self.assertEqual(env.get('LC_ALL'),'C.UTF-8')
+        self.assertEqual(env.get('LANG'),'C.UTF-8')
+        self.assertNotIn('PROVIDER_KEY',env)
+
     def test_known_discovery_probes_are_still_blocked(self):
         self.assertTrue(validate_compiler_denials(
             [{'api':'child_process.spawnSync','action':'blocked'},{'api':'child_process.exec','action':'blocked'}],

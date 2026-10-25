@@ -16,6 +16,14 @@ HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[1]
 
 
+def compiler_environment(environ):
+    allowed={'PATH','SYSTEMROOT','WINDIR','TEMP','TMP','PATHEXT','LANG','LC_ALL','LC_CTYPE','TZ'}
+    env={k:v for k,v in environ.items() if k.upper() in allowed}
+    # Avoid os-locale's Windows WMIC probe; no extra subprocess permission.
+    env.update(LC_ALL='C.UTF-8',LANG='C.UTF-8',LC_CTYPE='C.UTF-8')
+    return env
+
+
 def validate_compiler_denials(denials,classified):
     kinds={'report_header':'child_process.spawnSync','network_drive_discovery':'child_process.exec'}
     if not isinstance(denials,list) or not isinstance(classified,list) or len(denials)!=len(classified):return False
@@ -39,8 +47,7 @@ def main():
     source=ROOT/'frontend'
     if any((source/name).exists() for name in ['.env','.env.local','.env.production','.env.production.local']):
         parser.error('unreviewed local Vite environment file; refuse to compile private values')
-    allowed={'PATH','SYSTEMROOT','WINDIR','TEMP','TMP','PATHEXT','LANG','LC_ALL','LC_CTYPE','TZ'}
-    env={k:v for k,v in os.environ.items() if k.upper() in allowed}
+    env=compiler_environment(os.environ)
     env.update(CI='true',UNI_INPUT_DIR=str(source),UNI_OUTPUT_DIR=str(evidence/'output'),UNI_PLATFORM='h5',NODE_ENV='production')
     def lines(path):return [json.loads(line) for line in path.read_text(encoding='utf8').splitlines()] if path.exists() else []
     def run(name,guard,arguments):
