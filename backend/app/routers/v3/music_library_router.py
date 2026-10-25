@@ -34,6 +34,7 @@ from backend.app.core.database import get_db
 from backend.app.routers.v3.transport import V3APIError, v3_success
 from backend.app.schemas.v3.common import AuthPrincipal
 from backend.app.schemas.v3.envelope import V3SuccessEnvelope
+from backend.app.schemas.v3.flow_v31 import FiveToneAnalysisReadModel,FiveToneAnalysisReadModelV33
 from backend.app.schemas.v3.music_library import (
     LibraryAudioV1,
     MusicDetailV1,
@@ -73,6 +74,23 @@ from backend.app.services.v3.music_source_service import (
 
 
 router = APIRouter()
+
+
+@router.get('/music/assets/{music_id}/analysis',response_model=V3SuccessEnvelope[FiveToneAnalysisReadModel | FiveToneAnalysisReadModelV33])
+def get_historical_music_analysis(
+    music_id:str,response:Response,
+    context_id:Annotated[str,Query(min_length=1,max_length=64)],
+    principal:AuthPrincipal=Depends(get_current_v3_principal),db:Session=Depends(get_db),
+):
+    from backend.app.services.v3.historical_music_analysis import read_historical_music_analysis
+    from backend.app.services.v3.internal_agent3_service import Agent3NotReady
+    try:
+        model=read_historical_music_analysis(db,owner=principal.internal_user_pk,music_id=music_id,context_id=context_id)
+    except LibraryAccessDenied:raise _not_found() from None
+    except Agent3NotReady as error:raise V3APIError(409,error.code,error.message) from None
+    response.headers['Cache-Control']='no-store'
+    response.headers['Vary']='Authorization'
+    return v3_success(model)
 
 
 def _utc_now() -> datetime:

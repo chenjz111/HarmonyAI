@@ -16,6 +16,7 @@ HARDENING = 'tests/api/v3/test_runtime_auth_config_hardening.py'
 BE2B = 'tests/api/v3/test_be2b_playback_proof_cas.py'
 BE2B_EXPECTED_PASSED = 45
 FEEDBACK_INVENTORY = {
+    'tests/api/v3/test_historical_music_analysis.py': 5,
     'tests/api/v3/test_0013_feedback_foundation.py': 13,
     'tests/api/v3/test_0013_mysql_contract.py': 22,
     'tests/api/v3/test_mysql_migration_statements.py': 11,

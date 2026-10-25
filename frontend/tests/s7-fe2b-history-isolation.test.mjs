@@ -217,6 +217,23 @@ test('History R1: normal history plays use actual onPlay once and keep one contr
   assert.equal(h.requests.filter(x => x.method === 'POST').length, 1)
   assert.equal(h.controllerCreations, 1); h.unload()
 })
+test('W6: a pending optional explanation never blocks an already authorized audio controller',async()=>{
+ const pending=deferred(),h=pageHarness({handler:r=>r.path.endsWith('/analysis')?pending.promise:
+  {...detail('music_a'),source_contexts:[{context_id:'old-task',session_id:'old-session'}],selected_context_id:'old-task'}})
+ await h.start();assert.ok(h.page.playerController);assert.equal(h.page.loading,false);h.auth({owner:'B'});pending.resolve({confirmed_state:'late A'});await h.finish();assert.equal(h.page.basis,null);assert.equal(h.page.music,null);h.unload()
+})
+
+test('W6: selected history loads only its persisted explanation and keeps the same Player',async()=>{
+ const h=pageHarness({handler:r=>r.path.endsWith('/analysis')?{confirmed_state:'旧状态',state_tendency:'旧解析',regulation_mode:'basic_wellness',disclaimer:'历史快照'}:
+  {...detail('music_a'),source_contexts:[{context_id:'old-task',session_id:'old-session'}],selected_context_id:'old-task'}})
+ await h.start();await h.finish();assert.equal(h.page.basis.confirmed_state,'旧状态');assert.equal(h.normalReads,0);assert.equal(h.controllerCreations,1);assert.equal(h.requests.filter(r=>r.method==='POST').length,0);assert.ok(h.requests[1].url.endsWith('/analysis?context_id=old-task'));h.unload()
+})
+
+test('W6: unavailable old explanation keeps legal audio and never borrows current basis',async()=>{
+ const h=pageHarness({handler:r=>{if(r.path.endsWith('/analysis'))throw new Error('snapshot missing');return {...detail('music_a'),source_contexts:[{context_id:'old-task',session_id:'old-session'}],selected_context_id:'old-task'}}})
+ await h.start();await h.finish();assert.equal(h.page.basis,null);assert.equal(h.normalReads,0);assert.ok(h.page.playerController);h.unload()
+})
+
 test('W4: generated Player binds the exact current task/session and enables V3.1 only after real onPlay',async()=>{
  const h=pageHarness({handler:r=>r.method==='POST'?{event_id:r.data.event_id,music_id:'normal',event_type:'play_started'}:
   {...detail('normal'),source_contexts:[{context_id:'task-current',session_id:'session-current'}],selected_context_id:'task-current'}})

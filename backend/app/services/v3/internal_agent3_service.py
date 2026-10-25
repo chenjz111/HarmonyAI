@@ -202,6 +202,15 @@ def load_current_five_tone_read_model(
                 "ASSESSMENT_SNAPSHOT_CONFLICT",
                 "资料可用性状态已更新，请重新完成状态分析。",
             ) from error
+    return load_persisted_five_tone_read_model(diagnosis)
+
+
+def load_persisted_five_tone_read_model(diagnosis: DiagnosisRun) -> FiveToneAnalysisReadModel:
+    """Verify/project this row's stored public snapshot without reading today's input.
+
+    Callers must establish ownership and the appropriate current or historical
+    context first. This pure reader never builds, persists or repairs a model.
+    """
     if (
         diagnosis.five_tone_read_model_json is None
         or diagnosis.five_tone_read_model_checksum is None

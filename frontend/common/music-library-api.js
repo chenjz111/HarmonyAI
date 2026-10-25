@@ -28,6 +28,9 @@ export function createMusicLibraryApi({ request, getOwnerId, enabled = false }) 
     listMusicAssets: (options) => page('/api/v3/me/music-assets', options),
     listMusicFavorites: (options) => page('/api/v3/me/music-favorites', options),
     getMusicAsset: (id, { contextId = null } = {}) => call('GET', `${asset(id)}${contextId ? `?context_id=${encodeURIComponent(contextId)}` : ''}`),
+    getMusicAnalysis: (id, contextId) => contextId
+      ? call('GET', `${asset(id)}/analysis?context_id=${encodeURIComponent(contextId)}`)
+      : Promise.reject(failure('CONTEXT_NOT_AVAILABLE','请先选择来源记录')),
     setMusicTitle: (id, userTitle, expectedVersion) => call('PATCH', `${asset(id)}/title`, {
       user_title: userTitle, expected_version: expectedVersion,
     }),

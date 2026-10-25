@@ -57,6 +57,7 @@ export default {
       loadFailure: null,
       music: null,
       basis: null,
+      historicalAnalysisStatus: "idle",
       userGoal: null,
       playerController: null,
       historicalMusicId: null,
@@ -83,6 +84,13 @@ export default {
     }
   },
   computed: {
+    historicalContextChoices() {
+      return this.historicalContexts.map((item,index)=>({...item,display_label:'来源记录 '+(index+1)}))
+    },
+    historicalContextLabel() {
+      const index = this.historicalContexts.findIndex(item=>item.context_id === this.selectedHistoricalContext)
+      return index < 0 ? '选择来源记录，查看当时解析或提交反馈' : '来源记录 '+(index+1)
+    },
     playerPresentation() {
       return buildMusicPresentation({
         music: this.music,
@@ -171,6 +179,7 @@ export default {
       this.playerState = { playing: false, currentTime: 0, duration: 0, error: null }
       this.music = null
       this.basis = null
+      this.historicalAnalysisStatus = "idle"
       this.userGoal = null
       this.favorite = false
       this.favBusy = false
@@ -318,7 +327,7 @@ export default {
           code: "MUSIC_NOT_PLAYABLE",
         })
       }
-      this.basis = null // 历史播放不读取当前会话解析
+      this.basis = null // 历史解析独立加载，绝不读取当前会话解析
       this.userGoal = null
       this.music = {
         music_ref: { music_id: detail.card.music_id, source_type: detail.card.source_type },
@@ -332,6 +341,23 @@ export default {
       }
       this.favorite = detail.card.is_favorite === true
       this.setupPlayerController(generation)
+      if (this.selectedHistoricalContext) this.loadHistoricalAnalysis(api,session,generation,this.historicalMusicId,this.selectedHistoricalContext)
+      else this.historicalAnalysisStatus = "choose"
+    },
+    async loadHistoricalAnalysis(api,session,generation,musicId,contextId) {
+      this.historicalAnalysisStatus = "loading"
+      const current = () => this.isCurrentLoad(generation) && this.historicalSession === session
+      try {
+        const analysis = await api.getMusicAnalysis(musicId,contextId)
+        if (!current()) return
+        if (session.hasOwnerChanged()) throw Object.assign(new Error('身份已切换'),{code:'OWNER_CHANGED'})
+        this.basis = analysis
+        this.historicalAnalysisStatus = analysis ? "ready" : "unavailable"
+      } catch (error) {
+        if (!current()) return
+        if (session.hasOwnerChanged() || ['OWNER_CHANGED','UNAUTHENTICATED','FORBIDDEN'].includes(error.code)) { this.invalidateHistoricalIdentity(); return }
+        this.historicalAnalysisStatus = "unavailable"
+      }
     },
     setupPlayerController(generation = this.loadGeneration) {
       if (!this.isCurrentLoad(generation)) return
@@ -495,8 +521,8 @@ export default {
         <view class="brand-motto"><text>五音和鸣</text><text>心自安宁</text><text class="motto-seal">和</text></view>
       </view>
 
-      <picker v-if="historicalContexts.length" :range="historicalContexts" range-key="context_id" @change="selectHistoricalContext">
-        <view>{{ selectedHistoricalContext ? '来源记录：'+selectedHistoricalContext : '选择来源记录后可提交反馈' }}</view>
+      <picker v-if="historicalContexts.length" :range="historicalContextChoices" range-key="display_label" @change="selectHistoricalContext">
+        <view>{{ historicalContextLabel }}</view>
       </picker>
       <view v-if="loading" class="loading-wrap">
         <view class="loading-ring"></view>
@@ -557,6 +583,8 @@ export default {
           <button class="favorite-control" :disabled="favBusy || !favoriteReady" @click="toggleFavorite">{{ favoriteReady ? (favorite ? '已收藏' : '收藏') : '收藏状态暂不可用' }}</button>
         </view>
         <view class="music-summary-card">
+          <text v-if="historicalAnalysisStatus === 'loading'" class="music-caption">正在读取当时的音乐解析，可先播放。</text>
+          <text v-if="historicalAnalysisStatus === 'unavailable'" class="music-caption">当时的解析暂不可查看，仍可播放可用音乐。</text>
           <view class="summary-heading"><view class="summary-note">♫</view><text>本次音乐</text></view>
           <view class="music-summary-grid">
             <view v-if="playerPresentation.hasPrimaryTone || playerPresentation.modeDisplayLabel" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.primaryTone.displayText || playerPresentation.modeDisplayLabel }}</text><text class="summary-label">{{ toneSummaryLabel }}</text></view>

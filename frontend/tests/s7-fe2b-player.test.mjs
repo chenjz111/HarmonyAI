@@ -143,7 +143,11 @@ test("FE2B: historical player keeps a single controller and never reads session 
   assert.doesNotMatch(playerSource, /uni\.createInnerAudioContext\s*\(/)
   assert.doesNotMatch(playerSource, /\baudioCtx\b/)
   // 历史分支不得复用当前会话解析
-  assert.match(playerSource, /this\.basis = null \/\/ 历史播放不读取当前会话解析/)
+  const historical = playerSource.split('async loadHistorical(')[1].split('setupPlayerController(generation =')[0]
+  assert.doesNotMatch(historical, /getMusicBasis|getCurrentUserGoal/)
+  assert.match(historical, /this\.loadHistoricalAnalysis\(api,session,generation,this\.historicalMusicId,this\.selectedHistoricalContext\)/)
+  assert.match(historical, /api\.getMusicAnalysis\(musicId,contextId\)/)
+  assert.match(historical, /this\.basis = analysis/)
 })
 
 test("FE2B: My page keeps frozen preview by default and never renders HTML", () => {

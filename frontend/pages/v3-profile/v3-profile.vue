@@ -65,6 +65,7 @@
           <text class="music-title">{{ item.display_title }}</text>
           <view v-if="liveSourceEnabled" class="title-action" @click.stop="editTitle(item)"><text>修改标题</text></view>
           <view v-if="liveSourceEnabled" class="title-action" @click.stop="openMusicFeedback(item)"><text>本曲反馈</text></view>
+          <view v-if="liveSourceEnabled" class="title-action" @click.stop="openOriginalSource(item)"><text>生成来源</text></view>
           <view class="music-meta">
             <text>{{ item.duration_label }}</text><text>·</text><text>{{ item.playback_label }}</text>
           </view>
@@ -210,6 +211,10 @@ export default {
     this.library = createMusicLibraryPreview("empty")
   },
   methods: {
+    openOriginalSource(item) {
+      if (!LIVE_SOURCE_ENABLED || !item || !item.music_id || !this.ensureLiveOwner()) return
+      uni.showModal({title:"生成来源",content:"原始资料查看尚未开放，不影响已获授权音乐的播放。",showCancel:false})
+    },
     async submitAccount() {
       if (!this.accountAvailable || this.accountBusy) { this.accountPassword = ""; this.accountError = "账号功能尚未完成平台安全验收"; return }
       const username = this.accountUsername.toLowerCase(), password = this.accountPassword.normalize("NFC")

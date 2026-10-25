@@ -32,7 +32,7 @@ Layer: OFFLINE_VERIFIED. NOT RUN: actual frontend-to-backend platform integratio
 |010|Learning OFF; status/clear product integration incomplete|
 |011|No free tone/instrument recipe UI; preserve|
 |012|W3 reads canonical primary-instrument metadata, neutral illustration fallback; approved material gap remains|
-|013|Original-image linkage/access/policy gate open|
+|013|W6 list source entry with honest unavailable state; original-image linkage/retention/access acceptance open|
 |014|No patient grouping; preserve|
 |015|No duplicate original-image Player block; list source entry incomplete|
 |016|Single-song anonymous sharing remains in full scope; permission/contract gate open|
@@ -84,5 +84,15 @@ Hosted CI run40153170415 on777f214 failed identically on Linux/Windows: identity
 W5 layer: OFFLINE_VERIFIED / WIRED_BUT_DISABLED. NOT RUN: real Keystore, Android, native account HTTPS integration, browser Origin/CSRF/cookie, target Argon2 resource/latency and reviewed production password-blocklist acceptance. No account-system completion claim. UI password input uses documented uni maxlength=-1 and rejects >1024 NFC characters consistently with existing server limits (https://zh.uniapp.dcloud.io/component/input.html); platform input acceptance still NOT RUN.
 
 ## Unchanged boundaries
+
+## W6 — original stored explanation and unavailable source entry
+
+New read-only `/api/v3/music/assets/{music_id}/analysis?context_id=...` binds an owned terminal task/asset to the same owned prescription, diagnosis, session and exact confirmed assessment revision. It reads checksum-verified persisted public FiveToneAnalysis using the existing checksum/legacy projection sequence. Extracted that pure reader from the current reader: current generation still executes all existing current-input/relevance gates first. No medical rule, algorithm, schema checksum, old JSON or authority mutation. Frozen MusicDetailV1 remains unchanged.
+
+Same historical Player loads only the explicit source's old explanation, never today's assessment/UserGoal. Optional explanation is independent of authorized audio controller readiness; slow/failing reads do not block music, identity/session/generation checks discard late results. User sees a loading/unavailable explanation state. Source picker shows ordinal labels rather than internal task IDs. History/favorites source entry explains original-image viewing is unavailable; no image endpoint, fake sample, retention extension or historical backfill.
+
+Evidence: backend RED4f/1p→GREEN8p with existing endpoint; targeted diagnosis/library/proof regression101p; final fixed Feedback/history77p. Frontend initial scope RED2f; optional-latency RED1f→GREEN; final specialty152p; full612p/7f/0skip. Original Guards unchanged. Independent W6 review found no new P1/P2 and noted latency; the additional RED/GREEN addressed that observation. DML rejection during history GET verifies read-only behavior; old checksum/payload unchanged after current input changes. H5 compiler v11-w6-h5 exited0/index generated/manifest unchanged; wrapper remains failed on two blocked compiler discovery probes and missing approved assets, not clean acceptance.
+
+Hosted CI on prior W5 HEAD98c2f961384794edc1bc429d557b0e436d4ffb64 completed SUCCESS (run40153829169). That success is not evidence for this unpushed W6 revision. Android/MySQL/TLS/production HTTPS/platform E2E and original-image retention policy remain NOT RUN/unapproved. W6 is an offline candidate; actual original-image product outcome remains incomplete.
 
 No merge/base or main push, force push, deployment, public account activation, paid Provider, real MySQL instance or Android installation. Original Guard unchanged. Learning OFF; source retention/share/consent policy/medical approval gates stay closed. init_database can automatically apply0013/0014 even when an account router is unregistered: no deployment or existing-database startup is authorized. Known full backend5 collection errors and frontend7 material/evidence gaps remain unresolved, not hidden by specialty CI.

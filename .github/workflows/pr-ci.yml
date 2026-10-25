@@ -45,7 +45,7 @@ jobs:
         run: python -B tools/ci/run.py --suite hardening --evidence-dir "$RUNNER_TEMP/harmonyai-ci/hardening"
       - name: BE-2B PlaybackProof and Epoch CAS specialty
         run: python -B tools/ci/run.py --suite be2b --evidence-dir "$RUNNER_TEMP/harmonyai-ci/be2b"
-      - name: Formal 0013 and Feedback transaction specialty (72 fixed tests)
+      - name: Formal 0013, Feedback and historical analysis specialty (77 fixed tests)
         run: python -B tools/ci/run.py --suite feedback --evidence-dir "$RUNNER_TEMP/harmonyai-ci/feedback"
       - name: Five independent-process feedback/Clear race scenarios
         run: python -B tools/ci/run_feedback_processes.py --evidence-dir "$RUNNER_TEMP/harmonyai-ci/feedback-processes"
@@ -60,7 +60,7 @@ jobs:
       - name: Install locked frontend test dependencies (networked setup, NOT offline evidence)
         working-directory: frontend
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Offline frontend feedback and single Player specialty (148 fixed tests)
+      - name: Offline frontend feedback and single Player specialty (152 fixed tests)
         run: python -B tools/ci/run_frontend.py --suite feedback --evidence-dir "$RUNNER_TEMP/harmonyai-ci/frontend"
       - name: Upload sanitized logs and counts, never databases or credentials
         if: always()

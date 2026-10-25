@@ -87,6 +87,10 @@ async function harness({ missing = null, subscribeThrows = false, subscribeRetur
   return h
 }
 
+test('W6: source entry explains unavailable originals without requesting an image or changing music',async()=>{
+ const h=await harness();try{await h.start();const before=h.requests.length;h.page.openOriginalSource(h.page.visibleItems[0]);assert.equal(h.modals.length,1);assert.match(h.modals[0].content,/尚未开放/);assert.equal(h.requests.length,before);assert.match(source,/@click.stop="openOriginalSource\(item\)"/)}finally{h.close()}
+})
+
 test('W5: disabled account form cannot issue an operation and erases entered password',async()=>{
  const h=await harness();try{h.page.accountPassword='synthetic-long-password';await h.page.submitAccount();assert.equal(h.requests.length,0);assert.equal(h.page.accountPassword,'');assert.equal(h.page.accountBusy,false)}finally{h.close()}
 })
