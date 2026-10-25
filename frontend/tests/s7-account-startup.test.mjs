@@ -154,3 +154,14 @@ test('expired Access is refreshed before library mutation; old operation is neve
   await apiV3.addFavorite('id','matched');assert.equal(writes,2)
  }finally{globalThis.uni=previous}
 })
+
+test('unreadable startup identity storage cannot be mistaken for a first-time Guest',async()=>{
+ const previous=globalThis.uni;let requests=0
+ globalThis.uni={getStorageSync(){throw new Error('storage unavailable')},request(){requests++;throw new Error('unexpected network')}}
+ try{
+  const {apiV3}=await import('../common/api-v3.js?unreadable-startup')
+  await assert.rejects(apiV3.ensureIdentity(),{code:'IDENTITY_REQUIRED'})
+  await assert.rejects(apiV3.guestAuth(),{code:'IDENTITY_REQUIRED'})
+  assert.equal(requests,0)
+ }finally{globalThis.uni=previous}
+})

@@ -286,9 +286,16 @@ function captureAuthentication() {
   }
 }
 
+function requireReadableIdentityStorage() {
+  try {
+    for (const key of ['v3_auth_mode','v3_access_token','v3_public_user_id']) uni.getStorageSync(key)
+  } catch(error) {throw apiError('身份存储暂时不可用，请恢复后重试。','IDENTITY_REQUIRED')}
+}
+
 const realInputApi = {
   ensureIdentity() {
     if (identityStartup) return identityStartup
+    try {requireReadableIdentityStorage()} catch(error) {return Promise.reject(error)}
     if (typeof uni !== 'undefined' && hasAccountRuntime(uni)) startAccountStartup(uni).catch(()=>{})
     const restoring=hasAccountStartup(typeof uni === 'undefined' ? null : uni)
     let unchanged=captureAuthentication()
@@ -320,6 +327,7 @@ const realInputApi = {
     return pending
   },
   async guestAuth(options = {}) {
+    requireReadableIdentityStorage()
     if (['registered','binding'].includes(safeGet('v3_auth_mode'))) throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
     const unchanged = captureAuthentication()
     const data = await realRequest("/api/v3/auth/guest", { method: "POST" })

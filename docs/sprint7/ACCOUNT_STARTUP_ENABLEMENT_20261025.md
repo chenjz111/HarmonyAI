@@ -23,10 +23,10 @@
 
 | 层级 | 状态 |
 |---|---|
-|候选代码/单元验证|启动与恢复11项；Guest/runtime 回归通过；原 R1 后端74项通过|
+|候选代码/单元验证|启动与恢复12项；Guest/runtime 回归通过；原 R1 后端74项通过；首次启动身份存储不可读时不发 Guest 请求|
 |隔离真实 API|原 Node/Python Guard、真实 JWT、正式新建 FK SQLite、现有 R1 路由/Argon2/会话服务；音乐与账号两个场景通过|
 |H5 编译/资源|通过；109/109 资源哈希匹配，原 Guard 与问卷 manifest 未变|
-|前端全量|649 passed /0 failed /0 skipped；后续精确 SHA 的 Hosted 结果记录在 Draft174 与外置状态|
+|前端全量|前一轮649 passed /0 failed /0 skipped；新增存储故障用例后的最新650项结果记录在 Draft174 与外置状态，不混用不同SHA证据|
 |浏览器页面/HTTPS/Cookie/CSRF|NOT RUN；H5 Registered 传输未开放，没有长效 Bearer fallback|
 |Android/Keystore/重定向/系统回收|NOT RUN；只有明确标识的 secure-store、原生网络/音频替身|
 |默认 App|Guest 仍走原 real 路径；账号 runtime 未安装、账号 router 未注册；My 音乐库仍 false/明确预览。候选注入不等于默认可达|
