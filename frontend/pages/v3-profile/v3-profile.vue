@@ -8,13 +8,30 @@
       <text class="mock-badge">{{ sourceBadge }}</text>
     </view>
 
-    <button v-if="liveSourceEnabled" @click="openFeedbackHistory">反馈历史与学习证据</button>
-
     <view class="section-tabs" aria-label="音乐列表切换">
       <view :class="['section-tab', { active: activeSection === 'history' }]" @click="selectSection('history')"><text>历史音乐</text></view>
       <view :class="['section-tab', { active: activeSection === 'favorites' }]" @click="selectSection('favorites')"><text>我的收藏</text></view>
+      <view :class="['section-tab', { active: activeSection === 'preferences' }]" @click="selectSection('preferences')"><text>个性化偏好</text></view>
+      <view :class="['section-tab', { active: activeSection === 'account' }]" @click="selectSection('account')"><text>账号与数据</text></view>
+      <view :class="['section-tab', { active: activeSection === 'about' }]" @click="selectSection('about')"><text>关于</text></view>
     </view>
 
+    <view v-if="activeSection === 'preferences'" class="state-card">
+      <text class="state-title">个性化偏好</text>
+      <text class="state-copy">长期偏好学习尚未开启。收藏不会自动成为学习证据，也不会改变已生成的音乐。</text>
+      <text class="state-copy">可从具体音乐查看或删除反馈。清除学习证据资格会保留未单独删除的历史反馈。</text>
+    </view>
+    <view v-else-if="activeSection === 'account'" class="state-card">
+      <text class="state-title">账号与数据</text>
+      <text class="state-copy">游客可直接体验。游客数据依赖当前有效身份，凭据丢失或过期后不能保证恢复。</text>
+      <button :disabled="true">绑定账号以保留数据（尚未开放）</button>
+      <text class="state-copy">注册与登录正在进行安全验收；目前不能在此切换账号。</text>
+    </view>
+    <view v-else-if="activeSection === 'about'" class="state-card">
+      <text class="state-title">HarmonyAI</text>
+      <text class="state-copy">音乐辅助调养不能替代专业医疗或心理帮助。</text>
+    </view>
+    <template v-else>
     <view v-if="library.status === 'loading' && visibleItems.length === 0" class="state-card">
       <text class="state-title">正在加载音乐记录</text>
       <text class="state-copy">请稍候。</text>
@@ -34,6 +51,7 @@
         <view class="card-main">
           <text class="music-title">{{ item.display_title }}</text>
           <view v-if="liveSourceEnabled" class="title-action" @click.stop="editTitle(item)"><text>修改标题</text></view>
+          <view v-if="liveSourceEnabled" class="title-action" @click.stop="openMusicFeedback(item)"><text>本曲反馈</text></view>
           <view class="music-meta">
             <text>{{ item.duration_label }}</text><text>·</text><text>{{ item.playback_label }}</text>
           </view>
@@ -50,6 +68,7 @@
     <view v-if="library.hasMore && library.status !== 'loading'" class="load-more" @click="loadMore">
       <text class="load-more-text">加载更多</text>
     </view>
+    </template>
 
     <text class="preview-note">{{ sourceNote }}</text>
   </view>
@@ -125,6 +144,7 @@ export default {
   computed: {
     liveSourceEnabled() { return LIVE_SOURCE_ENABLED },
     visibleItems() {
+      if (this.activeSection !== "history" && this.activeSection !== "favorites") return []
       // Computed render guard: never expose a stale page projection even when
       // identity changed while the page stayed visible (no onShow yet).
       if (LIVE_SOURCE_ENABLED && (this.liveDisposed || !this.liveAuthReady || !this.liveIdentity || !this.liveIdentity.matches())) return []
@@ -173,9 +193,10 @@ export default {
     this.library = createMusicLibraryPreview("empty")
   },
   methods: {
-    openFeedbackHistory() {
+    openMusicFeedback(item) {
       if (!LIVE_SOURCE_ENABLED || !this.liveAuthReady || !this.liveIdentity || !this.liveIdentity.matches()) return
-      uni.navigateTo({url:"/pages/v3-feedback/v3-feedback?mode=history"})
+      if (!item || !item.music_id) return
+      uni.navigateTo({url:"/pages/v3-feedback/v3-feedback?mode=history&music_id="+encodeURIComponent(item.music_id)})
     },
     // ===== 数据源（门禁关闭时保持冻结预览 fixture） =====
 
@@ -212,6 +233,7 @@ export default {
 
     selectSection(section) {
       if (this.liveDisposed) return
+      if (["preferences", "account", "about"].includes(section)) { this.activeSection = section; return }
       if (section !== "history" && section !== "favorites") return
       if (LIVE_SOURCE_ENABLED && !this.ensureLiveOwner()) return
       this.activeSection = section
@@ -365,8 +387,8 @@ export default {
 .eyebrow { display: block; color: #6b837c; font-size: 20rpx; font-weight: 700; letter-spacing: .16em; }
 .profile-title { display: block; margin-top: 8rpx; color: #133f38; font-family: "STKaiti", serif; font-size: 54rpx; font-weight: 700; }
 .mock-badge { padding: 10rpx 16rpx; border-radius: 999rpx; color: #805c24; background: #fff2d6; font-size: 20rpx; white-space: nowrap; }
-.section-tabs { display: flex; gap: 14rpx; margin-top: 42rpx; padding: 8rpx; border-radius: 22rpx; background: rgba(255,255,255,.72); }
-.section-tab { flex: 1; padding: 20rpx; border-radius: 16rpx; color: #71847e; text-align: center; font-size: 27rpx; }
+.section-tabs { display: flex; flex-wrap:wrap; gap: 14rpx; margin-top: 42rpx; padding: 8rpx; border-radius: 22rpx; background: rgba(255,255,255,.72); }
+.section-tab { flex: 1 1 27%; padding: 20rpx; border-radius: 16rpx; color: #71847e; text-align: center; font-size: 27rpx; }
 .section-tab.active { color: #fff; background: #2f806b; box-shadow: 0 10rpx 24rpx rgba(27,104,84,.18); }
 .music-list { display: flex; flex-direction: column; gap: 20rpx; margin-top: 28rpx; }
 .music-card { display: flex; justify-content: space-between; gap: 22rpx; padding: 30rpx; border: 1rpx solid rgba(59,112,97,.12); border-radius: 26rpx; background: rgba(255,255,255,.9); box-shadow: 0 14rpx 34rpx rgba(38,91,75,.08); }

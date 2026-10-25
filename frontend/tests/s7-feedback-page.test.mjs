@@ -27,9 +27,17 @@ function harness(handler,{subscriptionFalse=false}={}) {
   for(const [name,fn] of Object.entries(options.methods))page[name]=fn.bind(page)
   for(const [name,fn] of Object.entries(options.computed))Object.defineProperty(page,name,{get:()=>fn.call(page)})
   return {page,calls,storage,uni,options,
-    async start(mode='v31'){const handoff=putHistoricalFeedback(context,()=>true);await options.onLoad.call(page,mode==='history'?{mode:'history'}:{handoff});await flush()},
+    async start(mode='v31'){const handoff=putHistoricalFeedback(context,()=>true);await options.onLoad.call(page,mode==='history'?{mode:'history',music_id:context.music_ref.music_id}:{handoff});await flush()},
     auth(){storage.set('v3_auth_epoch',2);uni.$emit()},unload(){options.onUnload.call(page)}}
 }
+
+test('W4: both per-song history and V3.1 form list only the selected music',async()=>{
+ for(const mode of ['history','v31']){const h=harness(()=>({items:[],total:0,current_feedback_epoch:0,next_cursor:null}));await h.start(mode);assert.ok(h.calls[0].url.endsWith('&music_id=historical-music'));h.unload()}
+})
+
+test('W4: unscoped history cannot issue an owner-wide feedback read',async()=>{
+ const h=harness(()=>{throw new Error('unscoped read')});await h.options.onLoad.call(h.page,{mode:'history'});assert.equal(h.calls.length,0);assert.equal(h.page.feedbackReady,false);h.unload()
+})
 
 test('historical form sends explicit server context and unknown-commit retry preserves exact body/key',async()=>{
   let posts=0

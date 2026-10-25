@@ -86,6 +86,17 @@ async function harness({ missing = null, subscribeThrows = false, subscribeRetur
   return h
 }
 
+test('W4: preference/account/about regions are reachable without issuing authentication or learning writes',async()=>{
+ const h=await harness();try{await h.start();const before=h.requests.length
+ for(const region of ['preferences','account','about']){h.page.selectSection(region);assert.equal(h.page.activeSection,region);assert.equal(h.page.visibleItems.length,0);assert.match(source,new RegExp(`selectSection\\('${region}'\\)`))}
+ assert.equal(h.requests.length,before);assert.doesNotMatch(source,/@click="openFeedbackHistory"/)
+ }finally{h.close()}
+})
+
+test('W4: feedback navigation belongs to a selected music card',async()=>{
+ const h=await harness();try{await h.start();h.page.openMusicFeedback(h.page.visibleItems[0]);assert.deepEqual(h.navigations,['/pages/v3-feedback/v3-feedback?mode=history&music_id=A-music']);h.page.openMusicFeedback(null);assert.equal(h.navigations.length,1)}finally{h.close()}
+})
+
 test('W2: approved isolated live list opens its actual card in the single historical Player',async()=>{
  const h=await harness();try{await h.start();h.page.openMusic(h.page.visibleItems[0]);assert.deepEqual(h.navigations,['/pages/v3-player/v3-player?music_id=A-music']);assert.equal(h.requests.filter(x=>x.method==='POST').length,0)}finally{h.close()}
 })

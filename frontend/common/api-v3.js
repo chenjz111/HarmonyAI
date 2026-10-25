@@ -1735,6 +1735,14 @@ export const apiV3 = {
     return goal && typeof goal === "object" ? clone(goal) : null
   },
 
+  getCurrentMusicContext() {
+    if (AGENT_MOCK) return null
+    const state = loadFlowState()
+    const musicId = state.music && state.music.music_ref && state.music.music_ref.music_id
+    if (!musicId || !state.task_id || !state.session_id) return null
+    return {music_id:musicId,source_context_id:state.task_id,session_id:state.session_id}
+  },
+
   // 问卷：题目为权威清单（前后端同源），三种模式一致，必填性由会话权威模式决定；
   // 提交依赖后端综合评估能力（尚未交付）：real 模式返回等待状态，mock/hybrid 走演示状态机
   getQuestionnaireSchema() {

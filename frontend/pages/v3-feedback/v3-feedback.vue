@@ -64,6 +64,7 @@ export default {
   data() {
     return {
       feedbackMode: "legacy", feedbackContext: null, feedbackItems: [], feedbackEpoch: 0,
+      feedbackMusicId: null,
       feedbackApi: null, feedbackGeneration: 0, feedbackReady: false, feedbackAuthHandler: null,
       feedbackDraft: null, clearDraft: null, feedbackCursor: null, feedbackDetail: null, feedbackDetailSequence: 0,
       changeLabel: "", // 选填：much_better | slightly_better | no_change | worse
@@ -107,6 +108,10 @@ export default {
     if (!query.handoff && query.mode !== "history") return
     this.feedbackMode = query.mode === "history" ? "history" : "v31"
     try {
+      if (this.feedbackMode === "history") {
+        if (typeof query.music_id !== "string" || !query.music_id.trim()) throw Object.assign(new Error("请从具体音乐查看反馈"), {code:"FEEDBACK_SOURCE_NOT_FOUND"})
+        this.feedbackMusicId = query.music_id
+      }
       if (!MUSIC_LIBRARY_LIVE_ENABLED) throw new Error("FEATURE_NOT_READY")
       if (typeof uni.$on !== "function" || typeof uni.$off !== "function" || typeof uni.$emit !== "function") throw new Error("IDENTITY_REQUIRED")
       this.feedbackAuthHandler = () => this.invalidateFeedback()
@@ -116,6 +121,7 @@ export default {
         getOwnerId:()=>uni.getStorageSync("v3_public_user_id"),getAccessToken:token,
         getAuthEpoch:()=>uni.getStorageSync("v3_auth_epoch"),enabled:true})
       if (this.feedbackMode === "v31") this.feedbackContext = consumeHistoricalFeedback(query.handoff)
+      if (this.feedbackContext) this.feedbackMusicId = this.feedbackContext.music_ref.music_id
       await this.refreshFeedback()
       this.feedbackReady = this.feedbackApi.isCurrent()
     } catch (error) {
@@ -146,13 +152,14 @@ export default {
       if (this.feedbackApi) this.feedbackApi.invalidate()
       this.feedbackGeneration++; this.feedbackDetailSequence++
       this.feedbackReady = false; this.feedbackContext = null; this.feedbackItems = []
+      this.feedbackMusicId = null
       this.feedbackDraft = null; this.clearDraft = null; this.feedbackDetail = null
       this.changeLabel = ""; this.continueUse = ""; this.likedFeatures = []; this.adjustments = []; this.comment = ""
       this.submitted = false; this.submitting = false; this.submitError = "请重新进入反馈页面"
     },
     async refreshFeedback(append = false) {
       const generation = this.feedbackGeneration
-      const data = await this.feedbackApi.list({cursor:append ? this.feedbackCursor : null})
+      const data = await this.feedbackApi.list({cursor:append ? this.feedbackCursor : null,musicId:this.feedbackMusicId})
       if (generation !== this.feedbackGeneration) return
       this.feedbackItems = append ? this.feedbackItems.concat(data.items) : data.items
       this.feedbackEpoch = data.current_feedback_epoch; this.feedbackCursor = data.next_cursor
@@ -185,7 +192,7 @@ export default {
     async clearEvidence() {
       if (!this.feedbackReady || this.submitting) return
       const generation = this.feedbackGeneration
-      const confirmed = await new Promise(resolve=>uni.showModal({title:"清除学习证据资格",content:"此前反馈将不再作为未来长期学习证据，历史反馈仍可查看。当前长期学习未开启。",success:result=>resolve(result.confirm),fail:()=>resolve(false)}))
+      const confirmed = await new Promise(resolve=>uni.showModal({title:"清除所有音乐的学习证据资格",content:"这会清除当前身份所有音乐在截止时间之前的反馈学习证据资格，不仅是本曲。历史反馈仍可查看。当前长期学习未开启。",success:result=>resolve(result.confirm),fail:()=>resolve(false)}))
       if (!confirmed || generation !== this.feedbackGeneration || !this.feedbackApi.isCurrent()) return
       if (!this.clearDraft) this.clearDraft = {key:operationKey(),body:{expected_evidence_epoch:this.feedbackEpoch}}
       this.submitting = true
@@ -336,7 +343,7 @@ export default {
       </view>
 
       <view v-else-if="feedbackMode === 'history'" class="feedback-history">
-        <text class="page-title">反馈历史</text>
+        <text class="page-title">本曲反馈历史</text>
         <text class="section-hint">长期偏好学习当前未开启；清除证据资格不会删除历史。</text>
         <view v-for="item in feedbackItems" :key="item.feedback_id" class="feedback-section-card">
           <text @click="viewFeedback(item.feedback_id)">{{ item.submitted_at }} · {{ item.post_state ? item.post_state.change_label : '历史反馈' }}</text>
@@ -344,7 +351,7 @@ export default {
         </view>
         <view v-if="feedbackDetail" class="feedback-section-card"><text>{{ feedbackDetail.post_state ? feedbackDetail.post_state.change_label : '历史反馈' }}</text><text>{{ feedbackDetail.continue_use || '' }}</text></view>
         <button v-if="feedbackCursor" @click="refreshFeedback(true)">加载更多</button>
-        <button :disabled="submitting || !feedbackReady" @click="clearEvidence">清除学习证据资格</button>
+        <button :disabled="submitting || !feedbackReady" @click="clearEvidence">清除所有音乐的学习证据资格</button>
         <text v-if="submitError" class="error-text">{{ submitError }}</text>
       </view>
       <view v-else>

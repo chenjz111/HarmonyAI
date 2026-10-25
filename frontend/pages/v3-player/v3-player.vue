@@ -247,12 +247,50 @@ export default {
         this.simulated = !!apiV3.AGENT_SIMULATED
         this.basis = basis
         this.userGoal = apiV3.getCurrentUserGoal()
+        await this.attachGeneratedFeedback(generation, music)
+        unchanged()
+        if (!this.isCurrentLoad(generation)) return
         this.setupPlayerController(generation)
       } catch (e) {
         if (this.isCurrentLoad(generation)) this.loadFailure = e
       } finally {
         if (this.isCurrentLoad(generation)) this.loading = false
       }
+    },
+    async attachGeneratedFeedback(generation, music) {
+      if (!HISTORICAL_LIBRARY_ENABLED || typeof apiV3.getCurrentMusicContext !== "function") return
+      const source = apiV3.getCurrentMusicContext()
+      if (!source || source.music_id !== music.music_ref.music_id || !source.source_context_id || !source.session_id) return
+      if (!this.ensureHistoricalAuthEvents()) return
+      const {api, session} = this.createLibraryPlaybackSession()
+      this.historicalSession = session
+      this.historicalLibraryApi = api
+      try {
+        const detail = await session.open(source.music_id, {context:source.source_context_id})
+        if (!this.isCurrentLoad(generation) || this.historicalSession !== session || session.hasOwnerChanged()) return
+        const selected = (detail.source_contexts || []).find(item => item.context_id === source.source_context_id)
+        if (detail.selected_context_id !== source.source_context_id || !selected || selected.session_id !== source.session_id) throw new Error("CONTEXT_NOT_AVAILABLE")
+      } catch (error) {
+        session.reset()
+        if (this.historicalSession === session) { this.historicalSession = null; this.historicalLibraryApi = null }
+        if (error.code === "OWNER_CHANGED") throw error
+        // Optional feedback proof failure must not replace the current context or disable existing audio.
+      }
+    },
+    createLibraryPlaybackSession() {
+      const api = createMusicLibraryApi({
+        request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
+        getOwnerId: readOwnerId,
+        enabled: true,
+      })
+      const session = createHistoricalMusicSession({
+        api,
+        getOwnerId: readOwnerId,
+        getAccessToken: () => readV3AccessToken(),
+        getAuthEpoch: readAuthEpoch,
+        newEventId: () => "play-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      })
+      return {api, session}
     },
     // 历史通道：music_id → 受控 MusicDetailV1（音频来自历史持久化上下文）。
     // 不 ensureMusicBasis、不读取当前 session/UserGoal 替代旧资料。
@@ -266,18 +304,7 @@ export default {
       if (!this.ensureHistoricalAuthEvents()) {
         throw Object.assign(new Error("当前环境无法安全同步身份，历史播放暂不可用。"), { code: "FEATURE_NOT_READY" })
       }
-      const api = createMusicLibraryApi({
-        request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
-        getOwnerId: readOwnerId,
-        enabled: true,
-      })
-      const session = createHistoricalMusicSession({
-        api,
-        getOwnerId: readOwnerId,
-        getAccessToken: () => readV3AccessToken(),
-        getAuthEpoch: readAuthEpoch,
-        newEventId: () => "play-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
-      })
+      const {api, session} = this.createLibraryPlaybackSession()
       // Register pending work before await so unload/auth change can reset it.
       this.historicalSession = session
       this.historicalLibraryApi = api
@@ -441,6 +468,10 @@ export default {
           if (this.playerController) this.playerController.dispose()
           uni.navigateTo({url:"/pages/v3-feedback/v3-feedback?handoff="+encodeURIComponent(handoff)})
         } catch (error) { uni.showToast({title:"请先选择来源记录并实际播放",icon:"none"}) }
+        return
+      }
+      if (HISTORICAL_LIBRARY_ENABLED) {
+        uni.showToast({title:"请确认本次来源并实际播放后再反馈",icon:"none"})
         return
       }
       if (this.playerController) this.playerController.dispose()

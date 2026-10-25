@@ -23,12 +23,12 @@ Layer: OFFLINE_VERIFIED. NOT RUN: actual frontend-to-backend platform integratio
 |001|W1 offline candidate; account UI/platform acceptance incomplete|
 |002|No self/other or patient profiles; preserve|
 |003|Subject/negation safety review154 open|
-|004|My five regions incomplete; remove global feedback navigation|
+|004|W4 five visible regions and scoped music feedback navigation; account/preference functionality still gated|
 |005|W3 visible safe title/favorite and disabled-share candidate; platform/layout acceptance incomplete|
 |006|Backend title/CAS exists; user entry/cross-page consistency incomplete|
 |007|Backend history exists; default UI still preview|
 |008|Same Player candidate exists; navigation/integration gate closed|
-|009|R1 backend exists; generated and historical per-song UI incomplete|
+|009|W4 generated/history per-song V3.1 candidate and scoped list/delete; default gate/platform acceptance incomplete|
 |010|Learning OFF; status/clear product integration incomplete|
 |011|No free tone/instrument recipe UI; preserve|
 |012|W3 reads canonical primary-instrument metadata, neutral illustration fallback; approved material gap remains|
@@ -60,6 +60,16 @@ RED7f→GREEN7p; envelope regression RED→GREEN; independent review found whole
 H5 compiler exited0 and generated index.html in v11-w3-h5; manifest hash unchanged. This is not a clean build acceptance: missing approved static assets remain unresolved, and the existing build wrapper exited1 because Guard denied Rollup report-header spawnSync and Vite `net use` discovery. Neither process ran; no network allowed and Guard was not relaxed. The final small control-placement adjustment is covered by final specialty/full tests; H5 compiler snapshot predates that layout adjustment. Android/HTTPS/platform layout/audio acceptance NOT RUN.
 
 Layer: OFFLINE_VERIFIED candidate; no whole-W3/device acceptance. Sharing remains a required full-S7 feature, policy/permission gated. Next W4: five My regions and per-song feedback scope; normal-generation V3.1 handoff and account bridge still incomplete.
+
+## W4 — per-song feedback and five My regions
+
+My now exposes history, favorites, preferences, account/data and about. Removed the independent top-level feedback entry; each music card opens its own scoped history. Preference region states learning OFF and favorite/evidence separation; account region explains Guest recovery limits and disabled binding. These explanatory regions do not constitute registered-account or preference activation.
+
+Generated Player reuses the existing library playback session/proof helper only under the existing controlled gate. Its cached current task/session is matched to the server's selected context/session; mismatches close feedback without replacing context or invoking legacy feedback. One existing controller: load itself creates no play event; actual onPlay unlocks the explicit V3.1 handoff. Legacy default path retained with gate false. Both handoff form and history GET include music_id; unscoped history fails before reads. Clear still acts on all music for the current identity, explicitly stated in button and confirmation; history preserved, learning OFF.
+
+Evidence: regions/scope RED4f→GREEN; generated proof RED2f→GREEN. Final frontend specialty135p; full595p/7f/0skip. Guard unchanged. Existing backend Feedback/receipt/migration specialty72p under original offline Guard. Independent W4 read-only review found no new P1/P2. H5 compiler snapshot v11-w4-h5 exited0/index generated/manifest unchanged; wrapper still failed on blocked local compiler discovery probes, and approved static assets remain missing. Actual default live library/registered UI, platform E2E, Android, MySQL/TLS and production HTTPS NOT RUN.
+
+W4 layer: OFFLINE_VERIFIED / WIRED_BUT_DISABLED, not full product acceptance. No claim that disabled binding, inactive learning or seven existing frontend failures are complete. Next W5 runtime registered/Guest bridge and candidate account interaction; W6 historical stored explanation/source, W7 policy/medical, W8 CI and acceptance.
 
 ## Unchanged boundaries
 

@@ -101,7 +101,7 @@ function pageHarness({ handler = null, missing = null, subscriptionFalse = false
       h.contexts.push(ctx); return ctx
     },
     request(args) {
-      const request = { method: args.method, path: new URL(args.url).pathname, data: args.data }
+      const request = { method: args.method, path: new URL(args.url).pathname, url:args.url, data: args.data }
       h.requests.push(request)
       Promise.resolve().then(() => handler ? handler(request) : request.method === 'GET' ? detail(request.path.split('/').at(-1)) : {})
         .then(data => args.success({ statusCode: 200, data: { ok: true, data } }),
@@ -120,6 +120,7 @@ function pageHarness({ handler = null, missing = null, subscriptionFalse = false
     getMusicBasis: async () => ({ synthetic: true }), getCurrentUserGoal: () => null,
     fetchAuthorizedAudio: async () => { h.downloads++; return '/synthetic/local.wav' },
   }
+  h.api = apiV3
   const context = { uni, pageOptions: null, deps: { apiV3, ...presentation, ...seek, createMusicLibraryApi,
     createHistoricalMusicSession, resolvePlayableAudio, putHistoricalFeedback,
     readV3AccessToken: () => transport.readV3AccessToken(uni),
@@ -216,6 +217,23 @@ test('History R1: normal history plays use actual onPlay once and keep one contr
   assert.equal(h.requests.filter(x => x.method === 'POST').length, 1)
   assert.equal(h.controllerCreations, 1); h.unload()
 })
+test('W4: generated Player binds the exact current task/session and enables V3.1 only after real onPlay',async()=>{
+ const h=pageHarness({handler:r=>r.method==='POST'?{event_id:r.data.event_id,music_id:'normal',event_type:'play_started'}:
+  {...detail('normal'),source_contexts:[{context_id:'task-current',session_id:'session-current'}],selected_context_id:'task-current'}})
+ h.api.getCurrentMusicContext=()=>({music_id:'normal',source_context_id:'task-current',session_id:'session-current'})
+ await h.start({});await h.finish();assert.equal(h.controllerCreations,1);assert.ok(h.requests[0].url.endsWith('?context_id=task-current'))
+ h.page.goFeedback();assert.equal(h.navigations.length,0);await h.page.togglePlay();assert.equal(h.requests.filter(r=>r.method==='POST').length,0)
+ h.contexts[0].events.Play();await flush();await flush();h.page.goFeedback();assert.equal(h.navigations.length,1)
+ const handoff=new URL('https://synthetic'+h.navigations[0]).searchParams.get('handoff'),value=consumeHistoricalFeedback(handoff)
+ assert.equal(value.session_id,'session-current');assert.equal(value.source_context_id,'task-current');assert.equal(value.music_ref.music_id,'normal');assert.equal(value.playback_event_id,h.requests.find(r=>r.method==='POST').data.event_id);h.unload()
+})
+
+test('W4: generated context from another session cannot silently fall back to legacy feedback',async()=>{
+ const h=pageHarness({handler:()=>({...detail('normal'),source_contexts:[{context_id:'task-current',session_id:'other'}],selected_context_id:'task-current'})})
+ h.api.getCurrentMusicContext=()=>({music_id:'normal',source_context_id:'task-current',session_id:'session-current'})
+ await h.start({});await h.finish();assert.ok(h.page.playerController);assert.equal(h.page.historicalSession,null);h.page.goFeedback();assert.equal(h.navigations.length,0);assert.equal(h.requests.filter(r=>r.method==='POST').length,0);h.unload()
+})
+
 test('History R1: legacy non-history load, pause and seek remain compatible', async () => {
   const h = pageHarness({ missing: '$on' }); await h.start({}); await h.finish()
   assert.equal(h.normalReads, 1); assert.equal(h.page.music.music_ref.music_id, 'normal')
