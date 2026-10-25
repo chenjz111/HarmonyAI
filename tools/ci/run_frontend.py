@@ -18,6 +18,7 @@ if evidence.is_relative_to(source.parent) or source.parent.is_relative_to(eviden
     parser.error('evidence must be outside source')
 evidence.mkdir(parents=True,exist_ok=False)
 inventory = {
+ 'tests/s7-guest-continuity.test.mjs':10,
  'tests/s7-account-security.test.mjs':12,
  'tests/s7-fe2b-history-isolation.test.mjs':25,
  'tests/s7-fe2b-player.test.mjs':11,

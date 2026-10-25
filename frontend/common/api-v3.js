@@ -265,9 +265,51 @@ function realUploadDocument(filePath, fileName) {
 
 // ===== 真实接口（输入段） =====
 
+let identityStartup = null
+function captureAuthentication() {
+  const keys = ['v3_access_token', 'v3_public_user_id', 'v3_auth_epoch']
+  const values = keys.map(key => safeGet(key))
+  return () => {
+    if (!keys.every((key, i) => safeGet(key) === values[i])) {
+      throw apiError('身份已切换，请重新进入。', 'OWNER_CHANGED')
+    }
+  }
+}
+
 const realInputApi = {
+  ensureIdentity() {
+    if (identityStartup) return identityStartup
+    const unchanged = captureAuthentication()
+    const pending = Promise.resolve().then(async () => {
+      unchanged()
+      const token = safeGet('v3_access_token')
+      if (!token) {
+        // A label alone cannot recover ownership. Never silently abandon it.
+        if (safeGet('v3_public_user_id')) throw apiError('当前身份凭据不可用，请恢复身份后重试。', 'IDENTITY_REQUIRED')
+        return realInputApi.guestAuth()
+      }
+      const identity = await realRequest('/api/v3/auth/identity')
+      unchanged()
+      if (!identity || typeof identity.public_user_id !== 'string' || !identity.public_user_id ||
+          !['guest', 'registered'].includes(identity.auth_type)) throw apiError('身份响应不可用。', 'INVALID_RESPONSE')
+      // Only the authenticated server may repair a cached display label.
+      if (safeGet('v3_public_user_id') !== identity.public_user_id) {
+        clearFlowState()
+        safeSet('v3_public_user_id', identity.public_user_id)
+        announceV3AuthChange()
+      }
+      return identity
+    })
+    identityStartup = pending
+    pending.finally(() => { if (identityStartup === pending) identityStartup = null }).catch(() => {})
+    return pending
+  },
   async guestAuth() {
+    const unchanged = captureAuthentication()
     const data = await realRequest("/api/v3/auth/guest", { method: "POST" })
+    unchanged()
+    if (!data || typeof data.access_token !== 'string' || !data.access_token ||
+        typeof data.public_user_id !== 'string' || !data.public_user_id) throw apiError('身份响应不可用。', 'INVALID_RESPONSE')
     safeSet("v3_access_token", data.access_token)
     safeSet("v3_public_user_id", data.public_user_id)
     announceV3AuthChange()
@@ -275,12 +317,14 @@ const realInputApi = {
   },
 
   async createSession() {
+    const unchanged = captureAuthentication()
     // 必须携带 flow_contract_version，否则后端创建的是 legacy 会话（无 input-transitions）
     const entry = await realRequest("/api/v3/sessions", {
       method: "POST",
       data: { flow_contract_version: "v3-owner-flow-1" },
       headers: { "Idempotency-Key": idempotencyKey() },
     })
+    unchanged()
     clearFlowState()
     saveFlowState({
       session_id: entry.session_id,
@@ -1645,6 +1689,10 @@ export const apiV3 = {
   guestAuth() {
     return INPUT_REAL ? realInputApi.guestAuth() : mockApi.guestAuth()
   },
+  ensureIdentity() {
+    return INPUT_REAL ? realInputApi.ensureIdentity() : MOCK.token ? Promise.resolve(clone(MOCK.token)) : mockApi.guestAuth()
+  },
+  captureIdentity: captureAuthentication,
   createSession() {
     return INPUT_REAL ? realInputApi.createSession() : mockApi.createSession()
   },

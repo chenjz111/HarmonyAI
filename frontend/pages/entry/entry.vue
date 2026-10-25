@@ -87,17 +87,25 @@ export default {
       error: "",
     }
   },
-  // 首页是 tabBar 页面，返回时实例不会重新创建；每次重新显示都开始一轮新评估。
+  // New assessment sessions may be created; the authenticated owner must survive.
   onShow() {
     this.init()
   },
   methods: {
     async init() {
+      if (this.entryInitialization) return this.entryInitialization
+      const pending = this.initializeEntry()
+      this.entryInitialization = pending
+      try { return await pending } finally { if (this.entryInitialization === pending) this.entryInitialization = null }
+    },
+    async initializeEntry() {
       this.loading = true
       this.error = ""
       try {
-        await apiV3.guestAuth()
+        await apiV3.ensureIdentity()
+        const assertIdentity = apiV3.captureIdentity()
         const session = await apiV3.createSession()
+        assertIdentity()
         apiV3.rememberSession(session)
         this.entry = {
           page: "entry",
