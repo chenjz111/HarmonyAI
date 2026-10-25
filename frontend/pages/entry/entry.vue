@@ -20,6 +20,7 @@
           <text class="error-title">暂时无法开始</text>
           <text class="error-desc">{{ error }}</text>
           <button class="retry-btn" @click="init">重试</button>
+          <button v-if="canRestartGuest" :disabled="restartingGuest" class="retry-btn" @click="restartGuest">使用新的游客身份</button>
           <text class="error-hint">若持续出现，请检查网络后再次尝试 · 你不必着急</text>
         </view>
         <view v-else class="entry-content">
@@ -49,7 +50,7 @@
           <view class="home-footer">
             <text class="home-footer-copy">MUSIC HEALS A BETTER YOU</text>
             <view class="footer-stroke"></view>
-            <text class="footer-hint">全程数据仅用于本次聆听</text>
+            <text class="footer-hint">音乐辅助调养，不能替代专业医疗或心理帮助</text>
           </view>
         </view>
       </view>
@@ -85,13 +86,36 @@ export default {
       submitting: false,
       submittingId: null,
       error: "",
+      canRestartGuest: false,
+      restartingGuest: false,
+      recoveryGeneration: 0,
     }
   },
   // New assessment sessions may be created; the authenticated owner must survive.
   onShow() {
     this.init()
   },
+  onHide() { this.recoveryGeneration++; this.canRestartGuest = false; this.restartingGuest = false },
+  onUnload() { this.recoveryGeneration++; this.canRestartGuest = false; this.restartingGuest = false },
   methods: {
+    async restartGuest() {
+      if (!this.canRestartGuest || this.restartingGuest) return
+      const unchanged = apiV3.captureIdentity()
+      const generation = this.recoveryGeneration
+      this.restartingGuest = true
+      try {
+        const confirmed = await new Promise(resolve=>uni.showModal({title:"使用新的游客身份",content:"旧记录不会自动转移。旧身份凭据失效或丢失时，可能无法恢复访问。确认使用新的游客身份？",success:result=>resolve(result.confirm),fail:()=>resolve(false)}))
+        if (!confirmed || generation !== this.recoveryGeneration) return
+        unchanged()
+        await apiV3.guestAuth({beforeCommit:()=>{
+          if (generation !== this.recoveryGeneration) throw Object.assign(new Error('页面已离开'),{code:'OWNER_CHANGED'})
+          unchanged()
+        }})
+        if (generation !== this.recoveryGeneration) return
+        await this.init()
+      } catch (error) { if (generation === this.recoveryGeneration) this.error = error.message || "未能确认新身份，请重试" }
+      finally { if (generation === this.recoveryGeneration) this.restartingGuest = false }
+    },
     async init() {
       if (this.entryInitialization) return this.entryInitialization
       const pending = this.initializeEntry()
@@ -101,6 +125,7 @@ export default {
     async initializeEntry() {
       this.loading = true
       this.error = ""
+      this.canRestartGuest = false
       try {
         await apiV3.ensureIdentity()
         const assertIdentity = apiV3.captureIdentity()
@@ -120,6 +145,8 @@ export default {
         }
       } catch (e) {
         this.error = e.message || "加载失败，请重试"
+        this.canRestartGuest = ['UNAUTHENTICATED','IDENTITY_REQUIRED'].includes(e.code) &&
+          typeof apiV3.canStartNewGuest === 'function' && apiV3.canStartNewGuest()
       } finally {
         this.loading = false
       }

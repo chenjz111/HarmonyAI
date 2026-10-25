@@ -25,7 +25,7 @@ Layer: OFFLINE_VERIFIED. NOT RUN: actual frontend-to-backend platform integratio
 |003|Subject/negation safety review154 open|
 |004|W4 five visible regions and scoped music feedback navigation; account/preference functionality still gated|
 |005|W3 visible safe title/favorite and disabled-share candidate; platform/layout acceptance incomplete|
-|006|Backend title/CAS exists; user entry/cross-page consistency incomplete|
+|006|Private-title UI/CAS and W2/W3 return/read candidate exist; live platform consistency NOT RUN|
 |007|Backend history exists; default UI still preview|
 |008|Same Player candidate exists; navigation/integration gate closed|
 |009|W4 generated/history per-song V3.1 candidate and scoped list/delete; default gate/platform acceptance incomplete|
@@ -41,7 +41,7 @@ Layer: OFFLINE_VERIFIED. NOT RUN: actual frontend-to-backend platform integratio
 |019|Explanation depth requires approved guideline; preserve stored authority|
 |020|Medical audit only; no algorithm/rule changes authorized|
 
-Next: W2 existing library→single Player/title/favorite path with explicit isolated integration configuration, no permanent Live Flag activation. Preserve existing schemas/state/controllers. Every stage records default-path reachability separately from injected/offline/platform evidence.
+Sequence: W1–W6 offline candidates are recorded below; W7/W8 retain policy/platform end gates. No permanent Live Flag activation. Preserve existing schemas/state/controllers; record default reachability separately from injected/offline/platform evidence.
 
 ## W2 — existing history to the single Player
 
@@ -83,8 +83,6 @@ Hosted CI run40153170415 on777f214 failed identically on Linux/Windows: identity
 
 W5 layer: OFFLINE_VERIFIED / WIRED_BUT_DISABLED. NOT RUN: real Keystore, Android, native account HTTPS integration, browser Origin/CSRF/cookie, target Argon2 resource/latency and reviewed production password-blocklist acceptance. No account-system completion claim. UI password input uses documented uni maxlength=-1 and rejects >1024 NFC characters consistently with existing server limits (https://zh.uniapp.dcloud.io/component/input.html); platform input acceptance still NOT RUN.
 
-## Unchanged boundaries
-
 ## W6 — original stored explanation and unavailable source entry
 
 New read-only `/api/v3/music/assets/{music_id}/analysis?context_id=...` binds an owned terminal task/asset to the same owned prescription, diagnosis, session and exact confirmed assessment revision. It reads checksum-verified persisted public FiveToneAnalysis using the existing checksum/legacy projection sequence. Extracted that pure reader from the current reader: current generation still executes all existing current-input/relevance gates first. No medical rule, algorithm, schema checksum, old JSON or authority mutation. Frozen MusicDetailV1 remains unchanged.
@@ -95,4 +93,44 @@ Evidence: backend RED4f/1p→GREEN8p with existing endpoint; targeted diagnosis/
 
 Hosted CI on prior W5 HEAD98c2f961384794edc1bc429d557b0e436d4ffb64 completed SUCCESS (run40153829169). That success is not evidence for this unpushed W6 revision. Android/MySQL/TLS/production HTTPS/platform E2E and original-image retention policy remain NOT RUN/unapproved. W6 is an offline candidate; actual original-image product outcome remains incomplete.
 
-No merge/base or main push, force push, deployment, public account activation, paid Provider, real MySQL instance or Android installation. Original Guard unchanged. Learning OFF; source retention/share/consent policy/medical approval gates stay closed. init_database can automatically apply0013/0014 even when an account router is unregistered: no deployment or existing-database startup is authorized. Known full backend5 collection errors and frontend7 material/evidence gaps remain unresolved, not hidden by specialty CI.
+## W7 — policy and independent medical boundaries
+
+Read-only live #154/comment/PR156 verification located the actual original audit inputs at b1e7a50710d6e7fce4a7914cb953dcb961b695ad (not in this checkout). Reproduced their exact bytes against current code under the original Guard:38p/2f/0skip. Failures still occur in Conflict.fact_ids validation because fixture identities collide, before the comparable-time assertion. No temporal medical conclusion follows. Raw characterization observes subject admission/public-reason filtering and fact/link direction at synthetic seams; it does not prove clinical correctness or full upstream readiness. Original files were preserved in private local evidence, then temporary inputs removed from this checkout; no assertion/fixture/rule was changed or republished over PR156. Independent Two-Mode V2.1 sign-off chain remains open; Three-Mode V1 sign-off must not substitute for it.
+
+Pending product contracts, not deleted scope:
+
+| Capability | Concrete unresolved decision / preserved threat boundary |
+|---|---|
+|Original images PD013|Retention/deletion/backup policy and authorized source revision linkage; no endpoint/backfill/retention extension, unavailable UI only|
+|Anonymous single-song sharing PD016|Audio licensing, grant lifetime/revocation authority and safe metadata; no public URL, token-in-URL or owner-wide stream capability|
+|Soft preference PD010|Versioned active consent/listener/source eligibility and approved soft policy; true consent rejected, learning and new-generation consumption OFF; favorite never evidence|
+|Medical PD003/020|R1/R2 fixture follow-up and independent adjudication; no rule, direction, coverage, mode or historical authority changes|
+
+## W8 — continuity recovery and acceptance status
+
+Expired/missing Guest authority now has an explicit, warned new-Guest action; cancellation, network failures, registered reauthentication and changed/hidden/unloaded page do not replace identity. Original Guest expiry is never extended and old server records are never deleted or imported. Independent review reproduced a response-after-hide/unload race: RED2f→GREEN after moving lifecycle validation into guest credential commit, before token/owner/flow changes. Initial recovery RED4f and lifecycle RED→GREEN; final specialty160p; full620p/7f/0skip, unchanged Guard. Existing Home onShow session-start assertion retained unchanged. Removed the unsupported Home claim that all data was used only for the current listening session; no new retention promise.
+
+Final H5 compiler snapshot v11-w8-h5 exited0 with index generated and manifest unchanged; acceptance wrapper exited1 on the same two blocked compiler discovery probes. Approved static assets remain missing. Build/device acceptance is not green.
+
+| Journey | Evidence now | Remaining actual product acceptance |
+|---|---|---|
+|U01 Guest/reopen|Server identity+actual page/facade offline behavior; explicit recovery|Default platform generation/restart E2E NOT RUN|
+|U02 source/history|Immutable old-analysis HTTP+Player candidate; unavailable original entry|Actual original-image/revision access and retention approval missing|
+|U03 generated-unplayed history|Existing backend list/proof regressions|Live default list/platform acceptance NOT RUN|
+|U04 single Player|Controlled actual page/controller/navigation/favorite tests|Actual audio/Range/Seek/device E2E NOT RUN|
+|U05 instrument art|Canonical instrument separated from tone; neutral missing art|Approved dizi/guqin etc artwork and device visual acceptance missing|
+|U06 rename|Existing private-title CAS and return refresh/owned-card reads|Live cross-page platform operation NOT RUN|
+|U07 feedback/delete/Clear|Backend transactions/process races; generated/history onPlay handoff and scoped UI|Default live gate remains closed; platform E2E NOT RUN|
+|U08 binding/switching|R1 backend + secure fake client/runtime/UI isolation|Verified Keystore/transport/startup restore and app E2E missing|
+|U09 sharing|Disabled control and retained product requirement|Licensing/grant contract, implementation and public acceptance blocked|
+|U10 failures/reclaim|Offline stale/ABA/refresh-unknown/Guest lifecycle cases|Real OS reclaim/reinstall/audio/network recovery NOT RUN|
+|U11 five My areas|All five reachable; truthful disabled/empty states|Actual account/preference functionality not enabled or accepted|
+|U12 medical boundary|Original audit38p/2f; no inference/rule edits|Independent medical sign-off and full clinical-chain proof open|
+
+Hosted CI succeeded on98c2f96 (run40153829169) and d413e3d (run40154442677); the final recovery revision still requires its own run. Fixed suites are not full-repository acceptance. Full frontend retains seven approved-material/evidence failures; full backend's existing five collection errors involve Chroma home discovery and absent evals/knowledge_organ_eval/tools/stability_music_smoke inputs, not a passing full suite. Do not fabricate missing source or bypass Guard. Approved artwork location was requested asynchronously; no reply yet.
+
+Next actual work: verify the final Draft PR CI and update its evidence; with approved resources/contracts, perform isolated frontend/backend integration and real MySQL/TLS/Android/HTTPS acceptance, then finish currently gated source/sharing/preference product capabilities. No S7_COMPLETE or M1_GO claim.
+
+## Unchanged boundaries
+
+No merge/base or main push, force push, deployment, public account activation, paid Provider, real MySQL instance or Android installation. Original Guard unchanged. Learning OFF; source retention/share/consent policy/medical approval gates stay closed. init_database can automatically apply0013/0014 even when an account router is unregistered: no deployment or existing-database startup is authorized. All genuine unrun validations above remain NOT RUN.

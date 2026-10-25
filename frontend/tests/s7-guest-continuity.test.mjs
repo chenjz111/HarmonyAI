@@ -5,10 +5,43 @@ import {runInNewContext} from 'node:vm'
 
 let sequence=0
 const flush=()=>new Promise(setImmediate)
+
+function expiredGuest(){return new Map([['v3_access_token','old-guest'],['v3_public_user_id','A'],['v3_auth_epoch',0]])}
+const rejectOldGuest=(args,answer)=>{if(args.url.endsWith('/auth/identity') && args.header.Authorization==='Bearer old-guest'){answer(401,'UNAUTHENTICATED');return true}}
+
+test('expired Guest can explicitly start a new identity after the recovery warning',async()=>{
+ const h=await harness({storage:expiredGuest(),intercept:rejectOldGuest});try{const p=h.page();await p.value.init();assert.equal(p.value.canRestartGuest,true);assert.equal(h.minted(),0);await p.value.restartGuest();assert.equal(h.minted(),1);assert.equal(h.sessions(),1);assert.notEqual(h.storage.get('v3_public_user_id'),'A');assert.equal(p.value.error,'')}finally{h.close()}
+})
+
+test('cancelling explicit Guest restart preserves the old recoverable authority',async()=>{
+ const h=await harness({storage:expiredGuest(),intercept:rejectOldGuest});try{h.uni.showModal=args=>args.success({confirm:false});const p=h.page();await p.value.init();await p.value.restartGuest();assert.equal(h.minted(),0);assert.equal(h.storage.get('v3_access_token'),'old-guest')}finally{h.close()}
+})
+
+test('network failure never offers identity replacement as a retry',async()=>{
+ const h=await harness({storage:expiredGuest(),intercept:(args,answer)=>{if(args.url.endsWith('/auth/identity')){answer(503,'UNAVAILABLE');return true}}});try{const p=h.page();await p.value.init();assert.equal(p.value.canRestartGuest,false);await p.value.restartGuest();assert.equal(h.minted(),0)}finally{h.close()}
+})
+
+test('authentication changing while Guest restart confirmation is pending cancels the intent',async()=>{
+ const h=await harness({storage:expiredGuest(),intercept:rejectOldGuest});try{let confirm;h.uni.showModal=args=>{confirm=args.success};const p=h.page();await p.value.init();const pending=p.value.restartGuest();h.storage.set('v3_auth_epoch',2);confirm({confirm:true});await pending;assert.equal(h.minted(),0);assert.equal(h.storage.get('v3_access_token'),'old-guest')}finally{h.close()}
+})
+
+test('leaving the entry page cancels its pending new-Guest confirmation',async()=>{
+ const h=await harness({storage:expiredGuest(),intercept:rejectOldGuest});try{let confirm;h.uni.showModal=args=>{confirm=args.success};const p=h.page();await p.value.init();const pending=p.value.restartGuest();p.options.onUnload.call(p.value);confirm({confirm:true});await pending;assert.equal(h.minted(),0)}finally{h.close()}
+})
+
+test('registered reauthentication never offers a new-Guest recovery action',async()=>{
+ const storage=expiredGuest();storage.set('v3_auth_mode','registered');const h=await harness({storage});try{const p=h.page();await p.value.init();assert.equal(p.value.canRestartGuest,false);await p.value.restartGuest();assert.equal(h.minted(),0)}finally{h.close()}
+})
+
+for(const lifecycle of ['onHide','onUnload'])test(`late new-Guest response after ${lifecycle} preserves old token and flow`,async()=>{
+ let answerGuest;const storage=expiredGuest();storage.set('v3_flow_state',JSON.stringify({session_id:'old-recoverable'}))
+ const h=await harness({storage,intercept:(args,answer)=>{if(rejectOldGuest(args,answer))return true;if(args.url.endsWith('/auth/guest')){answerGuest=answer;return true}}})
+ try{const p=h.page();await p.value.init();const pending=p.value.restartGuest();await flush();p.options[lifecycle].call(p.value);answerGuest(201,{access_token:'late-new',public_user_id:'late-owner'});await pending;assert.equal(storage.get('v3_access_token'),'old-guest');assert.equal(storage.get('v3_public_user_id'),'A');assert.equal(JSON.parse(storage.get('v3_flow_state')).session_id,'old-recoverable')}finally{h.close()}
+})
 async function harness({storage=new Map(),intercept=null}={}) {
  const previous=globalThis.uni,requests=[],identities=new Map([['old-guest','A'],['registered-access','registered-A']])
  let minted=0,sessions=0
- const uni={getStorageSync:key=>storage.get(key)??'',setStorageSync:(key,value)=>storage.set(key,value),removeStorageSync:key=>storage.delete(key),$emit(){},
+ const uni={getStorageSync:key=>storage.get(key)??'',setStorageSync:(key,value)=>storage.set(key,value),removeStorageSync:key=>storage.delete(key),$emit(){},showModal:args=>args.success({confirm:true}),
   request(args){
    requests.push(args)
    const answer=(status,data)=>args.success({statusCode:status,data:status<300?{ok:true,data}:{ok:false,error:{code:data}}})
@@ -26,9 +59,9 @@ async function harness({storage=new Map(),intercept=null}={}) {
    .replace(/import\s*\{ apiV3 \}\s*from[^\n]+/,'const apiV3=api').replace('export default {','options = {')
   const sandbox={api,uni,options:null};runInNewContext(script,sandbox)
   const options=sandbox.options,value=options.data();for(const [name,fn] of Object.entries(options.methods))value[name]=fn.bind(value)
-  return {value,show:()=>options.onShow.call(value)}
+  return {value,options,show:()=>options.onShow.call(value)}
  }
- return {api,page,storage,requests,minted:()=>minted,sessions:()=>sessions,close(){globalThis.uni=previous}}
+ return {api,page,uni,storage,requests,minted:()=>minted,sessions:()=>sessions,close(){globalThis.uni=previous}}
 }
 
 test('home re-entry starts a new assessment without replacing the guest owner',async()=>{

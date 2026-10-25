@@ -307,15 +307,17 @@ const realInputApi = {
     pending.finally(() => { if (identityStartup === pending) identityStartup = null }).catch(() => {})
     return pending
   },
-  async guestAuth() {
+  async guestAuth(options = {}) {
     if (safeGet('v3_auth_mode') === 'registered') throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
     const unchanged = captureAuthentication()
     const data = await realRequest("/api/v3/auth/guest", { method: "POST" })
     unchanged()
     if (!data || typeof data.access_token !== 'string' || !data.access_token ||
         typeof data.public_user_id !== 'string' || !data.public_user_id) throw apiError('身份响应不可用。', 'INVALID_RESPONSE')
+    if (typeof options.beforeCommit === 'function') options.beforeCommit()
     safeSet("v3_access_token", data.access_token)
     safeSet("v3_public_user_id", data.public_user_id)
+    clearFlowState()
     announceV3AuthChange()
     return data
   },
@@ -1248,8 +1250,9 @@ function stripInternal(obj) {
 }
 
 const mockApi = {
-  async guestAuth() {
+  async guestAuth(options = {}) {
     await delay(200)
+    if (typeof options.beforeCommit === 'function') options.beforeCommit()
     MOCK.token = {
       access_token: "mock-token-" + Math.random().toString(36).slice(2),
       token_type: "Bearer",
@@ -1690,13 +1693,14 @@ export const apiV3 = {
   // mock 模式下输入段（含语音转写）为模拟数据：real/hybrid 不得产生虚构 transcript
   INPUT_SIMULATED: MODE === "mock",
 
-  guestAuth() {
-    return INPUT_REAL ? realInputApi.guestAuth() : mockApi.guestAuth()
+  guestAuth(options = {}) {
+    return INPUT_REAL ? realInputApi.guestAuth(options) : mockApi.guestAuth(options)
   },
   ensureIdentity() {
     return INPUT_REAL ? realInputApi.ensureIdentity() : MOCK.token ? Promise.resolve(clone(MOCK.token)) : mockApi.guestAuth()
   },
   captureIdentity: captureAuthentication,
+  canStartNewGuest: () => safeGet('v3_auth_mode') !== 'registered',
   createSession() {
     return INPUT_REAL ? realInputApi.createSession() : mockApi.createSession()
   },

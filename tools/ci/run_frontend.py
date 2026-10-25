@@ -21,7 +21,7 @@ inventory = {
  'tests/s7-auth-runtime.test.mjs':11,
  'tests/s7-player-product-controls.test.mjs':12,
  'tests/sprint6-phase6-player-wiring.test.mjs':3,
- 'tests/s7-guest-continuity.test.mjs':10,
+ 'tests/s7-guest-continuity.test.mjs':18,
  'tests/sprint6-player-seek-interaction.test.mjs':5,
  'tests/s7-account-security.test.mjs':12,
  'tests/s7-fe2b-history-isolation.test.mjs':30,
