@@ -33,6 +33,23 @@ function harness(){
 test('actual Player template renders the safe persisted display title',()=>{
  const h=harness();const title=h.find('music-title');assert.ok(title);assert.equal(title.children,'笛 · 2026年10月12日 · 123456')
 })
+
+test('Owner approved central art follows actual persisted instrument while S6 background still follows tone',()=>{
+ for(const [tone,instrument,file] of [['gong','dizi','shang-2.png'],['gong','guqin','gong-2.png'],['shang','dizi','shang-2.png'],['yu','sheng','jue-2.png'],['jiao','pipa','zhi-2.png']]){
+  const h=harness();h.page.music={...music,tone_code:tone,primary_instrument_code:instrument,primary_instrument_origin:'persisted'}
+  assert.equal(h.find('tone-hero-image')?.props.src,'/static/v31-player/'+file)
+  assert.ok(h.page.playerStyle.backgroundImage.includes((tone==='jiao'?'jue':tone)+'-1.png'))
+ }
+})
+
+test('canonical instruments without confirmed artwork stay neutral; panpipes are never xiao and yangqin is unsupported',()=>{
+ for(const code of ['xiao','xun','guzheng','erhu','bianzhong']){
+  const model=presentation.buildMusicPresentation({music:{...music,primary_instrument_code:code,primary_instrument_origin:'persisted'}})
+  assert.equal(model.instrumentIllustration.code,code);assert.equal(model.instrumentIllustration.imageSrc,'');assert.equal(model.instrumentIllustration.neutral,true)
+ }
+ const unknown=presentation.buildMusicPresentation({music:{...music,primary_instrument_code:'yangqin'}})
+ assert.equal(unknown.instrumentIllustration.code,'unknown');assert.equal(unknown.instrumentIllustration.imageSrc,'')
+})
 test('actual Player favorite control invokes the existing favorite operation without naming',async()=>{
  const h=harness();const control=h.find('favorite-control');assert.ok(control);await control.props.onClick();assert.equal(h.page.favorite,true);assert.deepEqual(h.calls,[['add','owned-asset','generated']]);assert.ok(h.find('favorite-control'))
 })
@@ -42,9 +59,9 @@ test('actual Player share control stays explicitly disabled without a public gra
 test('normal generation Player reads current owned title/favorite/instrument without creating music',async()=>{
  const h=harness();await h.page.load();assert.equal(h.page.music.title,'Private title');assert.equal(h.page.favorite,true);assert.equal(h.page.music.primary_instrument_code,'guqin');assert.deepEqual(h.calls,[['metadata','owned-asset']]);h.page.releasePlayerLoad()
 })
-for(const tone of ['gong','shang'])test(`persisted dizi metadata remains dizi for ${tone}; absent approved art is neutral`,()=>{
+for(const tone of ['gong','shang'])test(`persisted dizi metadata remains dizi for ${tone} with Owner-confirmed bamboo flute art`,()=>{
  const value=presentation.buildMusicPresentation({music:{...music,tone_code:tone}})
- assert.equal(value.instrumentIllustration?.code,'dizi');assert.equal(value.instrumentIllustration?.imageSrc,'');assert.equal(value.instrumentIllustration?.neutral,true)
+ assert.equal(value.instrumentIllustration?.code,'dizi');assert.equal(value.instrumentIllustration?.imageSrc,'/static/v31-player/shang-2.png');assert.equal(value.instrumentIllustration?.neutral,false)
 })
 test('instrument labels or tone cannot manufacture missing primary-instrument authority',()=>{
  const value=presentation.buildMusicPresentation({music:{...music,primary_instrument_code:undefined,instrument_labels:['古琴']}})

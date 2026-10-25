@@ -74,7 +74,7 @@ test("未知 / 缺失主音显示空状态，绝不静默回退成宫", () => {
   assert.doesNotMatch(toneThemeFor(undefined).glyph, /[宫商角徵羽]/)
 })
 
-test("静态插画按 imageCode 取图：角的 code 是 jiao、插画仍是 jue-*.png", () => {
+test("S6 历史资源名保留：角背景仍为 jue-1，十张原图均可追溯", () => {
   for (const code of Object.keys(AUTHORITATIVE_TONES)) {
     const theme = toneThemeFor(code)
     assert.ok(theme.imageCode, `${code} 需要 imageCode`)
@@ -202,7 +202,7 @@ test("API/asset primary_tone=jiao 时播放器显示角、不显示宫", async (
     assert.match(text, /角/, `渲染文本应含角: ${text}`)
     assert.doesNotMatch(text, /宫/, `渲染文本不得含宫: ${text}`)
   }
-  // 中央插画也随主音切换（角的插画文件名为 jue-*）
+  // S6 历史主题标识保留；S7 中央图另按主乐器选择，不由此值决定。
   assert.equal(theme.imageCode, "jue")
 
   // 只调用了音乐生成接口：没有额外 Provider / 后端调用

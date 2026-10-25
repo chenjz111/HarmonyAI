@@ -1,0 +1,4 @@
+# Reviewed restored artifacts must retain their exact source bytes on every OS.
+frontend/static/** -text
+docs/product/assets/sprint6-recovery/** -text
+docs/superpowers/plans/2026-09-26-sprint6-product-recovery.md -text

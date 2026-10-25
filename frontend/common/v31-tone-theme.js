@@ -7,8 +7,9 @@
  *   - diagnosis/prescription/music asset 的 tone_profile.primary_tone
  * 历史遗留的前端拼写 "jue"（角）只作为别名兼容，不再是主题键。
  *
- * imageCode 仅用于 /static/v31-player/<imageCode>-*.png 静态插画文件名
- * （角的插画文件历史上叫 jue-1.png / jue-2.png，未重命名以免动二进制资源）。
+ * imageCode 仅用于 /static/v31-player/<imageCode>-1.png 的 S6 冻结背景。
+ * 历史 -2.png 文件名保留，但 S7 中央图只由 music-presentation 的主乐器映射选择。
+ * （角的背景文件历史上叫 jue-1.png，未重命名以免动二进制资源）。
  *
  * Sprint 6 Phase 6（P6 展示层加固）：本表**只允许保留视觉元数据**
  * （code / imageCode / glyph / accent / soft）。

@@ -2,6 +2,8 @@
 
 Owner explicitly replaced report/demo priorities with normal W0–W8 execution on2026-10-25. Complete V1.1 source SHA256:bccfce90414bdde3518c270a3ae09ee8bbe3d91b54243b409ccce77ac08f7c69. Original2026-10-12 frozen scope and later explicit approvals remain the product authority; this progress file does not change them.
 
+Latest Owner material instruction2026-10-25: source located and approved; see [restoration record](S6_ASSET_RESTORE_20261025.md) and [exact113-file manifest](S6_ASSET_RESTORE_MANIFEST_20261025.json).109 formal static files restored, rejected home-icons-v1 excluded, no old page code merged. Four confirmed central instrument images connected independently from unchanged tone backgrounds. Local full frontend638p/0f/0skip; previous seven missing-asset/evidence failures below are historical and now resolved. H5 compiler/bundle check passed109/109 static hashes, no unresolved-resource warnings, unchanged original Guard. Real device/platform and remaining product/policy gates are still open; this is not complete S7 acceptance.
+
 ## W0 baseline
 
 Started from0ab274e in an existing clean own isolated worktree; branch codex/s7-v11-product-continuity-20261025. Team Base9a6d472; PR173 depends on171,164 remains independent Draft,170 merged. No automatic integration. No report package or separate Demo build.
@@ -31,7 +33,7 @@ Layer: OFFLINE_VERIFIED. NOT RUN: actual frontend-to-backend platform integratio
 |009|W4 generated/history per-song V3.1 candidate and scoped list/delete; default gate/platform acceptance incomplete|
 |010|Learning OFF; status/clear product integration incomplete|
 |011|No free tone/instrument recipe UI; preserve|
-|012|W3 reads canonical primary-instrument metadata, neutral illustration fallback; approved material gap remains|
+|012|Owner-confirmed guqin/sheng/dizi/pipa art restored/mapped; other/missing/untrusted primary instruments neutral; backgrounds unchanged; real-device visual acceptance pending|
 |013|W6 list source entry with honest unavailable state; original-image linkage/retention/access acceptance open|
 |014|No patient grouping; preserve|
 |015|No duplicate original-image Player block; list source entry incomplete|
