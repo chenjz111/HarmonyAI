@@ -1720,7 +1720,10 @@ export const apiV3 = {
     return INPUT_REAL ? realInputApi.ensureIdentity() : MOCK.token ? Promise.resolve(clone(MOCK.token)) : mockApi.guestAuth()
   },
   captureIdentity: captureAuthentication,
-  canStartNewGuest: () => !['registered','binding'].includes(safeGet('v3_auth_mode')),
+  canStartNewGuest: () => {
+    try {requireReadableIdentityStorage()} catch(error) {return false}
+    return !['registered','binding'].includes(safeGet('v3_auth_mode'))
+  },
   createSession() {
     return INPUT_REAL ? realInputApi.createSession() : mockApi.createSession()
   },

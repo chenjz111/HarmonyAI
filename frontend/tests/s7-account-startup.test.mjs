@@ -160,6 +160,7 @@ test('unreadable startup identity storage cannot be mistaken for a first-time Gu
  globalThis.uni={getStorageSync(){throw new Error('storage unavailable')},request(){requests++;throw new Error('unexpected network')}}
  try{
   const {apiV3}=await import('../common/api-v3.js?unreadable-startup')
+  assert.equal(apiV3.canStartNewGuest(),false,'unreadable storage must not offer identity replacement')
   await assert.rejects(apiV3.ensureIdentity(),{code:'IDENTITY_REQUIRED'})
   await assert.rejects(apiV3.guestAuth(),{code:'IDENTITY_REQUIRED'})
   assert.equal(requests,0)
