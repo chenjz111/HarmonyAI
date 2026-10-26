@@ -158,3 +158,12 @@ def test_mysql_receipt_columns_accept_exact_production_model():
 def test_mysql_owner_clear_cutoff_preserves_receipt_microseconds():
     from backend.app.models.v3.music_library import OwnerMusicState
     assert 'preference_clear_cutoff DATETIME(6)' in str(CreateTable(OwnerMusicState.__table__).compile(dialect=mysql.dialect()))
+
+
+def test_mysql_receipt_columns_accept_actual_reflected_signed_integer_types():
+    from backend.app.core.feedback_migration import validate_receipt_columns
+    from backend.app.models.v3.feedback import FeedbackClearReceipt
+    columns={c.name:dict(name=c.name,type=c.type.dialect_impl(mysql.dialect()),nullable=False,default=None) for c in FeedbackClearReceipt.__table__.c}
+    columns['internal_user_pk']['type']=mysql.INTEGER(unsigned=False)
+    columns['resulting_feedback_epoch']['type']=mysql.BIGINT(unsigned=False)
+    validate_receipt_columns(mysql.dialect(),columns)

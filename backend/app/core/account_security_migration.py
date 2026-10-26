@@ -9,7 +9,14 @@ VERSION='0014_v3_account_security'
 
 
 def signature(value):
-    return tuple(t for t in _library_sql_tokens(re.sub(r'\bchar_length\b','length',value,flags=re.I)) if t not in ('(',')'))
+    from .feedback_migration import _check_signature
+    source="username = lower(username) AND username REGEXP '^[a-z0-9_]{3,32}$'"
+    reflected="((username = lower(username)) and regexp_like(username,_utf8mb4'^[a-z0-9_]{3,32}$'))"
+    tokens=tuple(_library_sql_tokens(value))
+    if tokens in (tuple(_library_sql_tokens(source)),tuple(_library_sql_tokens(reflected))):
+        return ('account_mysql_username_v1',)
+    # Do not discard parentheses: regrouped OR/AND changes security semantics.
+    return _check_signature(re.sub(r'\bchar_length\b','length',value,flags=re.I))
 
 
 def require_mysql_engines(connection,names):

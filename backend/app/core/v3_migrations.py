@@ -146,7 +146,7 @@ def _library_sql_tokens(sql):
     return tokens
 
 
-def _library_check_signature(sql):
+def _library_check_signature(sql, *, allow_is_not_null=False):
     """Small structural parser, not a substring test or a general SQL solver.
 
     Accept parentheses, quoting, commutative AND/OR, reversed comparisons,
@@ -222,6 +222,10 @@ def _library_check_signature(sql):
         left = operand()
         op = take()
         if op == 'is':
+            if allow_is_not_null and peek() == 'not':
+                take('not')
+                take('null')
+                return ('is_not_null', left)
             take('null')
             return ('is_null', left)
         if op == 'between':
@@ -542,6 +546,18 @@ def rollback_music_library(engine):
         raw.close()
 
 
+def _is_current_timestamp_default(value,dialect):
+    normalized=re.sub(r'[\s()]','',str(value)).lower()
+    allowed={'current_timestamp','current_timestamp0','current_timestamp6'}
+    if dialect=='mysql':allowed|={'now','now0','now6'}
+    return normalized in allowed
+
+
+def _canonical_sql_type_name(kind):
+    value=kind.lower()
+    return {'int':'integer','string':'varchar','big_integer':'bigint'}.get(value,value)
+
+
 def _validate_auth_existing_schema(engine):
     inspector = inspect(engine)
     tables = inspector.get_table_names()
@@ -564,7 +580,7 @@ def _validate_auth_existing_schema(engine):
         c = columns.get(name)
         if c is None or not isinstance(c['type'],kind) or c['nullable'] != nullable or (length and c['type'].length != length):
             raise MigrationSchemaMismatch(f'incompatible auth_sessions column {name}')
-    if ('current_timestamp' not in normalize(columns['created_at'].get('default'))
+    if (not _is_current_timestamp_default(columns['created_at'].get('default'),engine.dialect.name)
             or columns['expires_at'].get('default') is not None):
         raise MigrationSchemaMismatch('incompatible auth session time defaults')
     if inspector.get_pk_constraint('auth_sessions')['constrained_columns'] != ['auth_session_id']:
@@ -605,11 +621,49 @@ def _execute_sqlite_statements(cursor, sql):
 
 
 def _render_mysql_model_columns(engine, version, sql):
-    """create_all compatibility for existing nullable 0009/0010 model columns.
+    """Exact create_all compatibility for approved MySQL model structures.
 
     Source SQL/checksums remain immutable; only omit already-present ADDs.
-    This does not claim full MySQL fresh-init execution has been verified.
+    Bounded real8.0.44 evidence is separate from production acceptance.
     """
+    if version in {'0003_v3_owner_flow','0007_v3_prescription_mode','0008_v3_prescription_user_goal_snapshot'}:
+        # create_all already includes these approved nullable columns. Inspect
+        # each exact ADD before omitting it; unknown types never count as ready.
+        inspector=inspect(engine)
+        def render_alter(match):
+            table,body=match.group(1),match.group(2)
+            if table not in inspector.get_table_names():return match.group(0)
+            columns={c['name']:c for c in inspector.get_columns(table)}
+            parts=[]
+            for part in body.split(','):
+                addition=re.fullmatch(r'\s*ADD COLUMN (\w+) (VARCHAR\((\d+)\)|INTEGER|JSON) NULL\s*',part,re.I)
+                if addition and addition[1] in columns:
+                    actual=columns[addition[1]]
+                    kind=_canonical_sql_type_name(actual['type'].__visit_name__)
+                    expected='varchar' if addition[2].upper().startswith('VARCHAR') else addition[2].lower()
+                    if (not actual['nullable'] or kind!=expected
+                        or actual.get('default') not in (None,'NULL')
+                        or actual.get('computed') is not None
+                        or getattr(actual['type'],'unsigned',False)
+                        or getattr(actual['type'],'zerofill',False)
+                        or getattr(actual['type'],'collation',None) is not None
+                        or (addition[3] and getattr(actual['type'],'length',None)!=int(addition[3]))):
+                        raise MigrationSchemaMismatch('existing owner flow column mismatch')
+                else:parts.append(part.strip())
+            return 'ALTER TABLE '+table+' '+', '.join(parts)+';' if parts else '-- verified model-created owner flow columns\n'
+        return re.sub(r'ALTER TABLE (\w+)\s+([^;]+);',render_alter,sql,flags=re.I)
+    if version == '0002_v3_business':
+        # MySQL8 reserves RANK; quote only the frozen identifier sites.
+        # Migration source files, checksums and numerical bounds are unchanged.
+        rendered=sql.replace('rank INTEGER NOT NULL,','`rank` INTEGER NOT NULL,').replace('CHECK (rank >= 1)','CHECK (`rank` >= 1)')
+        inspector=inspect(engine)
+        if 'music_assets' in inspector.get_table_names():
+            named=[f for f in inspector.get_foreign_keys('music_assets') if f.get('name')=='fk_music_assets_generation_task']
+            if named:
+                if len(named)!=1 or named[0]['constrained_columns']!=['generation_task_id'] or named[0]['referred_table']!='generation_tasks' or named[0]['referred_columns']!=['task_id'] or named[0].get('options',{}).get('ondelete') not in (None,'RESTRICT','NO ACTION'):
+                    raise MigrationSchemaMismatch('existing music generation cycle FK mismatch')
+                rendered=re.sub(r'ALTER TABLE music_assets\s+ADD CONSTRAINT fk_music_assets_generation_task\s+FOREIGN KEY \(generation_task_id\) REFERENCES generation_tasks\(task_id\);', '-- verified model-created generation cycle FK',rendered)
+        return rendered
     tables = {'0009_v3_five_tone_read_model':'diagnosis_runs',
               '0010_v3_generation_prompt_audit':'generation_tasks'}
     table = tables.get(version)
@@ -1040,7 +1094,9 @@ def _apply_mysql_migration(
             rendered = render(engine,rendered,connection)
         statements = _mysql_migration_statements(rendered)
         for statement in statements:
-            connection.exec_driver_sql(statement)
+            # DDL is already a complete trusted statement, without bind args.
+            # PyMySQL otherwise interpolates literal '%' inside trigger LIKEs.
+            connection.exec_driver_sql(statement, execution_options={'no_parameters': True})
         connection.exec_driver_sql(
             "INSERT INTO schema_migrations (version, checksum) VALUES (%s, %s)",
             (version, checksum),

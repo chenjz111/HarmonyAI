@@ -161,10 +161,11 @@ def validate_receipt_columns(dialect, columns):
         if dialect.name == 'sqlite':
             matches = str(reflected).upper() == str(wanted.compile(dialect=dialect)).upper()
         else:
-            normalize = lambda kind: 'integer' if kind.lower() in {'int','integer'} else kind.lower()
+            normalize = core._canonical_sql_type_name
             matches = normalize(reflected.__visit_name__) == normalize(wanted.__visit_name__)
-            for attribute in ('length','unsigned','fsp'):
+            for attribute in ('length','fsp'):
                 matches = matches and getattr(reflected,attribute,None) == getattr(wanted,attribute,None)
+            matches = matches and bool(getattr(reflected,'unsigned',False)) == bool(getattr(wanted,'unsigned',False))
             if expected.name == 'request_fingerprint':
                 matches = matches and getattr(reflected,'charset',None) == 'ascii' and getattr(reflected,'collation',None) == 'ascii_bin'
         if not matches:
@@ -268,7 +269,7 @@ def rollback(engine):
         raw.close()
 
 def _check_signature(sql):
-    try:return core._library_check_signature(sql)
+    try:return core._library_check_signature(sql, allow_is_not_null=True)
     except ValueError:
         # 0012's bounded parser intentionally does not implement IS NOT NULL.
         # For old profile's paired-null CHECK accept ONLY the exact approved

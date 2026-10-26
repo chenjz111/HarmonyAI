@@ -1,4 +1,4 @@
-"""Formal 0013 MySQL metadata rendering. Real server verification NOT RUN."""
+"""Formal0013 MySQL metadata rendering; bounded real-server evidence in docs/sprint7/REAL_MYSQL_ACCEPTANCE_20261027.md."""
 import re
 from pathlib import Path
 from .v3_migrations import MigrationSchemaMismatch
@@ -7,7 +7,7 @@ from .v3_migrations import MigrationSchemaMismatch
 def read_parent_contract(connection):
     """Reads actual INFORMATION_SCHEMA, not caller-claimed matching strings.
 
-    Unit tests use synthetic read-only connections. Real MySQL NOT RUN.
+    Unit tests use synthetic connections; the opt-in harness uses a new real DB.
     """
     if connection.dialect.name!='mysql':raise MigrationSchemaMismatch('MySQL metadata connection required')
     version=connection.exec_driver_sql('SELECT VERSION()').scalar()
@@ -69,6 +69,16 @@ def _check_expressions(sql):
 
 def _check_signature(expression):
     from .feedback_migration import _check_signature as signature
+    from .v3_migrations import _library_sql_tokens
+    # MySQL8 rewrites this REGEXP predicate into REGEXP_LIKE/SUBSTR. The
+    # general bounded parser does not implement those functions. Recognize
+    # only these two COMPLETE, immutable expressions; never discard boolean
+    # parentheses or infer equivalence from a substring.
+    source = "request_fingerprint IS NULL OR (CHAR_LENGTH(request_fingerprint)=71 AND LEFT(request_fingerprint,7)='sha256:' AND SUBSTRING(request_fingerprint,8) REGEXP '^[0-9a-f]+$')"
+    reflected = "((request_fingerprint is null) or ((char_length(request_fingerprint) = 71) and (left(request_fingerprint,7) = _ascii'sha256:') and regexp_like(substr(request_fingerprint,8),_ascii'^[0-9a-f]+$')))"
+    tokens = tuple(_library_sql_tokens(expression))
+    if tokens in (tuple(_library_sql_tokens(source)), tuple(_library_sql_tokens(reflected))):
+        return ('mysql_fingerprint_v1',)
     # MySQL reflects CHAR_LENGTH as char_length, and may quote identifiers.
     return signature(re.sub(r'\bchar_length\b', 'length', expression, flags=re.I))
 
@@ -106,8 +116,9 @@ def validate_legacy(connection, inspector):
             actual = columns.get(expected.name)
             if actual is None or actual['nullable'] != expected.nullable:
                 raise MigrationSchemaMismatch('MySQL legacy column nullability mismatch')
-            kind = actual['type'].__visit_name__.lower()
-            wanted = expected.type.__visit_name__.lower()
+            from .v3_migrations import _canonical_sql_type_name
+            kind = _canonical_sql_type_name(actual['type'].__visit_name__)
+            wanted = _canonical_sql_type_name(expected.type.__visit_name__)
             if kind in {'int','integer'}:
                 kind = 'integer'
             if wanted in {'int','integer'}:
@@ -121,7 +132,8 @@ def validate_legacy(connection, inspector):
                 raise MigrationSchemaMismatch('MySQL legacy column length/signedness mismatch')
             default = actual.get('default')
             if expected.name == 'created_at':
-                if str(default).upper() not in {'CURRENT_TIMESTAMP', 'CURRENT_TIMESTAMP()', 'CURRENT_TIMESTAMP(6)'}:
+                from .v3_migrations import _is_current_timestamp_default
+                if not _is_current_timestamp_default(default,'mysql'):
                     raise MigrationSchemaMismatch('MySQL legacy timestamp default mismatch')
             elif default is not None and str(default).upper() != 'NULL':
                 raise MigrationSchemaMismatch('MySQL legacy column default mismatch')

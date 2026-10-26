@@ -15,7 +15,9 @@ class RecordingEngine:
     def begin(self):
         yield self
 
-    def exec_driver_sql(self, sql, parameters=None):
+    def exec_driver_sql(self, sql, parameters=None, execution_options=None):
+        if sql.startswith(('CREATE TRIGGER', 'CREATE TABLE after_trigger')):
+            assert execution_options == {'no_parameters': True}
         self.calls.append((sql, parameters))
         if self.fail_on and self.fail_on in sql:
             raise RuntimeError('synthetic DDL failure')

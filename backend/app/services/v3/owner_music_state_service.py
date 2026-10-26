@@ -16,9 +16,11 @@ lost update cannot happen even where ``SELECT ... FOR UPDATE`` is a no-op (SQLit
 ignores row locks).  ``lock_owner_music_state`` still issues the row lock for
 dialects that honour it.
 
-The legacy ``lock_owner_music_state`` path creates with a plain ``flush``;
+The non-MySQL ``lock_owner_music_state`` path creates with a plain ``flush``;
 concurrent first creation can surface ``IntegrityError`` to its caller. The new
 feedback CAS uses a conditional UPDATE and a narrow first-write upsert instead.
+MySQL first acquires the unique-key write lock through a no-op upsert, avoiding
+the absent-row gap-lock deadlock. No epoch is reset or advanced by that upsert.
 Both paths retain caller-owned transaction completion: a rollback undoes state
 creation together with business changes. The CAS does not add an idempotency
 receipt or replace the future Feedback service's transaction coordinator.
@@ -68,6 +70,15 @@ def lock_owner_music_state(db: Session, *, internal_user_pk: int) -> OwnerMusicS
     does not commit: Preference and Backend must be able to share one transaction.
     """
 
+    if db.get_bind().dialect.name == 'mysql':
+        # SELECT FOR UPDATE on an absent key takes a gap lock. Two first
+        # writers can both hold it and then deadlock inserting the same owner.
+        # Acquire the unique-key write lock first; an existing state is a
+        # strict no-op, with no epoch reset/advance and no independent commit.
+        statement=mysql_insert(OwnerMusicState).values(
+            owner_internal_user_pk=internal_user_pk,library_epoch=0,feedback_evidence_epoch=0)
+        db.execute(statement.on_duplicate_key_update(
+            owner_internal_user_pk=statement.inserted.owner_internal_user_pk))
     row = (
         db.query(OwnerMusicState)
         .filter(OwnerMusicState.owner_internal_user_pk == internal_user_pk)

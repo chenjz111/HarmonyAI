@@ -6,6 +6,7 @@ and harmonyai-v3-persistence-contract.md section 6.
 
 from sqlalchemy import (
     CheckConstraint,
+    column,
     Column,
     DateTime,
     Float,
@@ -98,7 +99,7 @@ class DiagnosisCandidate(Base):
             "relative_support >= 0 AND relative_support <= 1",
             name="ck_diagnosis_candidates_support",
         ),
-        CheckConstraint("rank >= 1", name="ck_diagnosis_candidates_rank"),
+        CheckConstraint(column('rank') >= 1, name="ck_diagnosis_candidates_rank"),
     )
 
     candidate_id = Column(String(64), primary_key=True)
