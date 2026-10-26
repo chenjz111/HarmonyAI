@@ -25,6 +25,18 @@ export function initializeAndroidPlatform({uniApi=null,target,apiOrigin,accountD
  if(!platform.nativeApp)return Object.freeze(result)
  try{getApiOrigin();result.apiReady=true}catch(error){result.blockers.push('HTTPS_API_ORIGIN_MISSING')}
  if(!platform.androidApp){result.blockers.push('ANDROID_RUNTIME_UNVERIFIED');return Object.freeze(result)}
+ if(platform.usbGuestDebug){
+  result.usbGuestDebug=true
+  result.blockers.push('USB_GUEST_DEBUG_ACCOUNT_DISABLED')
+  console.warn('[S7 USB GUEST DEBUG] 非生产 USB 本地联调，仅限合成游客数据；账号关闭。')
+  try{console.info('[S7 USB GUEST DEBUG] URL parser',typeof URL,new URL(getApiOrigin()).origin===getApiOrigin())}catch(error){console.warn('[S7 USB GUEST DEBUG] URL parser unavailable')}
+
+  uniApi?.request?.({url:getApiOrigin()+'/health',method:'GET',sslVerify:true,
+   success(response){console.info('[S7 USB GUEST DEBUG] health',response.statusCode,response.data?.status==='healthy')},
+   fail(){console.warn('[S7 USB GUEST DEBUG] health request failed')}
+  })
+  return Object.freeze(result)
+ }
  const deps=accountDependencies
  if(deps?.ownerApprovedForNonProduction!==true||typeof deps?.approvalRef!=='string'||!deps.approvalRef.trim())result.blockers.push('NONPRODUCTION_ACCOUNT_APPROVAL_MISSING')
  if(deps?.secureStore?.verified!==true||deps?.secureStore?.keystoreBacked!==true||deps?.secureStore?.atomicConsume!==true)result.blockers.push('KEYSTORE_ADAPTER_UNACCEPTED')

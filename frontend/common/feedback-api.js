@@ -24,7 +24,7 @@ export function createFeedbackApi({ request, getOwnerId, getAccessToken, getAuth
     assertIdentity()
     if (method === 'GET' && starting !== generation) throw failure('STALE_RESPONSE')
     if (response?.error) throw Object.assign(new Error(response.error.message || response.error.code), response.error)
-    if (!response || !Object.hasOwn(response, 'data')) throw failure('INVALID_RESPONSE')
+    if (!response || !Object.prototype.hasOwnProperty.call(response, 'data')) throw failure('INVALID_RESPONSE')
     const epoch = response.data.current_feedback_epoch ?? response.data.resulting_feedback_epoch
     if (method === 'GET' && Number.isSafeInteger(epoch) && epoch < latestEpoch) throw failure('STALE_RESPONSE')
     if (Number.isSafeInteger(epoch)) latestEpoch = Math.max(latestEpoch, epoch)

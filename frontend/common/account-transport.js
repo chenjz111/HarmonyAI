@@ -1,4 +1,5 @@
 /** Candidate native adapter. H5 remains closed; capabilities require platform evidence. */
+import {parseHttpsApiOrigin} from './api-origin.js'
 import {createRegisteredAuthClient} from './registered-auth.js'
 import {createRegisteredIdentityRuntime} from './auth-runtime.js'
 import {createUniMusicLibraryTransport} from './music-library-transport.js'
@@ -7,12 +8,7 @@ const failure=code=>Object.assign(new Error(code),{code})
 const paths=new Set(['register-bind','login','refresh','logout','password'].map(name=>'/api/v3/auth/'+name))
 
 export function createNativeAccountTransport({baseUrl,uniApi,accepted=false,platform='android',redirectsRejected=false}={}) {
-  let base=null
-  try {
-    const url=new URL(baseUrl)
-    if (typeof baseUrl==='string' && !/\s|\\/.test(baseUrl) && url.protocol==='https:' && !url.username && !url.password &&
-      url.pathname==='/' && !url.search && !url.hash) base=url.origin
-  } catch(error) { /* invalid deployment address is unavailable */ }
+  const base=parseHttpsApiOrigin(baseUrl)
   const available=accepted===true && platform==='android' && redirectsRejected===true && !!base && typeof uniApi?.request==='function'
   const request=async function({method,path,data,accessToken}={}) {
     if (!available || method!=='POST' || !paths.has(path)) throw failure('ACCOUNT_FEATURE_UNAVAILABLE')

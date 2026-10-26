@@ -69,7 +69,9 @@ test('same-owner refresh preserves the current registered assessment flow',async
 
 for(const method of ['getStorageSync','setStorageSync'])test(`ordinary UI ${method} failure cannot prevent secure logout or server revocation attempt`,async()=>{
  const h=harness();await h.runtime.login({});h.uni[method]=()=>{throw new Error('ordinary storage unavailable')}
+ const eventsBefore=h.events.length
  await assert.rejects(h.runtime.logout());assert.equal(h.calls.at(-1).path,'/api/v3/auth/logout');assert.equal(h.proof(),null);assert.equal(h.client.accessToken(),'');assert.equal(readV3AccessToken(h.uni),'')
+ assert.ok(h.events.length>eventsBefore,'media/page authority must close even when UI bookkeeping fails')
 })
 
 test('confirmed Guest return is available only after successful registered logout and never issues Guest itself',async()=>{

@@ -47,7 +47,7 @@ export const PLAYER_STATE = Object.freeze({
  * @returns {object} controller 公共 API
  */
 export function createPlayerController(options = {}) {
-  const { downloadAudio, createAudioContext, onError, onStateChange, onPlaybackStarted } = options
+  const { downloadAudio, releaseAudio, createAudioContext, onError, onStateChange, onPlaybackStarted } = options
 
   if (typeof downloadAudio !== "function") {
     throw new TypeError("createPlayerController: downloadAudio is required")
@@ -67,6 +67,11 @@ export function createPlayerController(options = {}) {
   let duration = 0 // 仅来自运行时音频（onCanplay / onTimeUpdate）
   let disposed = false
   let errorInfo = null
+  let downloadGeneration = 0, playGeneration = 0
+  function release(src) {
+    if (!src || typeof releaseAudio !== "function") return
+    try { Promise.resolve(releaseAudio(src)).catch(() => {}) } catch (error) { /* cleanup never reauthorizes playback */ }
+  }
 
   function snapshot() {
     return {
@@ -156,19 +161,24 @@ export function createPlayerController(options = {}) {
   function ensureDownload(streamUrl) {
     if (pendingDownload && pendingStreamUrl === streamUrl) return pendingDownload
     pendingStreamUrl = streamUrl
-    pendingDownload = Promise.resolve()
+    const generation = ++downloadGeneration
+    const pending = Promise.resolve()
       .then(() => downloadAudio(streamUrl))
       .then((src) => {
+        if (disposed || generation !== downloadGeneration) { release(src); return null }
+        const previous = resolvedSrc
         resolvedSrc = src
         resolvedStreamUrl = streamUrl
+        if (previous && previous !== src) release(previous)
         return src
       })
       .finally(() => {
-        if (pendingStreamUrl === streamUrl) {
+        if (pendingDownload === pending) {
           pendingDownload = null
           pendingStreamUrl = ""
         }
       })
+    pendingDownload = pending
     return pendingDownload
   }
 
@@ -178,6 +188,7 @@ export function createPlayerController(options = {}) {
    */
   async function play(streamUrl) {
     if (disposed) return snapshot()
+    const intent = ++playGeneration
     const url = streamUrl || resolvedStreamUrl
     if (!url) {
       fail({ message: "missing stream url" })
@@ -185,9 +196,18 @@ export function createPlayerController(options = {}) {
     }
 
     // 同一曲目且已解析：直接恢复播放，不重复下载、不重置进度
-    if (audioCtx && resolvedSrc && resolvedStreamUrl === url) {
+    if (resolvedSrc && resolvedStreamUrl === url) {
+      if (pendingDownload && pendingStreamUrl !== url) {
+        // Returning to cached A supersedes B just like a new download would.
+        // B may finish, but must release itself rather than replace active A.
+        downloadGeneration += 1
+        pendingDownload = null; pendingStreamUrl = ""
+      }
+      const ctx = ensureContext()
+      if (!ctx) { fail({ message: "audio context unavailable" }); return snapshot() }
       errorInfo = null
-      if (typeof audioCtx.play === "function") audioCtx.play()
+      if (ctx.src !== resolvedSrc) ctx.src = resolvedSrc
+      if (typeof ctx.play === "function") ctx.play()
       playing = true
       emit()
       return snapshot()
@@ -198,10 +218,11 @@ export function createPlayerController(options = {}) {
     try {
       src = await ensureDownload(url)
     } catch (e) {
+      if (disposed || intent !== playGeneration) return snapshot()
       fail(e)
       return snapshot()
     }
-    if (disposed) return snapshot()
+    if (disposed || intent !== playGeneration || !src) return snapshot()
 
     const ctx = ensureContext()
     if (!ctx) {
@@ -219,6 +240,7 @@ export function createPlayerController(options = {}) {
   /** 暂停（幂等）。 */
   function pause() {
     if (disposed) return snapshot()
+    playGeneration += 1
     if (audioCtx && typeof audioCtx.pause === "function") audioCtx.pause()
     playing = false
     emit()
@@ -271,11 +293,14 @@ export function createPlayerController(options = {}) {
   function dispose() {
     if (disposed) return snapshot()
     disposed = true
+    playGeneration += 1; downloadGeneration += 1
     if (audioCtx) {
       if (typeof audioCtx.destroy === "function") audioCtx.destroy()
       audioCtx = null
     }
-    resolvedSrc = ""
+    const previous = resolvedSrc
+    resolvedSrc = ""; resolvedStreamUrl = ""
+    release(previous)
     playing = false
     emit()
     return snapshot()

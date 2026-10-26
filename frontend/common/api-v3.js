@@ -56,7 +56,8 @@
 import { QUESTIONNAIRE_MANIFEST } from "./questionnaire-v3-manifest.js"
 import { readV3AccessToken } from "./music-library-transport.js"
 import { waitForAccountStartup, hasAccountStartup, hasAccountRuntime, startAccountStartup, prepareAccountRequest } from "./auth-runtime.js"
-import { getApiOrigin, nativeTlsOptions, platformNetworkApi } from './api-origin.js'
+import { getApiOrigin, nativeTlsOptions, platformNetworkApi, isUsbGuestDebugOrigin, parseHttpsApiOrigin } from './api-origin.js'
+import {trackAuthorizedAudio,releaseAuthorizedAudio,releaseAllAuthorizedAudio,audioRemover} from './owned-audio.js'
 import {
   isPersonalizedMode,
   modeLabelFor,
@@ -142,6 +143,7 @@ function announceV3AuthChange() {
   try {
     if (typeof uni.$emit === "function") uni.$emit("harmonyai:v3-auth-changed")
   } catch (e) { /* no event bus in Node/unit environments */ }
+  releaseAllAuthorizedAudio()
 }
 
 // ===== 真实会话流转状态（跨页面共享；所有 revision 均来自后端响应） =====
@@ -1871,7 +1873,7 @@ export const apiV3 = {
   // 播放鉴权（P0-3 前端侧）：后端音频流要求 Bearer 头，audio 标签无法携带。
   // 对后端地址先用带鉴权的 downloadFile 拉取为本地临时文件，再交给播放器；
   // 本地资源与外部直链原样返回。失败时如实报错，不降级为无鉴权直连。
-  fetchAuthorizedAudio(streamUrl) {
+  async fetchAuthorizedAudio(streamUrl) {
     if (!streamUrl) return Promise.resolve("")
     let absolute
     try{absolute=resolveMusicStreamUrl(streamUrl)}catch(error){return Promise.reject(error)}
@@ -1889,21 +1891,45 @@ export const apiV3 = {
     let target, backend
     try {
       if (/\s/.test(absolute)) return invalidUrl()
-      target = new URL(absolute)
-      backend = new URL(getApiOrigin({fallback:BASE_URL}))
+      // This exact debug-only route does not require native standard URL support.
+      // It cannot authorize another host, port, path, userinfo, query or fragment.
+      if (isUsbGuestDebugOrigin('http://127.0.0.1:8000') &&
+          /^http:\/\/127\.0\.0\.1:8000\/api\/v3\/music\/assets\/[A-Za-z0-9_-]+\/stream$/.test(absolute)) {
+        target = {href:absolute,origin:'http://127.0.0.1:8000',protocol:'http:'}
+        backend = {origin:target.origin,protocol:'http:'}
+      } else if(typeof URL!=='function' && nativeTlsOptions().sslVerify){
+        const exact=/^(https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?)\/api\/v3\/music\/assets\/[A-Za-z0-9_-]+\/stream$/.exec(absolute)
+        const origin=exact&&parseHttpsApiOrigin(exact[1]),expected=parseHttpsApiOrigin(getApiOrigin({fallback:BASE_URL}))
+        if(!origin||!expected||origin!==expected)return invalidUrl()
+        target={href:absolute,origin,protocol:'https:'};backend={origin:expected,protocol:'https:'}
+      } else {
+        target = new URL(absolute)
+        backend = new URL(getApiOrigin({fallback:BASE_URL}))
+      }
       if (!/^https?:\/\//i.test(absolute) || target.username || target.password ||
           backend.username || backend.password || !["http:", "https:"].includes(backend.protocol)) return invalidUrl()
     } catch (e) {
       // Missing URL support is not permission to fall back to prefix matching.
       return invalidUrl()
     }
-    if (nativeTlsOptions().sslVerify && target.protocol !== 'https:') return invalidUrl()
+    if (nativeTlsOptions().sslVerify && target.protocol !== 'https:' && !isUsbGuestDebugOrigin(target.origin)) return invalidUrl()
     if (target.origin !== backend.origin) return Promise.resolve(absolute)
+    if(typeof uni!=='undefined' && hasAccountRuntime(uni)){
+      const before=captureAuthentication(),owner=safeGet('v3_public_user_id')
+      await prepareAccountRequest(uni)
+      try{before()}catch(error){
+        if(owner===safeGet('v3_public_user_id'))throw apiError('身份已更新，请重新打开音乐。','AUTH_REFRESHED')
+        throw error
+      }
+    }
+    const unchanged=captureAuthentication()
     return new Promise((resolve, reject) => {
       let downloadFile = null
+      let removeAudio
       try {
         const network=platformNetworkApi(uni)
         downloadFile = typeof network.downloadFile==='function'?network.downloadFile.bind(network):null
+        removeAudio=audioRemover({network,uniApi:uni,plusApi:typeof plus==='undefined'?null:plus,URLApi:typeof URL==='undefined'?null:URL})
       } catch (e) {
         downloadFile = null // uni 不可用（Node 测试环境）
       }
@@ -1916,9 +1942,14 @@ export const apiV3 = {
         ...nativeTlsOptions(),
         header: authHeaders(),
         success: (res) => {
+          if(res.tempFilePath){
+            try{trackAuthorizedAudio(res.tempFilePath,removeAudio)}catch(error){reject(apiError('音频资源暂不可用','AUDIO_FETCH_FAILED'));return}
+          }
+          try{unchanged()}catch(error){if(res.tempFilePath)releaseAuthorizedAudio(res.tempFilePath);reject(error);return}
           if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
             resolve(res.tempFilePath)
           } else {
+            if(res.tempFilePath)releaseAuthorizedAudio(res.tempFilePath)
             reject(apiError("音频加载失败，请稍后重试", "AUDIO_FETCH_FAILED"))
           }
         },
@@ -1928,6 +1959,7 @@ export const apiV3 = {
       })
     })
   },
+  releaseAuthorizedAudio,
 
   // 会话辅助：页面间共享 session id（真实模式存于 v3_flow_state）
   rememberSession(session) {

@@ -14,7 +14,17 @@
 // 真实启用开关：默认关闭（fail-closed）。开启需显式注入 true 且通过 Backend Gate。
 import { readRuntimeV3Credential, hasAccountRuntime, prepareAccountRequest } from './auth-runtime.js'
 import { getApiOrigin, nativeTlsOptions, platformNetworkApi } from './api-origin.js'
-export const MUSIC_LIBRARY_LIVE_ENABLED = false
+// Owner-approved local acceptance only; release and other platforms stay closed.
+function usbGuestLibraryDebugEnabled(){
+ try{
+  if(import.meta.env.DEV!==true||import.meta.env.MODE!=='development'||
+    import.meta.env.VITE_S7_USB_GUEST_DEBUG!=='1'||import.meta.env.VITE_S7_USB_LIBRARY_LIVE!=='1'||
+    import.meta.env.VITE_API_BASE_URL!=='http://127.0.0.1:8000')return false
+  const info=uni.getSystemInfoSync()
+  return info.uniPlatform==='app'&&info.osName==='android'
+ }catch(error){return false}
+}
+export const MUSIC_LIBRARY_LIVE_ENABLED = usbGuestLibraryDebugEnabled()
 
 /** Read the actual V3 bearer credential, never the public owner identifier. */
 export function readV3AccessToken(uniApi = null) {
@@ -100,7 +110,7 @@ export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi
             success(res) {
               const body = res && res.data ? res.data : {}
               const ok = res && res.statusCode >= 200 && res.statusCode < 300
-              if (ok && body.ok === true && Object.hasOwn(body, "data")) {
+              if (ok && body.ok === true && Object.prototype.hasOwnProperty.call(body, "data")) {
                 resolve({ data: body.data })
                 return
               }

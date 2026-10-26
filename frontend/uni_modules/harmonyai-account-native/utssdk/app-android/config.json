@@ -1,0 +1,13 @@
+{
+  "minSdkVersion": 23,
+  "dependencies": [
+    {
+      "id": "com.squareup.okhttp3:okhttp",
+      "source": "compileOnly 'com.squareup.okhttp3:okhttp:3.12.12'"
+    },
+    {
+      "id": "com.squareup.okio:okio",
+      "source": "compileOnly 'com.squareup.okio:okio:1.15.0'"
+    }
+  ]
+}

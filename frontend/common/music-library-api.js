@@ -14,7 +14,7 @@ export function createMusicLibraryApi({ request, getOwnerId, enabled = false }) 
     const response = await request(args)
     if (getOwnerId() !== owner) throw failure('OWNER_CHANGED', '身份已切换，请重新加载')
     if (response?.error) throw failure(response.error.code, '请求未完成，请刷新后重试')
-    if (!response || !Object.hasOwn(response, 'data')) throw failure('INVALID_RESPONSE', '音乐库响应不可用')
+    if (!response || !Object.prototype.hasOwnProperty.call(response, 'data')) throw failure('INVALID_RESPONSE', '音乐库响应不可用')
     return response.data
   }
   function page(path, { cursor = null, limit = 20 } = {}) {

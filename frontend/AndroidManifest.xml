@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native merge input for the approved nonproduction Android package. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.harmonyai.s7test">
+    <application
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/harmonyai_network_security_config"
+        tools:replace="android:allowBackup,android:usesCleartextTraffic,android:networkSecurityConfig" />
+</manifest>

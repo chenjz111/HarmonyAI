@@ -1,4 +1,5 @@
 /** Bridges the existing secure client to legacy readers; never stores registered credentials. */
+import {releaseAllAuthorizedAudio} from './owned-audio.js'
 const sources = new WeakMap()
 const startups = new WeakMap()
 const instances = new WeakMap()
@@ -24,15 +25,24 @@ export function createRegisteredIdentityRuntime({client=null,uniApi=null,accepte
     const epoch = Number(uniApi.getStorageSync('v3_auth_epoch'))
     if (!Number.isSafeInteger(epoch) || epoch < 0 || epoch >= Number.MAX_SAFE_INTEGER) throw failure('IDENTITY_REQUIRED')
     uniApi.setStorageSync('v3_auth_epoch',epoch+1)
-    uniApi.$emit('harmonyai:v3-auth-changed')
+    try { uniApi.$emit('harmonyai:v3-auth-changed') }
+    finally { releaseAllAuthorizedAudio() }
   }
   function begin({preserveFlow=false,binding=false}={}) {
     gate()
     sources.set(uniApi,()=> '')
-    uniApi.setStorageSync('v3_auth_mode',binding ? 'binding' : 'registered')
-    if (!binding) for (const key of ['v3_access_token','v3_public_user_id']) uniApi.removeStorageSync(key)
-    if (!preserveFlow) uniApi.removeStorageSync('v3_flow_state')
-    announce()
+    try {
+      uniApi.setStorageSync('v3_auth_mode',binding ? 'binding' : 'registered')
+      if (!binding) for (const key of ['v3_access_token','v3_public_user_id']) uniApi.removeStorageSync(key)
+      if (!preserveFlow) uniApi.removeStorageSync('v3_flow_state')
+      announce()
+    } catch (error) {
+      // Runtime credentials are already closed. UI storage failure must not
+      // leave an old Player running or prevent its temporary-file cleanup.
+      releaseAllAuthorizedAudio()
+      try { uniApi.$emit('harmonyai:v3-auth-changed') } catch (ignored) { /* continue secure invalidation */ }
+      throw error
+    }
   }
   async function recoverGuest(current=generation) {
     gate()

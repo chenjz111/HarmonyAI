@@ -1,0 +1,7 @@
+import { AccountNative } from 'harmonyai.platform.account'
+// Candidate API only. Not imported by main.js until a reviewed test build exists.
+export function invokeAccountNative(operation: string, input: string, callback: (result: string) => void) {
+  const context = UTSAndroid.getAppContext()
+  if (context == null) { callback('{"ok":false,"code":"NATIVE_CONTEXT_UNAVAILABLE"}'); return }
+  AccountNative.invoke(context!, operation, input, callback)
+}

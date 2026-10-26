@@ -15,7 +15,7 @@ function durationLabel(seconds) {
 }
 
 export function presentMusicCard(card) {
-  const availability = Object.hasOwn(AVAILABILITY_LABELS, card.availability)
+  const availability = Object.prototype.hasOwnProperty.call(AVAILABILITY_LABELS, card.availability)
     ? card.availability
     : "missing"
   return Object.freeze({

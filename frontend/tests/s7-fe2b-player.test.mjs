@@ -1,3 +1,4 @@
+import { MUSIC_LIBRARY_LIVE_ENABLED } from "../common/music-library-transport.js"
 /**
  * Sprint 7 M1 / FE-2B — 历史音乐播放会话测试
  *
@@ -154,7 +155,7 @@ test("FE2B: My page keeps frozen preview by default and never renders HTML", () 
   assert.match(profileSource, /MUSIC_LIBRARY_LIVE_ENABLED/)
   assert.match(profileSource, /界面预览 · 虚构数据/)
   assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = LIVE_SOURCE_ENABLED/)
-  assert.match(readFileSync(new URL('../common/music-library-transport.js', import.meta.url), 'utf8'), /MUSIC_LIBRARY_LIVE_ENABLED = false/)
+  assert.equal(MUSIC_LIBRARY_LIVE_ENABLED, false, 'default/release library remains closed; USB profile is separately tested')
   assert.doesNotMatch(profileSource, /v-html/)
   assert.doesNotMatch(profileSource, /createInnerAudioContext|new Audio|audioCtx/)
 })

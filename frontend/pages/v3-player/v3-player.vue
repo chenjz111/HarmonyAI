@@ -271,8 +271,9 @@ export default {
       const source = apiV3.getCurrentMusicContext()
       if (!source || source.music_id !== music.music_ref.music_id || !source.source_context_id || !source.session_id) return
       if (!this.ensureHistoricalAuthEvents()) return
-      const {api, session} = this.createLibraryPlaybackSession()
+      let {api, session} = this.createLibraryPlaybackSession()
       this.historicalSession = session
+      session = this.historicalSession // Compare the same Vue reactive reference after await.
       this.historicalLibraryApi = api
       try {
         const detail = await session.open(source.music_id, {context:source.source_context_id})
@@ -313,9 +314,10 @@ export default {
       if (!this.ensureHistoricalAuthEvents()) {
         throw Object.assign(new Error("当前环境无法安全同步身份，历史播放暂不可用。"), { code: "FEATURE_NOT_READY" })
       }
-      const {api, session} = this.createLibraryPlaybackSession()
+      let {api, session} = this.createLibraryPlaybackSession()
       // Register pending work before await so unload/auth change can reset it.
       this.historicalSession = session
+      session = this.historicalSession // Compare the same Vue reactive reference after await.
       this.historicalLibraryApi = api
       const detail = await session.open(this.historicalMusicId, {context:this.selectedHistoricalContext})
       if (!this.isCurrentLoad(generation) || this.historicalSession !== session || session.hasOwnerChanged()) return
@@ -369,6 +371,7 @@ export default {
         (!session || (this.historicalSession === session && !session.hasOwnerChanged()))
       controller = createPlayerController({
         downloadAudio: apiV3.fetchAuthorizedAudio,
+        releaseAudio: apiV3.releaseAuthorizedAudio,
         createAudioContext: uni.createInnerAudioContext,
         onPlaybackStarted: () => {
           if (!isCurrent()) return
@@ -387,6 +390,7 @@ export default {
         },
       })
       this.playerController = controller
+      controller = this.playerController // Callbacks must compare the stored reactive reference.
       this.playerState = this.playerController.getState()
     },
     async togglePlay() {

@@ -5,21 +5,22 @@ import {runInNewContext} from 'node:vm'
 import {parse,compileTemplate} from '@vue/compiler-sfc'
 import * as Vue from 'vue'
 import * as presentation from '../common/music-presentation.js'
+import {resolvePlayableAudio} from '../common/music-library-player.js'
 import {createPlayerController} from '../common/player-controller.js'
 
 const source=readFileSync(new URL('../pages/v3-player/v3-player.vue',import.meta.url),'utf8')
 const music={music_ref:{music_id:'owned-asset',source_type:'generated'},title:'笛 · 2026年10月12日 · 123456',
- regulation_mode:'personalized_five_tone',tone_code:'gong',primary_instrument_code:'dizi',primary_instrument_origin:'legacy_single'}
-function harness(){
- const calls=[],listeners=new Map()
+ stream_url:'/api/v3/music/assets/owned-asset/stream',regulation_mode:'personalized_five_tone',tone_code:'gong',primary_instrument_code:'dizi',primary_instrument_origin:'legacy_single'}
+function harness({reactive=false,audioContext=null,library=false}={}){
+ const calls=[],toasts=[],listeners=new Map()
  const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/import\s*\{([\s\S]*?)\}\s*from\s*["'][^"']+["'];?/g,(_,names)=>`const {${names}}=deps;`).replace('export default {','options = {')
- const sandbox={options:null,uni:{showToast(){},reLaunch(){},navigateBack(){},createInnerAudioContext(){throw new Error('audio must remain lazy')},$on:(name,fn)=>listeners.set(name,fn),$off:name=>listeners.delete(name),$emit:name=>listeners.get(name)?.()},deps:{...presentation,createPlayerController,MUSIC_LIBRARY_LIVE_ENABLED:false,
+ const sandbox={options:null,uni:{showToast:args=>toasts.push(args.title),reLaunch(){},navigateBack(){},createInnerAudioContext(){if(audioContext)return audioContext;throw new Error('audio must remain lazy')},$on:(name,fn)=>listeners.set(name,fn),$off:name=>listeners.delete(name),$emit:name=>listeners.get(name)?.()},deps:{...presentation,createPlayerController,resolvePlayableAudio,MUSIC_LIBRARY_LIVE_ENABLED:library,
   apiV3:{getMusic:async()=>({...music}),getMusicBasis:async()=>null,getCurrentUserGoal:()=>null,
    getMusicPresentation:async id=>{calls.push(['metadata',id]);return {music_id:id,display_title:'Private title',is_favorite:true,primary_instrument_code:'guqin',primary_instrument_origin:'legacy_single'}},
    fetchAuthorizedAudio:async()=>'/synthetic.wav',captureIdentity:()=>()=>{},
    addFavorite:async(...args)=>calls.push(['add',...args]),removeFavorite:async(...args)=>calls.push(['remove',...args])}}}
  runInNewContext(script,sandbox)
- const page=sandbox.options.data();for(const [name,fn] of Object.entries(sandbox.options.methods))page[name]=fn.bind(page)
+ const page=reactive?Vue.reactive(sandbox.options.data()):sandbox.options.data();for(const [name,fn] of Object.entries(sandbox.options.methods))page[name]=fn.bind(page)
  for(const [name,fn] of Object.entries(sandbox.options.computed))Object.defineProperty(page,name,{get:()=>fn.call(page)})
  page.music={...music};page.loading=false
  const result=compileTemplate({source:parse(source).descriptor.template.content,filename:'v3-player.vue',id:'s7-player',compilerOptions:{isCustomElement:()=>true}})
@@ -27,7 +28,7 @@ function harness(){
  const executable=result.code.replace(/import\s*\{([^}]+)\}\s*from\s*["']vue["']/g,(_,names)=>`const {${names.replace(/\s+as\s+/g,':')}}=Vue;`).replace('export function render','function render')
  const render=new Function('Vue',executable+';return render')(Vue)
  function nodes(){const all=[];function visit(node){if(Array.isArray(node)){node.forEach(visit);return}if(!node||typeof node!=='object')return;all.push(node);visit(node.children)}visit(render(page,[]));return all}
- return {page,calls,api:sandbox.deps.apiV3,authChanged:()=>sandbox.uni.$emit('harmonyai:v3-auth-changed'),nodes,find:className=>nodes().find(n=>String(n.props?.class||'').split(' ').includes(className))}
+ return {page,calls,toasts,api:sandbox.deps.apiV3,authChanged:()=>sandbox.uni.$emit('harmonyai:v3-auth-changed'),nodes,find:className=>nodes().find(n=>String(n.props?.class||'').split(' ').includes(className))}
 }
 
 test('actual Player template renders the safe persisted display title',()=>{
@@ -93,4 +94,38 @@ test('identity changed during the optional basis read cannot publish private met
 
 test('identity event clears the loaded normal Player and controller',async()=>{
  const h=harness();await h.page.load();assert.ok(h.page.playerController);h.authChanged();assert.equal(h.page.music,null);assert.equal(h.page.playerController,null);assert.equal(h.page.loadFailure?.code,'OWNER_CHANGED')
+})
+
+test('actual Vue reactive Player delivers time and error callbacks for its current controller',async()=>{
+ const handlers={}
+ const audio={src:'',duration:24,currentTime:6,
+  onPlay:fn=>handlers.play=fn,onCanplay:fn=>handlers.canplay=fn,onTimeUpdate:fn=>handlers.time=fn,onError:fn=>handlers.error=fn,
+  play(){handlers.play?.()},pause(){},destroy(){}}
+ const h=harness({reactive:true,audioContext:audio})
+ await h.page.load();await h.page.togglePlay();handlers.time()
+ assert.equal(h.page.playerState.currentTime,6)
+ assert.equal(h.page.playerState.duration,24)
+ assert.equal(h.page.playerState.playing,true)
+ handlers.error({errCode:10004,message:'synthetic decode failure'})
+ assert.ok(h.toasts.length>0,'a current native error must be visible')
+ const toastCount=h.toasts.length
+ h.authChanged()
+ handlers.time();handlers.error({message:'late old identity error'})
+ assert.equal(h.page.music,null)
+ assert.equal(h.page.playerController,null)
+ assert.equal(h.toasts.length,toastCount,'old identity callbacks must remain ignored')
+ h.page.releasePlayerLoad()
+})
+
+
+test('Vue reactive historical Player accepts its own session result',async()=>{
+ const h=harness({reactive:true,library:true})
+ const session={open:async()=>({card:{music_id:'owned-asset',source_type:'generated',display_title:'History',availability:'ready'},audio:{availability:'ready',duration_seconds:24},source_contexts:[]}),hasOwnerChanged:()=>false,reset(){}}
+ h.page.createLibraryPlaybackSession=()=>({api:{},session})
+ h.page.ensureHistoricalAuthEvents=()=>true
+ h.page.historicalMusicId='owned-asset';h.page.music=null
+ await h.page.loadHistorical()
+ assert.equal(h.page.music?.music_ref.music_id,'owned-asset')
+ assert.ok(h.page.playerController)
+ h.page.releasePlayerLoad()
 })
