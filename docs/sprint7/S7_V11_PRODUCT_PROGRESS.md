@@ -139,4 +139,6 @@ Next actual work: verify the final Draft PR CI and update its evidence; with app
 
 ## Unchanged boundaries
 
+2026-10-27 账号顺序开发续接：[退出重启与改密用户流程](ACCOUNT_CONTINUATION_20261027.md)。完成 signed_out 的安全恢复候选、注销/启动并发等待、普通存储失败不阻止注销，以及 R1 既有改密接口的客户端/页面接线。真实 ASGI/SQLite 账号闭环通过，H5资源编译通过；全前端695p/1f（源码冻结SHA断言，未隐藏），Android及默认账号未开放。本轮不打包、不下载、不安装；上文旧阶段的 NOT RUN 不覆盖用户后来明确接受的 Guest 真实生成/播放/暂停/Seek/重开成果。
+
 No merge/base or main push, force push, deployment, public account activation, paid Provider, real MySQL instance or Android installation. Original Guard unchanged. Learning OFF; source retention/share/consent policy/medical approval gates stay closed. init_database can automatically apply0013/0014 even when an account router is unregistered: no deployment or existing-database startup is authorized. All genuine unrun validations above remain NOT RUN.

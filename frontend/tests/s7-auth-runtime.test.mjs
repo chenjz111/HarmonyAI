@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {createRegisteredAuthClient} from '../common/registered-auth.js'
-import {createRegisteredIdentityRuntime} from '../common/auth-runtime.js'
+import {createRegisteredIdentityRuntime,startAccountStartup} from '../common/auth-runtime.js'
 import {readV3AccessToken,createUniMusicLibraryTransport} from '../common/music-library-transport.js'
 
 function harness({accepted=true,request=null}={}){
@@ -11,7 +11,8 @@ function harness({accepted=true,request=null}={}){
  const secureStore={verified:true,keystoreBacked:true,atomicConsume:true,async take(){const v=proof;proof=null;return v},async clear(){proof=null},async write(v){proof=v}}
  const client=createRegisteredAuthClient({enabled:true,secureStore,now:()=>clock,request:async args=>{calls.push(args);if(request)return request(args);return {data:{public_user_id:args.path.endsWith('/register-bind')?'guest-A':'registered-B',access_token:'memory-access',refresh_token:'secure-proof',expires_at:'2026-10-25T12:00:00Z'}}}})
  const runtime=createRegisteredIdentityRuntime({client,uniApi:uni,accepted})
- return {values,events,calls,uni,runtime,client,proof:()=>proof,expire:()=>{clock=Date.parse('2026-10-26T00:00:00Z')}}
+ const restart=()=>createRegisteredIdentityRuntime({client:createRegisteredAuthClient({enabled:true,secureStore,now:()=>clock,request:async args=>{calls.push(args);throw new Error('unexpected restart network')}}),uniApi:uni,accepted})
+ return {values,events,calls,uni,runtime,client,restart,proof:()=>proof,expire:()=>{clock=Date.parse('2026-10-26T00:00:00Z')}}
 }
 
 test('default unavailable account integration issues no request and preserves valid Guest',async()=>{
@@ -66,7 +67,113 @@ test('same-owner refresh preserves the current registered assessment flow',async
  const h=harness();await h.runtime.login({});h.values.set('v3_flow_state','current-registered-session');await h.runtime.refresh();assert.equal(h.values.get('v3_flow_state'),'current-registered-session')
 })
 
-test('ordinary UI storage failure cannot prevent secure logout or server revocation attempt',async()=>{
- const h=harness();await h.runtime.login({});h.uni.setStorageSync=()=>{throw new Error('ordinary storage unavailable')}
+for(const method of ['getStorageSync','setStorageSync'])test(`ordinary UI ${method} failure cannot prevent secure logout or server revocation attempt`,async()=>{
+ const h=harness();await h.runtime.login({});h.uni[method]=()=>{throw new Error('ordinary storage unavailable')}
  await assert.rejects(h.runtime.logout());assert.equal(h.calls.at(-1).path,'/api/v3/auth/logout');assert.equal(h.proof(),null);assert.equal(h.client.accessToken(),'');assert.equal(readV3AccessToken(h.uni),'')
+})
+
+test('confirmed Guest return is available only after successful registered logout and never issues Guest itself',async()=>{
+ const h=harness();await h.runtime.login({})
+ await h.runtime.logout()
+ assert.equal(h.runtime.canUseGuestAfterLogout?.(),true)
+ await assert.rejects(h.runtime.useGuestAfterLogout({confirmed:false}),{code:'EXPLICIT_CONFIRMATION_REQUIRED'})
+ const before=h.calls.length
+ await h.runtime.useGuestAfterLogout({confirmed:true})
+ assert.equal(h.values.get('v3_auth_mode'),'guest')
+ assert.equal(h.values.has('v3_access_token'),false)
+ assert.equal(h.values.has('v3_public_user_id'),false)
+ assert.equal(h.values.has('v3_flow_state'),false)
+ assert.equal(readV3AccessToken(h.uni),'')
+ assert.equal(h.proof(),null)
+ assert.equal(h.calls.length,before,'only the normal Home flow may create the new Guest')
+ assert.equal(h.runtime.canUseGuestAfterLogout(),false)
+})
+
+test('Guest return cannot abandon a quarantined binding or an unconfirmed logout',async()=>{
+ const binding=harness({request:async()=>{throw new Error('offline')}})
+ await assert.rejects(binding.runtime.bind({}))
+ await assert.rejects(binding.runtime.useGuestAfterLogout({confirmed:true}),{code:'GUEST_RETURN_UNAVAILABLE'})
+ assert.equal(binding.values.get('v3_auth_mode'),'binding')
+ assert.equal(binding.values.get('v3_access_token'),'old-guest')
+ const logout=harness({request:async args=>args.path.endsWith('/logout')?{error:{code:'NETWORK_ERROR'}}:{data:{public_user_id:'B',access_token:'access',refresh_token:'proof',expires_at:'2026-10-25T12:00:00Z'}}})
+ await logout.runtime.login({});await assert.rejects(logout.runtime.logout())
+ await assert.rejects(logout.runtime.useGuestAfterLogout({confirmed:true}),{code:'GUEST_RETURN_UNAVAILABLE'})
+ assert.equal(logout.values.get('v3_auth_mode'),'registered')
+})
+
+test('a later login invalidates earlier permission to enter Guest',async()=>{
+ const h=harness();await h.runtime.login({});await h.runtime.logout();await h.runtime.login({})
+ await assert.rejects(h.runtime.useGuestAfterLogout({confirmed:true}),{code:'GUEST_RETURN_UNAVAILABLE'})
+ assert.equal(readV3AccessToken(h.uni),'memory-access')
+ assert.equal(h.values.get('v3_public_user_id'),'registered-B')
+})
+
+test('password change closes local authority and never grants logout-to-Guest permission',async()=>{
+ const h=harness({request:async args=>args.path.endsWith('/password')?{data:{status:'password_changed',reauthentication_required:true}}:{data:{public_user_id:'B',access_token:'access',refresh_token:'proof',expires_at:'2026-10-25T12:00:00Z'}}})
+ await h.runtime.login({})
+ await h.runtime.changePassword({current_password:'synthetic-long-password',new_password:'synthetic-new-long-password'})
+ assert.equal(readV3AccessToken(h.uni),'');assert.equal(h.proof(),null)
+ assert.equal(h.values.get('v3_auth_mode'),'registered')
+ assert.equal(h.runtime.canUseGuestAfterLogout(),false)
+ assert.equal(h.calls.at(-1).path,'/api/v3/auth/password')
+})
+
+test('successful logout survives restart without Refresh or automatic Guest creation',async()=>{
+ const h=harness();await h.runtime.login({});await h.runtime.logout()
+ assert.equal(h.values.get('v3_auth_mode'),'signed_out')
+ const runtime=h.restart(),before=h.calls.length
+ await startAccountStartup(h.uni,runtime)
+ assert.equal(runtime.canUseGuestAfterLogout(),true)
+ assert.equal(h.calls.length,before)
+ const previous=globalThis.uni;globalThis.uni=h.uni
+ try{
+  const {apiV3}=await import('../common/api-v3.js?explicit-signed-out')
+  await assert.rejects(apiV3.ensureIdentity(),{code:'SIGNED_OUT'})
+  await assert.rejects(apiV3.guestAuth(),{code:'IDENTITY_REQUIRED'})
+  assert.equal(apiV3.canStartNewGuest(),false)
+  assert.equal(h.calls.length,before)
+  await runtime.useGuestAfterLogout({confirmed:true})
+  assert.equal(h.values.get('v3_auth_mode'),'guest')
+ }finally{globalThis.uni=previous}
+})
+
+test('startup during a pending logout waits rather than restoring another session',async()=>{
+ let finishLogout
+ const h=harness({request:async args=>{
+  if(args.path.endsWith('/logout'))return new Promise(resolve=>{finishLogout=()=>resolve({data:{revoked:true}})})
+  return {data:{public_user_id:'B',access_token:'access',refresh_token:'proof',expires_at:'2026-10-25T12:00:00Z'}}
+ }})
+ await h.runtime.login({})
+ const logout=h.runtime.logout()
+ const startup=startAccountStartup(h.uni,h.runtime)
+ await Promise.resolve();await Promise.resolve()
+ finishLogout();await Promise.all([logout,startup])
+ assert.equal(h.runtime.canUseGuestAfterLogout(),true)
+ assert.equal(h.calls.filter(c=>c.path.endsWith('/refresh')).length,0)
+})
+
+test('signed-out marker with leftover Guest authority cannot bypass binding quarantine',async()=>{
+ const h=harness();h.values.set('v3_auth_mode','signed_out')
+ await assert.rejects(startAccountStartup(h.uni,h.runtime),{code:'REAUTHENTICATION_REQUIRED'})
+ assert.equal(readV3AccessToken(h.uni),'')
+ assert.equal(h.values.get('v3_access_token'),'old-guest')
+ assert.equal(h.runtime.canUseGuestAfterLogout(),false)
+ assert.equal(h.calls.length,0)
+})
+
+test('unexpected secure proof under signed-out marker requires login even after retry',async()=>{
+ const h=harness();await h.runtime.login({})
+ h.values.set('v3_auth_mode','signed_out');h.values.delete('v3_public_user_id');h.values.delete('v3_flow_state')
+ const runtime=h.restart(),before=h.calls.length
+ await assert.rejects(startAccountStartup(h.uni,runtime),{code:'REAUTHENTICATION_REQUIRED'})
+ await assert.rejects(startAccountStartup(h.uni,runtime),{code:'REAUTHENTICATION_REQUIRED'})
+ assert.equal(runtime.canUseGuestAfterLogout(),false)
+ assert.equal(h.calls.length,before)
+})
+
+test('Guest return permission is invalidated by an external UI authentication epoch change',async()=>{
+ const h=harness();await h.runtime.login({});await h.runtime.logout()
+ h.values.set('v3_auth_epoch',h.values.get('v3_auth_epoch')+1)
+ await assert.rejects(h.runtime.useGuestAfterLogout({confirmed:true}),{code:'GUEST_RETURN_UNAVAILABLE'})
+ assert.equal(h.values.get('v3_auth_mode'),'signed_out')
 })

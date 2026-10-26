@@ -7,7 +7,7 @@ const failure = code => Object.assign(new Error(code), {code})
 export function readRuntimeV3Credential(uniApi) {
   if (!uniApi) return ''
   try {
-    if (uniApi.getStorageSync('v3_auth_mode') === 'binding') return ''
+    if (['binding','signed_out'].includes(uniApi.getStorageSync('v3_auth_mode'))) return ''
     if (sources.has(uniApi)) return sources.get(uniApi)()
     if (uniApi.getStorageSync('v3_auth_mode') === 'registered') return ''
     return uniApi.getStorageSync('v3_access_token') || ''
@@ -15,7 +15,7 @@ export function readRuntimeV3Credential(uniApi) {
 }
 
 export function createRegisteredIdentityRuntime({client=null,uniApi=null,accepted=false,verifyGuest=null}={}) {
-  let generation = 0, refreshing = null, pendingTransition = null
+  let generation = 0, refreshing = null, pendingTransition = null, pendingLogout = null, loggedOutGeneration = null, loggedOutEpoch = null
   function gate() {
     if (accepted !== true || !client || !uniApi ||
         !['getStorageSync','setStorageSync','removeStorageSync','$emit'].every(name=>typeof uniApi[name]==='function')) throw failure('ACCOUNT_FEATURE_UNAVAILABLE')
@@ -57,6 +57,7 @@ export function createRegisteredIdentityRuntime({client=null,uniApi=null,accepte
   }
   async function perform(operation,{preserveFlow=false,binding=false,switchOwner=false}={}) {
     gate()
+    loggedOutGeneration = null
     const current = ++generation
     try {
       const expectedOwner = preserveFlow && !switchOwner ? uniApi.getStorageSync('v3_public_user_id') : null
@@ -100,6 +101,14 @@ export function createRegisteredIdentityRuntime({client=null,uniApi=null,accepte
     pendingTransition=pending
     return pending
   }
+  function canUseGuestAfterLogout() {
+    try {
+      return accepted === true && loggedOutGeneration === generation && !pendingTransition && !pendingLogout && !refreshing &&
+        uniApi.getStorageSync('v3_auth_mode') === 'signed_out' && loggedOutEpoch === uniApi.getStorageSync('v3_auth_epoch') &&
+        !uniApi.getStorageSync('v3_access_token') && !uniApi.getStorageSync('v3_public_user_id') && !uniApi.getStorageSync('v3_flow_state') &&
+        !client.owner() && !client.accessToken()
+    } catch (error) { return false }
+  }
   const runtime=Object.freeze({
     available:accepted === true && !!client && !!uniApi,
     login(body) {
@@ -122,14 +131,80 @@ export function createRegisteredIdentityRuntime({client=null,uniApi=null,accepte
     restore:()=>refresh(true),
     recoverGuest:()=>recoverGuest(),
     ensureAccess:()=>client?.accessToken() ? Promise.resolve({public_user_id:client.owner()}) : client?.owner() ? refresh() : refresh(true),
-    waitForTransition:()=>pendingTransition ? pendingTransition.catch(()=>{}) : Promise.resolve(),
-    async logout(options) {
-      gate(); generation++
-      sources.set(uniApi,()=> '')
-      // Security operations run independently of fallible UI storage/event bookkeeping.
-      const results = await Promise.allSettled([Promise.resolve().then(()=>begin()),client.logout(options)])
-      const failed = results.find(result=>result.status === 'rejected')
-      if (failed) throw failed.reason
+    waitForTransition:()=>Promise.all([pendingTransition,pendingLogout].filter(Boolean).map(p=>p.catch(()=>{}))),
+    logout(options) {
+      if(pendingLogout)return Promise.reject(failure('ACCOUNT_OPERATION_PENDING'))
+      const pending=(async()=>{
+        gate()
+        let wasRegistered = false
+        try { wasRegistered = uniApi.getStorageSync('v3_auth_mode') === 'registered' && !!client.owner() }
+        catch (error) { /* UI storage must not stop secure erasure/revocation. */ }
+        const current = ++generation
+        loggedOutGeneration = null
+        sources.set(uniApi,()=> '')
+        // Security operations run independently of fallible UI storage/event bookkeeping.
+        const results = await Promise.allSettled([Promise.resolve().then(()=>begin()),client.logout(options)])
+        const failed = results.find(result=>result.status === 'rejected')
+        if (failed) throw failed.reason
+        if (current === generation && wasRegistered) {
+          uniApi.setStorageSync('v3_auth_mode','signed_out')
+          loggedOutGeneration = current
+          announce()
+          loggedOutEpoch = uniApi.getStorageSync('v3_auth_epoch')
+        }
+      })().finally(()=>{if(pendingLogout===pending)pendingLogout=null})
+      pendingLogout=pending
+      return pending
+    },
+    restoreSignedOut() {
+      if(canUseGuestAfterLogout())return Promise.resolve(null)
+      return accountTransition(async()=>{
+        gate()
+        const epoch=uniApi.getStorageSync('v3_auth_epoch')
+        const emptySignedOut=()=>uniApi.getStorageSync('v3_auth_mode')==='signed_out' &&
+          !uniApi.getStorageSync('v3_access_token') && !uniApi.getStorageSync('v3_public_user_id') && !uniApi.getStorageSync('v3_flow_state')
+        if(!emptySignedOut())throw failure('REAUTHENTICATION_REQUIRED')
+        const current=++generation;loggedOutGeneration=null;sources.set(uniApi,()=> '')
+        try { await client.confirmSignedOut() }
+        catch (error) {
+          // Never turn a corrupt marker/proof pair into a clean logout merely
+          // because a failed check consumed the unexpected proof on first try.
+          if(current===generation && uniApi.getStorageSync('v3_auth_mode')==='signed_out')uniApi.setStorageSync('v3_auth_mode','registered')
+          throw error
+        }
+        if(current!==generation || epoch!==uniApi.getStorageSync('v3_auth_epoch') || !emptySignedOut())throw failure('OWNER_CHANGED')
+        loggedOutGeneration=current
+        announce()
+        loggedOutEpoch=uniApi.getStorageSync('v3_auth_epoch')
+        return null
+      })
+    },
+    changePassword(body) {
+      return accountTransition(async()=>{
+        gate();loggedOutGeneration=null
+        const current=++generation
+        try { begin();return await client.changePassword(body) }
+        finally {
+          if(current===generation){
+            sources.set(uniApi,()=> '')
+            await client.invalidate()
+            announce()
+          }
+        }
+      })
+    },
+    canUseGuestAfterLogout,
+    async useGuestAfterLogout({confirmed=false}={}) {
+      gate()
+      if (confirmed !== true) throw failure('EXPLICIT_CONFIRMATION_REQUIRED')
+      if (!canUseGuestAfterLogout()) throw failure('GUEST_RETURN_UNAVAILABLE')
+      // Only a successful explicit logout grants this one-shot transition.
+      // Never applies to binding/unknown outcomes and never issues a credential.
+      loggedOutGeneration = null; generation++
+      for (const key of ['v3_access_token','v3_public_user_id','v3_flow_state']) uniApi.removeStorageSync(key)
+      uniApi.setStorageSync('v3_auth_mode','guest')
+      sources.delete(uniApi)
+      announce()
     },
     owner:()=>accepted === true && client ? client.owner() : null,
   })
@@ -141,7 +216,7 @@ export function createRegisteredIdentityRuntime({client=null,uniApi=null,accepte
 let installed = createRegisteredIdentityRuntime()
 export const registeredAccountRuntime = Object.freeze({
   get available(){return installed.available},
-  ...Object.fromEntries(['login','bind','refresh','restore','recoverGuest','ensureAccess','waitForTransition','logout','owner'].map(name=>[name,(...args)=>installed[name](...args)])),
+  ...Object.fromEntries(['login','bind','refresh','restore','restoreSignedOut','recoverGuest','ensureAccess','waitForTransition','logout','changePassword','canUseGuestAfterLogout','useGuestAfterLogout','owner'].map(name=>[name,(...args)=>installed[name](...args)])),
 })
 
 // Explicit candidate composition seam, never called by the default build.
@@ -155,12 +230,13 @@ export function startAccountStartup(uniApi,runtime=null) {
   if (startups.has(uniApi)) return startups.get(uniApi)
   let mode
   try {mode=uniApi.getStorageSync('v3_auth_mode')} catch(error) {return Promise.reject(failure('IDENTITY_REQUIRED'))}
-  if (!['registered','binding'].includes(mode)) return Promise.resolve(null)
+  if (!['registered','binding','signed_out'].includes(mode)) return Promise.resolve(null)
   runtime=runtime || instances.get(uniApi) || registeredAccountRuntime
   const pending=Promise.resolve().then(async()=>{
     if (!runtime.available) throw failure('ACCOUNT_FEATURE_UNAVAILABLE')
     if (runtime.waitForTransition) await runtime.waitForTransition()
     const selected=uniApi.getStorageSync('v3_auth_mode')
+    if(selected==='signed_out')return runtime.restoreSignedOut()
     return selected==='guest' ? null : selected === 'binding' ? runtime.recoverGuest() : runtime.ensureAccess ? runtime.ensureAccess() : runtime.restore()
   }).finally(()=>{if(startups.get(uniApi)===pending)startups.delete(uniApi)})
   startups.set(uniApi,pending)

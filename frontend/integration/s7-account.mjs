@@ -128,14 +128,44 @@ await runtime.logout({allDevices:true})
 assert.equal((await identity(access)).statusCode,401)
 assert.equal(readRuntimeV3Credential(a.uni),'')
 assert.ok(a.secureStore.peek()===null)
+// Explicit logout -> normal Home Guest issuance; account history stays owned.
+runtime=createNativeAccountRuntime(options(a)) // app process restarted after logout
+const refreshesAfterLogout=refreshRequests
+await startAccountStartup(a.uni,runtime)
+assert.equal(refreshRequests,refreshesAfterLogout,'signed-out startup must not send Refresh')
+assert.equal(runtime.canUseGuestAfterLogout(),true)
+globalThis.uni=a.uni
+await assert.rejects(apiV3.ensureIdentity(),{code:'SIGNED_OUT'})
+await runtime.useGuestAfterLogout({confirmed:true})
+globalThis.uni=a.uni
+const newGuest=await apiV3.ensureIdentity()
+assert.notEqual(newGuest.public_user_id,original.public_user_id)
+assert.equal((await libraryFor(a).listMusicAssets()).items.length,0)
+await runtime.login({username:'account_a',password:PASSWORD})
+assert.equal((await libraryFor(a).listMusicAssets()).items.length,1,'returning to Guest never transfers account history')
+
 offline=true
 await assert.rejects(bob.logout())
+assert.equal(bob.canUseGuestAfterLogout(),false,'unknown logout cannot authorize identity replacement')
 assert.equal(readRuntimeV3Credential(b.uni),'')
 assert.ok(b.secureStore.peek()===null)
 offline=false
+// Real R1 password endpoint: all old session authority dies, no client replay.
+await bob.login({username:'account_b',password:PASSWORD})
+const beforePasswordAccess=readRuntimeV3Credential(b.uni),beforePasswordProof=b.secureStore.peek()
+const NEW_PASSWORD='synthetic-replacement-long-passphrase'
+await bob.changePassword({current_password:PASSWORD,new_password:NEW_PASSWORD})
+assert.equal(readRuntimeV3Credential(b.uni),'');assert.equal(b.secureStore.peek(),null)
+assert.equal((await identity(beforePasswordAccess)).statusCode,401)
+assert.equal((await rpc({method:'POST',path:'/api/v3/auth/refresh',data:{refresh_token:beforePasswordProof}})).statusCode,401)
+await assert.rejects(bob.login({username:'account_b',password:PASSWORD}),{code:'UNAUTHENTICATED'})
+await bob.login({username:'account_b',password:NEW_PASSWORD})
+assert.equal((await libraryFor(b).listMusicAssets()).items.length,0)
+
 for(const h of [a,b,c,lost]){
  const ordinary=JSON.stringify([...h.values])
  assert.ok(!ordinary.includes(PASSWORD),'password must never persist in ordinary storage')
+ assert.ok(!ordinary.includes(NEW_PASSWORD),'replacement password must never persist in ordinary storage')
  for(const secret of registeredSecrets)assert.ok(!ordinary.includes(secret),'registered credential must never persist in ordinary storage')
 }
 process.stdout.write('S7_FRONTEND_VERIFIED\n');input.close()

@@ -37,7 +37,16 @@
         <button :disabled="accountBusy" @click="submitAccount">{{ accountBusy ? '正在处理' : (accountMode === 'bind' ? '注册并绑定' : '登录') }}</button>
         <button v-if="accountOwner" :disabled="accountBusy" @click="logoutAccount(false)">退出当前设备</button>
         <button v-if="accountOwner" :disabled="accountBusy" @click="logoutAccount(true)">退出所有设备</button>
+        <button v-if="accountOwner" :disabled="accountBusy" @click="togglePasswordChange">{{ passwordChangeOpen ? '取消修改密码' : '修改密码' }}</button>
+        <view v-if="accountOwner && passwordChangeOpen">
+          <text class="state-copy">修改成功后所有设备需要重新登录。结果未确认时，请重新认证，不要重复提交。</text>
+          <input v-model="currentPassword" :disabled="accountBusy" :password="true" :maxlength="-1" placeholder="当前密码" />
+          <input v-model="newPassword" :disabled="accountBusy" :password="true" :maxlength="-1" placeholder="新密码：15–1024 个字符" />
+          <input v-model="confirmNewPassword" :disabled="accountBusy" :password="true" :maxlength="-1" placeholder="再次输入新密码" />
+          <button :disabled="accountBusy" @click="changeAccountPassword">确认修改密码</button>
+        </view>
       </view>
+      <button v-if="accountGuestReady" :disabled="accountBusy" @click="returnToGuest">使用游客体验</button>
       <text v-if="accountError" class="state-copy">{{ accountError }}</text>
     </view>
     <view v-else-if="activeSection === 'about'" class="state-card">
@@ -90,7 +99,7 @@
 
 <script>
 import { MUSIC_CARD_V1_PREVIEW_FIXTURE } from "../../common/music-card-v1-preview-fixture.js"
-import { registeredAccountRuntime } from "../../common/auth-runtime.js"
+import { registeredAccountRuntime, startAccountStartup } from "../../common/auth-runtime.js"
 import {
   createMusicLibraryPreview,
   createMusicLibraryStore,
@@ -147,7 +156,8 @@ export default {
     return {
       activeSection: "history",
       accountAvailable: !!(registeredAccountRuntime && registeredAccountRuntime.available),
-      accountMode: "bind", accountUsername: "", accountPassword: "", accountBusy: false, accountError: "", accountOwner: null, accountSequence: 0,
+      accountMode: "bind", accountUsername: "", accountPassword: "", accountBusy: false, accountError: "", accountOwner: null, accountSequence: 0, accountHidden: false, accountGuestReady: false,
+      passwordChangeOpen: false, currentPassword: "", newPassword: "", confirmNewPassword: "",
       library: createMusicLibraryPreview("ready", MUSIC_CARD_V1_PREVIEW_FIXTURE),
       favoriteBusy: false,
       titleBusy: false,
@@ -179,27 +189,55 @@ export default {
   },
   onLoad() {
     this.liveDisposed = false
-    if (LIVE_SOURCE_ENABLED) {
-      this.liveAuthReady = false
-      this.library = createMusicLibraryPreview("empty")
-      this.authChangeHandler = () => this.ensureLiveOwner()
+    this.syncAccountView()
+    if (LIVE_SOURCE_ENABLED || this.accountAvailable) {
+      this.authChangeHandler = () => {
+        this.syncAccountView()
+        if (LIVE_SOURCE_ENABLED) this.ensureLiveOwner()
+      }
       try {
-        if (typeof uni.$on !== "function" || typeof uni.$off !== "function" || typeof uni.$emit !== "function") return
+        if (!["$on", "$off", "$emit"].every(name => typeof uni[name] === "function")) throw new Error("Authentication subscription unavailable")
         if (uni.$on("harmonyai:v3-auth-changed", this.authChangeHandler) === false) throw new Error("Authentication subscription rejected")
-        this.liveAuthReady = true
       } catch (e) {
-        // A partial/failed subscription never authorizes live reads or writes.
         try { if (typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (ignored) { /* unavailable */ }
+        this.accountAvailable = false
+        this.accountOwner = null
+        if (LIVE_SOURCE_ENABLED) this.library = createMusicLibraryPreview("empty")
         return
       }
+    }
+    if (LIVE_SOURCE_ENABLED) {
+      this.library = createMusicLibraryPreview("empty")
+      this.liveAuthReady = true
       this.setupLiveSource()
     }
   },
-  onShow() {
+  async onShow() {
+    this.accountHidden = false
+    this.syncAccountView()
+    if (this.accountAvailable) {
+      const sequence = this.accountSequence
+      try { await startAccountStartup(uni) }
+      catch (error) {
+        if (sequence === this.accountSequence && !this.accountHidden && !this.liveDisposed) this.accountError = "身份恢复未能确认，请重新登录；不会自动更换身份。"
+      }
+      if (sequence !== this.accountSequence || this.accountHidden || this.liveDisposed) return
+      this.syncAccountView()
+    }
     if (LIVE_SOURCE_ENABLED && !this.liveDisposed && this.api && this.ensureLiveOwner()) this.reload()
+  },
+  onHide() {
+    this.accountHidden = true
+    this.accountSequence++
+    this.accountPassword = ""; this.accountUsername = ""; this.accountError = ""
+    this.accountBusy = false
+    this.accountOwner = null
+    this.accountGuestReady = false
+    this.clearPasswordChange(); this.passwordChangeOpen = false
   },
   onUnload() {
     this.accountSequence++; this.accountPassword = ""; this.accountUsername = ""
+    this.clearPasswordChange()
     this.liveDisposed = true
     this.liveAuthReady = false
     try { if (this.authChangeHandler && typeof uni.$off === "function") uni.$off("harmonyai:v3-auth-changed", this.authChangeHandler) } catch (e) { /* unsupported */ }
@@ -211,6 +249,57 @@ export default {
     this.library = createMusicLibraryPreview("empty")
   },
   methods: {
+    syncAccountView() {
+      if (this.liveDisposed || this.accountHidden || !this.accountAvailable) { this.accountOwner = null; this.accountGuestReady = false; return }
+      // Display only the runtime identity, never a cached public owner label.
+      this.accountOwner = registeredAccountRuntime.owner?.() || null
+      this.accountGuestReady = registeredAccountRuntime.canUseGuestAfterLogout?.() === true
+      if (!this.accountOwner) { this.clearPasswordChange(); this.passwordChangeOpen = false }
+    },
+    clearPasswordChange() { this.currentPassword = ""; this.newPassword = ""; this.confirmNewPassword = "" },
+    togglePasswordChange() {
+      if (this.accountBusy) return
+      this.clearPasswordChange(); this.passwordChangeOpen = !this.passwordChangeOpen
+    },
+    async changeAccountPassword() {
+      if (!this.accountAvailable || !this.accountOwner || this.accountBusy || this.accountHidden || this.liveDisposed) { this.clearPasswordChange(); return }
+      const current_password = this.currentPassword.normalize("NFC"), new_password = this.newPassword.normalize("NFC")
+      if ([...current_password].length < 15 || [...current_password].length > 1024 || [...new_password].length < 15 || [...new_password].length > 1024 || new_password !== this.confirmNewPassword.normalize("NFC")) {
+        this.accountError = "请检查密码长度，并确认两次新密码一致。"; this.clearPasswordChange(); return
+      }
+      const sequence = ++this.accountSequence, identity = captureLiveIdentity()
+      this.accountBusy = true; this.accountError = ""
+      try {
+        const confirmed = await new Promise(resolve => uni.showModal({title:"修改密码",content:"修改成功会撤销所有设备的登录状态，需要使用新密码重新登录。确认继续？",success:result=>resolve(result.confirm===true),fail:()=>resolve(false)}))
+        if (!confirmed || sequence !== this.accountSequence || this.accountHidden || this.liveDisposed || !identity.matches()) return
+        await registeredAccountRuntime.changePassword({current_password,new_password})
+        if (sequence !== this.accountSequence || this.accountHidden || this.liveDisposed) return
+        this.accountMode = "login"
+        uni.showToast({title:"密码已修改，请重新登录",icon:"none"})
+      } catch (error) {
+        if (sequence === this.accountSequence && !this.accountHidden && !this.liveDisposed) this.accountError = "修改结果未能确认，请重新认证；不要自动重复提交。"
+      } finally {
+        if (sequence === this.accountSequence) { this.clearPasswordChange(); this.accountPassword = ""; this.accountBusy = false; this.syncAccountView() }
+      }
+    },
+    async returnToGuest() {
+      if (!this.accountGuestReady || this.accountBusy || this.accountHidden || this.liveDisposed) return
+      const sequence = ++this.accountSequence
+      this.accountBusy = true; this.accountPassword = ""; this.accountError = ""
+      try {
+        const confirmed = await new Promise(resolve => uni.showModal({
+          title:"使用游客体验", content:"将开始新的游客体验。原账号音乐仍归原账号，登录后可查看，不会转移给新游客。是否继续？",
+          success:result=>resolve(result.confirm === true), fail:()=>resolve(false),
+        }))
+        if (!confirmed || sequence !== this.accountSequence || this.accountHidden || this.liveDisposed) return
+        await registeredAccountRuntime.useGuestAfterLogout({confirmed:true})
+        if (sequence !== this.accountSequence || this.accountHidden || this.liveDisposed) return
+        this.syncAccountView()
+        uni.switchTab({url:"/pages/entry/entry"})
+      } catch (error) {
+        if (sequence === this.accountSequence && !this.liveDisposed) this.accountError = "暂时无法进入游客体验，请重试或重新登录。"
+      } finally { if (sequence === this.accountSequence) this.accountBusy = false }
+    },
     openOriginalSource(item) {
       if (!LIVE_SOURCE_ENABLED || !item || !item.music_id || !this.ensureLiveOwner()) return
       uni.showModal({title:"生成来源",content:"原始资料查看尚未开放，不影响已获授权音乐的播放。",showCancel:false})
@@ -231,8 +320,7 @@ export default {
       } catch (error) {
         if (sequence === this.accountSequence && !this.liveDisposed) this.accountError = "身份验证未能确认，请检查凭据并重新认证。"
       } finally {
-        this.accountPassword = ""
-        if (sequence === this.accountSequence) this.accountBusy = false
+        if (sequence === this.accountSequence) { this.accountPassword = ""; this.accountBusy = false }
       }
     },
     async logoutAccount(allDevices) {
@@ -241,7 +329,7 @@ export default {
       this.accountBusy = true; this.accountError = ""
       try { await registeredAccountRuntime.logout({allDevices}) }
       catch (error) { if (sequence === this.accountSequence && !this.liveDisposed) this.accountError = "本地身份已关闭，服务端撤销结果未能确认，请重新认证。" }
-      finally { this.accountPassword = ""; if (sequence === this.accountSequence) { this.accountOwner = null; this.accountBusy = false } }
+      finally { if (sequence === this.accountSequence) { this.accountPassword = ""; this.accountBusy = false; this.syncAccountView() } }
     },
     openMusicFeedback(item) {
       if (!LIVE_SOURCE_ENABLED || !this.liveAuthReady || !this.liveIdentity || !this.liveIdentity.matches()) return

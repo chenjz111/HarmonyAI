@@ -71,7 +71,33 @@ export function createRegisteredAuthClient({request,secureStore,enabled=false,pl
     bind:(body,guestToken)=>{if(!guestToken)return Promise.reject(failure('IDENTITY_REQUIRED'));return authenticate('register-bind',body,guestToken)},
     refresh:()=>startRefresh(),
     restore:()=>startRefresh(true),
+    async confirmSignedOut(){
+      gate()
+      if(memory)throw failure('REAUTHENTICATION_REQUIRED')
+      const g=++generation;reauthenticationRequired=true
+      await serialized(async()=>{
+        current(g)
+        const proof=await secureStore.take();current(g)
+        // A UI marker cannot prove credential erasure. Unexpected proof is
+        // consumed fail-closed, never restored or sent to Refresh.
+        if(proof!==null && proof!==undefined)throw failure('REAUTHENTICATION_REQUIRED')
+        await secureStore.clear();current(g)
+      })
+    },
     async invalidate(){generation++;memory=null;reauthenticationRequired=true;await serialized(()=>eraseProof())},
+    async changePassword(body){
+      gate()
+      if(!memory || memory.expires<=now())throw failure('REAUTHENTICATION_REQUIRED')
+      const access=memory.access,g=++generation
+      memory=null;reauthenticationRequired=true
+      const results=await Promise.allSettled([serialized(()=>eraseProof()),call('password',body,access)])
+      current(g)
+      const failed=results.find(result=>result.status==='rejected')
+      if(failed)throw failed.reason
+      const result=results[1].value
+      if(result.status!=='password_changed' || result.reauthentication_required!==true)throw failure('INVALID_RESPONSE')
+      return {reauthentication_required:true}
+    },
     async logout({allDevices=false}={}){
       gate();if(typeof allDevices!=='boolean')throw failure('INVALID_REQUEST')
       const access=memory?.access;generation++;memory=null;reauthenticationRequired=true

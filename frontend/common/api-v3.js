@@ -308,6 +308,7 @@ const realInputApi = {
       else unchanged()
     const token = readV3AccessToken()
       if (!token) {
+      if (safeGet('v3_auth_mode') === 'signed_out') throw apiError('已退出账号，请前往“我的”的账号与数据登录或选择游客体验。', 'SIGNED_OUT')
       if (['registered','binding'].includes(safeGet('v3_auth_mode'))) throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
         // A label alone cannot recover ownership. Never silently abandon it.
         if (safeGet('v3_public_user_id')) throw apiError('当前身份凭据不可用，请恢复身份后重试。', 'IDENTITY_REQUIRED')
@@ -331,7 +332,7 @@ const realInputApi = {
   },
   async guestAuth(options = {}) {
     requireReadableIdentityStorage()
-    if (['registered','binding'].includes(safeGet('v3_auth_mode'))) throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
+    if (['registered','binding','signed_out'].includes(safeGet('v3_auth_mode'))) throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
     const unchanged = captureAuthentication()
     const data = await realRequest("/api/v3/auth/guest", { method: "POST" })
     unchanged()
@@ -1725,7 +1726,7 @@ export const apiV3 = {
   captureIdentity: captureAuthentication,
   canStartNewGuest: () => {
     try {requireReadableIdentityStorage()} catch(error) {return false}
-    return !['registered','binding'].includes(safeGet('v3_auth_mode'))
+    return !['registered','binding','signed_out'].includes(safeGet('v3_auth_mode'))
   },
   createSession() {
     return INPUT_REAL ? realInputApi.createSession() : mockApi.createSession()

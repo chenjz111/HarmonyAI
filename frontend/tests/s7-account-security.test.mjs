@@ -14,6 +14,25 @@ test('registered credentials stay in memory/verified secure store and never ordi
  assert.equal(JSON.stringify(client).includes('synthetic-access'),false)
 })
 
+test('password change sends the existing authenticated contract and erases credentials for success or unknown result',async()=>{
+ for(const lost of [false,true]){
+  const store=storage(),calls=[]
+  const client=createRegisteredAuthClient({now:()=>0,enabled:true,secureStore:store,request:async args=>{
+   calls.push(args)
+   if(args.path.endsWith('/login'))return response()
+   if(lost)throw new Error('response lost')
+   return {data:{status:'password_changed',reauthentication_required:true}}
+  }})
+  await client.login({username:'alice',password:'synthetic-long-password'})
+  const changed=client.changePassword({current_password:'synthetic-long-password',new_password:'synthetic-new-long-password'})
+  if(lost)await assert.rejects(changed);else assert.equal((await changed).reauthentication_required,true)
+  assert.equal(calls.at(-1).path,'/api/v3/auth/password')
+  assert.ok(calls.at(-1).accessToken)
+  assert.equal(client.accessToken(),'');assert.equal(client.owner(),null);assert.equal(store.value(),null)
+  const before=calls.length;await assert.rejects(client.restore(),{code:'REAUTHENTICATION_REQUIRED'});assert.equal(calls.length,before)
+ }
+})
+
 test('missing verified Keystore or H5 transport fails closed',async()=>{
  for(const options of [{enabled:false,secureStore:storage()},{enabled:true,secureStore:{...storage(),verified:false}},{enabled:true,platform:'h5',secureStore:storage()},{enabled:true,secureStore:{...storage(),atomicConsume:false}}]){
   const client=createRegisteredAuthClient({now:()=>0,...options,request:()=>{throw new Error('must not request')}})

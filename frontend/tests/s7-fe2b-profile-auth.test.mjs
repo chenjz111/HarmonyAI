@@ -19,7 +19,7 @@ function deferred() {
 }
 const card = (owner, id = `${owner}-music`) => ({ ...fixture.MUSIC_CARD_V1_PREVIEW_FIXTURE[0], music_id: id, availability: 'ready' })
 let sequence = 0
-async function harness({ missing = null, subscribeThrows = false, subscribeReturnsFalse = false, handler = null, accountRuntime = {available:false} } = {}) {
+async function harness({ missing = null, subscribeThrows = false, subscribeReturnsFalse = false, handler = null, accountRuntime = {available:false}, startup=()=>Promise.resolve() } = {}) {
   const storage = new Map([['v3_public_user_id', 'A'], ['v3_access_token', 'synthetic-reused'], ['v3_auth_epoch', 0]])
   const listeners = new Map()
   const h = { storage, requests: [], modals: [], toasts: [], navigations: [], nextAuth: null }
@@ -54,6 +54,7 @@ async function harness({ missing = null, subscribeThrows = false, subscribeRetur
     .replace('export default {', 'pageOptions = {')
   const context = { uni, pageOptions: null, deps: { ...state, ...adapter, ...fixture, ...transport,
     registeredAccountRuntime: accountRuntime,
+    startAccountStartup: startup,
     MUSIC_LIBRARY_LIVE_ENABLED: true,
     readV3AccessToken: () => transport.readV3AccessToken(uni),
     createUniMusicLibraryTransport: options => transport.createUniMusicLibraryTransport({ ...options, uniApi: uni }),
@@ -98,6 +99,75 @@ test('W5: disabled account form cannot issue an operation and erases entered pas
 test('W5: candidate login uses the existing runtime, clears credentials and never requests a data merge',async()=>{
  const calls=[],accountRuntime={available:true,login:async body=>{calls.push(body);return {public_user_id:'registered-B'}}}
  const h=await harness({accountRuntime});try{await h.start();h.page.selectSection('account');h.page.accountMode='login';h.page.accountUsername='Alice';h.page.accountPassword='synthetic-long-password';await h.page.submitAccount();assert.equal(calls.length,1);assert.equal(calls[0].username,'alice');assert.deepEqual(Object.keys(calls[0]).sort(),['password','username']);assert.equal(h.page.accountPassword,'');assert.equal(h.page.accountBusy,false);assert.match(source,/@click="submitAccount"/)}finally{h.close()}
+})
+
+test('restored account exposes logout and clears its view after runtime invalidation',async()=>{
+ let owner='registered-A'
+ const h=await harness({accountRuntime:{available:true,owner:()=>owner}})
+ try{
+  await h.start();h.options.onShow.call(h.page)
+  assert.equal(h.page.accountOwner,'registered-A','restored identity must not hide logout controls')
+  owner=null;h.uni.$emit('harmonyai:v3-auth-changed')
+  assert.equal(h.page.accountOwner,null,'an expired or revoked runtime must not display the old account')
+ }finally{h.unload();h.close()}
+})
+
+test('My waits for signed-out startup before displaying the explicit Guest choice',async()=>{
+ const ready=deferred();let restored=false
+ const h=await harness({startup:()=>ready.promise,accountRuntime:{available:true,owner:()=>null,canUseGuestAfterLogout:()=>restored}})
+ try{
+  await h.start();const showing=h.options.onShow.call(h.page)
+  assert.equal(h.page.accountGuestReady,false)
+  restored=true;ready.resolve();await showing
+  assert.equal(h.page.accountGuestReady,true)
+ }finally{h.unload();h.close()}
+})
+
+test('account password change uses confirmation, existing DTO and clears every password field',async()=>{
+ const calls=[];let owner='A'
+ const h=await harness({accountRuntime:{available:true,owner:()=>owner,changePassword:async body=>{calls.push(body);owner=null;return {reauthentication_required:true}}}})
+ try{
+  await h.start()
+  const fill=()=>{h.page.currentPassword='synthetic-old-password';h.page.newPassword='synthetic-new-password';h.page.confirmNewPassword='synthetic-new-password'}
+  fill();const cancelled=h.page.changeAccountPassword();h.modals.at(-1).success({confirm:false});await cancelled
+  assert.equal(calls.length,0);assert.equal(h.page.currentPassword,'');assert.equal(h.page.newPassword,'')
+  fill();const changed=h.page.changeAccountPassword();h.modals.at(-1).success({confirm:true});await changed
+  assert.deepEqual(Object.keys(calls[0]).sort(),['current_password','new_password'])
+  assert.equal(calls[0].new_password,'synthetic-new-password')
+  assert.equal(h.page.confirmNewPassword,'');assert.equal(h.page.accountOwner,null);assert.equal(h.page.accountMode,'login')
+  assert.match(h.toasts.at(-1),/重新登录/)
+ }finally{h.unload();h.close()}
+})
+
+test('leaving My clears password and rejects a late login UI result',async()=>{
+ const response=deferred()
+ const h=await harness({accountRuntime:{available:true,login:()=>response.promise,owner:()=>null}})
+ try{
+  await h.start();h.page.accountMode='login';h.page.accountUsername='alice';h.page.accountPassword='synthetic-long-password'
+  const pending=h.page.submitAccount()
+  h.options.onHide?.call(h.page)
+  assert.equal(h.page.accountPassword,'','hidden tab cannot retain an entered password')
+  response.resolve({public_user_id:'registered-B'});await pending
+  assert.equal(h.page.accountOwner,null)
+  assert.equal(h.toasts.length,0,'hidden page cannot announce late authentication success')
+ }finally{h.unload();h.close()}
+})
+
+test('Guest return requires explicit confirmation and never abandons identity after leaving My',async()=>{
+ let returned=0
+ const h=await harness({accountRuntime:{available:true,owner:()=>null,canUseGuestAfterLogout:()=>true,useGuestAfterLogout:async options=>{assert.equal(options.confirmed,true);returned++}}})
+ h.uni.switchTab=args=>h.navigations.push(args.url)
+ try{
+  await h.start()
+  assert.equal(h.page.accountGuestReady,true)
+  const cancel=h.page.returnToGuest();h.modals.at(-1).success({confirm:false});await cancel
+  assert.equal(returned,0)
+  const hidden=h.page.returnToGuest();h.options.onHide.call(h.page);h.modals.at(-1).success({confirm:true});await hidden
+  assert.equal(returned,0)
+  h.options.onShow.call(h.page)
+  const confirmed=h.page.returnToGuest();h.modals.at(-1).success({confirm:true});await confirmed
+  assert.equal(returned,1);assert.equal(h.navigations.at(-1),'/pages/entry/entry')
+ }finally{h.unload();h.close()}
 })
 
 test('W4: preference/account/about regions are reachable without issuing authentication or learning writes',async()=>{
