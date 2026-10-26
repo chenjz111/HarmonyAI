@@ -1,8 +1,26 @@
 """Owner R1 password operations. Production must supply a reviewed blocklist."""
 import re
 import unicodedata
+from contextlib import contextmanager
+from threading import BoundedSemaphore
 from argon2 import PasswordHasher,Type,extract_parameters
 from argon2.exceptions import VerificationError,InvalidHashError
+
+
+class PasswordResourceBusy(RuntimeError):
+    """Temporary capacity refusal, never an invalid-password verdict."""
+
+
+# Process-wide across policies/services. No unbounded waiting thread queue.
+# 4 * 19456KiB is only an algorithm-memory bound, not deployment acceptance.
+_PASSWORD_WORK=BoundedSemaphore(4)
+
+
+@contextmanager
+def _password_slot():
+    if not _PASSWORD_WORK.acquire(blocking=False):raise PasswordResourceBusy()
+    try:yield
+    finally:_PASSWORD_WORK.release()
 
 
 def normalize_username(value):
@@ -31,7 +49,8 @@ class PasswordPolicy:
         return normalized
 
     def hash(self,password):
-        return self._hasher.hash(self.validate(password))
+        normalized=self.validate(password)
+        with _password_slot():return self._hasher.hash(normalized)
 
     def verify(self,encoded,password):
         try:
@@ -39,6 +58,6 @@ class PasswordPolicy:
             p=extract_parameters(encoded)
             # Refuse unreviewed hash resource costs instead of unbounded allocation.
             if (p.type,p.version,p.memory_cost,p.time_cost,p.parallelism,p.salt_len,p.hash_len) != (Type.ID,19,19456,2,1,16,32):return False
-            return self._hasher.verify(encoded,normalized)
+            with _password_slot():return self._hasher.verify(encoded,normalized)
         except (VerificationError,InvalidHashError,ValueError,TypeError):
             return False

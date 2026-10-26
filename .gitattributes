@@ -2,3 +2,22 @@
 frontend/static/** -text
 docs/product/assets/sprint6-recovery/** -text
 docs/superpowers/plans/2026-09-26-sprint6-product-recovery.md -text
+
+# Exact historical test/evaluation inputs restored from recorded Git blobs.
+docs/sprint4/assessment-contract-v2.1.md -text
+docs/sprint4/provider-contract.md -text
+docs/sprint4/questionnaire-contract-v2.1.md -text
+docs/sprint5/medical-syndrome-whitelist-and-rag-threshold-20260909.md -text
+docs/sprint5/rag-gold-queries-medical-20260909.json -text
+docs/sprint6/questionnaire-rag-medical-review.md -text
+evals/__init__.py -text
+evals/metrics.py -text
+evals/run_sprint4_eval.py -text
+evals/sprint4/cases.jsonl -text
+evals/sprint4/safety-cases.jsonl -text
+evals/sprint5/cases.jsonl -text
+knowledge/demo_chunks.jsonl -text
+knowledge/v3/rag-corpus-chunks-v3.1-approved.json -text
+knowledge/v3/rag-corpus-chunks-v3.1-candidate.json -text
+scripts/knowledge_organ_eval.py -text
+tools/stability_music_smoke.py -text

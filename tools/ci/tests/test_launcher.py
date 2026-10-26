@@ -17,6 +17,17 @@ ROOT = TOOLS.parents[1]
 
 
 class LauncherTests(unittest.TestCase):
+    def test_child_dependency_home_is_explicitly_isolated_not_inherited(self):
+        spec=importlib.util.spec_from_file_location('launcher_env_probe',TOOLS/'run.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as folder:
+            sandbox=Path(folder)/'sandbox';sandbox.mkdir()
+            with patch.dict(os.environ,{'HOME':'synthetic-private-profile','USERPROFILE':'synthetic-private-profile'}):
+                env=module.environment(ROOT,sandbox)
+            for name in ['HOME','USERPROFILE','APPDATA','LOCALAPPDATA','XDG_CACHE_HOME','TEMP','TMP']:
+                self.assertTrue(Path(env.get(name,'')).is_relative_to(sandbox),name)
+                self.assertTrue(Path(env[name]).is_dir(),name)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='harmonyai-guard-check-')
         self.addCleanup(self.temp.cleanup)

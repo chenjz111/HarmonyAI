@@ -42,3 +42,11 @@ media/
 uploads/
 backups/
 logs/
+
+# Local uni-app build/signing caches are never reviewable source inputs.
+frontend/unpackage/
+frontend/.hbuilderx/
+*.jks
+*.keystore
+*.p12
+*.pfx

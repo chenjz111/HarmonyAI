@@ -17,7 +17,7 @@ from backend.app.core.config import settings
 from backend.app.routers.v3.transport import V3APIError
 from backend.app.models.v3.identity import UserIdentity,AuthSession
 from backend.app.models.v3.account_security import AccountCredential,RegisteredSessionState,RefreshProof,LoginBucket
-from .account_password import normalize_username
+from .account_password import normalize_username,PasswordResourceBusy
 
 
 class AccountDenied(Exception):
@@ -49,8 +49,12 @@ class AccountService:
         self.passwords=password_policy
         with self._dummy_lock:
             if AccountService._dummy_hash is None:
-                AccountService._dummy_hash=password_policy.hash('synthetic-dummy-verification-only-'+secrets.token_hex(16))
+                AccountService._dummy_hash=self._hash_password('synthetic-dummy-verification-only-'+secrets.token_hex(16))
         self._dummy=AccountService._dummy_hash
+
+    def _hash_password(self,password):
+        try:return self.passwords.hash(password)
+        except PasswordResourceBusy:raise AccountUnavailable('password resources unavailable') from None
 
     def _run(self,factory,operation):
         with factory() as db:
@@ -100,7 +104,7 @@ class AccountService:
 
     def bind(self,factory,*,principal,username,password,platform,now):
         self._platform(platform);now=clock(now);username=normalize_username(username)
-        encoded=self.passwords.hash(password)
+        encoded=self._hash_password(password)
         return self._run(factory,lambda db:self._bind_identity(db,principal,username,encoded,platform,now))
 
     def _bind_identity(self,db,principal,username,encoded,platform,now):
@@ -115,7 +119,7 @@ class AccountService:
 
     def bind_access(self,factory,*,access_token,username,password,platform,now):
         from .auth_service import _resolve_principal
-        self._platform(platform);now=clock(now);username=normalize_username(username);encoded=self.passwords.hash(password)
+        self._platform(platform);now=clock(now);username=normalize_username(username);encoded=self._hash_password(password)
         def operation(db):
             principal=_resolve_principal(access_token,db,exclusive=True)
             return self._bind_identity(db,principal,username,encoded,platform,now)
@@ -197,7 +201,7 @@ class AccountService:
 
 
     def change_password(self,factory,*,owner,current_password,new_password,now):
-        now=clock(now);encoded=self.passwords.hash(new_password)
+        now=clock(now);encoded=self._hash_password(new_password)
         def operation(db):
             identity=self._identity(db,owner)
             credential=db.execute(select(AccountCredential).where(AccountCredential.internal_user_pk==owner).with_for_update().execution_options(populate_existing=True)).scalar_one_or_none()
@@ -225,7 +229,7 @@ class AccountService:
 
     def change_password_access(self,factory,*,access_token,current_password,new_password,now):
         from .auth_service import _resolve_principal
-        now=clock(now);encoded=self.passwords.hash(new_password)
+        now=clock(now);encoded=self._hash_password(new_password)
         def operation(db):
             principal=_resolve_principal(access_token,db,exclusive=True)
             if principal.auth_type!='registered':raise AccountDenied()

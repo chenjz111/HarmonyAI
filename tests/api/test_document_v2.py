@@ -18,6 +18,11 @@ PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"demo-image"
 @pytest.fixture
 def upload_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(document_router, "UPLOAD_DIR", str(tmp_path))
+    # This suite explicitly asserts the OCR_ENGINE_UNAVAILABLE/manual-input
+    # contract. Make that dependency condition deterministic, not dependent on
+    # whether Paddle/CUDA happens to be installed on the developer's machine.
+    from backend.app.core.ocr import OCRProvider
+    monkeypatch.setattr(OCRProvider,'_init_paddle',lambda self:None)
     return tmp_path
 
 
