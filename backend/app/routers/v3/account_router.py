@@ -75,3 +75,26 @@ def build_account_router(*,factory,service_provider,native_security_accepted=Fal
         invoke('change_password_access',access_token=bearer(request),current_password=body.current_password.get_secret_value(),new_password=body.new_password.get_secret_value())
         return v3_success(dict(status='password_changed',reauthentication_required=True))
     return router
+
+
+def build_reviewed_native_account_router(*,factory,manifest_path,approved_manifest_sha256,native_security_accepted=False):
+    """Candidate composition of the EXISTING router with a pinned local source.
+
+    Default app does not call/mount this. File metadata cannot authorize native
+    security acceptance; missing input leaves account requests unavailable.
+    """
+    service=None
+    if native_security_accepted is True:
+        from backend.app.services.v3.account_password_source import load_reviewed_password_policy
+        from backend.app.services.v3.account_session_service import AccountService
+        try:
+            policy=load_reviewed_password_policy(manifest_path,approved_manifest_sha256=approved_manifest_sha256)
+            service=AccountService(password_policy=policy)
+        except ValueError:
+            pass
+
+    def service_provider():
+        if service is None:raise AccountUnavailable('reviewed password source unavailable')
+        return service
+
+    return build_account_router(factory=factory,service_provider=service_provider,native_security_accepted=native_security_accepted)
