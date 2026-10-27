@@ -1,8 +1,14 @@
 /** R1 endpoints; one authentication instance and no persistent response cache. */
 const failure = (code) => Object.assign(new Error(code), { code })
+// Process-local uncertainty barrier: never persist feedback, tokens or answers.
+// A process restart still requires a separately reviewed durable recovery design.
+const pendingSaves = new Map()
+const MAX_PENDING_SAVES = 256
 
 export function createFeedbackApi({ request, getOwnerId, getAccessToken, getAuthEpoch, enabled = false }) {
   let identity = null, invalid = false, generation = 0, latestEpoch = 0
+  const snapshots = new WeakMap()
+  const instance = Symbol('feedback instance')
   function assertIdentity() {
     let owner, token, epoch
     try { owner = getOwnerId(); token = getAccessToken(); epoch = getAuthEpoch() } catch (e) { /* fail closed */ }
@@ -32,7 +38,32 @@ export function createFeedbackApi({ request, getOwnerId, getAccessToken, getAuth
     return response.data
   }
   return Object.freeze({
-    save: (body, key) => call('POST', '/api/v3/feedback-records', body, key),
+    async save(body, key) {
+      if (!enabled) throw failure('FEATURE_NOT_READY')
+      assertIdentity()
+      const event = body?.playback_event_id, music = body?.music_ref?.music_id, context = body?.source_context_id
+      if (typeof event !== 'string' || !event || typeof music !== 'string' || !music || typeof context !== 'string' || !context || typeof key !== 'string' || !key) throw failure('FEEDBACK_SOURCE_NOT_FOUND')
+      const scope = JSON.stringify([identity.owner,event])
+      let entry = pendingSaves.get(scope)
+      let serialized
+      try { serialized = JSON.stringify(body); if (!serialized) throw new Error('invalid') } catch (error) { throw failure('FEEDBACK_COMMIT_UNVERIFIED') }
+      if (entry && (entry.key !== key || entry.music !== music || entry.context !== context || entry.inFlight || entry.instance !== instance || snapshots.get(body) !== serialized)) throw failure('FEEDBACK_COMMIT_UNVERIFIED')
+      if (!entry) {
+        if (pendingSaves.size >= MAX_PENDING_SAVES) throw failure('FEEDBACK_COMMIT_UNVERIFIED')
+        snapshots.set(body,serialized)
+        entry = {key,music,context,instance,inFlight:false}; pendingSaves.set(scope,entry)
+      }
+      entry.inFlight = true
+      try {
+        const result = await call('POST', '/api/v3/feedback-records', JSON.parse(serialized), key)
+        if (!result || typeof result.feedback_id !== 'string' || !result.feedback_id.trim() || result.feedback_id.length > 64 || result.status !== 'saved' || !Number.isSafeInteger(result.current_feedback_epoch) || result.current_feedback_epoch < 0 || typeof result.replayed !== 'boolean' || result.learning_applied !== false) throw failure('FEEDBACK_COMMIT_UNVERIFIED')
+        if (pendingSaves.get(scope) === entry) pendingSaves.delete(scope)
+        return result
+      } catch (error) {
+        if (error?.code === 'FEEDBACK_EPOCH_CONFLICT' && pendingSaves.get(scope) === entry) pendingSaves.delete(scope)
+        throw error
+      } finally { entry.inFlight = false }
+    },
     clear: (body, key) => call('POST', '/api/v3/me/feedback-evidence/clear', body, key),
     remove: (id, epoch) => call('DELETE', `/api/v3/feedback-records/${encodeURIComponent(id)}`, { expected_evidence_epoch:epoch }),
     get: id => call('GET', `/api/v3/feedback-records/${encodeURIComponent(id)}`),

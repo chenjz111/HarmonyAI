@@ -29,11 +29,12 @@ test('restored PNG dimensions and SVG content match verified media rather than L
  }
 })
 
-test('rejected draft stays absent; original protection and two exact Owner-approved page revisions stay pinned',()=>{
+test('rejected draft stays absent; original protection and exact Owner-approved page revisions stay pinned',()=>{
  const revisions=JSON.parse(readFileSync(resolve(root,'docs/sprint7/APPROVED_SOURCE_REVISIONS_20261027.json'),'utf8'))
  const approved={
-  'frontend/pages/v3-player/v3-player.vue':'0e98d0af3f774927aa4672e0c1e0e3199836bde538edc3cc965ba37c5648c087',
+  'frontend/pages/v3-player/v3-player.vue':'6b1e532e937199ec9c7683ec3b13344cdabcf69d8935c3cdb550f00a9e101700',
   'frontend/pages/v3-profile/v3-profile.vue':'cb2d0c7057b7246909de8751cdb75ad39da1d8dc1d3a874e9a0e015c3ec8680e',
+  'frontend/pages/v3-feedback/v3-feedback.vue':'9eaf1464b1850feaf2bd66874f47ad37aab93b2dde6ba25a97531cb9becfed10',
  }
  assert.equal(revisions.schema_version,'owner_approved_source_revisions_v1')
  assert.equal(revisions.approved_commit,'44cbda17f43c17b0cbf356b89de74f5cb6b5f3f4')
@@ -43,6 +44,13 @@ test('rejected draft stays absent; original protection and two exact Owner-appro
  assert.equal(digest('sha256',readFileSync(resolve(root,'docs/sprint7/S6_ASSET_RESTORE_MANIFEST_20261025.json'),'utf8').replace(/\r\n/g,'\n')),revisions.original_manifest_lf_sha256)
  assert.deepEqual(revisions.changes.map(row=>row.path).sort(),Object.keys(approved).sort())
  for(const row of revisions.changes){assert.equal(row.original_sha256,manifest.protected_source_sha256[row.path]);assert.equal(row.approved_sha256,approved[row.path])}
+ const player=revisions.changes.find(row=>row.path==='frontend/pages/v3-player/v3-player.vue')
+ assert.equal(player.previous_approved_sha256,'0e98d0af3f774927aa4672e0c1e0e3199836bde538edc3cc965ba37c5648c087')
+ assert.equal(player.latest_owner_approval,'docs/sprint7/OWNER_APPROVAL_20261027_PLAYER_RETURN_SHA.md')
+ assert.ok(existsSync(resolve(root,player.latest_owner_approval)))
+ const feedback=revisions.changes.find(row=>row.path==='frontend/pages/v3-feedback/v3-feedback.vue')
+ assert.equal(feedback.latest_owner_approval,'docs/sprint7/OWNER_APPROVAL_20261027_FEEDBACK_SHA.md')
+ assert.ok(existsSync(resolve(root,feedback.latest_owner_approval)))
  for(const excluded of manifest.excluded)assert.equal(existsSync(resolve(root,excluded.path)),false,excluded.path)
  for(const [path,sha] of Object.entries(manifest.protected_source_sha256))assert.equal(digest('sha256',readFileSync(resolve(root,path),'utf8').replace(/\r\n/g,'\n')),approved[path]||sha,path)
 })

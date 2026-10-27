@@ -68,15 +68,30 @@ assert.equal((await api.listMusicFavorites()).items[0].display_title,'Integratio
 const playback=createHistoricalMusicSession({api,...identity,newEventId:()=> 'integration-play-1'})
 const detail=await playback.open(card.music_id,{context:'ctx_a'})
 assert.equal(detail.selected_context_id,'ctx_a')
+assert.equal(detail.audio.format,'wav')
+assert.equal(detail.audio.duration_seconds,null) // Legacy library read model makes no measured-duration claim.
 assert.throws(()=>playback.getFeedbackContext(),{code:'FEATURE_NOT_READY'})
 const bytes=await rpc({method:'GET',path:'/api/v3/music/assets/music_shared/stream',header:{Authorization:'Bearer '+token,Range:'bytes=0-31'}})
 assert.equal(bytes.statusCode,206)
+assert.match(bytes.headers['content-type'],/^audio\/wav/)
 assert.equal(Buffer.from(bytes.data.bytes_base64,'base64').length,32)
 await playback.reportPlayStarted(card.music_id) // platform audio itself is NOT RUN
 const context=playback.getFeedbackContext()
-const feedback=createFeedbackApi({request,...identity,enabled:true})
+let loseFeedbackResponse=true
+const uncertainRequest=async args=>{
+ const result=await request(args)
+ if(args.method==='POST' && args.path==='/api/v3/feedback-records' && loseFeedbackResponse){
+  loseFeedbackResponse=false;return {error:{code:'FEEDBACK_COMMIT_UNVERIFIED',message:'synthetic response loss'}}
+ }
+ return result
+}
+const feedback=createFeedbackApi({request:uncertainRequest,...identity,enabled:true})
 const form={schema_version:'feedback_v3.1',...context,expected_evidence_epoch:0,post_state:{change_label:'no_change'}}
+await assert.rejects(feedback.save(form,'integration-feedback-1'),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
+const reopenedFeedback=createFeedbackApi({request,...identity,enabled:true})
+await assert.rejects(reopenedFeedback.save(form,'new-key-after-reopen'),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
 const saved=await feedback.save(form,'integration-feedback-1')
+assert.equal(saved.replayed,true,'unknown commit must recover the original server write')
 assert.equal((await feedback.save(form,'integration-feedback-1')).feedback_id,saved.feedback_id)
 assert.equal((await feedback.list({musicId:card.music_id})).total,1)
 const clearBody={expected_evidence_epoch:feedback.currentEpoch()}
@@ -193,7 +208,12 @@ await f.clearEvidence()
 assert.equal(f.feedbackItems.length,1)
 await f.deleteFeedback(f.feedbackItems[0].feedback_id)
 assert.equal(f.feedbackItems.length,0)
-feedbackPage.options.onUnload.call(f);player.options.onUnload.call(p)
+feedbackPage.options.onUnload.call(f)
+player.options.onShow.call(p)
+await p.togglePlay()
+assert.equal(contextsCreated,1,'returning from feedback reuses the existing Player')
+assert.equal(p.playing,true,'returning from feedback must allow playback')
+player.options.onUnload.call(p)
 live.options.onUnload.call(page)
 process.stdout.write('S7_FRONTEND_VERIFIED\n')
 input.close()

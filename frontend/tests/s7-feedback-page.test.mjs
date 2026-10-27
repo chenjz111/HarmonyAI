@@ -14,7 +14,7 @@ function harness(handler,{subscriptionFalse=false}={}) {
   const listeners = new Set(),calls=[]
   const uni={getStorageSync:key=>storage.get(key) ?? '',$on:(name,fn)=>{listeners.add(fn);if(subscriptionFalse)return false},$off:(name,fn)=>listeners.delete(fn),$emit:()=>{for(const fn of listeners)fn()},
     showModal:args=>args.success({confirm:true}),showToast(){},pageScrollTo(){},navigateBack(){},reLaunch(){},
-    request(args){calls.push(args);Promise.resolve().then(()=>handler(args)).then(data=>args.success({statusCode:data?.error?503:200,data:data?.error?{ok:false,error:data.error}:{ok:true,data}}))}}
+    request(args){calls.push(args);Promise.resolve().then(()=>handler(args)).then(data=>{if(data?.feedback_id && args.method==='POST')data={status:'saved',replayed:false,learning_applied:false,...data};args.success({statusCode:data?.error?503:200,data:data?.error?{ok:false,error:data.error}:{ok:true,data}})})}}
   const script=readFileSync(new URL('../pages/v3-feedback/v3-feedback.vue',import.meta.url),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/import\s*\{([\s\S]*?)\}\s*from\s*["'][^"']+["'];?/g,(_,names)=>`const {${names}}=deps;`)
     .replace(/export function/g,'function').replace('export default {','options = {')
@@ -27,7 +27,7 @@ function harness(handler,{subscriptionFalse=false}={}) {
   for(const [name,fn] of Object.entries(options.methods))page[name]=fn.bind(page)
   for(const [name,fn] of Object.entries(options.computed))Object.defineProperty(page,name,{get:()=>fn.call(page)})
   return {page,calls,storage,uni,options,
-    async start(mode='v31'){const handoff=putHistoricalFeedback(context,()=>true);await options.onLoad.call(page,mode==='history'?{mode:'history',music_id:context.music_ref.music_id}:{handoff});await flush()},
+    async start(mode='v31', source=context){const handoff=putHistoricalFeedback(source,()=>true);await options.onLoad.call(page,mode==='history'?{mode:'history',music_id:source.music_ref.music_id}:{handoff});await flush()},
     auth(){storage.set('v3_auth_epoch',2);uni.$emit()},unload(){options.onUnload.call(page)}}
 }
 
@@ -44,7 +44,10 @@ test('historical form sends explicit server context and unknown-commit retry pre
   const h=harness(args=>args.method==='GET'?{items:[],total:0,current_feedback_epoch:4,next_cursor:null}:
     ++posts===1?{error:{code:'FEEDBACK_COMMIT_UNVERIFIED',message:'unknown'}}:{feedback_id:'fb-a',replayed:true,current_feedback_epoch:5})
   await h.start();h.page.pickChange('no_change');await h.page.submit()
-  h.page.pickChange('worse');await h.page.submit()
+  h.page.pickChange('worse');h.page.pickContinue('yes');h.page.toggleLiked('melody');h.page.toggleAdjust('slower_tempo')
+  assert.equal(h.page.changeLabel,'no_change');assert.equal(h.page.continueUse,'')
+  assert.equal(h.page.likedFeatures.length,0);assert.equal(h.page.adjustments.length,0)
+  await h.page.submit()
   const requests=h.calls.filter(x=>x.method==='POST')
   assert.equal(requests.length,2)
   assert.equal(requests[0].header['Idempotency-Key'],requests[1].header['Idempotency-Key'])
@@ -56,11 +59,31 @@ test('historical form sends explicit server context and unknown-commit retry pre
   assert.equal(h.page.submitted,true);h.unload()
 })
 
+test('unknown commit followed by closing and reopening cannot send a new key for the same listening event',async()=>{
+ let posts=0
+ const handler=args=>args.method==='GET'?{items:[],total:0,current_feedback_epoch:4,next_cursor:null}:
+   (++posts,{error:{code:'FEEDBACK_COMMIT_UNVERIFIED',message:'unknown'}})
+ const source={...context,playback_event_id:'event-unknown-page'}
+ const first=harness(handler);await first.start('v31',source);first.page.pickChange('no_change');await first.page.submit();first.unload()
+ const second=harness(handler);await second.start('v31',source);second.page.pickChange('worse');await second.page.submit()
+ assert.equal(posts,1);assert.match(second.page.submitError,/提交结果待确认/);second.unload()
+})
+
+test('only one destructive confirmation can be pending',async()=>{
+ const h=harness(()=>({items:[],total:0,current_feedback_epoch:0,next_cursor:null}))
+ await h.start('history')
+ const dialogs=[];h.uni.showModal=args=>dialogs.push(args)
+ const first=h.page.deleteFeedback('fb-a');const second=h.page.clearEvidence()
+ assert.equal(dialogs.length,1)
+ dialogs[0].success({confirm:false});await Promise.all([first,second])
+ assert.equal(h.page.submitting,false);h.unload()
+})
+
 test('ABA authentication change clears private form and ignores late save',async()=>{
   let resolve
   const pending=new Promise(r=>{resolve=r})
   const h=harness(args=>args.method==='GET'?{items:[],total:0,current_feedback_epoch:0,next_cursor:null}:pending)
-  await h.start();h.page.pickChange('no_change');const saving=h.page.submit();await flush()
+  await h.start('v31',{...context,playback_event_id:'event-aba-late'});h.page.pickChange('no_change');const saving=h.page.submit();await flush()
   h.auth();resolve({feedback_id:'late',current_feedback_epoch:1});await saving
   assert.equal(h.page.submitted,false);assert.equal(h.page.feedbackContext,null)
   assert.equal(h.page.changeLabel,'');h.unload()

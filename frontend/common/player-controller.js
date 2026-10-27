@@ -63,6 +63,7 @@ export function createPlayerController(options = {}) {
   let pendingDownload = null // Promise | null —— 同一时刻最多一个
   let pendingStreamUrl = "" // pending 下载对应的 stream url
   let playing = false
+  let playRequested = false
   let currentTime = 0
   let duration = 0 // 仅来自运行时音频（onCanplay / onTimeUpdate）
   let disposed = false
@@ -100,6 +101,7 @@ export function createPlayerController(options = {}) {
 
   function fail(error) {
     playing = false
+    playRequested = false
     errorInfo = error || { message: "audio error" }
     emit()
     if (typeof onError === "function") onError(errorInfo)
@@ -115,6 +117,10 @@ export function createPlayerController(options = {}) {
     if (typeof audioCtx.onPlay === "function") {
       audioCtx.onPlay(() => {
         if (disposed || !audioCtx) return
+        if (!playRequested) {
+          if (typeof audioCtx.pause === "function") audioCtx.pause()
+          return
+        }
         playing = true
         emit()
         if (typeof onPlaybackStarted === "function") onPlaybackStarted()
@@ -144,6 +150,7 @@ export function createPlayerController(options = {}) {
     if (typeof audioCtx.onEnded === "function") {
       audioCtx.onEnded(() => {
         if (disposed) return
+        playRequested = false
         playing = false
         emit()
       })
@@ -207,6 +214,7 @@ export function createPlayerController(options = {}) {
       if (!ctx) { fail({ message: "audio context unavailable" }); return snapshot() }
       errorInfo = null
       if (ctx.src !== resolvedSrc) ctx.src = resolvedSrc
+      playRequested = true
       if (typeof ctx.play === "function") ctx.play()
       playing = true
       emit()
@@ -231,6 +239,7 @@ export function createPlayerController(options = {}) {
     }
     // 仅在 src 变化时赋值，避免重复设置导致重启
     if (ctx.src !== src) ctx.src = src
+    playRequested = true
     if (typeof ctx.play === "function") ctx.play()
     playing = true
     emit()
@@ -240,6 +249,7 @@ export function createPlayerController(options = {}) {
   /** 暂停（幂等）。 */
   function pause() {
     if (disposed) return snapshot()
+    playRequested = false
     playGeneration += 1
     if (audioCtx && typeof audioCtx.pause === "function") audioCtx.pause()
     playing = false
@@ -293,6 +303,7 @@ export function createPlayerController(options = {}) {
   function dispose() {
     if (disposed) return snapshot()
     disposed = true
+    playRequested = false
     playGeneration += 1; downloadGeneration += 1
     if (audioCtx) {
       if (typeof audioCtx.destroy === "function") audioCtx.destroy()

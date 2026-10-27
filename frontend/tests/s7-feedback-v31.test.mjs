@@ -12,8 +12,8 @@ function setup(request) {
 
 test('V31 adapter sends approved paths, explicit body and original idempotency key', async () => {
   const calls = []
-  const {api} = setup(async args => { calls.push(args); return {data:{current_feedback_epoch:1}} })
-  const body = {session_id:'historical-session',source_context_id:'ctx-a',playback_event_id:'event-a',expected_evidence_epoch:0}
+  const {api} = setup(async args => { calls.push(args); return {data:args.path==='/api/v3/feedback-records'?{feedback_id:'fb-1',status:'saved',current_feedback_epoch:1,replayed:false,learning_applied:false}:{current_feedback_epoch:1}} })
+  const body = {session_id:'historical-session',music_ref:{music_id:'historical-music',source_type:'matched'},source_context_id:'ctx-a',playback_event_id:'event-a',expected_evidence_epoch:0}
   await api.save(body,'same-key')
   await api.clear({expected_evidence_epoch:1},'clear-key')
   await api.remove('fb-1',2)
@@ -22,6 +22,37 @@ test('V31 adapter sends approved paths, explicit body and original idempotency k
     {method:'POST',path:'/api/v3/me/feedback-evidence/clear',data:{expected_evidence_epoch:1},idempotencyKey:'clear-key'},
     {method:'DELETE',path:'/api/v3/feedback-records/fb-1',data:{expected_evidence_epoch:2}},
   ])
+})
+
+test('unknown save rejects changed body and malformed acknowledgement without releasing the barrier',async()=>{
+ let calls=0
+ const {api}=setup(async()=>{calls++;return calls===1?{error:{code:'FEEDBACK_COMMIT_UNVERIFIED'}}:{data:{}}})
+ const body={music_ref:{music_id:'m-uncertain'},source_context_id:'ctx',playback_event_id:'event-uncertain',expected_evidence_epoch:0,post_state:{change_label:'no_change'}}
+ await assert.rejects(api.save(body,'key'),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
+ body.post_state.change_label='worse'
+ await assert.rejects(api.save(body,'key'),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
+ assert.equal(calls,1)
+ body.post_state.change_label='no_change'
+ await assert.rejects(api.save(body,'key'),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
+ await assert.rejects(api.save(body,'different'),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
+ assert.equal(calls,2)
+})
+
+test('pending event blocks concurrent same-owner writes but not another owner or new event',async()=>{
+ let release,requests=0
+ const pending=new Promise(resolve=>{release=resolve})
+ const first=setup(async()=>{requests++;return pending})
+ const body={music_ref:{music_id:'m'},source_context_id:'ctx',playback_event_id:'event-race',expected_evidence_epoch:0}
+ const saving=first.api.save(body,'first')
+ const sameOwner=setup(async()=>{requests++;return {data:{feedback_id:'unexpected',status:'saved',current_feedback_epoch:1,replayed:false,learning_applied:false}}})
+ await assert.rejects(sameOwner.api.save(body,'other'),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
+ const secondOwner=setup(async()=>{requests++;return {data:{feedback_id:'other-owner',status:'saved',current_feedback_epoch:1,replayed:false,learning_applied:false}}})
+ secondOwner.identity.owner='B';secondOwner.identity.token='synthetic-B'
+ await secondOwner.api.save(body,'other')
+ const newEvent=setup(async()=>{requests++;return {data:{feedback_id:'new-event',status:'saved',current_feedback_epoch:1,replayed:false,learning_applied:false}}})
+ await newEvent.api.save({...body,playback_event_id:'event-race-new'},'new')
+ assert.equal(requests,3)
+ release({data:{feedback_id:'first',status:'saved',current_feedback_epoch:1,replayed:false,learning_applied:false}});await saving
 })
 
 test('V31 API rejects late A→B→A results and never adopts the new identity', async () => {

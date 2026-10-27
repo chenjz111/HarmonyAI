@@ -1,7 +1,9 @@
 """Actual app/Guest auth/database peer, invoked only by the isolated launcher."""
 import base64
+import hashlib
 import json
 import sys
+import wave
 from pathlib import Path
 
 
@@ -42,7 +44,11 @@ def serve_journey(tmp_path,monkeypatch,*,account=False,browser=False):
     # Resolve the approved test WAV from the source manifest, never a Provider.
     manifest = json.loads(Path('docs/sprint7/S6_ASSET_RESTORE_MANIFEST_20261025.json').read_text(encoding='utf8'))
     audio = next(Path(row['path']) for row in manifest['restored_files'] if row['path'].endswith('.wav'))
-    (media / 'music_shared.mp3').write_bytes(audio.read_bytes())
+    audio_bytes=audio.read_bytes()
+    (media / 'music_shared.wav').write_bytes(audio_bytes)
+    with wave.open(str(audio),'rb') as wav:
+        duration_seconds=round(wav.getnframes()/wav.getframerate())
+    checksum='sha256:'+hashlib.sha256(audio_bytes).hexdigest()
     monkeypatch.setenv('HARMONY_MEDIA_ROOT', str(media))
     monkeypatch.setenv('HARMONY_LIBRARY_CURSOR_SECRET', 'synthetic-integration-cursor-key-0123456789')
     previous = dict(app.dependency_overrides)
@@ -112,6 +118,7 @@ def serve_journey(tmp_path,monkeypatch,*,account=False,browser=False):
                     with engine.begin() as db:
                         db.exec_driver_sql("INSERT INTO sessions(id,user_id,session_id,status) VALUES(1,7,'sess_legacy','active')")
                         seed(db)
+                        db.exec_driver_sql("UPDATE music_assets SET storage_key=?,format='wav',duration_seconds=?,checksum=? WHERE music_asset_id='music_shared'",('music_shared.wav',duration_seconds,checksum))
                     seeded = True
                 if response.headers.get('content-type','').startswith('application/json'):
                     data = response.json()

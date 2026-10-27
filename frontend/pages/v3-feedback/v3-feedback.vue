@@ -142,6 +142,9 @@ export default {
     canSubmit() {
       return !this.submitting
     },
+    feedbackFormLocked() {
+      return this.submitting || (this.feedbackMode === "v31" && !!this.feedbackDraft)
+    },
     // Q1 必填缺失：用于校验提示与卡片强调
     q1Missing() {
       return this.showValidation && !this.changeLabel
@@ -173,10 +176,12 @@ export default {
     async deleteFeedback(id) {
       if (!this.feedbackReady || this.submitting) return
       const generation = this.feedbackGeneration
-      const confirmed = await new Promise(resolve=>uni.showModal({title:"删除反馈",content:"删除后无法通过历史或重放恢复。",success:result=>resolve(result.confirm),fail:()=>resolve(false)}))
-      if (!confirmed || generation !== this.feedbackGeneration || !this.feedbackApi.isCurrent()) return
       this.submitting = true
-      try { await this.feedbackApi.remove(id,this.feedbackEpoch); if (generation === this.feedbackGeneration) {this.feedbackDetailSequence++; this.feedbackDetail = null; await this.refreshFeedback()} }
+      try {
+        const confirmed = await new Promise(resolve=>uni.showModal({title:"删除反馈",content:"删除后无法通过历史或重放恢复。",success:result=>resolve(result.confirm),fail:()=>resolve(false)}))
+        if (!confirmed || generation !== this.feedbackGeneration || !this.feedbackApi.isCurrent()) return
+        await this.feedbackApi.remove(id,this.feedbackEpoch); if (generation === this.feedbackGeneration) {this.feedbackDetailSequence++; this.feedbackDetail = null; await this.refreshFeedback()}
+      }
       catch (error) { if (generation === this.feedbackGeneration) this.submitError = describeFeedbackSubmitError(error) }
       finally { if (generation === this.feedbackGeneration) this.submitting = false }
     },
@@ -192,11 +197,13 @@ export default {
     async clearEvidence() {
       if (!this.feedbackReady || this.submitting) return
       const generation = this.feedbackGeneration
-      const confirmed = await new Promise(resolve=>uni.showModal({title:"清除所有音乐的学习证据资格",content:"这会清除当前身份所有音乐在截止时间之前的反馈学习证据资格，不仅是本曲。历史反馈仍可查看。当前长期学习未开启。",success:result=>resolve(result.confirm),fail:()=>resolve(false)}))
-      if (!confirmed || generation !== this.feedbackGeneration || !this.feedbackApi.isCurrent()) return
-      if (!this.clearDraft) this.clearDraft = {key:operationKey(),body:{expected_evidence_epoch:this.feedbackEpoch}}
       this.submitting = true
-      try { await this.feedbackApi.clear(this.clearDraft.body,this.clearDraft.key); if (generation === this.feedbackGeneration) {this.clearDraft = null; await this.refreshFeedback()} }
+      try {
+        const confirmed = await new Promise(resolve=>uni.showModal({title:"清除所有音乐的学习证据资格",content:"这会清除当前身份所有音乐在截止时间之前的反馈学习证据资格，不仅是本曲。历史反馈仍可查看。当前长期学习未开启。",success:result=>resolve(result.confirm),fail:()=>resolve(false)}))
+        if (!confirmed || generation !== this.feedbackGeneration || !this.feedbackApi.isCurrent()) return
+        if (!this.clearDraft) this.clearDraft = {key:operationKey(),body:{expected_evidence_epoch:this.feedbackEpoch}}
+        await this.feedbackApi.clear(this.clearDraft.body,this.clearDraft.key); if (generation === this.feedbackGeneration) {this.clearDraft = null; await this.refreshFeedback()}
+      }
       catch (error) { await this.recoverDefinitiveConflict(error,generation,"clearDraft"); if (generation === this.feedbackGeneration) this.submitError = describeFeedbackSubmitError(error) }
       finally { if (generation === this.feedbackGeneration) this.submitting = false }
     },
@@ -217,6 +224,7 @@ export default {
       uni.navigateBack()
     },
     pickChange(value) {
+      if (this.feedbackFormLocked) return
       this.changeLabel = this.changeLabel === value ? "" : value
       if (this.changeLabel) {
         this.showValidation = false
@@ -224,9 +232,11 @@ export default {
       }
     },
     pickContinue(value) {
+      if (this.feedbackFormLocked) return
       this.continueUse = this.continueUse === value ? "" : value
     },
     toggleLiked(value) {
+      if (this.feedbackFormLocked) return
       const idx = this.likedFeatures.indexOf(value)
       if (idx === -1) {
         this.likedFeatures.push(value)
@@ -235,6 +245,7 @@ export default {
       }
     },
     toggleAdjust(value) {
+      if (this.feedbackFormLocked) return
       const idx = this.adjustments.indexOf(value)
       if (idx !== -1) {
         this.adjustments.splice(idx, 1)
@@ -470,6 +481,7 @@ export default {
           <view class="comment-count"><text class="comment-count-text">{{ (comment || '').length }}/200</text></view>
         </view>
 
+        <view v-if="feedbackDraft && !submitted" class="error-row"><text class="error-text">本次选择已锁定，请重试确认提交结果。</text></view>
         <view v-if="submitError" class="error-row">
           <text class="error-text">{{ submitError }}</text>
         </view>

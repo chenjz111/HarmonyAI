@@ -495,7 +495,7 @@ export default {
           const context = this.historicalSession.getFeedbackContext()
           const owner = readOwnerId(), token = readV3AccessToken(), epoch = readAuthEpoch()
           const handoff = putHistoricalFeedback(context,()=>readOwnerId() === owner && readV3AccessToken() === token && readAuthEpoch() === epoch)
-          if (this.playerController) this.playerController.dispose()
+          if (this.playerController) this.playerController.handleHide()
           uni.navigateTo({url:"/pages/v3-feedback/v3-feedback?handoff="+encodeURIComponent(handoff)})
         } catch (error) { uni.showToast({title:"请先选择来源记录并实际播放",icon:"none"}) }
         return
@@ -504,7 +504,7 @@ export default {
         uni.showToast({title:"请确认本次来源并实际播放后再反馈",icon:"none"})
         return
       }
-      if (this.playerController) this.playerController.dispose()
+      if (this.playerController) this.playerController.handleHide()
       uni.navigateTo({ url: "/pages/v3-feedback/v3-feedback" })
     },
     exitSession() {

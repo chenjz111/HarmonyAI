@@ -6,6 +6,14 @@ import {initializeApiPlatform} from '../common/api-origin.js'
 import {trackAuthorizedAudio,releaseAuthorizedAudio,releaseAllAuthorizedAudio} from '../common/owned-audio.js'
 
 const flush=()=>new Promise(setImmediate)
+test('late native onPlay after hide is paused and cannot create playback proof',async()=>{
+ let onPlay,proofs=0,pauses=0
+ const audio={play(){},pause(){pauses++},destroy(){},onPlay(fn){onPlay=fn}}
+ const controller=createPlayerController({downloadAudio:async()=>'/tmp/audio.wav',createAudioContext:()=>audio,onPlaybackStarted:()=>proofs++})
+ await controller.play('/stream');controller.handleHide();onPlay()
+ assert.equal(controller.getState().playing,false);assert.equal(proofs,0);assert.equal(pauses,2)
+ await controller.play('/stream');onPlay();assert.equal(proofs,1);controller.dispose()
+})
 test('disposed Player releases a late downloaded file and never restores its src',async()=>{
  let finish;const removed=[]
  const controller=createPlayerController({downloadAudio:()=>new Promise(resolve=>{finish=resolve}),releaseAudio:path=>removed.push(path),createAudioContext:()=>{throw new Error('disposed')}})

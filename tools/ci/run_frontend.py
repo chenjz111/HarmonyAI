@@ -20,7 +20,7 @@ evidence.mkdir(parents=True,exist_ok=False)
 inventory = {
  'tests/s7-h5-platform-startup.test.mjs':6,
  'tests/s7-h5-account.test.mjs':7,
- 'tests/s7-audio-lifecycle.test.mjs':7,
+ 'tests/s7-audio-lifecycle.test.mjs':8,
  'tests/s7-android-platform.test.mjs':11,
  'tests/s7-account-startup.test.mjs':12,
  'tests/s7-restored-assets.test.mjs':6,
@@ -34,8 +34,8 @@ inventory = {
  'tests/s7-fe2b-player.test.mjs':11,
  'tests/s7-fe2b-profile-auth.test.mjs':27,
  'tests/s7-fe2b-transport.test.mjs':8,
- 'tests/s7-feedback-page.test.mjs':8,
- 'tests/s7-feedback-v31.test.mjs':5,
+ 'tests/s7-feedback-page.test.mjs':10,
+ 'tests/s7-feedback-v31.test.mjs':7,
  'tests/sprint6-product-recovery-player-explanation.test.mjs':15,
 }
 files = list(inventory) if args.suite == 'feedback' else [str(p.relative_to(source)) for p in sorted((source/'tests').glob('*.test.mjs'))]
