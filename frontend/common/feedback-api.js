@@ -43,24 +43,30 @@ export function createFeedbackApi({ request, getOwnerId, getAccessToken, getAuth
       assertIdentity()
       const event = body?.playback_event_id, music = body?.music_ref?.music_id, context = body?.source_context_id
       if (typeof event !== 'string' || !event || typeof music !== 'string' || !music || typeof context !== 'string' || !context || typeof key !== 'string' || !key) throw failure('FEEDBACK_SOURCE_NOT_FOUND')
-      const scope = JSON.stringify([identity.owner,event])
-      let entry = pendingSaves.get(scope)
+      let ownerPending = pendingSaves.get(identity.owner)
+      let entry = ownerPending?.get(event)
       let serialized
       try { serialized = JSON.stringify(body); if (!serialized) throw new Error('invalid') } catch (error) { throw failure('FEEDBACK_COMMIT_UNVERIFIED') }
       if (entry && (entry.key !== key || entry.music !== music || entry.context !== context || entry.inFlight || entry.instance !== instance || snapshots.get(body) !== serialized)) throw failure('FEEDBACK_COMMIT_UNVERIFIED')
       if (!entry) {
-        if (pendingSaves.size >= MAX_PENDING_SAVES) throw failure('FEEDBACK_COMMIT_UNVERIFIED')
+        if (ownerPending?.size >= MAX_PENDING_SAVES) throw failure('FEEDBACK_COMMIT_UNVERIFIED')
+        if (!ownerPending) { ownerPending = new Map(); pendingSaves.set(identity.owner,ownerPending) }
         snapshots.set(body,serialized)
-        entry = {key,music,context,instance,inFlight:false}; pendingSaves.set(scope,entry)
+        entry = {key,music,context,instance,inFlight:false}; ownerPending.set(event,entry)
       }
       entry.inFlight = true
+      const release = () => {
+        if (ownerPending.get(event) !== entry) return
+        ownerPending.delete(event)
+        if (ownerPending.size === 0 && pendingSaves.get(identity.owner) === ownerPending) pendingSaves.delete(identity.owner)
+      }
       try {
         const result = await call('POST', '/api/v3/feedback-records', JSON.parse(serialized), key)
         if (!result || typeof result.feedback_id !== 'string' || !result.feedback_id.trim() || result.feedback_id.length > 64 || result.status !== 'saved' || !Number.isSafeInteger(result.current_feedback_epoch) || result.current_feedback_epoch < 0 || typeof result.replayed !== 'boolean' || result.learning_applied !== false) throw failure('FEEDBACK_COMMIT_UNVERIFIED')
-        if (pendingSaves.get(scope) === entry) pendingSaves.delete(scope)
+        release()
         return result
       } catch (error) {
-        if (error?.code === 'FEEDBACK_EPOCH_CONFLICT' && pendingSaves.get(scope) === entry) pendingSaves.delete(scope)
+        if (error?.code === 'FEEDBACK_EPOCH_CONFLICT') release()
         throw error
       } finally { entry.inFlight = false }
     },

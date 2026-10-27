@@ -55,6 +55,26 @@ test('pending event blocks concurrent same-owner writes but not another owner or
  release({data:{feedback_id:'first',status:'saved',current_feedback_epoch:1,replayed:false,learning_applied:false}});await saving
 })
 
+test('one owner exhausting unresolved capacity cannot block another owner',async()=>{
+ let attempts=0,confirmed=false,firstBody
+ const failed=setup(async()=>{attempts++;return confirmed?{data:{feedback_id:'fb-recovered',status:'saved',current_feedback_epoch:1,replayed:true,learning_applied:false}}:{error:{code:'FEEDBACK_COMMIT_UNVERIFIED'}}})
+ failed.identity.owner='capacity-owner';failed.identity.token='capacity-token'
+ for(let i=0;i<256;i++){
+  const body={music_ref:{music_id:'m'},source_context_id:'ctx',playback_event_id:`capacity-${i}`}
+  if(i===0)firstBody=body
+  await assert.rejects(failed.api.save(body,`key-${i}`),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
+ }
+ await assert.rejects(failed.api.save({music_ref:{music_id:'m'},source_context_id:'ctx',playback_event_id:'overflow'},'overflow'),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
+ await assert.rejects(failed.api.save(firstBody,'new-key'),{code:'FEEDBACK_COMMIT_UNVERIFIED'})
+ assert.equal(attempts,256)
+ let otherPosts=0
+ const other=setup(async()=>{otherPosts++;return {data:{feedback_id:'fb',status:'saved',current_feedback_epoch:1,replayed:false,learning_applied:false}}})
+ other.identity.owner='other-capacity-owner';other.identity.token='other-token'
+ await other.api.save({music_ref:{music_id:'m'},source_context_id:'ctx',playback_event_id:'other-event'},'other-key')
+ assert.equal(otherPosts,1)
+ confirmed=true;assert.equal((await failed.api.save(firstBody,'key-0')).feedback_id,'fb-recovered')
+})
+
 test('V31 API rejects late A→B→A results and never adopts the new identity', async () => {
   let resolve
   const pending = new Promise(r=>{resolve=r})

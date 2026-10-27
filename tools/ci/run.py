@@ -24,6 +24,7 @@ FEEDBACK_INVENTORY = {
     'tests/api/v3/test_feedback_v31_transactions.py': 15,
     'tests/api/v3/test_feedback_clear_receipt.py': 5,
     'tests/api/v3/test_feedback_v31_api.py': 6,
+    'tests/api/v3/test_feedback_recovery_candidate.py': 2,
 }
 ACCOUNT_INVENTORY = {
     'tests/api/v3/test_h5_account_cookie_routes.py':13,

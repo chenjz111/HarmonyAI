@@ -15,6 +15,7 @@ def verify(engine):
     from backend.app.services.v3.feedback_clear_service import clear_with_commit
     from backend.app.services.v3.feedback_v31_contract import FeedbackGone
     from backend.app.services.v3.feedback_v31_queries import read_owned_feedback_page
+    from backend.app.services.v3.feedback_recovery_candidate import read_recovery_status
     from backend.app.services.v3.account_session_service import AccountService,AccountDenied
     from backend.app.services.v3.account_password import PasswordPolicy
     from backend.app.models.v3.identity import UserIdentity,AuthSession
@@ -60,6 +61,10 @@ def verify(engine):
     assert sorted(value.replayed for value in saved)==[False,True]
     first=next(value for value in saved if not value.replayed);replay=save()
     assert first.feedback_id==replay.feedback_id and not first.replayed and replay.replayed
+    recovery_args=dict(principal=principal(),idempotency_key='real-mysql-save',music_id='music_shared',source_context_id='ctx_a',playback_event_id='event-a')
+    with factory() as db:
+        assert read_recovery_status(db,**recovery_args).status=='record_present_unverified'
+        assert read_recovery_status(db,**{**recovery_args,'principal':principal(1)}).status=='unknown'
     class AckLost(Session):
         def commit(self):
             super().commit()
@@ -76,6 +81,7 @@ def verify(engine):
         assert total==2 and first.feedback_id in {row.feedback_id for row in rows}
     deleted=delete_feedback(ack_lost,verification_factory=factory,principal=principal(),feedback_id=first.feedback_id,expected_epoch=3,now_utc=NOW)
     assert deleted.current_feedback_epoch==4
+    with factory() as db:assert read_recovery_status(db,**recovery_args).status=='deleted'
     try:save()
     except FeedbackGone:pass
     else:raise AssertionError('MySQL tombstone revived by replay')
@@ -133,4 +139,4 @@ def verify(engine):
     except AccountDenied:pass
     else:raise AssertionError('H5 consumed proof was replayed')
     with factory() as db:assert db.get(AuthSession,browser_tokens.sid).revoked_at is not None
-    return {'generation_visibility_atomic_rollback_and_replay':True,'concurrent_feedback_save_one_write_one_replay':True,'feedback_save_replay':True,'unknown_commit_save_clear_delete_witness':True,'cas_failure_rolls_back_feedback_favorite_epoch':True,'clear_receipt_preserves_history':True,'tombstone_precedes_replay':True,'binding_keeps_history':True,'concurrent_refresh_one_winner_and_family_revoked':True,'login_logout_all':True,'h5_session_csrf_rotation_and_replay':True}
+    return {'recovery_status_owner_and_tombstone':True,'generation_visibility_atomic_rollback_and_replay':True,'concurrent_feedback_save_one_write_one_replay':True,'feedback_save_replay':True,'unknown_commit_save_clear_delete_witness':True,'cas_failure_rolls_back_feedback_favorite_epoch':True,'clear_receipt_preserves_history':True,'tombstone_precedes_replay':True,'binding_keeps_history':True,'concurrent_refresh_one_winner_and_family_revoked':True,'login_logout_all':True,'h5_session_csrf_rotation_and_replay':True}
