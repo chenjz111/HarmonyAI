@@ -63,11 +63,20 @@ def main():
                 '--','-q','-s','-p','no:cacheprovider','--basetemp',str(sandbox/'pytest'),
                 'tests/integration/s7_h5_account_stdio.py' if args.scenario=='h5-account' else 'tests/integration/s7_account_stdio.py' if args.scenario=='account' else 'tests/integration/s7_backend_stdio.py'],ROOT)
             frontend=None;deadline=time.monotonic()+120
+            restart_state=None;fresh_started=False
             while time.monotonic()<deadline:
                 name,line=events.get(timeout=max(0.1,deadline-time.monotonic()))
                 if line is None:
                     if name=='frontend' and 'S7_FRONTEND_VERIFIED' in verified:
-                        backend.stdin.write('{"done":true}\n');backend.stdin.flush()
+                        if args.scenario=='h5-account' and not fresh_started:
+                            assert restart_state is not None and frontend.wait(timeout=10)==0
+                            verified.remove('S7_FRONTEND_VERIFIED')
+                            frontend=launch('frontend',['node','--require',str(ROOT/'tools/ci/offline_node.cjs'),
+                                str(ROOT/'frontend/integration/s7-h5-fresh-start.mjs')],ROOT/'frontend')
+                            frontend.stdin.write(json.dumps({'restartState':restart_state})+'\n');frontend.stdin.flush()
+                            fresh_started=True
+                        else:
+                            backend.stdin.write('{"done":true}\n');backend.stdin.flush()
                     elif name=='backend' and 'S7_BACKEND_VERIFIED' in verified:break
                     else:raise RuntimeError(name+' exited before verification')
                     continue
@@ -85,12 +94,20 @@ def main():
                     assert frontend is None
                     frontend=launch('frontend',['node','--require',str(ROOT/'tools/ci/offline_node.cjs'),
                         str(ROOT/('frontend/integration/s7-h5-account.mjs' if args.scenario=='h5-account' else 'frontend/integration/s7-account.mjs' if args.scenario=='account' else 'frontend/integration/s7-journey.mjs'))],ROOT/'frontend')
+                elif line.startswith('S7_RESTART_STATE '):
+                    assert args.scenario=='h5-account' and name=='frontend' and restart_state is None and not fresh_started
+                    restart_state=json.loads(line[len('S7_RESTART_STATE '):])
+                    assert set(restart_state)=={'v3_auth_mode','v3_public_user_id','v3_auth_epoch','v3_h5_account_transport_state'}
+                    assert restart_state['v3_auth_mode']=='registered' and restart_state['v3_h5_account_transport_state']=='ready'
+                    assert isinstance(restart_state['v3_public_user_id'],str) and re.fullmatch(r'[A-Za-z0-9_-]{1,128}',restart_state['v3_public_user_id'])
+                    assert type(restart_state['v3_auth_epoch']) is int and 0<=restart_state['v3_auth_epoch']<1000
                 elif line.strip() in {'S7_FRONTEND_VERIFIED','S7_BACKEND_VERIFIED'}:verified.add(line.strip())
                 else:
                     logs[name].append(re.sub(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+','[REDACTED_JWT]',line))
                     (evidence/(name+'.log')).write_text(''.join(logs[name]),encoding='utf8')
             else:raise TimeoutError('integration exceeded120s')
             assert verified=={'S7_FRONTEND_VERIFIED','S7_BACKEND_VERIFIED'}
+            assert args.scenario!='h5-account' or fresh_started
             assert all(child.wait(timeout=10)==0 for child in children)
             telemetry,error=read_telemetry(evidence/'telemetry.json')
             assert telemetry is not None and not error, error

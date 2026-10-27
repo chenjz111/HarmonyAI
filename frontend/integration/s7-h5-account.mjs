@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict'
 import {createInterface} from 'node:readline'
 import {createH5AccountRuntime} from '../common/h5-account.js'
-import {startAccountStartup,readRuntimeV3Credential} from '../common/auth-runtime.js'
+import {initializeH5Platform} from '../common/h5-platform.js'
+import {startAccountStartup,readRuntimeV3Credential,registeredAccountRuntime} from '../common/auth-runtime.js'
 import {createMusicLibraryApi} from '../common/music-library-api.js'
 import {createUniMusicLibraryTransport} from '../common/music-library-transport.js'
 const origin='https://testserver',password='synthetic-safe-long-passphrase'
@@ -36,13 +37,16 @@ const runtimeFor=h=>createH5AccountRuntime({uniApi:h.uni,baseUrl:origin,location
  fetchApi,readCsrfCookie:()=>csrf,accepted:true,target:'h5'})
 const library=h=>createMusicLibraryApi({enabled:true,getOwnerId:()=>h.values.get('v3_public_user_id'),request:createUniMusicLibraryTransport({baseUrl:origin,uniApi:h.uni,getAccessToken:()=>readRuntimeV3Credential(h.uni)})})
 const original=await guest(),a=platform(original)
-let runtime=runtimeFor(a)
+const startup=initializeH5Platform({uniApi:a.uni,target:'h5',apiOrigin:origin,locationOrigin:origin,
+ accountDependencies:{ownerApprovedForNonProduction:true,browserSecurityAccepted:true,approvalRef:'isolated-asgi-only',approvedOrigin:origin,fetchApi,readCsrfCookie:()=>csrf}})
+assert.equal(startup.accountInstalled,true)
+let runtime=registeredAccountRuntime
 assert.equal((await library(a).listMusicAssets()).items.length,1)
 await runtime.bind({username:'browser_a',password})
 assert.equal(runtime.owner(),original.public_user_id);assert.equal(a.values.has('v3_access_token'),false)
 assert.equal(a.values.get('v3_flow_state'),'retained-guest-flow')
 assert.equal((await library(a).listMusicAssets()).items.length,1)
-const before=refreshes;runtime=runtimeFor(a);await startAccountStartup(a.uni,runtime)
+const before=refreshes;runtime=runtimeFor(a);await startAccountStartup(a.uni)
 assert.equal(refreshes,before+1);assert.equal(runtime.owner(),original.public_user_id)
 assert.equal((await library(a).listMusicAssets()).items.length,1)
 await runtime.refresh()
@@ -71,5 +75,11 @@ assert.equal((await library(b).listMusicAssets()).items.length,1)
 await other.logout({allDevices:true})
 other=runtimeFor(b);await startAccountStartup(b.uni,other)
 assert.equal(other.canUseGuestAfterLogout(),true)
+await other.login({username:'browser_a',password:'synthetic-replaced-browser-password'})
 for(const h of [a,b])for(const value of h.values.values())assert.ok(![...secrets].some(secret=>String(value).includes(secret)))
+const restartState=Object.fromEntries(['v3_auth_mode','v3_public_user_id','v3_auth_epoch','v3_h5_account_transport_state'].map(key=>[key,b.values.get(key)]))
+assert.equal(restartState.v3_auth_mode,'registered');assert.equal(restartState.v3_h5_account_transport_state,'ready')
+// Only non-credential UI state crosses the test supervisor; HttpOnly Cookie
+// remains exclusively in the backend TestClient cookie jar.
+process.stdout.write('S7_RESTART_STATE '+JSON.stringify(restartState)+'\n')
 process.stdout.write('S7_FRONTEND_VERIFIED\n');input.close()

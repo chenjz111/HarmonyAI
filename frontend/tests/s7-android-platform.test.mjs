@@ -56,10 +56,10 @@ test('H5 on Android stays H5 and missing native dependencies do not enable accou
 
 test('main initializes platform wiring before constructing the actual App',async()=>{
  const source=readFileSync(new URL('../main.js',import.meta.url),'utf8')
- const calls=[];const sandbox={result:null,uni:{},App:{},createSSRApp(){calls.push('app');return{}},initializeAndroidPlatform(){calls.push('platform')}}
+ const calls=[];const sandbox={result:null,uni:{},App:{},createSSRApp(){calls.push('app');return{}},initializeAndroidPlatform(){calls.push('platform')},initializeH5Platform(){calls.push('h5')}}
  const code=source.replace(/^import[^\n]+\n/gm,'').replace('export function createApp','function createApp')
  runInNewContext(code+';result=createApp()',sandbox)
- assert.deepEqual(calls,['platform','app'])
+ assert.deepEqual(calls,['platform','h5','app'])
 })
 
 test('facade and authorized audio share Android HTTPS and explicitly request certificate verification',async()=>{
