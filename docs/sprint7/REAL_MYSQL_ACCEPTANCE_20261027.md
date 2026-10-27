@@ -11,3 +11,5 @@
 实测发现并修复：MySQL保留字RANK、NOW默认值/SQLAlchemy类型反射差异、CHECK服务端改写、ORM已建循环外键和可空列重复添加、PyMySQL对DDL字面百分号的插值、首次owner状态行gap-lock死锁。只精确识别已批准结构，不修改0001–0012源码/checksum，不新增第二套owner/CAS；漂移默认值/unsigned/计算列/显式collation仍拒绝。独立审查的两项P2（含Player竞态）均RED→GREEN并复核。
 
 这不等于所有MySQL版本、生产数据库、跨主机部署、真实故障恢复、Android或Hosted CI通过。没有生产迁移、付费调用、Merge或正式开关变更。
+
+后续同日实际补齐（`h5-mysql-commit-witness-fixed-20261027/result.json`）：保存、Clear、删除的提交ACK丢失由独立Session witness恢复；末尾CAS失败使反馈、收藏及epoch整体回滚；H5同session CSRF与Refresh旋转及旧proof重放撤销通过。首次扩展运行是fixture重复关键字错误，已保留失败日志后修正，未误报业务失败或通过；最新全部checks通过、实例已停止、Provider0。
