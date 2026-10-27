@@ -1,5 +1,7 @@
 # Sprint 7 V1.1 product progress — 2026-10-25
 
+2026-10-27最新状态：[真实使用阻塞](S7_REAL_USER_BLOCKERS_20261027.md)、[MySQL实测](REAL_MYSQL_ACCEPTANCE_20261027.md)、[H5 Cookie接线](H5_ACCOUNT_COOKIE_STAGE_20261027.md)。下文保留阶段历史，旧“缺5项收集输入/未测MySQL/未找HBuilderX/H5未接线/SHA待批准”不得覆盖新证据。完整原Guard后端2800p/0f/2个既有Windows skip、前端710p/0f/0skip；MySQL8.0.44隔离迁移/事务、提交未知结果恢复通过；H5真实ASGI Cookie链路通过但浏览器HTTPS未验收。Owner批准Player/Profile精确SHA修订，原113素材及其他源码保护保留。提交0e12372/f76fb5f；默认账号、正式音乐库及政策门禁未开启。
+
 Owner explicitly replaced report/demo priorities with normal W0–W8 execution on2026-10-25. Complete V1.1 source SHA256:bccfce90414bdde3518c270a3ae09ee8bbe3d91b54243b409ccce77ac08f7c69. Original2026-10-12 frozen scope and later explicit approvals remain the product authority; this progress file does not change them.
 
 Latest Owner material instruction2026-10-25: source located and approved; see [restoration record](S6_ASSET_RESTORE_20261025.md) and [exact113-file manifest](S6_ASSET_RESTORE_MANIFEST_20261025.json).109 formal static files restored, rejected home-icons-v1 excluded, no old page code merged. Four confirmed central instrument images connected independently from unchanged tone backgrounds. Local full frontend638p/0f/0skip; previous seven missing-asset/evidence failures below are historical and now resolved. H5 compiler/bundle check passed109/109 static hashes, no unresolved-resource warnings, unchanged original Guard. Real device/platform and remaining product/policy gates are still open; this is not complete S7 acceptance.

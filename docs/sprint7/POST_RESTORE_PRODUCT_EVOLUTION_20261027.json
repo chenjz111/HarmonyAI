@@ -1,0 +1,28 @@
+{
+  "status": "BLOCKED_NOT_APPLIED_AUTO_REVIEW_REJECTED",
+  "note": "No test or original restoration manifest references this draft. Do not use as acceptance evidence. Exact hash exceptions require Owner approval.",
+  "schema_version": "post_restore_product_evolution_v1",
+  "immutable_restoration_manifest_sha256": "38709c5f52cb1aabb8ea097e008230493de48dea21e82f546fb8a8e3a9058495",
+  "baseline_commit": "17885812a2e953e395519936b074e18082bfc1e9",
+  "owner_contracts": [
+    "2026-10-12 Sprint7 frozen PD001-020",
+    "2026-10-24 Account Security R1",
+    "2026-10-25 V1.1 autonomous development",
+    "2026-10-26 USB Guest real playback approval"
+  ],
+  "changes": [
+    {
+      "path": "frontend/pages/v3-player/v3-player.vue",
+      "restoration_source_sha256": "8c45151da3fe19283c26b98c5a2b85cd6a463364c84b551e46379c294dc79f73",
+      "current_source_sha256": "0e98d0af3f774927aa4672e0c1e0e3199836bde538edc3cc965ba37c5648c087",
+      "approved_scope": "Owner approved real Guest playback fixes; single existing Player; authorized audio lifecycle cleanup. No artwork/background redesign."
+    },
+    {
+      "path": "frontend/pages/v3-profile/v3-profile.vue",
+      "restoration_source_sha256": "8a1f7db9365e626f1bbc8e695ac41ac0803a976110e539f23d7625813de35755",
+      "current_source_sha256": "cb2d0c7057b7246909de8751cdb75ad39da1d8dc1d3a874e9a0e015c3ec8680e",
+      "approved_scope": "Owner Account Security R1 and approved account continuation: bind/login/logout/password forms, safe startup/signed-out identity handling. Default account gate remains closed."
+    }
+  ],
+  "unchanged_contract": "All restored asset blobs and all other protected source hashes remain exactly pinned. This is product evolution, never restoration permission to redesign Sprint6."
+}
