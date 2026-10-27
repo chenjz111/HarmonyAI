@@ -150,7 +150,7 @@ def main():
                                 db.exec_driver_sql("INSERT INTO sessions(id,user_id,session_id,status) VALUES(1,7,'usb-synthetic-session','active')")
                                 seed(db)
                                 db.exec_driver_sql("UPDATE music_assets SET title='测试音频（非生成结果）',storage_key=?,format='wav',duration_seconds=?,checksum=? WHERE music_asset_id='music_shared'",('music_shared.wav',duration,'sha256:'+hashlib.sha256(audio).hexdigest()))
-                                db.exec_driver_sql("INSERT INTO music_library_state(owner_internal_user_pk,music_asset_id,user_title) VALUES(7,'music_shared','测试音频（非生成结果）')")
+                                db.exec_driver_sql("INSERT INTO music_library_state(owner_internal_user_pk,music_asset_id,user_title,metadata_version) VALUES(7,'music_shared','测试音频（非生成结果）',1)")
                 for message in response:await send(message)
     import uvicorn
     uvicorn.run(Scope(),host='127.0.0.1',port=8000,proxy_headers=False,access_log=False,log_level='warning',loop='asyncio',ws='none',lifespan='on')
