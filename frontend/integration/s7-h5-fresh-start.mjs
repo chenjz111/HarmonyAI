@@ -5,6 +5,7 @@ import {initializeH5Platform} from '../common/h5-platform.js'
 import {registeredAccountRuntime,startAccountStartup,readRuntimeV3Credential} from '../common/auth-runtime.js'
 import {createMusicLibraryApi} from '../common/music-library-api.js'
 import {createUniMusicLibraryTransport} from '../common/music-library-transport.js'
+import {profile} from './s7-profile-harness.mjs'
 
 const origin='https://testserver',pending=new Map();let serial=0,csrf='',restartState
 let receiveState
@@ -22,7 +23,9 @@ await received
 const values=new Map(Object.entries(restartState))
 assert.equal(values.get('v3_auth_mode'),'registered');assert.equal(values.get('v3_h5_account_transport_state'),'ready')
 assert.equal(values.has('v3_access_token'),false)
-const uniApi={getStorageSync:key=>values.get(key)??'',setStorageSync:(key,value)=>values.set(key,value),removeStorageSync:key=>values.delete(key),$emit(){},
+const listeners=new Map()
+const uniApi={getStorageSync:key=>values.get(key)??'',setStorageSync:(key,value)=>values.set(key,value),removeStorageSync:key=>values.delete(key),
+ $on:(name,callback)=>listeners.set(name,callback),$off:name=>listeners.delete(name),$emit:name=>listeners.get(name)?.(),showToast(){},
  request(options){rpc({method:options.method,path:new URL(options.url).pathname,data:options.data,header:options.header}).then(options.success,options.fail)}}
 // This unauthorized GET returns no identity; it exposes only the same readable
 // CSRF helper that document.cookie would expose. HttpOnly Refresh stays in Python.
@@ -44,4 +47,11 @@ const token=readRuntimeV3Credential(uniApi);assert.ok(token)
 const library=createMusicLibraryApi({enabled:true,getOwnerId:()=>values.get('v3_public_user_id'),request:createUniMusicLibraryTransport({baseUrl:origin,uniApi,getAccessToken:()=>readRuntimeV3Credential(uniApi)})})
 assert.equal((await library.listMusicAssets()).items.length,1)
 for(const value of values.values())assert.ok(!String(value).includes(token))
+const my=profile({uni:uniApi},{registeredAccountRuntime,startAccountStartup})
+my.options.onLoad.call(my.page);await my.options.onShow.call(my.page)
+assert.equal(my.page.accountOwner,restartState.v3_public_user_id)
+await my.page.logoutAccount(false)
+assert.equal(my.page.accountError,'');assert.equal(my.page.accountOwner,null)
+assert.equal(my.page.accountGuestReady,true);assert.equal(readRuntimeV3Credential(uniApi),'')
+my.options.onUnload.call(my.page)
 process.stdout.write('S7_FRONTEND_VERIFIED\n');input.close()

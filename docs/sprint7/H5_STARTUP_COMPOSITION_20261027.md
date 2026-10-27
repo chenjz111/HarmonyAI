@@ -6,4 +6,6 @@
 
 实际隔离链路：原Guard下真实ASGI/SQLite账号路由、同一TestClient Cookie jar和两个独立Node进程，验证Guest绑定、历史归属、登录其他账号不合并、Refresh、未知结果不自动重试、改密/注销，以及全新进程通过原HttpOnly Cookie恢复账号并读取历史。仅四个非认证UI状态跨进程传递，Cookie和Refresh从未进入JS或证据日志。证据外置`h5-startup-freshprocess-20261027/result.json`；这不是实际浏览器、Cookie持久化、HTTPS/TLS或真实App生命周期验收。
 
+后续用户操作补证：在同一真实ASGI隔离链上执行实际“我的”页面脚本的onLoad/onShow及注册绑定，检查密码字段清空与游客历史归属；全新进程经App启动恢复后，再通过实际页面注销，检查身份权限清除和明确游客返回状态。证据`h5-profile-bind-logout-freshprocess-20261027/result.json`。页面以VM和合成uni平台事件执行，未验证Vue实际渲染、点击、浏览器或页面独立驱动启动恢复；页面自身源码与原冻结SHA未改。独立只读复核未发现有证据P1/P2。
+
 原Node Guard完整前端716p/0f/0skip；H5编译成功并验证109/109素材；启动/Android/账号定向45p；联调watchdog1p。H5与Android默认账号、正式音乐库仍关闭，需实际Origin/浏览器安全验收、Guest旧存储整改和审核密码源/部署预算。源冻结保护及政策边界未改。独立审查未发现有证据P1/P2，指出原单进程模拟的恢复局限，本次以两个全新进程补证，但不宣称真实浏览器验收。

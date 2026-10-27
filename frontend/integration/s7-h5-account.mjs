@@ -6,6 +6,7 @@ import {initializeH5Platform} from '../common/h5-platform.js'
 import {startAccountStartup,readRuntimeV3Credential,registeredAccountRuntime} from '../common/auth-runtime.js'
 import {createMusicLibraryApi} from '../common/music-library-api.js'
 import {createUniMusicLibraryTransport} from '../common/music-library-transport.js'
+import {profile} from './s7-profile-harness.mjs'
 const origin='https://testserver',password='synthetic-safe-long-passphrase'
 const pending=new Map(),secrets=new Set();let serial=0,csrf='',dropRefresh=false,refreshes=0,guestCreations=0
 const input=createInterface({input:process.stdin})
@@ -29,9 +30,12 @@ const fetchApi=async(url,options)=>{
 }
 function platform(guest){
  const values=new Map([['v3_access_token',guest.access_token],['v3_public_user_id',guest.public_user_id],['v3_auth_epoch',0],['v3_flow_state','retained-guest-flow']])
+ const listeners=new Map(),toasts=[]
  const uni={getStorageSync:k=>values.get(k)??'',setStorageSync:(k,v)=>values.set(k,v),removeStorageSync:k=>values.delete(k),$emit(){},
   request(options){rpc({method:options.method,path:new URL(options.url).pathname,data:options.data,header:options.header}).then(options.success,options.fail)}}
- return {uni,values}
+ uni.$on=(name,callback)=>listeners.set(name,callback);uni.$off=name=>listeners.delete(name);uni.$emit=name=>listeners.get(name)?.()
+ uni.showToast=options=>toasts.push(options.title)
+ return {uni,values,toasts}
 }
 const runtimeFor=h=>createH5AccountRuntime({uniApi:h.uni,baseUrl:origin,locationOrigin:origin,configuredOrigin:origin,
  fetchApi,readCsrfCookie:()=>csrf,accepted:true,target:'h5'})
@@ -42,7 +46,13 @@ const startup=initializeH5Platform({uniApi:a.uni,target:'h5',apiOrigin:origin,lo
 assert.equal(startup.accountInstalled,true)
 let runtime=registeredAccountRuntime
 assert.equal((await library(a).listMusicAssets()).items.length,1)
-await runtime.bind({username:'browser_a',password})
+const my=profile(a,{registeredAccountRuntime,startAccountStartup});my.options.onLoad.call(my.page);await my.options.onShow.call(my.page)
+assert.equal(my.page.accountAvailable,true)
+my.page.accountMode='bind';my.page.accountUsername='browser_a';my.page.accountPassword=password
+await my.page.submitAccount()
+assert.equal(my.page.accountError,'');assert.equal(my.page.accountPassword,'');assert.equal(my.page.accountOwner,original.public_user_id)
+assert.ok(a.toasts.includes('身份验证已完成'))
+my.options.onUnload.call(my.page)
 assert.equal(runtime.owner(),original.public_user_id);assert.equal(a.values.has('v3_access_token'),false)
 assert.equal(a.values.get('v3_flow_state'),'retained-guest-flow')
 assert.equal((await library(a).listMusicAssets()).items.length,1)
