@@ -25,6 +25,29 @@ def verify(engine):
                 db.execute(text('INSERT INTO users(id,openid) VALUES(:id,:name)'),{'id':owner,'name':f'synthetic-{owner}'})
         seed(db)
         db.execute(text("INSERT INTO music_playback_events(internal_user_pk,event_id,music_asset_id,event_type,source_context_id,occurred_at) VALUES(7,'event-a','music_shared','play_started','ctx_a','2026-10-24 00:00:00')"))
+    # Exercise generation visibility in the same real database transaction as
+    # the task outcome, without calling a music provider or touching user data.
+    from backend.app.models.v3.music import GenerationTask,MusicAsset
+    from backend.app.models.v3.music_library import OwnerMusicState
+    from backend.app.services.v3 import generation_service
+    from tests.api.v3.test_generation import _tone_profile
+    with factory() as db:
+        asset=db.get(MusicAsset,'music_shared')
+        asset.tone_profile_json=_tone_profile('fallback');asset.bpm=60;asset.instruments_json=['guqin']
+        db.commit()
+        task=db.get(GenerationTask,'ctx_other')
+        task.fallback_reason_code='catalog_match'
+        outcome=generation_service._music_task_from_db(db,task)
+        task.status='running';task.music_asset_id=None;db.commit()
+        generation_service._persist_task_outcome(db,task,outcome,None)
+        assert db.get(OwnerMusicState,1).library_epoch==1
+        db.rollback();db.refresh(task)
+        assert task.status=='running' and task.music_asset_id is None
+        assert db.get(OwnerMusicState,1) is None
+        generation_service._persist_task_outcome(db,task,outcome,None);db.commit()
+        generation_service._persist_task_outcome(db,task,outcome,None);db.commit()
+        assert db.get(OwnerMusicState,1).library_epoch==1
+        assert task.status=='matched_fallback' and task.music_asset_id=='music_shared'
     request=FeedbackV31.model_validate(body())
     def save():return save_feedback(factory,verification_factory=factory,principal=principal(),request=request,idempotency_key='real-mysql-save',now_utc=NOW)
     save_barrier=Barrier(2)
@@ -110,4 +133,4 @@ def verify(engine):
     except AccountDenied:pass
     else:raise AssertionError('H5 consumed proof was replayed')
     with factory() as db:assert db.get(AuthSession,browser_tokens.sid).revoked_at is not None
-    return {'concurrent_feedback_save_one_write_one_replay':True,'feedback_save_replay':True,'unknown_commit_save_clear_delete_witness':True,'cas_failure_rolls_back_feedback_favorite_epoch':True,'clear_receipt_preserves_history':True,'tombstone_precedes_replay':True,'binding_keeps_history':True,'concurrent_refresh_one_winner_and_family_revoked':True,'login_logout_all':True,'h5_session_csrf_rotation_and_replay':True}
+    return {'generation_visibility_atomic_rollback_and_replay':True,'concurrent_feedback_save_one_write_one_replay':True,'feedback_save_replay':True,'unknown_commit_save_clear_delete_witness':True,'cas_failure_rolls_back_feedback_favorite_epoch':True,'clear_receipt_preserves_history':True,'tombstone_precedes_replay':True,'binding_keeps_history':True,'concurrent_refresh_one_winner_and_family_revoked':True,'login_logout_all':True,'h5_session_csrf_rotation_and_replay':True}

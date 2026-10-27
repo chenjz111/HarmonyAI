@@ -13,3 +13,5 @@
 这不等于所有MySQL版本、生产数据库、跨主机部署、真实故障恢复、Android或Hosted CI通过。没有生产迁移、付费调用、Merge或正式开关变更。
 
 后续同日实际补齐（`h5-mysql-commit-witness-fixed-20261027/result.json`）：保存、Clear、删除的提交ACK丢失由独立Session witness恢复；末尾CAS失败使反馈、收藏及epoch整体回滚；H5同session CSRF与Refresh旋转及旧proof重放撤销通过。首次扩展运行是fixture重复关键字错误，已保留失败日志后修正，未误报业务失败或通过；最新全部checks通过、实例已停止、Provider0。
+
+生成结果可见性补充（`mysql-generation-visibility-complete-20261027/result.json`）：在同一隔离MySQL中使用合成任务与音乐素材，验证任务结果及library epoch一起回滚、一起提交，重复持久化不再推进epoch。该检查直接调用服务层，不代表Provider生成、历史API或手机播放验收。先前三次尝试分别因合成素材缺少tone profile、bpm/instruments、fallback reason而失败，证据保留于对应目录；补齐夹具后全套检查通过，实例已停止，Provider调用0。
