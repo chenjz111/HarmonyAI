@@ -60,9 +60,11 @@ class TestOCRDegradation:
         assert "识别成功" not in (result.text or "")
         assert "[OCR Stub]" not in (result.text or "")
 
-    def test_ocr_missing_file(self):
+    def test_ocr_missing_file(self,monkeypatch):
         """Missing file returns failed, not fake text."""
         ocr = OCRProvider()
+        def unexpected_engine():raise AssertionError('missing file must not initialize or download an OCR engine')
+        monkeypatch.setattr(ocr,'_init_paddle',unexpected_engine)
         f = tempfile.mktemp(suffix=".png")
         result = ocr.process(f, "png")
         assert result.confidence == "failed"

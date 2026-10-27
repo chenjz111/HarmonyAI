@@ -19,15 +19,16 @@ function deferred() {
 }
 const card = (owner, id = `${owner}-music`) => ({ ...fixture.MUSIC_CARD_V1_PREVIEW_FIXTURE[0], music_id: id, availability: 'ready' })
 let sequence = 0
-async function harness({ missing = null, subscribeThrows = false, subscribeReturnsFalse = false, handler = null } = {}) {
+async function harness({ missing = null, subscribeThrows = false, subscribeReturnsFalse = false, handler = null, accountRuntime = {available:false}, startup=()=>Promise.resolve() } = {}) {
   const storage = new Map([['v3_public_user_id', 'A'], ['v3_access_token', 'synthetic-reused'], ['v3_auth_epoch', 0]])
   const listeners = new Map()
-  const h = { storage, requests: [], modals: [], toasts: [], nextAuth: null }
+  const h = { storage, requests: [], modals: [], toasts: [], navigations: [], nextAuth: null }
   const uni = {
     getStorageSync: key => storage.get(key) ?? '',
     setStorageSync: (key, value) => storage.set(key, value),
     showModal: args => h.modals.push(args),
     showToast: args => h.toasts.push(args.title),
+    navigateTo: args => h.navigations.push(args.url),
     $on(name, fn) {
       if (subscribeThrows) throw new Error('synthetic subscription rejected')
       if (!listeners.has(name)) listeners.set(name, new Set())
@@ -52,6 +53,8 @@ async function harness({ missing = null, subscribeThrows = false, subscribeRetur
     .replace(/import\s*\{([\s\S]*?)\}\s*from\s*["'][^"']+["'];?/g, (_, names) => `const {${names}}=deps;`)
     .replace('export default {', 'pageOptions = {')
   const context = { uni, pageOptions: null, deps: { ...state, ...adapter, ...fixture, ...transport,
+    registeredAccountRuntime: accountRuntime,
+    startAccountStartup: startup,
     MUSIC_LIBRARY_LIVE_ENABLED: true,
     readV3AccessToken: () => transport.readV3AccessToken(uni),
     createUniMusicLibraryTransport: options => transport.createUniMusicLibraryTransport({ ...options, uniApi: uni }),
@@ -84,6 +87,113 @@ async function harness({ missing = null, subscribeThrows = false, subscribeRetur
   h.listenerCount = () => [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0)
   return h
 }
+
+test('W6: source entry explains unavailable originals without requesting an image or changing music',async()=>{
+ const h=await harness();try{await h.start();const before=h.requests.length;h.page.openOriginalSource(h.page.visibleItems[0]);assert.equal(h.modals.length,1);assert.match(h.modals[0].content,/尚未开放/);assert.equal(h.requests.length,before);assert.match(source,/@click.stop="openOriginalSource\(item\)"/)}finally{h.close()}
+})
+
+test('W5: disabled account form cannot issue an operation and erases entered password',async()=>{
+ const h=await harness();try{h.page.accountPassword='synthetic-long-password';await h.page.submitAccount();assert.equal(h.requests.length,0);assert.equal(h.page.accountPassword,'');assert.equal(h.page.accountBusy,false)}finally{h.close()}
+})
+
+test('W5: candidate login uses the existing runtime, clears credentials and never requests a data merge',async()=>{
+ const calls=[],accountRuntime={available:true,login:async body=>{calls.push(body);return {public_user_id:'registered-B'}}}
+ const h=await harness({accountRuntime});try{await h.start();h.page.selectSection('account');h.page.accountMode='login';h.page.accountUsername='Alice';h.page.accountPassword='synthetic-long-password';await h.page.submitAccount();assert.equal(calls.length,1);assert.equal(calls[0].username,'alice');assert.deepEqual(Object.keys(calls[0]).sort(),['password','username']);assert.equal(h.page.accountPassword,'');assert.equal(h.page.accountBusy,false);assert.match(source,/@click="submitAccount"/)}finally{h.close()}
+})
+
+test('restored account exposes logout and clears its view after runtime invalidation',async()=>{
+ let owner='registered-A'
+ const h=await harness({accountRuntime:{available:true,owner:()=>owner}})
+ try{
+  await h.start();h.options.onShow.call(h.page)
+  assert.equal(h.page.accountOwner,'registered-A','restored identity must not hide logout controls')
+  owner=null;h.uni.$emit('harmonyai:v3-auth-changed')
+  assert.equal(h.page.accountOwner,null,'an expired or revoked runtime must not display the old account')
+ }finally{h.unload();h.close()}
+})
+
+test('My waits for signed-out startup before displaying the explicit Guest choice',async()=>{
+ const ready=deferred();let restored=false
+ const h=await harness({startup:()=>ready.promise,accountRuntime:{available:true,owner:()=>null,canUseGuestAfterLogout:()=>restored}})
+ try{
+  await h.start();const showing=h.options.onShow.call(h.page)
+  assert.equal(h.page.accountGuestReady,false)
+  restored=true;ready.resolve();await showing
+  assert.equal(h.page.accountGuestReady,true)
+ }finally{h.unload();h.close()}
+})
+
+test('account password change uses confirmation, existing DTO and clears every password field',async()=>{
+ const calls=[];let owner='A'
+ const h=await harness({accountRuntime:{available:true,owner:()=>owner,changePassword:async body=>{calls.push(body);owner=null;return {reauthentication_required:true}}}})
+ try{
+  await h.start()
+  const fill=()=>{h.page.currentPassword='synthetic-old-password';h.page.newPassword='synthetic-new-password';h.page.confirmNewPassword='synthetic-new-password'}
+  fill();const cancelled=h.page.changeAccountPassword();h.modals.at(-1).success({confirm:false});await cancelled
+  assert.equal(calls.length,0);assert.equal(h.page.currentPassword,'');assert.equal(h.page.newPassword,'')
+  fill();const changed=h.page.changeAccountPassword();h.modals.at(-1).success({confirm:true});await changed
+  assert.deepEqual(Object.keys(calls[0]).sort(),['current_password','new_password'])
+  assert.equal(calls[0].new_password,'synthetic-new-password')
+  assert.equal(h.page.confirmNewPassword,'');assert.equal(h.page.accountOwner,null);assert.equal(h.page.accountMode,'login')
+  assert.match(h.toasts.at(-1),/重新登录/)
+ }finally{h.unload();h.close()}
+})
+
+test('leaving My clears password and rejects a late login UI result',async()=>{
+ const response=deferred()
+ const h=await harness({accountRuntime:{available:true,login:()=>response.promise,owner:()=>null}})
+ try{
+  await h.start();h.page.accountMode='login';h.page.accountUsername='alice';h.page.accountPassword='synthetic-long-password'
+  const pending=h.page.submitAccount()
+  h.options.onHide?.call(h.page)
+  assert.equal(h.page.accountPassword,'','hidden tab cannot retain an entered password')
+  response.resolve({public_user_id:'registered-B'});await pending
+  assert.equal(h.page.accountOwner,null)
+  assert.equal(h.toasts.length,0,'hidden page cannot announce late authentication success')
+ }finally{h.unload();h.close()}
+})
+
+test('Guest return requires explicit confirmation and never abandons identity after leaving My',async()=>{
+ let returned=0
+ const h=await harness({accountRuntime:{available:true,owner:()=>null,canUseGuestAfterLogout:()=>true,useGuestAfterLogout:async options=>{assert.equal(options.confirmed,true);returned++}}})
+ h.uni.switchTab=args=>h.navigations.push(args.url)
+ try{
+  await h.start()
+  assert.equal(h.page.accountGuestReady,true)
+  const cancel=h.page.returnToGuest();h.modals.at(-1).success({confirm:false});await cancel
+  assert.equal(returned,0)
+  const hidden=h.page.returnToGuest();h.options.onHide.call(h.page);h.modals.at(-1).success({confirm:true});await hidden
+  assert.equal(returned,0)
+  h.options.onShow.call(h.page)
+  const confirmed=h.page.returnToGuest();h.modals.at(-1).success({confirm:true});await confirmed
+  assert.equal(returned,1);assert.equal(h.navigations.at(-1),'/pages/entry/entry')
+ }finally{h.unload();h.close()}
+})
+
+test('W4: preference/account/about regions are reachable without issuing authentication or learning writes',async()=>{
+ const h=await harness();try{await h.start();const before=h.requests.length
+ for(const region of ['preferences','account','about']){h.page.selectSection(region);assert.equal(h.page.activeSection,region);assert.equal(h.page.visibleItems.length,0);assert.match(source,new RegExp(`selectSection\\('${region}'\\)`))}
+ assert.equal(h.requests.length,before);assert.doesNotMatch(source,/@click="openFeedbackHistory"/)
+ }finally{h.close()}
+})
+
+test('W4: feedback navigation belongs to a selected music card',async()=>{
+ const h=await harness();try{await h.start();h.page.openMusicFeedback(h.page.visibleItems[0]);assert.deepEqual(h.navigations,['/pages/v3-feedback/v3-feedback?mode=history&music_id=A-music']);h.page.openMusicFeedback(null);assert.equal(h.navigations.length,1)}finally{h.close()}
+})
+
+test('W2: approved isolated live list opens its actual card in the single historical Player',async()=>{
+ const h=await harness();try{await h.start();h.page.openMusic(h.page.visibleItems[0]);assert.deepEqual(h.navigations,['/pages/v3-player/v3-player?music_id=A-music']);assert.equal(h.requests.filter(x=>x.method==='POST').length,0)}finally{h.close()}
+})
+test('W2: returning from Player refreshes favorite and private title for the same owner',async()=>{
+ let changed=false
+ const h=await harness({handler:()=>({items:[{...card('A'),is_favorite:changed,display_title:changed?'Evening music':'Original title'}],has_more:false,next_cursor:null})})
+ try{await h.start();assert.equal(h.page.visibleItems[0].is_favorite,false);changed=true;h.options.onShow.call(h.page);await flush();assert.equal(h.page.visibleItems[0].is_favorite,true);assert.equal(h.page.visibleItems[0].display_title,'Evening music');assert.equal(h.requests.length,2)}finally{h.close()}
+})
+test('W2: Player return supersedes an older pending list read',async()=>{
+ let reads=0;const old=deferred()
+ const h=await harness({handler:()=>++reads===2?old.promise:{items:[{...card('A'),display_title:reads>2?'Changed in Player':'Old title'}],has_more:false,next_cursor:null}})
+ try{await h.start();const stale=h.page.reload();await flush();h.options.onShow.call(h.page);await flush();old.resolve({items:[{...card('A'),display_title:'Stale title'}],has_more:false,next_cursor:null});await stale;await flush();assert.equal(h.page.visibleItems[0].display_title,'Changed in Player');assert.equal(reads,3)}finally{h.close()}
+})
 
 test('R5: partial registration returning false is removed immediately without private requests', async () => {
   const h = await harness({ subscribeReturnsFalse: true })

@@ -618,6 +618,19 @@ export function buildAnalysisViewModel(basis, { userGoal, disclaimerFallback = "
 // ------------------------------------------------------------------ 播放器视图模型
 
 /** 全中性空状态：任何输入都没有时，页面拿到的是一个"什么都不断言"的模型。 */
+function instrumentIllustration(track) {
+  // Provider canonical vocabulary; this display list never selects generation instruments.
+  const allowed = ['guqin', 'xiao', 'pipa', 'dizi', 'xun', 'guzheng', 'erhu', 'sheng', 'bianzhong']
+  const trusted = track && ['persisted', 'legacy_single'].includes(track.primary_instrument_origin)
+  const code = trusted && allowed.includes(track.primary_instrument_code) ? track.primary_instrument_code : 'unknown'
+  // Owner confirmed actual image contents on 2026-10-25. Filenames retain S6 history,
+  // but the lookup key is exclusively the persisted effective instrument, never tone.
+  const artwork = { guqin:'gong-2.png', sheng:'jue-2.png', dizi:'shang-2.png', pipa:'zhi-2.png' }
+  // yu-2.png depicts panpipes, not xiao/dongxiao; no unapproved substitution.
+  const imageSrc = artwork[code] ? '/static/v31-player/'+artwork[code] : ''
+  return { code, imageSrc, neutral: !imageSrc }
+}
+
 export function emptyMusicPresentation() {
   return {
     isEmpty: true,
@@ -630,6 +643,7 @@ export function emptyMusicPresentation() {
     primaryTone: presentPrimaryTone("", ""),
     secondaryTone: presentSecondaryTone("", ""),
     title: presentText(""),
+    instrumentIllustration: instrumentIllustration(null),
     sourceLabel: "",
     fallback: { applied: null, reasonCode: "", label: "", displayText: NEUTRAL_DISPLAY },
     instruments: presentInstruments(null),
@@ -706,6 +720,7 @@ export function buildMusicPresentation({ music, basis, failure, measuredSeconds,
     primaryTone,
     secondaryTone,
     title: presentTitle(track ? track.title : ""),
+    instrumentIllustration: instrumentIllustration(track),
     sourceLabel: presentSourceLabel({
       sourceLabel: track ? track.source_label : "",
       sourceType: track && track.music_ref ? track.music_ref.source_type : "",

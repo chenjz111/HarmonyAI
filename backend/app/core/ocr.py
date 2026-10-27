@@ -162,7 +162,6 @@ class OCRProvider:
     def process(self, file_path: str, file_type: str) -> OCRResult:
         """Run OCR. Returns degraded/failed on error, never fakes success."""
         started = perf_counter()
-        paddle = self._init_paddle()
         # Keep provider identity stable; availability is expressed through
         # status/error_code rather than a fake stub provider.
         provider = "paddleocr"
@@ -215,6 +214,9 @@ class OCRProvider:
             )
 
         # PaddleOCR
+        # Reject missing/unreadable PDF inputs before spending model resources
+        # or letting an optional engine discover/download platform components.
+        paddle = self._init_paddle()
         if paddle is not None:
             try:
                 result = paddle.ocr(file_path, cls=True)

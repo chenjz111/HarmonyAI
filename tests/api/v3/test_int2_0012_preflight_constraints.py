@@ -15,6 +15,12 @@ ASSET_FK = 'FOREIGN KEY(music_asset_id) REFERENCES music_assets(music_asset_id) 
 CONTEXT_FK = 'CONSTRAINT fk_playback_owner_asset_context FOREIGN KEY(source_context_id,internal_user_pk,music_asset_id) REFERENCES generation_tasks(task_id,internal_user_pk,music_asset_id)'
 PARENT = 'CREATE UNIQUE INDEX IF NOT EXISTS uq_generation_tasks_owner_asset_context ON generation_tasks(task_id,internal_user_pk,music_asset_id);'
 
+@pytest.fixture(autouse=True)
+def historical_0012_registry(monkeypatch):
+    """Keep historical 0012 downgrade/recovery assertions; 0013 has its own suite."""
+    monkeypatch.setattr(migrations, 'V3_MIGRATION_VERSIONS', migrations.V3_MIGRATION_VERSIONS[:12])
+
+
 # These are real SQL mutations, not mocked Inspector results.
 CASES = [
     ('owner_fk_missing','owner_music_state',',\n '+OWNER_FK,''),

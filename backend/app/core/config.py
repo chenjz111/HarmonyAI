@@ -86,6 +86,7 @@ class Settings(BaseSettings):
 
     # JWT
     JWT_SECRET_KEY: str = Field(default="change-me-in-production", repr=False)
+    JWT_PREVIOUS_SECRET_KEYS: list[str] = Field(default_factory=list, repr=False, max_length=8)
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
@@ -139,16 +140,16 @@ class Settings(BaseSettings):
             raise ValueError("Production requires explicit DEBUG, JWT_SECRET_KEY, DATABASE_URL and CORS_ORIGINS")
         if self.DEBUG:
             raise ValueError("Production DEBUG and SQL echo must be disabled")
-        key = self.JWT_SECRET_KEY
-        if (
-            self.JWT_ALGORITHM != "HS256"
-            or key != key.strip()
-            or len(key.encode("utf-8")) < 32
-            or len(set(key)) < 12
-            or _has_obvious_key_pattern(key)
-            or key.lower() in {"change-me-in-production", "changeme", "secret", "password"}
-        ):
-            raise ValueError("Production requires an approved HS256 signing key, not a default or weak value")
+        for key in [self.JWT_SECRET_KEY,*self.JWT_PREVIOUS_SECRET_KEYS]:
+            if (
+                self.JWT_ALGORITHM != "HS256"
+                or key != key.strip()
+                or len(key.encode("utf-8")) < 32
+                or len(set(key)) < 12
+                or _has_obvious_key_pattern(key)
+                or key.lower() in {"change-me-in-production", "changeme", "secret", "password"}
+            ):
+                raise ValueError("Production requires an approved HS256 signing key, not a default or weak value")
         for origin in self.CORS_ORIGINS:
             try:
                 parsed = urlsplit(origin)

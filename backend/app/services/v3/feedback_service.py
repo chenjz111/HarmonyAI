@@ -293,6 +293,18 @@ def _learn_preferences(
 def _replay_output(
     db: Session, principal: AuthPrincipal, fb: FeedbackRow
 ) -> FeedbackV3Output:
+    # Lock the same owner authority used by V3.1 deletion, then force a current
+    # locking read; neither a stale identity map nor a pre-lock RR snapshot is
+    # evidence that an old idempotency key remains visible.
+    from sqlalchemy import select
+    from .owner_music_state_service import lock_owner_music_state
+    lock_owner_music_state(db, internal_user_pk=principal.internal_user_pk)
+    row = db.execute(select(FeedbackRow.__table__.c.deleted_at,
+                            FeedbackRow.__table__.c.request_fingerprint).where(
+        FeedbackRow.internal_user_pk == principal.internal_user_pk,
+        FeedbackRow.feedback_id == fb.feedback_id).with_for_update()).one_or_none()
+    if row is None or row.deleted_at is not None or row.request_fingerprint is not None:
+        raise FeedbackConflict('legacy replay unavailable for deleted or V3.1 feedback')
     update = PreferenceUpdate(
         applied=False,
         previous_version=None,
@@ -342,8 +354,15 @@ def _persist_feedback_stage1(db: Session, fb: FeedbackRow, favorite: bool | None
     for attempt in range(2):
         db.add(fb)
         try:
+            db.flush()
+            from .owner_music_state_service import lock_owner_music_state, compare_and_advance_feedback_epoch
+            state = lock_owner_music_state(db, internal_user_pk=owner_pk)
+            db.refresh(state)
+            expected_epoch = int(state.feedback_evidence_epoch)
             if favorite is not None:
                 _change_favorite(db, owner_pk=owner_pk, music_id=music_id, desired=favorite)
+            compare_and_advance_feedback_epoch(db, internal_user_pk=owner_pk,
+                                               expected_epoch=expected_epoch)
             db.commit()
             return None
         except IntegrityError:
@@ -447,6 +466,8 @@ def _set_status(db: Session, feedback_id: str, status: str) -> None:
         .filter(FeedbackRow.feedback_id == feedback_id)
         .one()
     )
+    if fb.deleted_at is not None:
+        raise FeedbackConflict('deleted feedback cannot be processed')
     fb.preference_update_status = status
     db.flush()
 
@@ -543,7 +564,9 @@ def list_feedback_history(
 ) -> FeedbackHistory:
     rows = (
         db.query(FeedbackRow)
-        .filter(FeedbackRow.internal_user_pk == principal.internal_user_pk)
+        .filter(FeedbackRow.internal_user_pk == principal.internal_user_pk,
+                FeedbackRow.deleted_at.is_(None))
+        .populate_existing()
         .order_by(FeedbackRow.created_at.desc())
         .all()
     )

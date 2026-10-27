@@ -1,3 +1,4 @@
+import { MUSIC_LIBRARY_LIVE_ENABLED } from "../common/music-library-transport.js"
 /**
  * Sprint 7 M1 / FE-2B — 历史音乐播放会话测试
  *
@@ -133,7 +134,7 @@ test("FE2B: historical player keeps a single controller and never reads session 
   // 历史通道只读 MusicDetailV1；不得用当前会话解析/UserGoal 替代旧资料
   assert.match(playerSource, /loadHistorical/)
   assert.match(playerSource, /resolvePlayableAudio/)
-  assert.match(playerSource, /HISTORICAL_LIBRARY_ENABLED = false/)
+  assert.match(playerSource, /HISTORICAL_LIBRARY_ENABLED = MUSIC_LIBRARY_LIVE_ENABLED/)
   assert.match(playerSource, /onLoad\(query\)/)
   assert.match(playerSource, /query\.music_id/)
   assert.match(playerSource, /historicalSession\.reportPlayStarted/)
@@ -143,13 +144,18 @@ test("FE2B: historical player keeps a single controller and never reads session 
   assert.doesNotMatch(playerSource, /uni\.createInnerAudioContext\s*\(/)
   assert.doesNotMatch(playerSource, /\baudioCtx\b/)
   // 历史分支不得复用当前会话解析
-  assert.match(playerSource, /this\.basis = null \/\/ 历史播放不读取当前会话解析/)
+  const historical = playerSource.split('async loadHistorical(')[1].split('setupPlayerController(generation =')[0]
+  assert.doesNotMatch(historical, /getMusicBasis|getCurrentUserGoal/)
+  assert.match(historical, /this\.loadHistoricalAnalysis\(api,session,generation,this\.historicalMusicId,this\.selectedHistoricalContext\)/)
+  assert.match(historical, /api\.getMusicAnalysis\(musicId,contextId\)/)
+  assert.match(historical, /this\.basis = analysis/)
 })
 
 test("FE2B: My page keeps frozen preview by default and never renders HTML", () => {
   assert.match(profileSource, /MUSIC_LIBRARY_LIVE_ENABLED/)
   assert.match(profileSource, /界面预览 · 虚构数据/)
-  assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = false/)
+  assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = LIVE_SOURCE_ENABLED/)
+  assert.equal(MUSIC_LIBRARY_LIVE_ENABLED, false, 'default/release library remains closed; USB profile is separately tested')
   assert.doesNotMatch(profileSource, /v-html/)
   assert.doesNotMatch(profileSource, /createInnerAudioContext|new Audio|audioCtx/)
 })

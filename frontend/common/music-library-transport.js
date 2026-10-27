@@ -12,7 +12,19 @@
  */
 
 // 真实启用开关：默认关闭（fail-closed）。开启需显式注入 true 且通过 Backend Gate。
-export const MUSIC_LIBRARY_LIVE_ENABLED = false
+import { readRuntimeV3Credential, hasAccountRuntime, prepareAccountRequest } from './auth-runtime.js'
+import { getApiOrigin, nativeTlsOptions, platformNetworkApi } from './api-origin.js'
+// Owner-approved local acceptance only; release and other platforms stay closed.
+function usbGuestLibraryDebugEnabled(){
+ try{
+  if(import.meta.env.DEV!==true||import.meta.env.MODE!=='development'||
+    import.meta.env.VITE_S7_USB_GUEST_DEBUG!=='1'||import.meta.env.VITE_S7_USB_LIBRARY_LIVE!=='1'||
+    import.meta.env.VITE_API_BASE_URL!=='http://127.0.0.1:8000')return false
+  const info=uni.getSystemInfoSync()
+  return info.uniPlatform==='app'&&info.osName==='android'
+ }catch(error){return false}
+}
+export const MUSIC_LIBRARY_LIVE_ENABLED = usbGuestLibraryDebugEnabled()
 
 /** Read the actual V3 bearer credential, never the public owner identifier. */
 export function readV3AccessToken(uniApi = null) {
@@ -21,7 +33,7 @@ export function readV3AccessToken(uniApi = null) {
     try { if (typeof uni !== "undefined") source = uni } catch (e) { return "" }
   }
   if (!source || typeof source.getStorageSync !== "function") return ""
-  try { return source.getStorageSync("v3_access_token") || "" } catch (e) { return "" }
+  return readRuntimeV3Credential(source)
 }
 
 // 本地传输错误码（非后端合同错误码，仅表示前端环境/网络问题）
@@ -32,15 +44,7 @@ export const TRANSPORT_ERROR = Object.freeze({
 })
 
 function resolveBaseUrl(explicit) {
-  if (explicit) return explicit
-  try {
-    if (import.meta && import.meta.env && import.meta.env.VITE_API_BASE_URL) {
-      return import.meta.env.VITE_API_BASE_URL
-    }
-  } catch (e) {
-    /* import.meta 不可用（Node 测试环境） */
-  }
-  return "http://localhost:8000"
+  return getApiOrigin({explicit})
 }
 
 function resolveUni(explicit) {
@@ -62,12 +66,22 @@ function resolveUni(explicit) {
  * @param {object} [options.uniApi] 注入 uni（测试用）
  * @returns {(args: {method: string, path: string, data?: object}) => Promise<{data?: object, error?: {code: string, message: string}}>}
  */
-export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi } = {}) {
-  const base = resolveBaseUrl(baseUrl)
+export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi, prepareAuthentication=true } = {}) {
   const uniRef = resolveUni(uniApi)
   const readToken = typeof getAccessToken === "function" ? getAccessToken : () => ""
 
-  return function request({ method, path, data }) {
+  return async function request({ method, path, data, idempotencyKey }) {
+    let base
+    try{base=resolveBaseUrl(baseUrl)}catch(error){return {error:{code:error.code,message:error.message}}}
+    if (prepareAuthentication && hasAccountRuntime(uniRef)) {
+      try {
+        const owner=uniRef.getStorageSync('v3_public_user_id'),epoch=uniRef.getStorageSync('v3_auth_epoch'),token=readToken()
+        await prepareAccountRequest(uniRef)
+        if (owner!==uniRef.getStorageSync('v3_public_user_id') || epoch!==uniRef.getStorageSync('v3_auth_epoch') || token!==readToken()) {
+          return {error:{code:owner===uniRef.getStorageSync('v3_public_user_id')?'AUTH_REFRESHED':'OWNER_CHANGED',message:'身份状态已更新，请重试；本次操作尚未发送'}}
+        }
+      } catch(error) {return {error:{code:error.code||TRANSPORT_ERROR.NETWORK,message:'身份暂时无法确认，请重新认证或重试'}}}
+    }
     return new Promise((resolve) => {
       if (!uniRef || typeof uniRef.request !== "function") {
         resolve({ error: { code: TRANSPORT_ERROR.UNAVAILABLE, message: "网络能力不可用" } })
@@ -81,15 +95,22 @@ export function createUniMusicLibraryTransport({ baseUrl, getAccessToken, uniApi
         return
       }
       header = Object.assign(header, { Authorization: "Bearer " + token })
-      const args = { url: base + path, method, header }
+      if (idempotencyKey !== undefined) {
+        if (typeof idempotencyKey !== 'string' || !idempotencyKey.trim() || idempotencyKey.length > 128) {
+          resolve({error:{code:'IDEMPOTENCY_KEY_REQUIRED',message:'需要提供合法幂等键'}})
+          return
+        }
+        header['Idempotency-Key'] = idempotencyKey
+      }
+      const args = { url: base + path, method, header, ...nativeTlsOptions() }
       if (data !== undefined) args.data = data
       try {
-        uniRef.request(
+        platformNetworkApi(uniRef).request(
           Object.assign({}, args, {
             success(res) {
               const body = res && res.data ? res.data : {}
               const ok = res && res.statusCode >= 200 && res.statusCode < 300
-              if (ok && body.ok === true && Object.hasOwn(body, "data")) {
+              if (ok && body.ok === true && Object.prototype.hasOwnProperty.call(body, "data")) {
                 resolve({ data: body.data })
                 return
               }

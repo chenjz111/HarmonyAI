@@ -1,0 +1,59 @@
+[
+  {
+    "path": "evals/__init__.py",
+    "source_commit": "396d4487a71cfd5be7d3de4eb6cea5c88d53a3c8",
+    "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0,
+    "role": "historical test/evaluation tool only; not mounted in app or executed against providers"
+  },
+  {
+    "path": "evals/metrics.py",
+    "source_commit": "396d4487a71cfd5be7d3de4eb6cea5c88d53a3c8",
+    "git_blob": "4aa074e299629b85767aa2624f99cf91bb95ce07",
+    "sha256": "a761d0b4f7842c5460627e05b5ca2adbd63ea9c1b1f2e216aae3eabac90561d7",
+    "bytes": 4815,
+    "role": "historical test/evaluation tool only; not mounted in app or executed against providers"
+  },
+  {
+    "path": "evals/run_sprint4_eval.py",
+    "source_commit": "396d4487a71cfd5be7d3de4eb6cea5c88d53a3c8",
+    "git_blob": "3adba63b78962c64c5b215002b91dd25836388c6",
+    "sha256": "1676f7be448c4592d65b3406fab956dff98ff41d678bc69565fb84ab6958c0bf",
+    "bytes": 27840,
+    "role": "historical test/evaluation tool only; not mounted in app or executed against providers"
+  },
+  {
+    "path": "scripts/knowledge_organ_eval.py",
+    "source_commit": "5e3add8bbd12bc1f9a000ab1873afe6d598c70b1",
+    "git_blob": "fd061adb0929444e33eb810ee8682f2efc0a783c",
+    "sha256": "658f56c45e0adee618ca87c79d7d41a581f4b6fbf1d650d082d7444f8dc50eb6",
+    "bytes": 9960,
+    "role": "historical test/evaluation tool only; not mounted in app or executed against providers"
+  },
+  {
+    "path": "evals/sprint5/cases.jsonl",
+    "source_commit": "b7bdda388cb46d14a35754c60b42534c4e5fac72",
+    "supersedes_restoration_from": "5e3add8bbd12bc1f9a000ab1873afe6d598c70b1",
+    "git_blob": "e36794709afdeab04e82f4738999b8e8d960bb03",
+    "sha256": "20422dda90ebe3a2fa4ac39aabc74e7df917061924591f296d73fe6316c62823",
+    "bytes": 6763,
+    "activation": "NONE; later original review metadata restored, not authored",
+    "role": "later original reviewed historical test input; not new medical approval",
+    "initial_restore_superseded": {
+      "path": "evals/sprint5/cases.jsonl",
+      "source_commit": "5e3add8bbd12bc1f9a000ab1873afe6d598c70b1",
+      "git_blob": "bf2ae802b44b3e36045bbcf2c3af14d430998a37",
+      "sha256": "be0b04168830f670dc0da71c38bc761d71a9190602a428ef60aa0861e0fb06e4",
+      "bytes": 6025
+    }
+  },
+  {
+    "path": "tools/stability_music_smoke.py",
+    "source_commit": "8d3088afe913fa095613f3b2eaee3689a1ab083d",
+    "git_blob": "23d5ed041f2ddc4a5cbac91dec461aa5665b6287",
+    "sha256": "7536a1bcb7c7ebf5757f55addc82bab3bbd0e117666415dbd932391df0484b5c",
+    "bytes": 10317,
+    "role": "historical test/evaluation tool only; not mounted in app or executed against providers"
+  }
+]

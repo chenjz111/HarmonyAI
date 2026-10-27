@@ -12,11 +12,16 @@ PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"confirmation-image"
 @pytest.fixture
 def upload_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(document_router, "UPLOAD_DIR", str(tmp_path))
+    # This suite checks permission/append-only confirmation, never OCR model
+    # availability. Exercise the real provider's explicit unavailable branch
+    # without importing Paddle/CUDA discovery or fetching model weights.
+    from backend.app.core.ocr import OCRProvider
+    monkeypatch.setattr(OCRProvider,'_init_paddle',lambda self:None)
     return tmp_path
 
 
 def _upload():
-    return client.post(
+    response=client.post(
         "/api/v2/documents",
         data={
             "session_id": "sess_document_confirmation",
@@ -24,7 +29,12 @@ def _upload():
             "consent_confirmed": "true",
         },
         files={"file": ("record.png", PNG_BYTES, "image/png")},
-    ).json()["data"]["document_id"]
+    )
+    assert response.status_code==200
+    data=response.json()['data']
+    assert data['ocr_status']=='degraded'
+    assert data['degradation']['reason_code']=='OCR_ENGINE_UNAVAILABLE'
+    return data['document_id']
 
 
 def test_confirmed_document_requires_redaction_confirmation(upload_dir):

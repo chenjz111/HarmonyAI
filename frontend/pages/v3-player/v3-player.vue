@@ -17,19 +17,20 @@
  *   - 播放按钮改为朱砂印章大按钮
  *   - 业务逻辑 togglePlay/toggleFavorite/goFeedback/exitSession 完全保留
  */
+import { putHistoricalFeedback } from "../../common/feedback-context.js"
 import { apiV3 } from "../../common/api-v3.js"
 import { createPlayerController } from "../../common/player-controller.js"
 import { buildMusicPresentation, presentProgress } from "../../common/music-presentation.js"
 import { seekRatioFromEvent } from "../../common/player-seek.js"
 import { createMusicLibraryApi } from "../../common/music-library-api.js"
-import { createUniMusicLibraryTransport, readV3AccessToken } from "../../common/music-library-transport.js"
+import { createUniMusicLibraryTransport, readV3AccessToken, MUSIC_LIBRARY_LIVE_ENABLED } from "../../common/music-library-transport.js"
 import {
   createHistoricalMusicSession,
   resolvePlayableAudio,
 } from "../../common/music-library-player.js"
 
 // 历史音乐导航门禁：等 BE-2B API + owner 隔离 + stream 安全 Gate 通过后由 Owner 开启。
-const HISTORICAL_LIBRARY_ENABLED = false
+const HISTORICAL_LIBRARY_ENABLED = MUSIC_LIBRARY_LIVE_ENABLED
 
 function readOwnerId() {
   try {
@@ -56,9 +57,11 @@ export default {
       loadFailure: null,
       music: null,
       basis: null,
+      historicalAnalysisStatus: "idle",
       userGoal: null,
       playerController: null,
       historicalMusicId: null,
+      historicalContexts: [], selectedHistoricalContext: null,
       historicalSession: null,
       historicalLibraryApi: null,
       historicalAuthReady: false,
@@ -71,6 +74,8 @@ export default {
         error: null,
       },
       favorite: false,
+      favoriteReady: true,
+      identityCheck: null,
       favBusy: false,
       simulated: false,
       analysisExpanded: false,
@@ -79,6 +84,13 @@ export default {
     }
   },
   computed: {
+    historicalContextChoices() {
+      return this.historicalContexts.map((item,index)=>({...item,display_label:'来源记录 '+(index+1)}))
+    },
+    historicalContextLabel() {
+      const index = this.historicalContexts.findIndex(item=>item.context_id === this.selectedHistoricalContext)
+      return index < 0 ? '选择来源记录，查看当时解析或提交反馈' : '来源记录 '+(index+1)
+    },
     playerPresentation() {
       return buildMusicPresentation({
         music: this.music,
@@ -120,8 +132,7 @@ export default {
       return style
     },
     toneHeroSrc() {
-      const imageCode = this.playerPresentation.primaryTone.imageCode
-      return imageCode ? `/static/v31-player/${imageCode}-2.png` : ""
+      return this.playerPresentation.instrumentIllustration.imageSrc
     },
   },
   onLoad(query) {
@@ -135,6 +146,7 @@ export default {
   },
   onShow() {
     if (this.pageDisposed) return
+    if (!this.hasCurrentIdentity()) { this.invalidateHistoricalIdentity(); return }
     this.analysisExpanded = false
     // owner 切换：停止旧音频并清理页面状态，迟到结果不得恢复旧数据
     if (this.historicalSession && this.historicalSession.hasOwnerChanged()) {
@@ -151,6 +163,9 @@ export default {
     this.releasePlayerLoad()
   },
   methods: {
+    hasCurrentIdentity() {
+      try { if (this.identityCheck) this.identityCheck(); return true } catch (e) { return false }
+    },
     isCurrentLoad(generation) {
       return !this.pageDisposed && generation === this.loadGeneration
     },
@@ -164,12 +179,14 @@ export default {
       this.playerState = { playing: false, currentTime: 0, duration: 0, error: null }
       this.music = null
       this.basis = null
+      this.historicalAnalysisStatus = "idle"
       this.userGoal = null
       this.favorite = false
       this.favBusy = false
     },
     invalidateHistoricalIdentity() {
       if (this.pageDisposed) return
+      this.historicalContexts = []; this.selectedHistoricalContext = null
       this.loadGeneration += 1
       this.releasePlayerLoad()
       this.loading = false
@@ -191,6 +208,7 @@ export default {
     },
     canUseHistoricalPlayer() {
       if (this.pageDisposed) return false
+      if (!this.hasCurrentIdentity()) { this.invalidateHistoricalIdentity(); return false }
       if (!this.historicalMusicId) return true
       if (!this.historicalAuthReady || !this.historicalSession || this.historicalSession.hasOwnerChanged()) {
         this.invalidateHistoricalIdentity()
@@ -209,22 +227,80 @@ export default {
           await this.loadHistorical(generation)
           return
         }
-        const music = await apiV3.getMusic()
+        const unchanged = typeof apiV3.captureIdentity === "function" ? apiV3.captureIdentity() : () => {}
+        this.identityCheck = unchanged
+        this.ensureHistoricalAuthEvents()
+        let music = await apiV3.getMusic()
+        unchanged()
         if (!this.isCurrentLoad(generation)) return
-        this.music = music
-        this.favorite = !!this.music.favorite
-        this.simulated = !!apiV3.AGENT_SIMULATED
+        let favoriteReady = typeof apiV3.getMusicPresentation !== "function"
+        if (typeof apiV3.getMusicPresentation === "function" && music && music.music_ref) {
+          let card = null
+          try { card = await apiV3.getMusicPresentation(music.music_ref.music_id) }
+          catch (e) {
+            if (e.code === "OWNER_CHANGED" || e.status === 401 || e.status === 403) throw e
+          }
+          unchanged()
+          if (!this.isCurrentLoad(generation)) return
+          if (card) music = { ...music, title: card.display_title, favorite: card.is_favorite === true,
+            primary_instrument_code: card.primary_instrument_code, primary_instrument_origin: card.primary_instrument_origin }
+          favoriteReady = !!card || apiV3.AGENT_SIMULATED === true
+        }
         let basis = null
         try { basis = await apiV3.getMusicBasis() } catch (e) { /* optional read */ }
+        unchanged()
         if (!this.isCurrentLoad(generation)) return
+        this.music = music
+        this.favorite = !!music.favorite
+        this.favoriteReady = favoriteReady
+        this.simulated = !!apiV3.AGENT_SIMULATED
         this.basis = basis
         this.userGoal = apiV3.getCurrentUserGoal()
+        await this.attachGeneratedFeedback(generation, music)
+        unchanged()
+        if (!this.isCurrentLoad(generation)) return
         this.setupPlayerController(generation)
       } catch (e) {
         if (this.isCurrentLoad(generation)) this.loadFailure = e
       } finally {
         if (this.isCurrentLoad(generation)) this.loading = false
       }
+    },
+    async attachGeneratedFeedback(generation, music) {
+      if (!HISTORICAL_LIBRARY_ENABLED || typeof apiV3.getCurrentMusicContext !== "function") return
+      const source = apiV3.getCurrentMusicContext()
+      if (!source || source.music_id !== music.music_ref.music_id || !source.source_context_id || !source.session_id) return
+      if (!this.ensureHistoricalAuthEvents()) return
+      let {api, session} = this.createLibraryPlaybackSession()
+      this.historicalSession = session
+      session = this.historicalSession // Compare the same Vue reactive reference after await.
+      this.historicalLibraryApi = api
+      try {
+        const detail = await session.open(source.music_id, {context:source.source_context_id})
+        if (!this.isCurrentLoad(generation) || this.historicalSession !== session || session.hasOwnerChanged()) return
+        const selected = (detail.source_contexts || []).find(item => item.context_id === source.source_context_id)
+        if (detail.selected_context_id !== source.source_context_id || !selected || selected.session_id !== source.session_id) throw new Error("CONTEXT_NOT_AVAILABLE")
+      } catch (error) {
+        session.reset()
+        if (this.historicalSession === session) { this.historicalSession = null; this.historicalLibraryApi = null }
+        if (error.code === "OWNER_CHANGED") throw error
+        // Optional feedback proof failure must not replace the current context or disable existing audio.
+      }
+    },
+    createLibraryPlaybackSession() {
+      const api = createMusicLibraryApi({
+        request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
+        getOwnerId: readOwnerId,
+        enabled: true,
+      })
+      const session = createHistoricalMusicSession({
+        api,
+        getOwnerId: readOwnerId,
+        getAccessToken: () => readV3AccessToken(),
+        getAuthEpoch: readAuthEpoch,
+        newEventId: () => "play-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+      })
+      return {api, session}
     },
     // 历史通道：music_id → 受控 MusicDetailV1（音频来自历史持久化上下文）。
     // 不 ensureMusicBasis、不读取当前 session/UserGoal 替代旧资料。
@@ -238,34 +314,28 @@ export default {
       if (!this.ensureHistoricalAuthEvents()) {
         throw Object.assign(new Error("当前环境无法安全同步身份，历史播放暂不可用。"), { code: "FEATURE_NOT_READY" })
       }
-      const api = createMusicLibraryApi({
-        request: createUniMusicLibraryTransport({ getAccessToken: () => readV3AccessToken() }),
-        getOwnerId: readOwnerId,
-        enabled: true,
-      })
-      const session = createHistoricalMusicSession({
-        api,
-        getOwnerId: readOwnerId,
-        getAccessToken: () => readV3AccessToken(),
-        getAuthEpoch: readAuthEpoch,
-        newEventId: () => "play-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
-      })
+      let {api, session} = this.createLibraryPlaybackSession()
       // Register pending work before await so unload/auth change can reset it.
       this.historicalSession = session
+      session = this.historicalSession // Compare the same Vue reactive reference after await.
       this.historicalLibraryApi = api
-      const detail = await session.open(this.historicalMusicId)
+      const detail = await session.open(this.historicalMusicId, {context:this.selectedHistoricalContext})
       if (!this.isCurrentLoad(generation) || this.historicalSession !== session || session.hasOwnerChanged()) return
+      this.historicalContexts = detail.source_contexts || []
+      this.selectedHistoricalContext = detail.selected_context_id || null
       const audio = resolvePlayableAudio(detail)
       if (!audio) {
         throw Object.assign(new Error("本次音乐暂时不可用，请稍后重试。"), {
           code: "MUSIC_NOT_PLAYABLE",
         })
       }
-      this.basis = null // 历史播放不读取当前会话解析
+      this.basis = null // 历史解析独立加载，绝不读取当前会话解析
       this.userGoal = null
       this.music = {
         music_ref: { music_id: detail.card.music_id, source_type: detail.card.source_type },
         title: detail.card.display_title,
+        primary_instrument_code: detail.card.primary_instrument_code,
+        primary_instrument_origin: detail.card.primary_instrument_origin,
         stream_url: audio.stream_url,
         duration_seconds: audio.duration_seconds,
         favorite: detail.card.is_favorite === true,
@@ -273,6 +343,23 @@ export default {
       }
       this.favorite = detail.card.is_favorite === true
       this.setupPlayerController(generation)
+      if (this.selectedHistoricalContext) this.loadHistoricalAnalysis(api,session,generation,this.historicalMusicId,this.selectedHistoricalContext)
+      else this.historicalAnalysisStatus = "choose"
+    },
+    async loadHistoricalAnalysis(api,session,generation,musicId,contextId) {
+      this.historicalAnalysisStatus = "loading"
+      const current = () => this.isCurrentLoad(generation) && this.historicalSession === session
+      try {
+        const analysis = await api.getMusicAnalysis(musicId,contextId)
+        if (!current()) return
+        if (session.hasOwnerChanged()) throw Object.assign(new Error('身份已切换'),{code:'OWNER_CHANGED'})
+        this.basis = analysis
+        this.historicalAnalysisStatus = analysis ? "ready" : "unavailable"
+      } catch (error) {
+        if (!current()) return
+        if (session.hasOwnerChanged() || ['OWNER_CHANGED','UNAUTHENTICATED','FORBIDDEN'].includes(error.code)) { this.invalidateHistoricalIdentity(); return }
+        this.historicalAnalysisStatus = "unavailable"
+      }
     },
     setupPlayerController(generation = this.loadGeneration) {
       if (!this.isCurrentLoad(generation)) return
@@ -284,6 +371,7 @@ export default {
         (!session || (this.historicalSession === session && !session.hasOwnerChanged()))
       controller = createPlayerController({
         downloadAudio: apiV3.fetchAuthorizedAudio,
+        releaseAudio: apiV3.releaseAuthorizedAudio,
         createAudioContext: uni.createInnerAudioContext,
         onPlaybackStarted: () => {
           if (!isCurrent()) return
@@ -302,6 +390,7 @@ export default {
         },
       })
       this.playerController = controller
+      controller = this.playerController // Callbacks must compare the stored reactive reference.
       this.playerState = this.playerController.getState()
     },
     async togglePlay() {
@@ -360,6 +449,7 @@ export default {
     },
     async toggleFavorite() {
       if (!this.canUseHistoricalPlayer() || !this.music) return
+      if (!this.favoriteReady) return
       if (this.favBusy) return
       const ref = this.music.music_ref || {}
       const musicId = ref.music_id
@@ -371,7 +461,7 @@ export default {
       const target = !this.favorite
       const generation = this.loadGeneration
       const session = this.historicalSession
-      const isCurrent = () => this.isCurrentLoad(generation) && (!session || (this.historicalSession === session && !session.hasOwnerChanged()))
+      const isCurrent = () => this.isCurrentLoad(generation) && this.hasCurrentIdentity() && (!session || (this.historicalSession === session && !session.hasOwnerChanged()))
       try {
         if (this.historicalSession) {
           const api = this.historicalLibraryApi
@@ -391,8 +481,30 @@ export default {
         if (isCurrent()) this.favBusy = false
       }
     },
-    goFeedback() {
+    async selectHistoricalContext(event) {
+      const choice = this.historicalContexts[Number(event.detail.value)]
+      if (!choice || choice.context_id === this.selectedHistoricalContext) return
       if (this.playerController) this.playerController.dispose()
+      if (this.historicalSession) this.historicalSession.reset()
+      this.selectedHistoricalContext = choice.context_id
+      await this.load()
+    },
+    goFeedback() {
+      if (this.historicalMusicId || this.historicalSession) {
+        try {
+          const context = this.historicalSession.getFeedbackContext()
+          const owner = readOwnerId(), token = readV3AccessToken(), epoch = readAuthEpoch()
+          const handoff = putHistoricalFeedback(context,()=>readOwnerId() === owner && readV3AccessToken() === token && readAuthEpoch() === epoch)
+          if (this.playerController) this.playerController.handleHide()
+          uni.navigateTo({url:"/pages/v3-feedback/v3-feedback?handoff="+encodeURIComponent(handoff)})
+        } catch (error) { uni.showToast({title:"请先选择来源记录并实际播放",icon:"none"}) }
+        return
+      }
+      if (HISTORICAL_LIBRARY_ENABLED) {
+        uni.showToast({title:"请确认本次来源并实际播放后再反馈",icon:"none"})
+        return
+      }
+      if (this.playerController) this.playerController.handleHide()
       uni.navigateTo({ url: "/pages/v3-feedback/v3-feedback" })
     },
     exitSession() {
@@ -413,6 +525,9 @@ export default {
         <view class="brand-motto"><text>五音和鸣</text><text>心自安宁</text><text class="motto-seal">和</text></view>
       </view>
 
+      <picker v-if="historicalContexts.length" :range="historicalContextChoices" range-key="display_label" @change="selectHistoricalContext">
+        <view>{{ historicalContextLabel }}</view>
+      </picker>
       <view v-if="loading" class="loading-wrap">
         <view class="loading-ring"></view>
         <text class="loading-text">正在准备音乐…</text>
@@ -431,13 +546,15 @@ export default {
       </view>
 
       <view v-else class="player-content ink-fade-up">
+        <text class="music-title">{{ playerPresentation.title.displayText }}</text>
+        <button class="share-control" :disabled="true">分享暂未开放</button>
         <view v-if="simulated" class="demo-banner">
           <text class="demo-banner-text">演示模式：当前音乐为模拟数据</text>
         </view>
 
         <view class="hero-wrap" :class="{ 'hero-wrap--neutral': !playerPresentation.hasPrimaryTone }">
           <view class="wave-ring" :class="{ 'wave-ring--playing': playing }">
-            <view v-if="playerPresentation.hasPrimaryTone" class="tone-hero-frame">
+            <view v-if="toneHeroSrc" class="tone-hero-frame">
               <image v-if="toneHeroSrc" class="tone-hero-image" :src="toneHeroSrc" mode="aspectFill" />
               <view class="tone-copy">
                 <view class="tone-glyph-row"><text class="tone-glyph">{{ playerPresentation.primaryTone.glyph }}</text><text class="tone-seal">{{ toneSealText }}</text></view>
@@ -466,7 +583,12 @@ export default {
           </view>
         </view>
 
+        <view class="music-actions">
+          <button class="favorite-control" :disabled="favBusy || !favoriteReady" @click="toggleFavorite">{{ favoriteReady ? (favorite ? '已收藏' : '收藏') : '收藏状态暂不可用' }}</button>
+        </view>
         <view class="music-summary-card">
+          <text v-if="historicalAnalysisStatus === 'loading'" class="music-caption">正在读取当时的音乐解析，可先播放。</text>
+          <text v-if="historicalAnalysisStatus === 'unavailable'" class="music-caption">当时的解析暂不可查看，仍可播放可用音乐。</text>
           <view class="summary-heading"><view class="summary-note">♫</view><text>本次音乐</text></view>
           <view class="music-summary-grid">
             <view v-if="playerPresentation.hasPrimaryTone || playerPresentation.modeDisplayLabel" class="music-summary-cell"><text class="summary-value">{{ playerPresentation.primaryTone.displayText || playerPresentation.modeDisplayLabel }}</text><text class="summary-label">{{ toneSummaryLabel }}</text></view>
@@ -597,6 +719,10 @@ export default {
 </template>
 
 <style scoped>
+.music-title { display:block; text-align:center; padding:12px; overflow-wrap:anywhere; font-size:20px; }
+.music-actions { display:flex; justify-content:center; gap:12px; padding-bottom:12px; }
+.music-actions button { margin:0; font-size:14px; }
+.share-control { margin-right:0; font-size:12px; }
 .page {
   min-height: 100vh;
   box-sizing: border-box;

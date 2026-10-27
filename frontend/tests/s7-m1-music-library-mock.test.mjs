@@ -1,3 +1,4 @@
+import { MUSIC_LIBRARY_LIVE_ENABLED } from "../common/music-library-transport.js"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import test from "node:test"
@@ -68,6 +69,7 @@ test("My page labels preview data and preserves one existing Player", () => {
 
 test("My page consumes the one frozen preview fixture and keeps historical Player navigation disabled", () => {
   assert.match(profileSource, /import \{ MUSIC_CARD_V1_PREVIEW_FIXTURE \} from "\.\.\/\.\.\/common\/music-card-v1-preview-fixture\.js"/)
-  assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = false/)
+  assert.match(profileSource, /HISTORICAL_PLAYER_LINK_ENABLED = LIVE_SOURCE_ENABLED/)
+  assert.equal(MUSIC_LIBRARY_LIVE_ENABLED, false, 'default/release library remains closed; USB profile is separately tested')
   assert.match(profileSource, /if \(!item\.can_open \|\| !HISTORICAL_PLAYER_LINK_ENABLED\) return/)
 })

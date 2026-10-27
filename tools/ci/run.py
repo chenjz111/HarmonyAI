@@ -15,6 +15,29 @@ ROOT = HERE.parents[1]
 HARDENING = 'tests/api/v3/test_runtime_auth_config_hardening.py'
 BE2B = 'tests/api/v3/test_be2b_playback_proof_cas.py'
 BE2B_EXPECTED_PASSED = 45
+FEEDBACK_INVENTORY = {
+    'tests/api/v3/test_mysql_reserved_ddl.py': 8,
+    'tests/api/v3/test_historical_music_analysis.py': 5,
+    'tests/api/v3/test_0013_feedback_foundation.py': 13,
+    'tests/api/v3/test_0013_mysql_contract.py': 23,
+    'tests/api/v3/test_mysql_migration_statements.py': 11,
+    'tests/api/v3/test_feedback_v31_transactions.py': 15,
+    'tests/api/v3/test_feedback_clear_receipt.py': 5,
+    'tests/api/v3/test_feedback_v31_api.py': 6,
+    'tests/api/v3/test_feedback_recovery_candidate.py': 2,
+}
+ACCOUNT_INVENTORY = {
+    'tests/api/v3/test_h5_account_cookie_routes.py':13,
+    'tests/api/v3/test_account_password_budget.py':6,
+    'tests/api/v3/test_account_password_source.py':10,
+    'tests/api/v3/test_identity_continuity.py':2,
+    'tests/api/v3/test_0014_account_security.py':13,
+    'tests/api/v3/test_account_password_r1.py':17,
+    'tests/api/v3/test_account_security_r1.py':13,
+    'tests/api/v3/test_account_session_r1.py':15,
+    'tests/api/v3/test_account_router_r1.py':7,
+    'tests/api/v3/test_account_browser_gate.py':7,
+}
 REGRESSION = ['tests/api/v3/' + name for name in (
     'test_s7_music_library_router_wiring.py', 'test_s7_music_library.py',
     'test_s7_music_library_api.py', 'test_int2_stream_gate.py', 'test_guest_auth.py',
@@ -34,6 +57,15 @@ def environment(source, sandbox):
     allowed = {'PATH', 'SYSTEMROOT', 'WINDIR', 'PATHEXT', 'TEMP', 'TMP',
                'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ'}
     env = {k: v for k, v in os.environ.items() if k.upper() in allowed}
+    # Some imported dependencies compute cache paths at import time. Supply an
+    # empty sandbox profile instead of inheriting real credentials or making
+    # Path.home() fail. This grants no new socket/process/DB permissions.
+    profile=sandbox/'profile'
+    roaming=profile/'AppData/Roaming';local=profile/'AppData/Local';cache=profile/'.cache'
+    temporary=sandbox/'tmp'
+    for folder in (profile,roaming,local,cache,temporary):folder.mkdir(parents=True,exist_ok=True)
+    env.update(TEMP=str(temporary),TMP=str(temporary))
+    env.update(HOME=str(profile),USERPROFILE=str(profile),APPDATA=str(roaming),LOCALAPPDATA=str(local),XDG_CACHE_HOME=str(cache))
     env.update(APP_ENV='development', DEBUG='false',
                DATABASE_URL='sqlite:///' + str(sandbox/'unused.sqlite'),
                JWT_SECRET_KEY='ci-synthetic-key-0123456789-0123456789',
@@ -118,7 +150,7 @@ def read_telemetry(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--suite', required=True, choices=('guard', 'regression', 'hardening', 'be2b'))
+    parser.add_argument('--suite', required=True, choices=('guard', 'regression', 'hardening', 'be2b', 'feedback', 'account', 'full'))
     parser.add_argument('--source-root', type=Path, default=ROOT)
     parser.add_argument('--evidence-dir', type=Path, required=True)
     args = parser.parse_args()
@@ -135,10 +167,13 @@ def main():
     else:
         sandbox = evidence/'sandbox'
         sandbox.mkdir()
+        inventory = ACCOUNT_INVENTORY if args.suite == 'account' else FEEDBACK_INVENTORY
         tests = ([str(HERE/'tests/test_guard.py')] if args.suite == 'guard'
                  else [HARDENING] if args.suite == 'hardening'
+                 else list(inventory) if args.suite in {'feedback','account'}
+                 else ['tests'] if args.suite == 'full'
                  else [BE2B] if args.suite == 'be2b' else REGRESSION)
-        missing = [test for test in tests if not (source/test).is_file()]
+        missing = [test for test in tests if not ((source/test).is_dir() if args.suite == 'full' else (source/test).is_file())]
         if missing:
             parser.error('Required suite files missing: ' + ', '.join(missing))
         command = [sys.executable, '-B', str(HERE/'guarded_pytest.py'),
@@ -146,20 +181,23 @@ def main():
                    '--telemetry', str(evidence/'telemetry.json')]
         if args.suite == 'guard':
             command += ['--selftest']
-        command += ['--', '-q', '-p', 'no:cacheprovider', '--basetemp',
+        command += ['--', '-q', '-p', 'no:cacheprovider']
+        if args.suite == 'full':command += ['-p', 'pytest_asyncio.plugin']
+        command += ['--basetemp',
                     str(sandbox/'pytest'), *tests, '-rs', '--tb=short']
+        timeout_seconds=900 if args.suite == 'full' else 240
         start = time.monotonic()
         child_code, timed_out = None, False
         try:
             result = subprocess.run(command, cwd=source, env=environment(source, sandbox),
                                     capture_output=True, text=True, encoding='utf-8',
-                                    errors='replace', timeout=240)
+                                    errors='replace', timeout=timeout_seconds)
             child_code, output = result.returncode, result.stdout + result.stderr
         except subprocess.TimeoutExpired as error:
             def decode(value):
                 return value.decode('utf-8', errors='replace') if isinstance(value, bytes) else value or ''
             timed_out = True
-            output = decode(error.stdout) + decode(error.stderr) + '\nTIMEOUT_240_SECONDS\n'
+            output = decode(error.stdout) + decode(error.stderr) + f'\nTIMEOUT_{timeout_seconds}_SECONDS\n'
         output = re.sub(r'eyJ[A-Za-z0-9_.-]+', '[SYNTHETIC_JWT_REDACTED]', output)
         (evidence/'pytest.log').write_text(output, encoding='utf-8')
         details, telemetry_error = read_telemetry(evidence/'telemetry.json')
@@ -182,6 +220,13 @@ def main():
                         and row['nodeid'].replace('\\', '/').split('::', 1)[0] == BE2B}) != BE2B_EXPECTED_PASSED):
             # Pin the reviewed R1 inventory: no partial/duplicate/foreign tests.
             code, reason = 93, 'be2b_acceptance_mismatch'
+        elif args.suite in {'feedback','account'} and (
+                len(details['tests']) != sum(inventory.values())
+                or any(len({row['nodeid'] for row in details['tests']
+                            if row['phase'] == 'call' and row['outcome'] == 'passed'
+                            and row['nodeid'].replace('\\', '/').split('::', 1)[0] == path}) != count
+                       for path, count in inventory.items())):
+            code, reason = 93, args.suite+'_acceptance_mismatch'
         else:
             code, reason = 0, None
         exits = {'child_exit_code': child_code, 'final_exit_code': code,

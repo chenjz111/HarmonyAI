@@ -1,0 +1,1177 @@
+{
+  "schema_version": "s6_asset_restore_v1",
+  "source_repository": "chenjz111/HarmonyAI",
+  "source_branch": "codex/s6-player-seek-final",
+  "source_commit": "4d935bb88475560617b2a6014192012407f78e9c",
+  "owner_instruction_date": "2026-10-25",
+  "restored_files": [
+    {
+      "path": "frontend/static/music/jiao-demo.wav",
+      "git_blob_sha1": "cbc5cedd9857975fdb676ca1c1aa6073a278d979",
+      "sha256": "bb530dc966425af4bd718ec7a1d1e6e91b22cea7b65968101b6aca2de46e2278",
+      "bytes": 5369804,
+      "usage": "mock_test_only",
+      "frames": 2684880,
+      "sample_rate": 44100,
+      "channels": 1,
+      "sample_width": 2
+    },
+    {
+      "path": "frontend/static/v31-basis/ambience.png",
+      "git_blob_sha1": "4358975bf5d6981e5a9c8f9456cf28afd5cf85e7",
+      "sha256": "17e63fbeb93c836d5025ff46044f4bcf167d4ea169b4ba7842550812721a1905",
+      "bytes": 18157,
+      "usage": "existing_runtime_visual",
+      "width": 230,
+      "height": 215,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-basis/basis.png",
+      "git_blob_sha1": "ed05873b24914c59599ac384796486dd133c98ad",
+      "sha256": "89b26c5e37509213a08b1a72533eb08c07e0e0dd8450acdd596e8117f1ef7815",
+      "bytes": 16694,
+      "usage": "existing_runtime_visual",
+      "width": 184,
+      "height": 221,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-basis/bpm.png",
+      "git_blob_sha1": "e7ee8f3e683c4b87fc2a644f0816606dd2de2cd2",
+      "sha256": "d2b50040162aec0a08fc8c070be58fda789e112d157ea82cce1a8e75d1205816",
+      "bytes": 12623,
+      "usage": "existing_runtime_visual",
+      "width": 235,
+      "height": 215,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-basis/duration.png",
+      "git_blob_sha1": "51bb00d810b37d0903e95f698ba2da8d1af2be01",
+      "sha256": "fb6d0a9bdeb38c8c540a1d263a47e71b75015b1badc37f130cdb6332ca827db6",
+      "bytes": 15724,
+      "usage": "existing_runtime_visual",
+      "width": 198,
+      "height": 190,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-basis/instrument.png",
+      "git_blob_sha1": "822692d0db7b29bea841c598c14e04f07771a188",
+      "sha256": "211418ceeb769858476137a18fc90686e2bb5aac4e503673c1ec60861352aaf5",
+      "bytes": 18513,
+      "usage": "existing_runtime_visual",
+      "width": 190,
+      "height": 195,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-basis/status.png",
+      "git_blob_sha1": "0c1213b35c4405749055bdb3d92045e287b1f595",
+      "sha256": "2c535b9c9f385523409f15d8aa912590b97f44708f4512f7a898206fb507b415",
+      "bytes": 20520,
+      "usage": "existing_runtime_visual",
+      "width": 225,
+      "height": 216,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-basis/tone.png",
+      "git_blob_sha1": "33284237f83084882d87e4b4e8b43d4b437c533b",
+      "sha256": "4f2acc089add82d5b7cf31aea53560034c1236f02c69ec510e6f82abf9f49c4a",
+      "bytes": 23086,
+      "usage": "existing_runtime_visual",
+      "width": 215,
+      "height": 209,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-document/README.md",
+      "git_blob_sha1": "8e8551e46d0ad36084e332c68f5f27e1d0a774da",
+      "sha256": "2d2e18f5a46666ce7e17d22bd5d305a5f943919e284acf927ce6eb9b1c1197f8",
+      "bytes": 765,
+      "usage": "historical_approval_evidence_only"
+    },
+    {
+      "path": "frontend/static/v31-document/background.png",
+      "git_blob_sha1": "331a184d27703d88fd236d08b40f16f65ff38978",
+      "sha256": "7e75c53e0a95a861e054051b959f0ee43b553a3e5eafbe8a63d8ce49bc560942",
+      "bytes": 1473417,
+      "usage": "existing_runtime_visual",
+      "width": 853,
+      "height": 1844,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-document/camera.png",
+      "git_blob_sha1": "df3a311793ef493248c2d77f298b28dc394a2fc4",
+      "sha256": "7cfc7170d5c38d2198b5a964b0abd0f6e2cd6eb73d9126dc6c2d8646d13c23c2",
+      "bytes": 2857256,
+      "usage": "existing_runtime_visual",
+      "width": 1952,
+      "height": 2272,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-document/document.svg",
+      "git_blob_sha1": "2d4be2a35afe5da310286b5a6d2c14a417fa8be0",
+      "sha256": "c621f97b623bd2e5567213507c9df0ccd75e53421617d41cdfcc77e3408c2be2",
+      "bytes": 243,
+      "usage": "existing_runtime_visual"
+    },
+    {
+      "path": "frontend/static/v31-document/leaf.svg",
+      "git_blob_sha1": "520f3887674d31ff2717fcc39e48f3cab4d162ec",
+      "sha256": "0f0017de1c1242ffe4daa11e55369516edbd84e4475bb027bbff68e5db4e3a77",
+      "bytes": 412,
+      "usage": "existing_runtime_visual"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-1-1.png",
+      "git_blob_sha1": "4905a572b042e95ed85171bad7c8afe221dea332",
+      "sha256": "fb198f44673724d671d0abc0438d9a9ee873f7215c693526ad228e95abef2f2f",
+      "bytes": 33654,
+      "usage": "existing_runtime_visual",
+      "width": 215,
+      "height": 198,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-1-2.png",
+      "git_blob_sha1": "05b5f36fcc38ef6b58664d6abaf7ac912ceaab5b",
+      "sha256": "b66912f5d0eac59e56c89ad3c348524504048d7027b97634f5c263eb86cb58a6",
+      "bytes": 34931,
+      "usage": "existing_runtime_visual",
+      "width": 224,
+      "height": 181,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-1-3.png",
+      "git_blob_sha1": "f08ef5b6b5980b5207555a50e9ac897314b83441",
+      "sha256": "545be2cefc964f89f6158c3a61a05090d918ec14f0dbace5cb2d46de5dd1f206",
+      "bytes": 35880,
+      "usage": "existing_runtime_visual",
+      "width": 253,
+      "height": 191,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-1-4.png",
+      "git_blob_sha1": "e81203d187e44f4419b717ae9a03221fc4e1f05d",
+      "sha256": "e396369afdf1403bfaff8fe5aa49b2de15ae2c93f1c817233ce01d5041f0850d",
+      "bytes": 32590,
+      "usage": "existing_runtime_visual",
+      "width": 215,
+      "height": 179,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-2-1.png",
+      "git_blob_sha1": "8eebe27cb96f093a19b00aa0476b44d289762161",
+      "sha256": "ed8fca656f6d2f2ed1e1e4bb512b0c5280ec09215dab7bd1457842ff900b628c",
+      "bytes": 27268,
+      "usage": "existing_runtime_visual",
+      "width": 185,
+      "height": 205,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-2-2.png",
+      "git_blob_sha1": "7a762c22a2777b60f3953e0fc31889954f566834",
+      "sha256": "bef53ab6f0e2df00fedcdfb048987bcd440a02986ac6f23bb22cf4b4e032cf14",
+      "bytes": 40846,
+      "usage": "existing_runtime_visual",
+      "width": 244,
+      "height": 220,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-2-3.png",
+      "git_blob_sha1": "e5587711395968c5bc7f67d4d577bfdda655ebc2",
+      "sha256": "3f0010f4a997d828b534e49553b2ded41f34b2172b853aa6662b30a12d787965",
+      "bytes": 33377,
+      "usage": "existing_runtime_visual",
+      "width": 195,
+      "height": 231,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-3-1.png",
+      "git_blob_sha1": "cc931adb7b9dcd9ace78377cc3a80c38414977ea",
+      "sha256": "cfa9e3f2af647d8df6c42cc55c5ceaa8b05458e2e05c3d57a1b56a3a56be30af",
+      "bytes": 26668,
+      "usage": "existing_runtime_visual",
+      "width": 186,
+      "height": 194,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-3-2.png",
+      "git_blob_sha1": "a0b480e58dea42c0af667b6d3d6f6df0ae2fb3df",
+      "sha256": "3590af4095601136e0643ea3bfc358884f1e5f92f3ad22c3a617f598d33c6283",
+      "bytes": 36842,
+      "usage": "existing_runtime_visual",
+      "width": 199,
+      "height": 195,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-3-3.png",
+      "git_blob_sha1": "279f5e6e7577edfcf4cf7d41c256eb0004c7702e",
+      "sha256": "02633a458fb725483cf4af426dddad3a1ff9aa40ae70bc8132e23f5fb6f412fe",
+      "bytes": 28756,
+      "usage": "existing_runtime_visual",
+      "width": 191,
+      "height": 176,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-3-4.png",
+      "git_blob_sha1": "64ae5adb95db73ecaab2c4f17f495908420423e3",
+      "sha256": "5d6b4c23101881cd34d81657fc24d9eede8030b1907bdfbc49b3ad9ef0205461",
+      "bytes": 39969,
+      "usage": "existing_runtime_visual",
+      "width": 241,
+      "height": 200,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-3-5.png",
+      "git_blob_sha1": "40d8c6c3cba47ab48e70d2d784064185d8fc56fc",
+      "sha256": "c8c7389720493251d6d487ceb6f245f68a02d4c41b9b89215a93db2ccd03428a",
+      "bytes": 41304,
+      "usage": "existing_runtime_visual",
+      "width": 251,
+      "height": 185,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-4-1.png",
+      "git_blob_sha1": "1e28a33e5db054f4d091fba8322d15002093fd9a",
+      "sha256": "0af953875cb10effc773552312af421f17779e485afb673296f75f2d9b5b029a",
+      "bytes": 38052,
+      "usage": "existing_runtime_visual",
+      "width": 234,
+      "height": 190,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-4-2.png",
+      "git_blob_sha1": "5e2e25a37891b6450dddf84203524ee23e2bb731",
+      "sha256": "c7e17a8d5deb8a531b6959b0e292c184c39cd14857ef6cd3f6d7081b31464da9",
+      "bytes": 26309,
+      "usage": "existing_runtime_visual",
+      "width": 189,
+      "height": 179,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-4-3.png",
+      "git_blob_sha1": "4e55659df9b32e24a960ac4eabc9f7afab3a8fdf",
+      "sha256": "7c12610100fa2f9eaa06ab52c37cea3c209bcab4cfcf63e4b0f05f4d01c2cc83",
+      "bytes": 31833,
+      "usage": "existing_runtime_visual",
+      "width": 214,
+      "height": 161,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-4-4.png",
+      "git_blob_sha1": "92dd8b9bc4ca344d5fb1fbfb6e36a0b61d3645b7",
+      "sha256": "5f62b9f845b497097a1c220cf71a7acbf3cfa71ee875c0dfaacb0a285469e0b2",
+      "bytes": 24234,
+      "usage": "existing_runtime_visual",
+      "width": 209,
+      "height": 141,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-feedback/feedback-success-background.png",
+      "git_blob_sha1": "460535a771b51fb7180dc3d1c6ed053a6912f018",
+      "sha256": "0819c0cadcfa3c974d104a1b6efa6acbe25e728fde45efa695898153aab2c307",
+      "bytes": 1933160,
+      "usage": "existing_runtime_visual",
+      "width": 954,
+      "height": 1649,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-goal/intent-1.png",
+      "git_blob_sha1": "7956681488b51706b9a77fd88598eed9b716fc8b",
+      "sha256": "467207b6a8a373e226282290db6bd8a74666d762d3ebe8d7b9749bc980475fcd",
+      "bytes": 28424,
+      "usage": "existing_runtime_visual",
+      "width": 229,
+      "height": 205,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-goal/intent-2.png",
+      "git_blob_sha1": "ddbd0c526593c3833103bf15a18b24d3b4da7a24",
+      "sha256": "aaea4f445e2f9c21f476edeb42b92621f208e568e45aef249c3dfbabc3629f1d",
+      "bytes": 27976,
+      "usage": "existing_runtime_visual",
+      "width": 216,
+      "height": 190,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-goal/intent-3.png",
+      "git_blob_sha1": "2455ac71267e32579586cb63072135df1e8386ab",
+      "sha256": "facb9a8e95b611309d1f1c2fba6d0f24fd0ed90dcc45be433c19f0a7cd5a5c83",
+      "bytes": 24602,
+      "usage": "existing_runtime_visual",
+      "width": 209,
+      "height": 199,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-goal/intent-4.png",
+      "git_blob_sha1": "033e2721876b48b8507b66f246d209c5fcc3d478",
+      "sha256": "2a01afb5b2636ae0f6747eff75a606045ee07086785b36f8ae600435daf1d2f0",
+      "bytes": 31565,
+      "usage": "existing_runtime_visual",
+      "width": 185,
+      "height": 225,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-goal/intent-5.png",
+      "git_blob_sha1": "7eed6ada0fc959d87ccd92cc032033a0a307b39b",
+      "sha256": "1bfd3ed9c26dccd53a03d22e92b9f6fce954bdfde78dea120a3c58437968daf1",
+      "bytes": 27557,
+      "usage": "existing_runtime_visual",
+      "width": 235,
+      "height": 214,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-goal/intent-6.png",
+      "git_blob_sha1": "b1e872b3e479dfa3c102e8e8728cdc04a05df278",
+      "sha256": "1bc69f1fa07cc0c0684bcf4da5531edbee418e7de680a7e213e71313acd44c9b",
+      "bytes": 26282,
+      "usage": "existing_runtime_visual",
+      "width": 210,
+      "height": 206,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-home/ASSETS.md",
+      "git_blob_sha1": "2b28817f1b1d9741935c1d97885e302f7c635af3",
+      "sha256": "8b1018365f8981bd67b8d5ab8c8e1f824c278f6c9cc79c846ff839f9a8795649",
+      "bytes": 2364,
+      "usage": "historical_approval_evidence_only"
+    },
+    {
+      "path": "frontend/static/v31-home/home-icons-v2.png",
+      "git_blob_sha1": "9d0d6b6789a7e1da4b747a67a05d62e242dc55c2",
+      "sha256": "a8d0c0522c10a7659031298c2cef3e3ddbb81b46bdd76e26362f810b092eaa16",
+      "bytes": 1040107,
+      "usage": "existing_runtime_visual",
+      "width": 2172,
+      "height": 724,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-home/home-watercolor-v1.png",
+      "git_blob_sha1": "007a0cd4b5edfda23801c06620b85cd42197a1cf",
+      "sha256": "a51aca29af0352394ae1c8bd89c28c91061b4b76e5f976a6c6bd065d064b15e5",
+      "bytes": 1704443,
+      "usage": "existing_runtime_visual",
+      "width": 957,
+      "height": 1643,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-home/nav-home-selected.png",
+      "git_blob_sha1": "c34175d9a2f3d0e625729c6ed8a6aad313d85f71",
+      "sha256": "044e4db67cb60648f2b6f2ffae4a5b3483a2adbbc059effd54a47aaa3aa46070",
+      "bytes": 702,
+      "usage": "existing_runtime_visual",
+      "width": 96,
+      "height": 96,
+      "mode": "RGBA"
+    },
+    {
+      "path": "frontend/static/v31-home/nav-home.png",
+      "git_blob_sha1": "d343cf18cc4e5c2d9f2cc7e2c55c405593fac9f5",
+      "sha256": "5a0cf65806aa4a4d2bd195caf357961e3f29aa0f1bf825537afe357d755dec01",
+      "bytes": 682,
+      "usage": "existing_runtime_visual",
+      "width": 96,
+      "height": 96,
+      "mode": "RGBA"
+    },
+    {
+      "path": "frontend/static/v31-home/nav-profile-selected.png",
+      "git_blob_sha1": "61633cef5567351cbf8a6d7a1c4cd8d922759880",
+      "sha256": "b84e6e43da1f720165f12d668190d4c7ebcb0158135923337222ef9989a01b49",
+      "bytes": 1010,
+      "usage": "existing_runtime_visual",
+      "width": 96,
+      "height": 96,
+      "mode": "RGBA"
+    },
+    {
+      "path": "frontend/static/v31-home/nav-profile.png",
+      "git_blob_sha1": "f934d39ea9ab0a0026487c9dc3cdeb0c7bf6603d",
+      "sha256": "8882db2c2f0ba6fe16bfac2e16d98eb0d1fd50f6cad2ae42a685cb3f23b8ea3e",
+      "bytes": 1003,
+      "usage": "existing_runtime_visual",
+      "width": 96,
+      "height": 96,
+      "mode": "RGBA"
+    },
+    {
+      "path": "frontend/static/v31-material/material-error-background.png",
+      "git_blob_sha1": "5d8ffa8697e47c2eaab7d6103a3eb09339181349",
+      "sha256": "538818764c6de05e833e4bb3db6f9c5b5d383e5627ee0daeafd1023b790bdec3",
+      "bytes": 505554,
+      "usage": "existing_runtime_visual",
+      "width": 441,
+      "height": 631,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-material/upload-failed-illustration.png",
+      "git_blob_sha1": "5c17b441cf88d2d429a07358270d48d238472a9d",
+      "sha256": "789c497a4236bc58682c52207e15d28b8dfc1d64bb8709e80d1a5f21b945689e",
+      "bytes": 166967,
+      "usage": "existing_runtime_visual",
+      "width": 485,
+      "height": 603,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/gong-1.png",
+      "git_blob_sha1": "23808a962d404bcc634bbf13c10b8cd84cf53660",
+      "sha256": "1212027dae59fb7134f397153543a27fb77174e9d0604b6830e4af9f321ca7e7",
+      "bytes": 1997293,
+      "usage": "existing_runtime_visual",
+      "width": 941,
+      "height": 1672,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/gong-2.png",
+      "git_blob_sha1": "6871b55a1ad3d05119e141e63f2dba517cceb368",
+      "sha256": "b6f9e7042475dddcbb6e70dcab5ec3f48d401d82034b5aecb9262ca224521429",
+      "bytes": 2772334,
+      "usage": "existing_runtime_visual",
+      "width": 1254,
+      "height": 1254,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/jue-1.png",
+      "git_blob_sha1": "573dd7677ec2f084b353509aecc0c30f668689a7",
+      "sha256": "e72dbceefd10dba49d64fb102862221f26ec16a9edaff36c305c70a3fda0b888",
+      "bytes": 2272195,
+      "usage": "existing_runtime_visual",
+      "width": 916,
+      "height": 1717,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/jue-2.png",
+      "git_blob_sha1": "dde76639e95a059fc6334408105b0ec8d9871363",
+      "sha256": "7df11d2e5c5f5b4d4aba8134033e4bd4dc5aef49bbd0992ecda412bf08dd64f6",
+      "bytes": 200186,
+      "usage": "existing_runtime_visual",
+      "width": 435,
+      "height": 423,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/shang-1.png",
+      "git_blob_sha1": "027bef43181e74461f529caec931ed2ed49e6154",
+      "sha256": "a04d62574e0f37a9ea63028d56ccce099adf64ebddc56c866a5451ebc7464b59",
+      "bytes": 2106526,
+      "usage": "existing_runtime_visual",
+      "width": 916,
+      "height": 1717,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/shang-2.png",
+      "git_blob_sha1": "2f185b5f4443a79dc0652097677769746068d54e",
+      "sha256": "2629c4086238429a123a42f5a65e589901bf91ebe7c6d976c3d378c52777c03a",
+      "bytes": 198360,
+      "usage": "existing_runtime_visual",
+      "width": 409,
+      "height": 420,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/yu-1.png",
+      "git_blob_sha1": "c5f968337cc26ede9c20c6c5aa71b01f8df33ccc",
+      "sha256": "53b97dae41fe3766dfaac01bf8137354ca0b30ba0c3ecc9b2177ca87d116d57a",
+      "bytes": 379111,
+      "usage": "existing_runtime_visual",
+      "width": 349,
+      "height": 625,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/yu-2.png",
+      "git_blob_sha1": "f3c5cc37b83aa83cf54b2832e194178314ba00b9",
+      "sha256": "9b81df116f7b963901c5e9d994ec001a58e5cc56c25e25d9e65b7f4de41121a2",
+      "bytes": 210450,
+      "usage": "existing_runtime_visual",
+      "width": 411,
+      "height": 416,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/zhi-1.png",
+      "git_blob_sha1": "a11f31806e72641d3d5e3cb2410b921c595f1948",
+      "sha256": "3f654ee8a3312a91fb9a5f048b2666b663eed1ca5a39cee253c17df513b98c76",
+      "bytes": 381352,
+      "usage": "existing_runtime_visual",
+      "width": 349,
+      "height": 624,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-player/zhi-2.png",
+      "git_blob_sha1": "bed7fad6eb7dc79b0b3fe3014d8fbbe9848dcbbe",
+      "sha256": "003792ff1ebf2495103a47c58bfaa84686f74006e3df30773debf0ea93c21289",
+      "bytes": 206110,
+      "usage": "existing_runtime_visual",
+      "width": 418,
+      "height": 411,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q1-0.png",
+      "git_blob_sha1": "40e1124c6c2833a9f4a822f6a65e02ea83c5a4c2",
+      "sha256": "49d2c456349f5c85edc3275cce64d7cef1ba8555dc91e1210a7b239572bef23e",
+      "bytes": 12794,
+      "usage": "existing_runtime_visual",
+      "width": 135,
+      "height": 115,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q1-1.png",
+      "git_blob_sha1": "7461cb957e9b8584ddd4d563cb2244283f11c5a2",
+      "sha256": "ff58e78019f7f360b6217488727e4f24200e00fab57d6e764ba01867e1475611",
+      "bytes": 12543,
+      "usage": "existing_runtime_visual",
+      "width": 123,
+      "height": 115,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q1-2.png",
+      "git_blob_sha1": "7f7c98a46ff2a997f164fe1e7f1e2f1ddebdb9a1",
+      "sha256": "799ccc4902886679b495ebac08ae7fe433367eba44adb1a86cf445409343f4ba",
+      "bytes": 11907,
+      "usage": "existing_runtime_visual",
+      "width": 135,
+      "height": 110,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q1-3.png",
+      "git_blob_sha1": "468571f132a472bd2566a8707524c46907c796ed",
+      "sha256": "ccb26f32f713ceb04ba4dbea483c653a7b279f602e23c67a38640e8ca623bc92",
+      "bytes": 14627,
+      "usage": "existing_runtime_visual",
+      "width": 158,
+      "height": 120,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q1-4.png",
+      "git_blob_sha1": "46f3a81ab25a42a7a39e70f30a5ef53b9b10e489",
+      "sha256": "357f152ad074a51a5b5115f73d56ed374f55505859c8405084f075d3f161eaa6",
+      "bytes": 14316,
+      "usage": "existing_runtime_visual",
+      "width": 129,
+      "height": 116,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q10-0.png",
+      "git_blob_sha1": "05d7bc42edffb0bb593b472fce3b3eeb99964979",
+      "sha256": "fbb6a7ac7c5eeb64fa89eb81282a1ef5c5485c161cbf6297e3afa2ec394c128f",
+      "bytes": 21187,
+      "usage": "existing_runtime_visual",
+      "width": 163,
+      "height": 145,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q10-1.png",
+      "git_blob_sha1": "c1e46deab3f58f37410062326d892d23cc684254",
+      "sha256": "bb36c0414417a62f86ca1e9ed852e8343fa780fcd2ec6258b52b22a0956f3067",
+      "bytes": 16064,
+      "usage": "existing_runtime_visual",
+      "width": 119,
+      "height": 140,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q10-2.png",
+      "git_blob_sha1": "cb262abacf942d3b6f2825372d54f6c047831696",
+      "sha256": "7d54f4fdfdad19df9b59b2188a40973594e855f27c4328331c35aa155c28ffd8",
+      "bytes": 16563,
+      "usage": "existing_runtime_visual",
+      "width": 175,
+      "height": 125,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q10-3.png",
+      "git_blob_sha1": "0a479e821d322a717fd674c297fb43ca3f1520b0",
+      "sha256": "b57a7d31b4e6dfc94a0390fbb9249b45259b220336c73f72b9e8b302a394f5ee",
+      "bytes": 17128,
+      "usage": "existing_runtime_visual",
+      "width": 139,
+      "height": 120,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q2-0.png",
+      "git_blob_sha1": "965dfca95df63b2a1317dde56b198869de2afe39",
+      "sha256": "4167fdec1084010af343ba27b1f26e1ae6f530a3764ebf0b1bed5cfcb48becfd",
+      "bytes": 12447,
+      "usage": "existing_runtime_visual",
+      "width": 136,
+      "height": 125,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q2-1.png",
+      "git_blob_sha1": "7aec0587f496bb5a3f4608a4d9e2073deaa109e2",
+      "sha256": "8ea9bd71d0150b63a640d3963e2de9e101a88413f97bcfd4f36061be2251d7fe",
+      "bytes": 11889,
+      "usage": "existing_runtime_visual",
+      "width": 150,
+      "height": 113,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q2-2.png",
+      "git_blob_sha1": "12abf7e23d320cd7845bc12137f872b2ffb4ca45",
+      "sha256": "5eb06b66f2752b8a522492804540698887609d65ba9a9fd5167adc5e4a4c68f9",
+      "bytes": 12652,
+      "usage": "existing_runtime_visual",
+      "width": 145,
+      "height": 115,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q2-3.png",
+      "git_blob_sha1": "543f21dbea5138c1325aa0196ca57d0ade8db3dc",
+      "sha256": "febc5e106f15280a0ac5c2eb73dc02b2bb00206d42bb3d104d9b734ebc9f010e",
+      "bytes": 15551,
+      "usage": "existing_runtime_visual",
+      "width": 146,
+      "height": 125,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q2-4.png",
+      "git_blob_sha1": "c2be60f54d8c039e7444e8cad00757ef39fce83b",
+      "sha256": "be8891125bdd063087fcbd1b079f4ddb1c0bdb13f54f9196c36ed27b42b1d30c",
+      "bytes": 14505,
+      "usage": "existing_runtime_visual",
+      "width": 141,
+      "height": 126,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q3-0.png",
+      "git_blob_sha1": "f3a8ad748030c57567bef1da1a4e8d6cc5267939",
+      "sha256": "625b7a6f4b4ba95ed24b30b059fc0a40c628eba5632d6e3a4c2e23788afa69f2",
+      "bytes": 28426,
+      "usage": "existing_runtime_visual",
+      "width": 180,
+      "height": 195,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q3-1.png",
+      "git_blob_sha1": "dbd1c74d489b2504e8c5ee95198b1648c41a542d",
+      "sha256": "615eb7236dc69596961d184effa18c9e27edc70d82b91fff089a3d1cf33dc0e0",
+      "bytes": 28467,
+      "usage": "existing_runtime_visual",
+      "width": 184,
+      "height": 200,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q3-2.png",
+      "git_blob_sha1": "8040a0b99342b855aea04d8632138bfa595e2534",
+      "sha256": "d700695cc721045e465f6dec481a60a0c76b98ae71c89efa0be4779156636efe",
+      "bytes": 35001,
+      "usage": "existing_runtime_visual",
+      "width": 209,
+      "height": 215,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q3-3.png",
+      "git_blob_sha1": "b34ae2f98d337eea4def0f54ae8aa339aca164da",
+      "sha256": "9a75b581ac634fe902bb0b2c8f45c38366a652e221a07174434d2ebd649e534b",
+      "bytes": 37214,
+      "usage": "existing_runtime_visual",
+      "width": 218,
+      "height": 220,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q3-4.png",
+      "git_blob_sha1": "969a0fb3be51e9e35c418efeeec3d16cbb3bc450",
+      "sha256": "efbcd641ec91a2cf690ea9f2b052db515c5c7203157da33346a7a621d0b95efe",
+      "bytes": 39123,
+      "usage": "existing_runtime_visual",
+      "width": 205,
+      "height": 239,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q4-0.png",
+      "git_blob_sha1": "53bd66f00e822361046ed5e3dc9219b5b68ee5e9",
+      "sha256": "c28772b2c485938b4b342b56a837b9d945add1a5b06d3cd9718e707236f06104",
+      "bytes": 34016,
+      "usage": "existing_runtime_visual",
+      "width": 190,
+      "height": 201,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q4-1.png",
+      "git_blob_sha1": "248d84562e321a363f19da59b11955a1777505a2",
+      "sha256": "1dac971ea13b0be670523fc9345281a2b00e6ab8afec7902a0214e167c9536f8",
+      "bytes": 30121,
+      "usage": "existing_runtime_visual",
+      "width": 181,
+      "height": 201,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q4-2.png",
+      "git_blob_sha1": "c580a1649ef1ab67591d870b7ef2cdfae61b3ecc",
+      "sha256": "0103163ac66002986f500a6ed158151ab6791b94d7fb1e7d9efb0b0933ff234a",
+      "bytes": 35377,
+      "usage": "existing_runtime_visual",
+      "width": 215,
+      "height": 239,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q4-3.png",
+      "git_blob_sha1": "baa83c95a490146acfc1be3581ee163f19c752c4",
+      "sha256": "9f5407d54913b9962cb8085375a924a28b4dc1bf994f1084d7264180cc4f1065",
+      "bytes": 33841,
+      "usage": "existing_runtime_visual",
+      "width": 225,
+      "height": 226,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q4-4.png",
+      "git_blob_sha1": "04c6815b081a4059c512a07ca30d4eea35a1f256",
+      "sha256": "a577239421993d5740fe7f4f6c33bcc88e78ee93aa387cf775c10536b647f503",
+      "bytes": 35018,
+      "usage": "existing_runtime_visual",
+      "width": 216,
+      "height": 215,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q5-0.png",
+      "git_blob_sha1": "d29690477e3804e082dc1c103893a46b38d09ddb",
+      "sha256": "1fe869d1a3315af0163ecead5d4e44768bef77f2ecd867425ecf784d6cf7e7eb",
+      "bytes": 17149,
+      "usage": "existing_runtime_visual",
+      "width": 165,
+      "height": 159,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q5-1.png",
+      "git_blob_sha1": "be95fc73dd5f2a48a7c8a742dc4fada91602056e",
+      "sha256": "72d969e32bcb2712ffe126f2b7541d321aaa6c6b62827bbca202ab78ea5de971",
+      "bytes": 17173,
+      "usage": "existing_runtime_visual",
+      "width": 174,
+      "height": 160,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q5-2.png",
+      "git_blob_sha1": "3397a65823648bab66b2ba454d92a4d8072906a8",
+      "sha256": "9271e3242663ef20cb6d74bb38e6b4ac1d1e1d05ce1342f10aee54dc8a72a2c5",
+      "bytes": 16772,
+      "usage": "existing_runtime_visual",
+      "width": 160,
+      "height": 150,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q5-3.png",
+      "git_blob_sha1": "e0f63bc831e786a03914e4d63a5d9b8d4ec0ce39",
+      "sha256": "1464b1c28ff8c43c20112ba9a60c173b22257116f46504c3bb4ec881d60e878e",
+      "bytes": 17677,
+      "usage": "existing_runtime_visual",
+      "width": 164,
+      "height": 151,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q5-4.png",
+      "git_blob_sha1": "4d1152ed7bd9beaaf021ff76cbca00be9c31c133",
+      "sha256": "9f1fc08f1bfd71d790395a0c093a3df6b5c7952ff0d1dde996167dcb31ebef1f",
+      "bytes": 18271,
+      "usage": "existing_runtime_visual",
+      "width": 174,
+      "height": 158,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q6-0.png",
+      "git_blob_sha1": "480548269e09a822b12307bd91388e1605dab548",
+      "sha256": "790e0b73619dc0ecab7db78729658986c588fe7750291dda095647a10a164da8",
+      "bytes": 21423,
+      "usage": "existing_runtime_visual",
+      "width": 175,
+      "height": 169,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q6-1.png",
+      "git_blob_sha1": "029f79d7e8cff26b7649a735cd08a96773a30482",
+      "sha256": "b9874ace6d68011ef6cead8907278ec084ac3a60871a0ed68fa645b76cf8174b",
+      "bytes": 21093,
+      "usage": "existing_runtime_visual",
+      "width": 165,
+      "height": 160,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q6-2.png",
+      "git_blob_sha1": "b28611fdf2a21867ffc2cb7320a02ddd5b1eeffb",
+      "sha256": "38543184399d90666531083bc0e695b64e2c5b952d3a2ab6aa704af2dc62d4c4",
+      "bytes": 20583,
+      "usage": "existing_runtime_visual",
+      "width": 174,
+      "height": 170,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q6-3.png",
+      "git_blob_sha1": "7c746857d72b0f7f7c00900cbe41f477e6142ede",
+      "sha256": "d79ec2ba51c1147a7fa683a02a85d2d223f8c01658928d3c4b76ce93ae43942e",
+      "bytes": 21781,
+      "usage": "existing_runtime_visual",
+      "width": 200,
+      "height": 173,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q7-0.png",
+      "git_blob_sha1": "4f9181502c69d1b30496ed115930b4d63f5ec54c",
+      "sha256": "4325556b8ed47fabb73c303ebb3c2332ec93bab254df5a5e58b74ba008a7f69c",
+      "bytes": 31609,
+      "usage": "existing_runtime_visual",
+      "width": 199,
+      "height": 195,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q7-1.png",
+      "git_blob_sha1": "6d20172082ff29038f89826b1fa443643460aa84",
+      "sha256": "2f5ff29abddf75fd278c79b3c4f6d1f63be9784351367f45519be12ad583a7da",
+      "bytes": 35421,
+      "usage": "existing_runtime_visual",
+      "width": 184,
+      "height": 219,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q7-2.png",
+      "git_blob_sha1": "0ec4ddd5cfe26481f7f093440c80f5a5739e09f7",
+      "sha256": "4921c49b46a3a48453830dccb6a78790a8715cd30af3f3bb17e108e6e7e7fcae",
+      "bytes": 32612,
+      "usage": "existing_runtime_visual",
+      "width": 174,
+      "height": 220,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q7-3.png",
+      "git_blob_sha1": "577e86781d3a2bfba2ff20b2fca1cb5757488646",
+      "sha256": "916022c5c995291ed44e739c99a5ae94110cb4cc7def464f2921829534ee5c67",
+      "bytes": 31881,
+      "usage": "existing_runtime_visual",
+      "width": 195,
+      "height": 211,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q7-4.png",
+      "git_blob_sha1": "83b3bb6d0a3291f758a4aed69f03ddba375c0e79",
+      "sha256": "680d39e3e79f7649eec16a538a02a184b25fe15e7cdba16ed311ff3fbc4a5af9",
+      "bytes": 33083,
+      "usage": "existing_runtime_visual",
+      "width": 200,
+      "height": 195,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q8-0.png",
+      "git_blob_sha1": "a9df8b1ff204a35f9e7fb5eb22c8b4fac5582de0",
+      "sha256": "6f277d4e69c8d0d6b3b5e2997915f251ac02a4257b5554e40fdb2258521cad50",
+      "bytes": 34215,
+      "usage": "existing_runtime_visual",
+      "width": 194,
+      "height": 180,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q8-1.png",
+      "git_blob_sha1": "518d33cb9965bf455eb9810bc371576864feb910",
+      "sha256": "c7b62ccf2990f6f1abd86250b416dd0a0b86421576ac6d927b177affaa2deb3c",
+      "bytes": 30574,
+      "usage": "existing_runtime_visual",
+      "width": 169,
+      "height": 210,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q8-2.png",
+      "git_blob_sha1": "66b55170713ae2e9f9d3de2e39b34f800bd0d4f0",
+      "sha256": "3e1f5df7aceab56f0b990258c78ef116433e0aa81239bc62fdcf5341fe8690e2",
+      "bytes": 34655,
+      "usage": "existing_runtime_visual",
+      "width": 209,
+      "height": 225,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q8-3.png",
+      "git_blob_sha1": "1b32993c2b806c937cd67d1ffaf5a85373b70be0",
+      "sha256": "d52f92b1fe642e61c84d2654895fc1f9b3dcda3e3702efbdd9eff62bceafb23f",
+      "bytes": 25792,
+      "usage": "existing_runtime_visual",
+      "width": 228,
+      "height": 156,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q8-4.png",
+      "git_blob_sha1": "e5ad8e0576330be72ca3f98b409260a24750af0c",
+      "sha256": "4accb4fd50773f2bad5c9f39bc38ba5d5d8791a8adf5798afc1c3a04e58399d2",
+      "bytes": 32686,
+      "usage": "existing_runtime_visual",
+      "width": 190,
+      "height": 205,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q9-0.png",
+      "git_blob_sha1": "441de8dfa20933cc66824cd838e04eedefd3cca7",
+      "sha256": "5f9fa9a9496f18ee0321060c0a9dea6ebaa7d4b52ab248ddbfd7fd72e69b67fd",
+      "bytes": 20559,
+      "usage": "existing_runtime_visual",
+      "width": 175,
+      "height": 141,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q9-1.png",
+      "git_blob_sha1": "5a6e88a7b55b2e79745c8d41d64a89dbbcf65ecb",
+      "sha256": "b775aeeea93237c8ae3d17f505ad87ac76921929f7e422b65dbb64aeead9f7c5",
+      "bytes": 23651,
+      "usage": "existing_runtime_visual",
+      "width": 165,
+      "height": 138,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q9-2.png",
+      "git_blob_sha1": "41f097e8b69be8f40eb3a76804c72ee285f25c8e",
+      "sha256": "5c0462c5882871eddbe0d88c44bc60277ec3f4c372544436db8dd179c1c976df",
+      "bytes": 15114,
+      "usage": "existing_runtime_visual",
+      "width": 129,
+      "height": 146,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q9-3.png",
+      "git_blob_sha1": "bad3a3588f6a3d83814d01b604ce5ce37330fdaa",
+      "sha256": "9e16e23b90c80266a3ba1c416570b25850db2af4ac1e8711e3c728663814aca4",
+      "bytes": 20038,
+      "usage": "existing_runtime_visual",
+      "width": 179,
+      "height": 134,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/q9-4.png",
+      "git_blob_sha1": "6fc32aa24a0f02768830a9317e634236e412c97a",
+      "sha256": "3576cc51634575e5a2d87e913678907384b76a7dad7cea9bdb4d026083c32960",
+      "bytes": 19249,
+      "usage": "existing_runtime_visual",
+      "width": 140,
+      "height": 144,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/questionnaire-background-q34.png",
+      "git_blob_sha1": "1d92214819f681f4fa117fbae0cedce1f9c1162a",
+      "sha256": "3bbaf3eb6216621b79911252b63ae09e9b8942d556e0df8d28127a4013b69d51",
+      "bytes": 1479288,
+      "usage": "existing_runtime_visual",
+      "width": 853,
+      "height": 1844,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-questionnaire/questionnaire-background.png",
+      "git_blob_sha1": "1d92214819f681f4fa117fbae0cedce1f9c1162a",
+      "sha256": "3bbaf3eb6216621b79911252b63ae09e9b8942d556e0df8d28127a4013b69d51",
+      "bytes": 1479288,
+      "usage": "existing_runtime_visual",
+      "width": 853,
+      "height": 1844,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-supplement/analysis.png",
+      "git_blob_sha1": "9ceadf2c2afe439adca0db671b200fffd5f3aa5a",
+      "sha256": "62b8ccf9b099e149f77edbd1bda9d940da42c0da936f6c34016da703957eaabc",
+      "bytes": 209757,
+      "usage": "existing_runtime_visual",
+      "width": 440,
+      "height": 460,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-supplement/background.png",
+      "git_blob_sha1": "c4d84a7853fc053aa87de3cb3cd0d9c1a007fe05",
+      "sha256": "e0b8be10a8b24d9c53e239a7aaf373ca7c501f395a21e5d70b38d82b6c71f512",
+      "bytes": 1465959,
+      "usage": "existing_runtime_visual",
+      "width": 853,
+      "height": 1844,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-supplement/complete.png",
+      "git_blob_sha1": "b268dabdfacbf3170c3b58226afcd299d507e8af",
+      "sha256": "bc693fd0681a1d093c8a4d2a390e9c3136134df24232560f357317757843e7c3",
+      "bytes": 67282,
+      "usage": "existing_runtime_visual",
+      "width": 315,
+      "height": 171,
+      "mode": "RGB"
+    },
+    {
+      "path": "frontend/static/v31-supplement/questionnaire.png",
+      "git_blob_sha1": "5a5d865ddb0c0a6d93d6f2961276eee1e2f9c02c",
+      "sha256": "70717c6a7b37613b2459e77ae051df6831ccda40bcce6ed79c9bc579615fa242",
+      "bytes": 211057,
+      "usage": "existing_runtime_visual",
+      "width": 458,
+      "height": 435,
+      "mode": "RGB"
+    },
+    {
+      "path": "docs/product/assets/sprint6-recovery/HarmonyAI就诊资料智能摘要.png",
+      "git_blob_sha1": "3b9f43d44447ade303036f1f08d29f296399041a",
+      "sha256": "b0a423f64d7e36cf3f02c17458bb4cac94a595cf233a071e002243694da33770",
+      "bytes": 1638835,
+      "usage": "historical_approval_evidence_only",
+      "width": 840,
+      "height": 1871,
+      "mode": "RGB"
+    },
+    {
+      "path": "docs/product/assets/sprint6-recovery/HarmonyAI山水疗愈音乐界面.png",
+      "git_blob_sha1": "6162da657d39745c0b1f182a21f029cd0fbdc725",
+      "sha256": "b7b3bf818ab87c9ea19509640472c1def3bea6648c65912b8e8d5987959a80e1",
+      "bytes": 2014338,
+      "usage": "historical_approval_evidence_only",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGB"
+    },
+    {
+      "path": "docs/product/assets/sprint6-recovery/HarmonyAI聆听反馈界面(3).png",
+      "git_blob_sha1": "ac21cebd0c33f8f292c23319917be636684ec519",
+      "sha256": "0716cbda5457965b092e57d439138f9901d47620635bdad43c878fd0e5cd6f53",
+      "bytes": 1668544,
+      "usage": "historical_approval_evidence_only",
+      "width": 954,
+      "height": 1648,
+      "mode": "RGB"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-09-26-sprint6-product-recovery.md",
+      "git_blob_sha1": "24fb6e652655b74e787f5bc2923cdd47ae384dac",
+      "sha256": "83b1a449ff2cca78131fa2c42dc9deb447338a968b01370dcfb04de88b6707d5",
+      "bytes": 39249,
+      "usage": "historical_approval_evidence_only"
+    }
+  ],
+  "excluded": [
+    {
+      "path": "frontend/static/v31-home/home-icons-v1.png",
+      "git_blob_sha1": "f1581adcf32b3f4995ca65bb3504f1db4979db74",
+      "reason": "Rejected checkerboard draft per source ASSETS.md; not used by current UI"
+    }
+  ],
+  "protected_source_sha256": {
+    "frontend/pages/assessment-result/assessment-result.vue": "2473636e836541eab569c0131f5c3d602c61cfbae0f5d85ff431d4f363814a44",
+    "frontend/pages/complete/complete.vue": "cf70a53430e5aa17ebb20202c00e5d41ee2a186e0a23ba363b65078620a19d73",
+    "frontend/pages/emotion/emotion.vue": "3efbc83621e1fdfcd4b927f14ed9fc48dd45529c0b53894c3eb2e7f0d5545c42",
+    "frontend/pages/entry/entry.vue": "7ea76ba8acbb29fb8ca40fbf7b3be7956b1e6a98c2aaf355c466427f45b51c6c",
+    "frontend/pages/feedback-v2/feedback-v2.vue": "4cfb83c1bf373fff8b540db5c565e51f87543a4ca41a26224f5b7a4af75f6043",
+    "frontend/pages/index/index.vue": "ddd25bc53089ef7ed8d01b877e719fdc27e722d9929c9542089174d1973f11e2",
+    "frontend/pages/material/material.vue": "88847821509ab23f65d8bd81b5af6232b24f5374b5005bfee29cb6038c6bd913",
+    "frontend/pages/narrative/narrative.vue": "e5c11c2c1f82d634711e875538073353e5467f5cccdaa4188d621cceef06e68d",
+    "frontend/pages/player/player.vue": "116a5696ce5b48995b93f22fedcea6e432b3c73028df7560284f0e3c56edc125",
+    "frontend/pages/player-v2/player-v2.vue": "e01f232b66fa83b8258613bad215df17143f73cff9317d784f6aeb1d4c2984f5",
+    "frontend/pages/questionnaire-v2/questionnaire-v2.vue": "20c45756fc7a60aeb32ee28e7511dc1f0fe098431d68684ec15bd990ed713753",
+    "frontend/pages/quick-state/quick-state.vue": "ae0a8e70a4a76620fb4b3a28ef88b562623d313201c079457eea5c1952948192",
+    "frontend/pages/result/result.vue": "dd6fedc62ac6aedb70f82c41afc4bd96efbe0cbf6c0abd6f0717132f7d6f9390",
+    "frontend/pages/safety-support/safety-support.vue": "6eb6ee3ebac6de9e1db0776b0dd7cc42b637e85cd313563d07eb09f78ea8a204",
+    "frontend/pages/safety-verification/safety-verification.vue": "5de65f368075e56ad4f8e6d277ceb3cbe8f1b9ba1b26c723cbbfcfd6b2757f97",
+    "frontend/pages/survey/survey.vue": "89c893844185af1740e08edf95afbe921246c28b32de67be9d8aa41e3ea2a7e8",
+    "frontend/pages/survey-v2/survey-v2.vue": "9734d956519d150db09bffd05c77e2f28662c23f858248e64a275fb0c32d81d6",
+    "frontend/pages/v3-basis/v3-basis.vue": "1bffefc2348d788f813ed71f456889bd84780b1a2f72dcab92355b84100043e4",
+    "frontend/pages/v3-confirm/v3-confirm.vue": "9eee8cd490035b655fe0b3839b9c91dbb162f7bcff5ab515d33e64a556a94a3a",
+    "frontend/pages/v3-feedback/v3-feedback.vue": "41ccdaebb5499062d7c38b38981a08d44e2656aeccccaae3b1f9fe2daa5e8a91",
+    "frontend/pages/v3-generation/v3-generation.vue": "f5a1e4f021cae469780a50aeb878a19381105b0921ad044034484465b92b918f",
+    "frontend/pages/v3-goal/v3-goal.vue": "49a825b9f03ecd728ef0e6d7faeeeaa6ab910e24bae0138de10e708dcc66a4c2",
+    "frontend/pages/v3-material/v3-material.vue": "12a2ee89967520ac07d2fe6351da8c45aa91e89065a75d3c9fe0085d4a09b7f1",
+    "frontend/pages/v3-material-error/v3-material-error.vue": "de00738ce24dcc4797329fb58ba88cd924aca79598732a991345f84847d43edf",
+    "frontend/pages/v3-player/v3-player.vue": "8c45151da3fe19283c26b98c5a2b85cd6a463364c84b551e46379c294dc79f73",
+    "frontend/pages/v3-profile/v3-profile.vue": "8a1f7db9365e626f1bbc8e695ac41ac0803a976110e539f23d7625813de35755",
+    "frontend/pages/v3-questionnaire/v3-questionnaire.vue": "9226f4b1b8c9186759e23f38fd837a8dd0efc201ecac111be9f124d3d3d133a8",
+    "frontend/pages/v3-summary/v3-summary.vue": "d36feab5f2d0cbd795ccb4ffc8adfb5486d62cc147a2f521c4f52fbbaaa71258",
+    "frontend/pages/v3-supplement/v3-supplement.vue": "40f24fb6932d6886c5d82a5da552ad32aee4ada166c3593c384419d967668ac8",
+    "frontend/pages/welcome/welcome.vue": "7769f82e3a419406e034d325f76b39649af5e8184fed0f28d412331f4e549086",
+    "knowledge/v3/music-generation-rules-v3.1.json": "b4932eb8c612dcca4f4919522c2b41ab3998eb1a92c1a7fc6e1978f2f764d755",
+    "backend/ai_engine/v3/music_provider.py": "f2eddd040be38b50dac52820214977df6d42494a319835d87d951598729054e6"
+  },
+  "background_rule": "unchanged Sprint6 tone-selected background; instrument never selects background",
+  "central_instrument_assets": {
+    "guqin": "gong-2.png",
+    "sheng": "jue-2.png",
+    "dizi": "shang-2.png",
+    "pipa": "zhi-2.png"
+  },
+  "unmapped_legacy_art": {
+    "yu-2.png": "Owner confirms panpipes; not xiao/dongxiao; no canonical mapping invented"
+  },
+  "protected_source_hash_normalization": "UTF-8 with LF line endings (logical source unchanged across Windows/Linux checkouts)"
+}

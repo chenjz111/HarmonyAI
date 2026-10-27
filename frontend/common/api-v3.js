@@ -54,6 +54,10 @@
  */
 
 import { QUESTIONNAIRE_MANIFEST } from "./questionnaire-v3-manifest.js"
+import { readV3AccessToken } from "./music-library-transport.js"
+import { waitForAccountStartup, hasAccountStartup, hasAccountRuntime, startAccountStartup, prepareAccountRequest } from "./auth-runtime.js"
+import { getApiOrigin, nativeTlsOptions, platformNetworkApi, isUsbGuestDebugOrigin, parseHttpsApiOrigin } from './api-origin.js'
+import {trackAuthorizedAudio,releaseAuthorizedAudio,releaseAllAuthorizedAudio,audioRemover} from './owned-audio.js'
 import {
   isPersonalizedMode,
   modeLabelFor,
@@ -139,6 +143,7 @@ function announceV3AuthChange() {
   try {
     if (typeof uni.$emit === "function") uni.$emit("harmonyai:v3-auth-changed")
   } catch (e) { /* no event bus in Node/unit environments */ }
+  releaseAllAuthorizedAudio()
 }
 
 // ===== 真实会话流转状态（跨页面共享；所有 revision 均来自后端响应） =====
@@ -164,7 +169,7 @@ function clearFlowState() {
 }
 
 function authHeaders() {
-  const token = safeGet("v3_access_token") || ""
+  const token = readV3AccessToken()
   return token ? { Authorization: "Bearer " + token } : {}
 }
 
@@ -190,11 +195,19 @@ function apiError(message, code, extra) {
 
 // ===== 真实请求 =====
 
-function realRequest(path, { method = "GET", data = null, headers = {} } = {}) {
+async function realRequest(path, { method = "GET", data = null, headers = {} } = {}) {
+  if (path !== '/api/v3/auth/guest' && typeof uni !== 'undefined' && hasAccountRuntime(uni)) {
+    const unchanged=captureAuthentication(),owner=safeGet('v3_public_user_id')
+    await prepareAccountRequest(uni)
+    try {unchanged()} catch(error) {
+      throw apiError('身份状态已更新，请重试；本次操作尚未发送。',owner===safeGet('v3_public_user_id')?'AUTH_REFRESHED':'OWNER_CHANGED')
+    }
+  }
   return new Promise((resolve, reject) => {
     try {
-      uni.request({
-        url: BASE_URL + path,
+      platformNetworkApi(uni).request({
+        url: getApiOrigin({fallback:BASE_URL}) + path,
+        ...nativeTlsOptions(),
         method,
         data: data || undefined,
         header: Object.assign({ "Content-Type": "application/json" }, authHeaders(), headers),
@@ -220,7 +233,7 @@ function realRequest(path, { method = "GET", data = null, headers = {} } = {}) {
       })
     } catch (e) {
       // uni 不可用（Node 测试环境）：按网络错误降级，不静默返回 mock 数据
-      reject(apiError(FRIENDLY_ERRORS.NETWORK_ERROR, "NETWORK_ERROR"))
+      reject(e.code==='PLATFORM_API_UNAVAILABLE'?apiError(e.message,e.code):apiError(FRIENDLY_ERRORS.NETWORK_ERROR, "NETWORK_ERROR"))
     }
   })
 }
@@ -230,8 +243,9 @@ function realUploadDocument(filePath, fileName) {
   return new Promise((resolve, reject) => {
     const state = loadFlowState()
     try {
-      uni.uploadFile({
-        url: BASE_URL + "/api/v2/documents",
+      platformNetworkApi(uni).uploadFile({
+        url: getApiOrigin({fallback:BASE_URL}) + "/api/v2/documents",
+        ...nativeTlsOptions(),
         filePath,
         name: "file",
         formData: {
@@ -265,22 +279,84 @@ function realUploadDocument(filePath, fileName) {
 
 // ===== 真实接口（输入段） =====
 
+let identityStartup = null
+function captureAuthentication() {
+  const keys = ['v3_access_token', 'v3_public_user_id', 'v3_auth_epoch']
+  const values = keys.map(key => safeGet(key))
+  const credential = readV3AccessToken()
+  return () => {
+    if (readV3AccessToken() !== credential || !keys.every((key, i) => safeGet(key) === values[i])) {
+      throw apiError('身份已切换，请重新进入。', 'OWNER_CHANGED')
+    }
+  }
+}
+
+function requireReadableIdentityStorage() {
+  try {
+    for (const key of ['v3_auth_mode','v3_access_token','v3_public_user_id']) uni.getStorageSync(key)
+  } catch(error) {throw apiError('身份存储暂时不可用，请恢复后重试。','IDENTITY_REQUIRED')}
+}
+
 const realInputApi = {
-  async guestAuth() {
+  ensureIdentity() {
+    if (identityStartup) return identityStartup
+    try {requireReadableIdentityStorage()} catch(error) {return Promise.reject(error)}
+    if (typeof uni !== 'undefined' && hasAccountRuntime(uni)) startAccountStartup(uni).catch(()=>{})
+    const restoring=hasAccountStartup(typeof uni === 'undefined' ? null : uni)
+    let unchanged=captureAuthentication()
+    const pending = Promise.resolve().then(async () => {
+      await waitForAccountStartup(typeof uni === 'undefined' ? null : uni)
+      if (restoring) unchanged=captureAuthentication()
+      else unchanged()
+    const token = readV3AccessToken()
+      if (!token) {
+      if (safeGet('v3_auth_mode') === 'signed_out') throw apiError('已退出账号，请前往“我的”的账号与数据登录或选择游客体验。', 'SIGNED_OUT')
+      if (['registered','binding'].includes(safeGet('v3_auth_mode'))) throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
+        // A label alone cannot recover ownership. Never silently abandon it.
+        if (safeGet('v3_public_user_id')) throw apiError('当前身份凭据不可用，请恢复身份后重试。', 'IDENTITY_REQUIRED')
+        return realInputApi.guestAuth()
+      }
+      const identity = await realRequest('/api/v3/auth/identity')
+      unchanged()
+      if (!identity || typeof identity.public_user_id !== 'string' || !identity.public_user_id ||
+          !['guest', 'registered'].includes(identity.auth_type)) throw apiError('身份响应不可用。', 'INVALID_RESPONSE')
+      // Only the authenticated server may repair a cached display label.
+      if (safeGet('v3_public_user_id') !== identity.public_user_id) {
+        clearFlowState()
+        safeSet('v3_public_user_id', identity.public_user_id)
+        announceV3AuthChange()
+      }
+      return identity
+    })
+    identityStartup = pending
+    pending.finally(() => { if (identityStartup === pending) identityStartup = null }).catch(() => {})
+    return pending
+  },
+  async guestAuth(options = {}) {
+    requireReadableIdentityStorage()
+    if (['registered','binding','signed_out'].includes(safeGet('v3_auth_mode'))) throw apiError('请重新认证。', 'IDENTITY_REQUIRED')
+    const unchanged = captureAuthentication()
     const data = await realRequest("/api/v3/auth/guest", { method: "POST" })
+    unchanged()
+    if (!data || typeof data.access_token !== 'string' || !data.access_token ||
+        typeof data.public_user_id !== 'string' || !data.public_user_id) throw apiError('身份响应不可用。', 'INVALID_RESPONSE')
+    if (typeof options.beforeCommit === 'function') options.beforeCommit()
     safeSet("v3_access_token", data.access_token)
     safeSet("v3_public_user_id", data.public_user_id)
+    clearFlowState()
     announceV3AuthChange()
     return data
   },
 
   async createSession() {
+    const unchanged = captureAuthentication()
     // 必须携带 flow_contract_version，否则后端创建的是 legacy 会话（无 input-transitions）
     const entry = await realRequest("/api/v3/sessions", {
       method: "POST",
       data: { flow_contract_version: "v3-owner-flow-1" },
       headers: { "Idempotency-Key": idempotencyKey() },
     })
+    unchanged()
     clearFlowState()
     saveFlowState({
       session_id: entry.session_id,
@@ -946,7 +1022,7 @@ function musicBasisModel(assessment, diagnosis, prescription) {
 
 function resolveMusicStreamUrl(streamUrl) {
   if (!streamUrl) return ""
-  return streamUrl.indexOf("/api/") === 0 ? BASE_URL + streamUrl : streamUrl
+  return streamUrl.indexOf("/api/") === 0 ? getApiOrigin({fallback:BASE_URL}) + streamUrl : streamUrl
 }
 
 // 生成任务成功后保存 asset（播放页只播放后端返回的 Music Asset）
@@ -1200,8 +1276,9 @@ function stripInternal(obj) {
 }
 
 const mockApi = {
-  async guestAuth() {
+  async guestAuth(options = {}) {
     await delay(200)
+    if (typeof options.beforeCommit === 'function') options.beforeCommit()
     MOCK.token = {
       access_token: "mock-token-" + Math.random().toString(36).slice(2),
       token_type: "Bearer",
@@ -1642,8 +1719,16 @@ export const apiV3 = {
   // mock 模式下输入段（含语音转写）为模拟数据：real/hybrid 不得产生虚构 transcript
   INPUT_SIMULATED: MODE === "mock",
 
-  guestAuth() {
-    return INPUT_REAL ? realInputApi.guestAuth() : mockApi.guestAuth()
+  guestAuth(options = {}) {
+    return INPUT_REAL ? realInputApi.guestAuth(options) : mockApi.guestAuth(options)
+  },
+  ensureIdentity() {
+    return INPUT_REAL ? realInputApi.ensureIdentity() : MOCK.token ? Promise.resolve(clone(MOCK.token)) : mockApi.guestAuth()
+  },
+  captureIdentity: captureAuthentication,
+  canStartNewGuest: () => {
+    try {requireReadableIdentityStorage()} catch(error) {return false}
+    return !['registered','binding','signed_out'].includes(safeGet('v3_auth_mode'))
   },
   createSession() {
     return INPUT_REAL ? realInputApi.createSession() : mockApi.createSession()
@@ -1685,6 +1770,14 @@ export const apiV3 = {
     const cached = loadFlowState().user_goal
     const goal = AGENT_MOCK && MOCK.healingIntent !== null ? MOCK.healingIntent : cached
     return goal && typeof goal === "object" ? clone(goal) : null
+  },
+
+  getCurrentMusicContext() {
+    if (AGENT_MOCK) return null
+    const state = loadFlowState()
+    const musicId = state.music && state.music.music_ref && state.music.music_ref.music_id
+    if (!musicId || !state.task_id || !state.session_id) return null
+    return {music_id:musicId,source_context_id:state.task_id,session_id:state.session_id}
   },
 
   // 问卷：题目为权威清单（前后端同源），三种模式一致，必填性由会话权威模式决定；
@@ -1739,6 +1832,16 @@ export const apiV3 = {
     return mockApi.getMusic()
   },
 
+  async getMusicPresentation(musicId) {
+    if (AGENT_MOCK) return null
+    const unchanged = captureAuthentication()
+    const detail = await realRequest(`/api/v3/music/assets/${encodeURIComponent(musicId)}`)
+    unchanged()
+    const card = detail && detail.card
+    if (!card || card.music_id !== musicId) throw apiError("音乐信息不可用", "INVALID_RESPONSE")
+    return card
+  },
+
   // 反馈：真实接口已交付（需要真实 music asset）；mock/hybrid 走演示状态机
   submitFeedback(payload) {
     return INPUT_REAL && !AGENT_MOCK ? realInputApi.submitFeedback(payload) : mockApi.submitFeedback(payload)
@@ -1770,9 +1873,10 @@ export const apiV3 = {
   // 播放鉴权（P0-3 前端侧）：后端音频流要求 Bearer 头，audio 标签无法携带。
   // 对后端地址先用带鉴权的 downloadFile 拉取为本地临时文件，再交给播放器；
   // 本地资源与外部直链原样返回。失败时如实报错，不降级为无鉴权直连。
-  fetchAuthorizedAudio(streamUrl) {
+  async fetchAuthorizedAudio(streamUrl) {
     if (!streamUrl) return Promise.resolve("")
-    const absolute = resolveMusicStreamUrl(streamUrl)
+    let absolute
+    try{absolute=resolveMusicStreamUrl(streamUrl)}catch(error){return Promise.reject(error)}
     const invalidUrl = () => Promise.reject(apiError("音频地址不可用", "AUDIO_FETCH_FAILED"))
     // Never infer credential authority from a string prefix. Reject ambiguous
     // network syntax before platform downloaders can interpret it differently.
@@ -1787,19 +1891,45 @@ export const apiV3 = {
     let target, backend
     try {
       if (/\s/.test(absolute)) return invalidUrl()
-      target = new URL(absolute)
-      backend = new URL(BASE_URL)
+      // This exact debug-only route does not require native standard URL support.
+      // It cannot authorize another host, port, path, userinfo, query or fragment.
+      if (isUsbGuestDebugOrigin('http://127.0.0.1:8000') &&
+          /^http:\/\/127\.0\.0\.1:8000\/api\/v3\/music\/assets\/[A-Za-z0-9_-]+\/stream$/.test(absolute)) {
+        target = {href:absolute,origin:'http://127.0.0.1:8000',protocol:'http:'}
+        backend = {origin:target.origin,protocol:'http:'}
+      } else if(typeof URL!=='function' && nativeTlsOptions().sslVerify){
+        const exact=/^(https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?)\/api\/v3\/music\/assets\/[A-Za-z0-9_-]+\/stream$/.exec(absolute)
+        const origin=exact&&parseHttpsApiOrigin(exact[1]),expected=parseHttpsApiOrigin(getApiOrigin({fallback:BASE_URL}))
+        if(!origin||!expected||origin!==expected)return invalidUrl()
+        target={href:absolute,origin,protocol:'https:'};backend={origin:expected,protocol:'https:'}
+      } else {
+        target = new URL(absolute)
+        backend = new URL(getApiOrigin({fallback:BASE_URL}))
+      }
       if (!/^https?:\/\//i.test(absolute) || target.username || target.password ||
           backend.username || backend.password || !["http:", "https:"].includes(backend.protocol)) return invalidUrl()
     } catch (e) {
       // Missing URL support is not permission to fall back to prefix matching.
       return invalidUrl()
     }
+    if (nativeTlsOptions().sslVerify && target.protocol !== 'https:' && !isUsbGuestDebugOrigin(target.origin)) return invalidUrl()
     if (target.origin !== backend.origin) return Promise.resolve(absolute)
+    if(typeof uni!=='undefined' && hasAccountRuntime(uni)){
+      const before=captureAuthentication(),owner=safeGet('v3_public_user_id')
+      await prepareAccountRequest(uni)
+      try{before()}catch(error){
+        if(owner===safeGet('v3_public_user_id'))throw apiError('身份已更新，请重新打开音乐。','AUTH_REFRESHED')
+        throw error
+      }
+    }
+    const unchanged=captureAuthentication()
     return new Promise((resolve, reject) => {
       let downloadFile = null
+      let removeAudio
       try {
-        downloadFile = uni.downloadFile
+        const network=platformNetworkApi(uni)
+        downloadFile = typeof network.downloadFile==='function'?network.downloadFile.bind(network):null
+        removeAudio=audioRemover({network,uniApi:uni,plusApi:typeof plus==='undefined'?null:plus,URLApi:typeof URL==='undefined'?null:URL})
       } catch (e) {
         downloadFile = null // uni 不可用（Node 测试环境）
       }
@@ -1809,11 +1939,17 @@ export const apiV3 = {
       }
       downloadFile({
         url: target.href,
+        ...nativeTlsOptions(),
         header: authHeaders(),
         success: (res) => {
+          if(res.tempFilePath){
+            try{trackAuthorizedAudio(res.tempFilePath,removeAudio)}catch(error){reject(apiError('音频资源暂不可用','AUDIO_FETCH_FAILED'));return}
+          }
+          try{unchanged()}catch(error){if(res.tempFilePath)releaseAuthorizedAudio(res.tempFilePath);reject(error);return}
           if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
             resolve(res.tempFilePath)
           } else {
+            if(res.tempFilePath)releaseAuthorizedAudio(res.tempFilePath)
             reject(apiError("音频加载失败，请稍后重试", "AUDIO_FETCH_FAILED"))
           }
         },
@@ -1823,6 +1959,7 @@ export const apiV3 = {
       })
     })
   },
+  releaseAuthorizedAudio,
 
   // 会话辅助：页面间共享 session id（真实模式存于 v3_flow_state）
   rememberSession(session) {

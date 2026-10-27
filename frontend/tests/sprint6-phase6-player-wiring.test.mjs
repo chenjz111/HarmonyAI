@@ -26,7 +26,8 @@ test("v3-player delegates every audio lifecycle action to player-controller", ()
 test("v3-player renders music facts, actual playback progress, and failure through music-presentation", () => {
   assert.match(source, /buildMusicPresentation/)
   assert.match(source, /presentProgress/)
-  assert.doesNotMatch(source.match(/<template>([\s\S]*?)<\/template>/)[1], /playerPresentation\.title\.displayText/)
+  // Owner S7-PD-005 restores the title; retain the presentation safety boundary.
+  assert.match(source.match(/<template>([\s\S]*?)<\/template>/)[1], /playerPresentation\.title\.displayText/)
   assert.match(source, /playerPresentation\.instruments\.displayText/)
   assert.match(source, /playerPresentation\.ambience\.displayText/)
   assert.match(source, /totalSeconds:\s*this\.playerPresentation\.duration\.seconds/)

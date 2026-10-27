@@ -1,0 +1,26 @@
+{
+  "schema_version": "owner_approved_source_revisions_v1",
+  "owner_approval": "docs/sprint7/OWNER_APPROVAL_20261027_SOURCE_SHA_REVISION.md",
+  "approved_commit": "44cbda17f43c17b0cbf356b89de74f5cb6b5f3f4",
+  "original_manifest_lf_sha256": "c4cc2a5030e6e252840b246d37f47b2f381a9f55b254c9ef9a07c85d7ad09e6f",
+  "changes": [
+    {
+      "path": "frontend/pages/v3-player/v3-player.vue",
+      "original_sha256": "8c45151da3fe19283c26b98c5a2b85cd6a463364c84b551e46379c294dc79f73",
+      "previous_approved_sha256": "0e98d0af3f774927aa4672e0c1e0e3199836bde538edc3cc965ba37c5648c087",
+      "latest_owner_approval": "docs/sprint7/OWNER_APPROVAL_20261027_PLAYER_RETURN_SHA.md",
+      "approved_sha256": "6b1e532e937199ec9c7683ec3b13344cdabcf69d8935c3cdb550f00a9e101700"
+    },
+    {
+      "path": "frontend/pages/v3-profile/v3-profile.vue",
+      "original_sha256": "8a1f7db9365e626f1bbc8e695ac41ac0803a976110e539f23d7625813de35755",
+      "approved_sha256": "cb2d0c7057b7246909de8751cdb75ad39da1d8dc1d3a874e9a0e015c3ec8680e"
+    },
+    {
+      "path": "frontend/pages/v3-feedback/v3-feedback.vue",
+      "original_sha256": "41ccdaebb5499062d7c38b38981a08d44e2656aeccccaae3b1f9fe2daa5e8a91",
+      "latest_owner_approval": "docs/sprint7/OWNER_APPROVAL_20261027_FEEDBACK_SHA.md",
+      "approved_sha256": "9eaf1464b1850feaf2bd66874f47ad37aab93b2dde6ba25a97531cb9becfed10"
+    }
+  ]
+}

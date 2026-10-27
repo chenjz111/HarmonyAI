@@ -1,0 +1,99 @@
+[
+  {
+    "path": "knowledge/v3/rag-corpus-chunks-v3.1-approved.json",
+    "source_commit": "4ac86e7f372c03460ed75d9b39df6a873198091e",
+    "git_blob": "b23c57b43f313de4d500566633a8cc0582fdd0b1",
+    "sha256": "78fe2bdf76a6648069e1bfa5a409dd018edf828d9fc3861e20a691a0591bd7a4",
+    "bytes": 12818,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "knowledge/v3/rag-corpus-chunks-v3.1-candidate.json",
+    "source_commit": "26d582be4be262359c2905e4db2b1a93052bfcd3",
+    "git_blob": "47fb140a760e139929dbd29df4f51fc4079d1123",
+    "sha256": "4af1ddff6cf4372fca85fec6c8817b1ecdd2fb1013f7ccff41e8dd9e52d5bb50",
+    "bytes": 12281,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "docs/sprint5/rag-gold-queries-medical-20260909.json",
+    "source_commit": "9653bc5a4bb1e44660f578d689efabde7e434878",
+    "git_blob": "d9b7c34233e22a3e15162303c7a4e6f02200d9a2",
+    "sha256": "ec04470e572ad5d7aaab56d2e842eddc03c8a9f676bed04bfb87b5e268a77994",
+    "bytes": 11975,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "docs/sprint5/medical-syndrome-whitelist-and-rag-threshold-20260909.md",
+    "source_commit": "441e294633092667bff0e12c8f48cc1e37f563f9",
+    "git_blob": "f006862b91bf91f58fcc96f725a3af72268deef2",
+    "sha256": "b4992518f2fe9ded6fc1e733f681ae6c3b36104d990fceebce5adcf833ab84aa",
+    "bytes": 5204,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "docs/sprint6/questionnaire-rag-medical-review.md",
+    "source_commit": "5461f5ce597c7b67999d2af7906a2fda8d3c3d93",
+    "git_blob": "6bd06f011bcdd26e88ab996d8b736bc9cc47e975",
+    "sha256": "ad2258a0cfca67c4c33c3bc04f9292a2ba495e559b4e79d6c034b4e729ec3152",
+    "bytes": 16740,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "evals/sprint4/cases.jsonl",
+    "source_commit": "396d4487a71cfd5be7d3de4eb6cea5c88d53a3c8",
+    "git_blob": "6bd50deb8e8b68678722e8a611a6b22d2fc7f04b",
+    "sha256": "653a94dde0b0c9300370dbfd477816625f45801032b52ff53c1b6300c9d14698",
+    "bytes": 91630,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "evals/sprint4/safety-cases.jsonl",
+    "source_commit": "396d4487a71cfd5be7d3de4eb6cea5c88d53a3c8",
+    "git_blob": "30b6451488dff5ab7a47fd5eeb83624988b11d98",
+    "sha256": "0772ef1a3a5b9b9a06bdbb0da22995801535602a1a2c360a16cbb67fd912ffe0",
+    "bytes": 5943,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "knowledge/demo_chunks.jsonl",
+    "source_commit": "19a5fd3e0352ababd0f7da6cc623395979a93b01",
+    "git_blob": "f7ea1a1601312de42819d02d86c2ca05bb6bcf37",
+    "sha256": "42dc2596fcb7d699b0a54b3ce361743ed950436848612796b5608a00095bfc1e",
+    "bytes": 992,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "docs/sprint4/assessment-contract-v2.1.md",
+    "source_commit": "19a5fd3e0352ababd0f7da6cc623395979a93b01",
+    "git_blob": "c1b6a90413a25c8dcf969aa7b6460a439dfc22d1",
+    "sha256": "c22f6d79a39394ca3d9ad08a30742055c8402e705197b0aa07a6ad0f10e36c82",
+    "bytes": 10137,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "docs/sprint4/provider-contract.md",
+    "source_commit": "19a5fd3e0352ababd0f7da6cc623395979a93b01",
+    "git_blob": "1b4ac1ff274258498a57ebd45b870e7b77270d2a",
+    "sha256": "191cb00dd4ee24df5aa57b1f4b6821102b724216fd423fe6542f5af9b8d8c894",
+    "bytes": 11111,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "docs/sprint4/questionnaire-contract-v2.1.md",
+    "source_commit": "19a5fd3e0352ababd0f7da6cc623395979a93b01",
+    "git_blob": "ccdf3210297aec2fcbf643b326573ecb54d6ebac",
+    "sha256": "5a884f685db4bf531b8a3fd2a3858af5acd1ccfd4982f787bf3163f27e1910c3",
+    "bytes": 16234,
+    "activation": "NONE: exact missing historical inputs only; no index/embedding/flag/medical-rule changes"
+  },
+  {
+    "path": "evals/sprint5/cases.jsonl",
+    "source_commit": "b7bdda388cb46d14a35754c60b42534c4e5fac72",
+    "supersedes_restoration_from": "5e3add8bbd12bc1f9a000ab1873afe6d598c70b1",
+    "git_blob": "e36794709afdeab04e82f4738999b8e8d960bb03",
+    "sha256": "20422dda90ebe3a2fa4ac39aabc74e7df917061924591f296d73fe6316c62823",
+    "bytes": 6763,
+    "activation": "NONE; later original review metadata restored, not authored"
+  }
+]

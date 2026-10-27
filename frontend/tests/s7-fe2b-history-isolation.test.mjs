@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { createHistoricalMusicSession, resolvePlayableAudio } from '../common/music-library-player.js'
 import { createPlayerController } from '../common/player-controller.js'
+import {putHistoricalFeedback,consumeHistoricalFeedback} from '../common/feedback-context.js'
 import * as transport from '../common/music-library-transport.js'
 import { createMusicLibraryApi } from '../common/music-library-api.js'
 import * as presentation from '../common/music-presentation.js'
@@ -85,13 +86,14 @@ test('History R1: absent authentication proof fails closed before detail request
 function pageHarness({ handler = null, missing = null, subscriptionFalse = false, live = true } = {}) {
   const storage = new Map([['v3_public_user_id', 'A'], ['v3_access_token', 'synthetic-A'], ['v3_auth_epoch', 0]])
   const listeners = new Set()
-  const h = { storage, requests: [], callbacks: [], contexts: [], toasts: [], loads: [], normalReads: 0, controllerCreations: 0, downloads: 0 }
+  const h = { storage, requests: [], callbacks: [], contexts: [], toasts: [], loads: [], navigations: [], normalReads: 0, controllerCreations: 0, downloads: 0 }
   const uni = {
     getStorageSync: key => storage.get(key) ?? '',
     $on: (event, fn) => { assert.equal(event, 'harmonyai:v3-auth-changed'); listeners.add(fn); if (subscriptionFalse) return false },
     $off: (event, fn) => { listeners.delete(fn) },
     $emit: () => { for (const fn of [...listeners]) fn() },
     showToast: args => h.toasts.push(args.title),
+    navigateTo: args => h.navigations.push(args.url),
     createInnerAudioContext() {
       const events = {}, ctx = { events, src: '', duration: 120, currentTime: 0, plays: 0, destroyed: 0,
         play() { this.plays++ }, pause() {}, seek(value) { this.currentTime = value }, destroy() { this.destroyed++ } }
@@ -99,7 +101,7 @@ function pageHarness({ handler = null, missing = null, subscriptionFalse = false
       h.contexts.push(ctx); return ctx
     },
     request(args) {
-      const request = { method: args.method, path: new URL(args.url).pathname, data: args.data }
+      const request = { method: args.method, path: new URL(args.url).pathname, url:args.url, data: args.data }
       h.requests.push(request)
       Promise.resolve().then(() => handler ? handler(request) : request.method === 'GET' ? detail(request.path.split('/').at(-1)) : {})
         .then(data => args.success({ statusCode: 200, data: { ok: true, data } }),
@@ -111,15 +113,16 @@ function pageHarness({ handler = null, missing = null, subscriptionFalse = false
   const script = src.match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/import\s*\{([\s\S]*?)\}\s*from\s*["'][^"']+["'];?/g, (_, names) => `const {${names}}=deps;`)
     // VM-only branch injection, not a change to the production feature flag.
-    .replace('const HISTORICAL_LIBRARY_ENABLED = false', `const HISTORICAL_LIBRARY_ENABLED = ${live}`)
+    .replace('const HISTORICAL_LIBRARY_ENABLED = MUSIC_LIBRARY_LIVE_ENABLED', `const HISTORICAL_LIBRARY_ENABLED = ${live}`)
     .replace('export default {', 'pageOptions = {')
   const apiV3 = {
     getMusic: async () => { h.normalReads++; return { music_ref: { music_id: 'normal' }, stream_url: '/synthetic', favorite: false } },
     getMusicBasis: async () => ({ synthetic: true }), getCurrentUserGoal: () => null,
     fetchAuthorizedAudio: async () => { h.downloads++; return '/synthetic/local.wav' },
   }
+  h.api = apiV3
   const context = { uni, pageOptions: null, deps: { apiV3, ...presentation, ...seek, createMusicLibraryApi,
-    createHistoricalMusicSession, resolvePlayableAudio,
+    createHistoricalMusicSession, resolvePlayableAudio, putHistoricalFeedback,
     readV3AccessToken: () => transport.readV3AccessToken(uni),
     createUniMusicLibraryTransport: options => transport.createUniMusicLibraryTransport({ ...options, uniApi: uni }),
     createPlayerController: options => { h.controllerCreations++; h.callbacks.push(options); return createPlayerController(options) },
@@ -214,6 +217,40 @@ test('History R1: normal history plays use actual onPlay once and keep one contr
   assert.equal(h.requests.filter(x => x.method === 'POST').length, 1)
   assert.equal(h.controllerCreations, 1); h.unload()
 })
+test('W6: a pending optional explanation never blocks an already authorized audio controller',async()=>{
+ const pending=deferred(),h=pageHarness({handler:r=>r.path.endsWith('/analysis')?pending.promise:
+  {...detail('music_a'),source_contexts:[{context_id:'old-task',session_id:'old-session'}],selected_context_id:'old-task'}})
+ await h.start();assert.ok(h.page.playerController);assert.equal(h.page.loading,false);h.auth({owner:'B'});pending.resolve({confirmed_state:'late A'});await h.finish();assert.equal(h.page.basis,null);assert.equal(h.page.music,null);h.unload()
+})
+
+test('W6: selected history loads only its persisted explanation and keeps the same Player',async()=>{
+ const h=pageHarness({handler:r=>r.path.endsWith('/analysis')?{confirmed_state:'旧状态',state_tendency:'旧解析',regulation_mode:'basic_wellness',disclaimer:'历史快照'}:
+  {...detail('music_a'),source_contexts:[{context_id:'old-task',session_id:'old-session'}],selected_context_id:'old-task'}})
+ await h.start();await h.finish();assert.equal(h.page.basis.confirmed_state,'旧状态');assert.equal(h.normalReads,0);assert.equal(h.controllerCreations,1);assert.equal(h.requests.filter(r=>r.method==='POST').length,0);assert.ok(h.requests[1].url.endsWith('/analysis?context_id=old-task'));h.unload()
+})
+
+test('W6: unavailable old explanation keeps legal audio and never borrows current basis',async()=>{
+ const h=pageHarness({handler:r=>{if(r.path.endsWith('/analysis'))throw new Error('snapshot missing');return {...detail('music_a'),source_contexts:[{context_id:'old-task',session_id:'old-session'}],selected_context_id:'old-task'}}})
+ await h.start();await h.finish();assert.equal(h.page.basis,null);assert.equal(h.normalReads,0);assert.ok(h.page.playerController);h.unload()
+})
+
+test('W4: generated Player binds the exact current task/session and enables V3.1 only after real onPlay',async()=>{
+ const h=pageHarness({handler:r=>r.method==='POST'?{event_id:r.data.event_id,music_id:'normal',event_type:'play_started'}:
+  {...detail('normal'),source_contexts:[{context_id:'task-current',session_id:'session-current'}],selected_context_id:'task-current'}})
+ h.api.getCurrentMusicContext=()=>({music_id:'normal',source_context_id:'task-current',session_id:'session-current'})
+ await h.start({});await h.finish();assert.equal(h.controllerCreations,1);assert.ok(h.requests[0].url.endsWith('?context_id=task-current'))
+ h.page.goFeedback();assert.equal(h.navigations.length,0);await h.page.togglePlay();assert.equal(h.requests.filter(r=>r.method==='POST').length,0)
+ h.contexts[0].events.Play();await flush();await flush();h.page.goFeedback();assert.equal(h.navigations.length,1)
+ const handoff=new URL('https://synthetic'+h.navigations[0]).searchParams.get('handoff'),value=consumeHistoricalFeedback(handoff)
+ assert.equal(value.session_id,'session-current');assert.equal(value.source_context_id,'task-current');assert.equal(value.music_ref.music_id,'normal');assert.equal(value.playback_event_id,h.requests.find(r=>r.method==='POST').data.event_id);h.unload()
+})
+
+test('W4: generated context from another session cannot silently fall back to legacy feedback',async()=>{
+ const h=pageHarness({handler:()=>({...detail('normal'),source_contexts:[{context_id:'task-current',session_id:'other'}],selected_context_id:'task-current'})})
+ h.api.getCurrentMusicContext=()=>({music_id:'normal',source_context_id:'task-current',session_id:'session-current'})
+ await h.start({});await h.finish();assert.ok(h.page.playerController);assert.equal(h.page.historicalSession,null);h.page.goFeedback();assert.equal(h.navigations.length,0);assert.equal(h.requests.filter(r=>r.method==='POST').length,0);h.unload()
+})
+
 test('History R1: legacy non-history load, pause and seek remain compatible', async () => {
   const h = pageHarness({ missing: '$on' }); await h.start({}); await h.finish()
   assert.equal(h.normalReads, 1); assert.equal(h.page.music.music_ref.music_id, 'normal')
@@ -226,4 +263,29 @@ test('History R1: production historical gate remains closed', async () => {
   const h = pageHarness({ live: false }); await h.start(); await h.finish()
   assert.equal(h.requests.length, 0); assert.equal(h.page.loadFailure?.code, 'FEATURE_NOT_READY')
   h.unload()
+})
+
+test('M1: historical feedback never falls back to the current flow session', async () => {
+  const h = pageHarness(); await h.start(); await h.finish()
+  h.page.goFeedback()
+  assert.deepEqual(h.navigations, [])
+  assert.equal(h.contexts[0]?.destroyed || 0, 0)
+  assert.equal(h.toasts.length, 1)
+  h.unload()
+})
+
+
+test('History R1: existing Player hands off only selected server context and acknowledged event', async () => {
+  const h = pageHarness({handler:args => {
+    if (args.method === 'POST') return {event_id:args.data.event_id,music_id:'music_a',event_type:'play_started'}
+    const data=detail();data.source_contexts=[{context_id:'ctx-a',session_id:'old-session'}];data.selected_context_id='ctx-a';return data
+  }})
+  await h.start();await h.finish()
+  await h.page.historicalSession.reportPlayStarted('music_a')
+  h.page.goFeedback()
+  assert.equal(h.navigations.length,1)
+  const key=h.navigations[0].split('handoff=')[1]
+  const context=consumeHistoricalFeedback(decodeURIComponent(key))
+  assert.equal(context.session_id,'old-session');assert.equal(context.source_context_id,'ctx-a')
+  assert.equal(context.music_ref.music_id,'music_a');h.unload()
 })
