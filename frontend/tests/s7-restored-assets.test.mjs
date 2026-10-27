@@ -29,9 +29,22 @@ test('restored PNG dimensions and SVG content match verified media rather than L
  }
 })
 
-test('rejected icon draft stays absent; existing pages and generation authorities are unchanged',()=>{
+test('rejected draft stays absent; original protection and two exact Owner-approved page revisions stay pinned',()=>{
+ const revisions=JSON.parse(readFileSync(resolve(root,'docs/sprint7/APPROVED_SOURCE_REVISIONS_20261027.json'),'utf8'))
+ const approved={
+  'frontend/pages/v3-player/v3-player.vue':'0e98d0af3f774927aa4672e0c1e0e3199836bde538edc3cc965ba37c5648c087',
+  'frontend/pages/v3-profile/v3-profile.vue':'cb2d0c7057b7246909de8751cdb75ad39da1d8dc1d3a874e9a0e015c3ec8680e',
+ }
+ assert.equal(revisions.schema_version,'owner_approved_source_revisions_v1')
+ assert.equal(revisions.approved_commit,'44cbda17f43c17b0cbf356b89de74f5cb6b5f3f4')
+ assert.equal(revisions.owner_approval,'docs/sprint7/OWNER_APPROVAL_20261027_SOURCE_SHA_REVISION.md')
+ assert.ok(existsSync(resolve(root,revisions.owner_approval)))
+ assert.equal(revisions.original_manifest_lf_sha256,'c4cc2a5030e6e252840b246d37f47b2f381a9f55b254c9ef9a07c85d7ad09e6f')
+ assert.equal(digest('sha256',readFileSync(resolve(root,'docs/sprint7/S6_ASSET_RESTORE_MANIFEST_20261025.json'),'utf8').replace(/\r\n/g,'\n')),revisions.original_manifest_lf_sha256)
+ assert.deepEqual(revisions.changes.map(row=>row.path).sort(),Object.keys(approved).sort())
+ for(const row of revisions.changes){assert.equal(row.original_sha256,manifest.protected_source_sha256[row.path]);assert.equal(row.approved_sha256,approved[row.path])}
  for(const excluded of manifest.excluded)assert.equal(existsSync(resolve(root,excluded.path)),false,excluded.path)
- for(const [path,sha] of Object.entries(manifest.protected_source_sha256))assert.equal(digest('sha256',readFileSync(resolve(root,path),'utf8').replace(/\r\n/g,'\n')),sha,path)
+ for(const [path,sha] of Object.entries(manifest.protected_source_sha256))assert.equal(digest('sha256',readFileSync(resolve(root,path),'utf8').replace(/\r\n/g,'\n')),approved[path]||sha,path)
 })
 
 test('all literal runtime and tab static references resolve to restored formal assets',()=>{
