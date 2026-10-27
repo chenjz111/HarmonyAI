@@ -69,8 +69,19 @@ export function createRegisteredIdentityRuntime({client=null,uniApi=null,accepte
     gate()
     loggedOutGeneration = null
     const current = ++generation
+    // Preserve a potentially unresolved flow until every required storage read
+    // establishes whether its owner is known, including transient read errors.
+    let quarantineFlow = preserveFlow && !binding && !switchOwner
     try {
       const expectedOwner = preserveFlow && !switchOwner ? uniApi.getStorageSync('v3_public_user_id') : null
+      // A process can die after begin() removed the owner but before restore
+      // finished. Never attach its retained assessment to an unknown Cookie or
+      // secure proof; preserve the unresolved flow while closing authority.
+      if (preserveFlow && !binding && !switchOwner && !expectedOwner &&
+          uniApi.getStorageSync('v3_auth_mode') === 'registered' && uniApi.getStorageSync('v3_flow_state')) {
+        throw failure('IDENTITY_REQUIRED')
+      }
+      quarantineFlow = false
       begin({preserveFlow,binding})
       const result = await operation()
       if (current !== generation) throw failure('OWNER_CHANGED')
@@ -86,7 +97,13 @@ export function createRegisteredIdentityRuntime({client=null,uniApi=null,accepte
     } catch (error) {
       if (current === generation) {
         sources.set(uniApi,()=> '')
-        for (const key of binding ? [] : ['v3_public_user_id','v3_flow_state']) {
+        if (quarantineFlow) {
+          try { announce() } catch (ignored) {
+            releaseAllAuthorizedAudio()
+            try { uniApi.$emit('harmonyai:v3-auth-changed') } catch (ignored) { /* authority is already closed */ }
+          }
+        }
+        for (const key of binding ? [] : quarantineFlow ? ['v3_public_user_id'] : ['v3_public_user_id','v3_flow_state']) {
           try { uniApi.removeStorageSync(key) } catch (ignored) { /* secure invalidation must still run */ }
         }
         try { await client.invalidate() } catch (ignored) { /* local authority already removed; no fallback */ }

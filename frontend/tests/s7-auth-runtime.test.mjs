@@ -67,6 +67,37 @@ test('same-owner refresh preserves the current registered assessment flow',async
  const h=harness();await h.runtime.login({});h.values.set('v3_flow_state','current-registered-session');await h.runtime.refresh();assert.equal(h.values.get('v3_flow_state'),'current-registered-session')
 })
 
+test('restart quarantines an ownerless assessment flow before refreshing any account',async()=>{
+ const h=harness();await h.runtime.login({});h.values.set('v3_flow_state','ownerless-assessment');h.values.delete('v3_public_user_id')
+ const calls=h.calls.length,restarted=h.restart()
+ await assert.rejects(startAccountStartup(h.uni,restarted),{code:'IDENTITY_REQUIRED'})
+ assert.equal(h.calls.length,calls,'no Refresh can attach an unverifiable flow to another account')
+ assert.equal(h.values.get('v3_flow_state'),'ownerless-assessment','do not silently discard the unresolved flow')
+ assert.equal(h.values.get('v3_auth_mode'),'registered');assert.equal(readV3AccessToken(h.uni),'')
+ assert.equal(h.proof(),null);assert.ok(h.events.includes('harmonyai:v3-auth-changed'))
+ await assert.rejects(startAccountStartup(h.uni,restarted),{code:'IDENTITY_REQUIRED'})
+ assert.equal(h.calls.length,calls);assert.equal(h.values.get('v3_flow_state'),'ownerless-assessment')
+})
+
+test('a transient owner read failure cannot delete an unresolved flow',async()=>{
+ const h=harness();await h.runtime.login({});h.values.set('v3_flow_state','ownerless-assessment');h.values.delete('v3_public_user_id')
+ const original=h.uni.getStorageSync;let fail=true
+ h.uni.getStorageSync=key=>{if(key==='v3_public_user_id'&&fail){fail=false;throw new Error('synthetic storage read failure')}return original(key)}
+ const count=h.calls.length,restarted=h.restart()
+ await assert.rejects(startAccountStartup(h.uni,restarted))
+ assert.equal(h.values.get('v3_flow_state'),'ownerless-assessment');assert.equal(h.calls.length,count)
+ assert.equal(readV3AccessToken(h.uni),'');assert.equal(h.proof(),null)
+})
+
+test('ownerless quarantine still notifies UI when epoch storage fails',async()=>{
+ const h=harness();await h.runtime.login({});h.values.set('v3_flow_state','ownerless-assessment');h.values.delete('v3_public_user_id');h.events.length=0
+ const original=h.uni.setStorageSync;let fail=true
+ h.uni.setStorageSync=(key,value)=>{if(key==='v3_auth_epoch'&&fail){fail=false;throw new Error('synthetic storage write failure')}return original(key,value)}
+ await assert.rejects(startAccountStartup(h.uni,h.restart()),{code:'IDENTITY_REQUIRED'})
+ assert.ok(h.events.includes('harmonyai:v3-auth-changed'));assert.equal(h.values.get('v3_flow_state'),'ownerless-assessment')
+ assert.equal(readV3AccessToken(h.uni),'');assert.equal(h.proof(),null)
+})
+
 for(const method of ['getStorageSync','setStorageSync'])test(`ordinary UI ${method} failure cannot prevent secure logout or server revocation attempt`,async()=>{
  const h=harness();await h.runtime.login({});h.uni[method]=()=>{throw new Error('ordinary storage unavailable')}
  const eventsBefore=h.events.length

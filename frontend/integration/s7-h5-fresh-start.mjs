@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import {createInterface} from 'node:readline'
 import {initializeH5Platform} from '../common/h5-platform.js'
+import {createH5AccountRuntime} from '../common/h5-account.js'
 import {registeredAccountRuntime,startAccountStartup,readRuntimeV3Credential} from '../common/auth-runtime.js'
 import {createMusicLibraryApi} from '../common/music-library-api.js'
 import {createUniMusicLibraryTransport} from '../common/music-library-transport.js'
@@ -38,6 +39,15 @@ const fetchApi=async(url,options)=>{
  const frame=await rpc({method:'POST',path,data:JSON.parse(options.body),header:{...options.headers,Origin:origin}})
  return {status:frame.statusCode,json:async()=>frame.data}
 }
+// A crash may leave a retained assessment without its owner marker. Keep that
+// flow quarantined and do not consume the Cookie or issue a Refresh request.
+const orphanValues=new Map([['v3_auth_mode','registered'],['v3_auth_epoch',0],['v3_flow_state','synthetic-ownerless-flow'],['v3_h5_account_transport_state','ready']])
+const orphanUni={getStorageSync:key=>orphanValues.get(key)??'',setStorageSync:(key,value)=>orphanValues.set(key,value),removeStorageSync:key=>orphanValues.delete(key),$emit(){}}
+const orphanRuntime=createH5AccountRuntime({uniApi:orphanUni,baseUrl:origin,locationOrigin:origin,configuredOrigin:origin,fetchApi,readCsrfCookie:()=>csrf,accepted:true,target:'h5'})
+const requestsBeforeOrphan=serial
+await assert.rejects(startAccountStartup(orphanUni,orphanRuntime),{code:'IDENTITY_REQUIRED'})
+assert.equal(serial,requestsBeforeOrphan);assert.equal(orphanValues.get('v3_flow_state'),'synthetic-ownerless-flow')
+assert.equal(orphanValues.get('v3_h5_account_transport_state'),'uncertain')
 const result=initializeH5Platform({uniApi,target:'h5',apiOrigin:origin,locationOrigin:origin,
  accountDependencies:{ownerApprovedForNonProduction:true,browserSecurityAccepted:true,approvalRef:'isolated-asgi-only',approvedOrigin:origin,fetchApi,readCsrfCookie:()=>csrf}})
 assert.equal(result.accountInstalled,true);assert.equal(registeredAccountRuntime.available,true)

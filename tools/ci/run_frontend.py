@@ -24,7 +24,7 @@ inventory = {
  'tests/s7-android-platform.test.mjs':11,
  'tests/s7-account-startup.test.mjs':12,
  'tests/s7-restored-assets.test.mjs':6,
- 'tests/s7-auth-runtime.test.mjs':21,
+ 'tests/s7-auth-runtime.test.mjs':24,
  'tests/s7-player-product-controls.test.mjs':16,
  'tests/sprint6-phase6-player-wiring.test.mjs':3,
  'tests/s7-guest-continuity.test.mjs':18,

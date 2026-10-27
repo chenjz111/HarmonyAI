@@ -14,10 +14,10 @@
 |分享PD016|保留原有禁用入口|暂停新增实施，待老师/版权评审；未从Sprint7删除|
 |长期soft preference|反馈资格/clear epoch与receipt实现|长期学习OFF；最终政策/医学签核未完成，不按收藏推断偏好|
 
-下一次USB账号验收必须实际完成：严格本机HTTPS和主机名/错误CA/重定向拒绝检查、真实Keystore安全写入/消费/重启/并发/失效/备份保护，再验证绑定保留历史、登录其他账号不合并、注销/改密撤销及网络故障。原生依赖已编译，但没有运行时证据不把capability布尔值改为true。未知绑定且游客过期仍禁止自动替换身份；明确放弃恢复的产品合同待批准。
+下一次USB账号验收必须实际完成：严格本机HTTPS和主机名/错误CA/重定向拒绝检查、真实Keystore安全写入/消费/重启/并发/失效/备份保护，再验证绑定保留历史、登录其他账号不合并、注销/改密撤销及网络故障。原生依赖已编译，但没有运行时证据不把capability布尔值改为true。未知绑定且游客过期仍禁止自动替换身份；明确放弃恢复的产品合同待批准。Registered重启时若本地流程存在但owner标记缺失，现先隔离流程和身份、拒绝Refresh并要求重新认证，见[恢复边界](ACCOUNT_OWNERLESS_FLOW_20261027.md)；旧测试APK不含该JS修复。
 
 审核密码拒绝集的来源/许可/完整性及目标环境Argon2资源预算尚未验收；新增loader不能替代这些批准。真实MySQL8.0.44有限范围见[实测记录](REAL_MYSQL_ACCEPTANCE_20261027.md)，不代表生产迁移授权。
 
-工程收口：Owner已批准44cbda1中Player/Profile两个精确版本的SHA修订，见[独立批准记录](OWNER_APPROVAL_20261027_SOURCE_SHA_REVISION.md)。原素材manifest、113项文件及其他保护源码未放宽。最新原Guard前端716p/0f/0skip；后端原5项collection错误已修复，全仓2800p/0f/2个既有Windows skip。真实MySQL补充验证save/Clear/delete提交ACK丢失的独立事务见证、CAS回滚及H5旧Refresh重放撤销；不是生产签收。40be62e的Hosted CI Linux/Windows成功，本次新增提交须等待自身CI，不用旧Run替代。
+工程收口：Owner已批准44cbda1中Player/Profile两个精确版本的SHA修订，见[独立批准记录](OWNER_APPROVAL_20261027_SOURCE_SHA_REVISION.md)。原素材manifest、113项文件及其他保护源码未放宽。最新原Guard前端719p/0f/0skip；后端原5项collection错误已修复，全仓2800p/0f/2个既有Windows skip。真实MySQL补充验证save/Clear/delete提交ACK丢失的独立事务见证、CAS回滚及H5旧Refresh重放撤销；不是生产签收。40be62e和21e07bb的Hosted CI Linux/Windows成功，本次新增提交须等待自身CI，不用旧Run替代。
 
 医学PD003/020及#154独立签核保留；没有核心证据算法或历史快照修改。正式部署、生产库、Merge、付费Provider（原10次已耗尽）、正式LiveFlags均无新增授权。
