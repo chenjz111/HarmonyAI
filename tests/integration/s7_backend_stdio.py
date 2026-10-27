@@ -9,7 +9,7 @@ def test_frontend_journey(tmp_path, monkeypatch):
     serve_journey(tmp_path,monkeypatch)
 
 
-def serve_journey(tmp_path,monkeypatch,*,account=False):
+def serve_journey(tmp_path,monkeypatch,*,account=False,browser=False):
     from sqlalchemy import create_engine, event
     from sqlalchemy.orm import Session,sessionmaker
     from fastapi.testclient import TestClient
@@ -17,6 +17,17 @@ def serve_journey(tmp_path,monkeypatch,*,account=False):
     from backend.app.main import app
     from backend.app.core.database import get_db
     from tests.api.v3.test_int2_0012_contract import seed
+
+    if browser:
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
+        from backend.app.routers.v3 import auth_router,music_library_router
+        from backend.app.routers.v3.transport import V3APIError,v3_api_error_handler
+        app=FastAPI();app.add_exception_handler(V3APIError,v3_api_error_handler)
+        app.add_middleware(CORSMiddleware,allow_origins=['https://testserver'],allow_credentials=True,
+            allow_methods=['POST','GET'],allow_headers=['Authorization','Content-Type','X-CSRF-Token'])
+        app.include_router(auth_router.router,prefix='/api/v3')
+        app.include_router(music_library_router.router,prefix='/api/v3')
 
     engine = create_engine(f'sqlite:///{tmp_path / "journey.sqlite"}', connect_args={'check_same_thread':False})
     @event.listens_for(engine,'connect')
@@ -40,6 +51,15 @@ def serve_journey(tmp_path,monkeypatch,*,account=False):
             yield db
     app.dependency_overrides[get_db] = isolated_db
     routes_before=list(app.router.routes)
+    if browser:
+        from backend.app.routers.v3.account_browser_router import build_browser_account_router
+        from backend.app.services.v3.account_browser_gate import BrowserMutationGate
+        from backend.app.services.v3.account_session_service import AccountService
+        from backend.app.services.v3.account_password import PasswordPolicy
+        gate=BrowserMutationGate(approved_origins=['https://testserver'],preauth_secret='synthetic-csrf-integration-secret-0123456789')
+        service=AccountService(password_policy=PasswordPolicy(blocked_passwords={'passwordpassword'}),browser_gate=gate)
+        app.include_router(build_browser_account_router(factory=sessionmaker(bind=engine),service_provider=lambda:service,
+            browser_gate=gate,browser_security_accepted=True),prefix='/api/v3')
     if account:
         from backend.app.routers.v3.account_router import build_account_router
         from tests.api.v3.test_account_session_r1 import service
@@ -97,8 +117,14 @@ def serve_journey(tmp_path,monkeypatch,*,account=False):
                     data = response.json()
                 else:
                     data = {'bytes_base64':base64.b64encode(response.content).decode()}
-                print('S7_RESPONSE '+json.dumps({'id':message['id'],'statusCode':response.status_code,
-                    'data':data,'headers':dict(response.headers)}), flush=True)
+                headers={k:v for k,v in response.headers.items() if not browser or k.lower()!='set-cookie'}
+                frame={'id':message['id'],'statusCode':response.status_code,'data':data,'headers':headers}
+                if browser:
+                    assert 'refresh_token' not in data.get('data',{})
+                    # HttpOnly proof stays ENTIRELY in this HTTP cookie jar,
+                    # never in the JS peer, RPC metadata, trace or artifacts.
+                    frame['csrfCookie']=client.cookies.get('__Host-harmonyai-csrf') or ''
+                print('S7_RESPONSE '+json.dumps(frame), flush=True)
             else:
                 raise AssertionError('frontend disconnected without completion')
         assert requests >= 20 and seeded

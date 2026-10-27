@@ -40,13 +40,15 @@ class AccountTokens:
     refresh_token:str=field(repr=False)
     csrf_token:str=field(repr=False)
     access_expires_at:datetime
+    refresh_expires_at:datetime
 
 
 class AccountService:
     _dummy_hash=None
     _dummy_lock=Lock()
-    def __init__(self,*,password_policy):
+    def __init__(self,*,password_policy,browser_gate=None):
         self.passwords=password_policy
+        self.browser_gate=browser_gate
         with self._dummy_lock:
             if AccountService._dummy_hash is None:
                 AccountService._dummy_hash=self._hash_password('synthetic-dummy-verification-only-'+secrets.token_hex(16))
@@ -82,14 +84,26 @@ class AccountService:
         return row
 
     def _platform(self,platform):
+        if platform=='h5':
+            from .account_browser_gate import BrowserMutationGate
+            if isinstance(self.browser_gate,BrowserMutationGate):return
         if platform != 'android':raise AccountDenied()
+
+    def _browser_session(self,db,sid,context,now):
+        state=db.execute(select(RegisteredSessionState).where(RegisteredSessionState.auth_session_id==sid).with_for_update().execution_options(populate_existing=True)).scalar_one_or_none()
+        if state is None:raise AccountDenied()
+        if state.platform=='h5':
+            if self.browser_gate is None:raise AccountDenied()
+            self.browser_gate.verify_origin(context)
+            self.browser_gate.verify(db,sid=sid,origin=context.origin,scheme=context.scheme,csrf_token=context.csrf_token,now=now)
+        elif context is not None:raise AccountDenied()
 
     def _tokens(self,identity,session,proof,csrf,now):
         if settings.JWT_ALGORITHM != "HS256":raise AccountUnavailable("approved token algorithm required")
         expiry=now+timedelta(minutes=15)
         access=jwt.encode(dict(sub=identity.public_user_id,auth_type='registered',sid=session.auth_session_id,
             auth_epoch=identity.auth_epoch,token_type='access',iat=int(now.timestamp()),exp=int(expiry.timestamp())),settings.JWT_SECRET_KEY,algorithm='HS256')
-        return AccountTokens(identity.internal_user_pk,session.auth_session_id,access,proof,csrf,expiry)
+        return AccountTokens(identity.internal_user_pk,session.auth_session_id,access,proof,csrf,expiry,utc(session.expires_at))
 
     def _issue(self,db,identity,platform,now):
         proof,csrf=secrets.token_urlsafe(32),secrets.token_urlsafe(32)
@@ -104,6 +118,7 @@ class AccountService:
 
     def bind(self,factory,*,principal,username,password,platform,now):
         self._platform(platform);now=clock(now);username=normalize_username(username)
+        if platform=='h5':raise AccountDenied()  # browser binding requires verified Guest bearer
         encoded=self._hash_password(password)
         return self._run(factory,lambda db:self._bind_identity(db,principal,username,encoded,platform,now))
 
@@ -117,9 +132,11 @@ class AccountService:
         db.flush()
         return self._issue(db,identity,platform,now)
 
-    def bind_access(self,factory,*,access_token,username,password,platform,now):
+    def bind_access(self,factory,*,access_token,username,password,platform,now,browser_context=None):
         from .auth_service import _resolve_principal
-        self._platform(platform);now=clock(now);username=normalize_username(username);encoded=self._hash_password(password)
+        self._platform(platform);now=clock(now);username=normalize_username(username)
+        if platform=='h5':self.browser_gate.verify_preauth(browser_context,action='bind',binding_token=access_token,now=now)
+        encoded=self._hash_password(password)
         def operation(db):
             principal=_resolve_principal(access_token,db,exclusive=True)
             return self._bind_identity(db,principal,username,encoded,platform,now)
@@ -134,8 +151,9 @@ class AccountService:
             row.window_started_at=now;row.attempts=0;row.failures=0;row.next_allowed_at=None
         return row
 
-    def login(self,factory,*,username,password,trusted_source,platform,now):
+    def login(self,factory,*,username,password,trusted_source,platform,now,browser_context=None):
         self._platform(platform);now=clock(now)
+        if platform=='h5':self.browser_gate.verify_preauth(browser_context,action='login',now=now)
         try:username=normalize_username(username);source=str(ipaddress.ip_address(trusted_source))
         except (ValueError,TypeError):raise AccountDenied() from None
         def operation(db):
@@ -158,7 +176,7 @@ class AccountService:
             return self._issue(db,identity,platform,now)
         return self._run(factory,operation)
 
-    def refresh(self,factory,*,refresh_token,platform,now):
+    def refresh(self,factory,*,refresh_token,platform,now,browser_context=None):
         self._platform(platform);now=clock(now)
         if not isinstance(refresh_token,str) or len(refresh_token)!=43 or any(c not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_' for c in refresh_token):raise AccountDenied()
         hashed=digest(refresh_token)
@@ -172,13 +190,18 @@ class AccountService:
             session=db.execute(select(AuthSession).where(AuthSession.auth_session_id==found).with_for_update().execution_options(populate_existing=True)).scalar_one()
             proof=db.execute(select(RefreshProof).where(RefreshProof.credential_hash==hashed).with_for_update().execution_options(populate_existing=True)).scalar_one()
             state=db.execute(select(RegisteredSessionState).where(RegisteredSessionState.auth_session_id==found).with_for_update().execution_options(populate_existing=True)).scalar_one()
+            if state.platform=='h5' or platform=='h5':self._browser_session(db,found,browser_context,now)
             if proof.consumed_at is not None:
                 db.execute(update(AuthSession).where(AuthSession.family_id==session.family_id,AuthSession.internal_user_pk==owner,AuthSession.revoked_at.is_(None)).values(revoked_at=now))
                 return AccountDenied()
             if (identity.auth_type!='registered' or session.revoked_at is not None or utc(session.expires_at)<=now
                 or utc(proof.expires_at)<=now or utc(state.absolute_expires_at)<=now or state.platform!=platform
                 or not hmac.compare_digest(session.refresh_credential_hash,hashed)):return AccountDenied()
-            next_proof,csrf=secrets.token_urlsafe(32),secrets.token_urlsafe(32)
+            next_proof=secrets.token_urlsafe(32)
+            # H5 uses one CSRF secret per session (not as an authentication
+            # credential). Keeping it stable lets an old proof + its valid
+            # session CSRF reach replay detection and revoke the family.
+            csrf=browser_context.csrf_token if platform=='h5' else secrets.token_urlsafe(32)
             proof.consumed_at=now;session.refresh_credential_hash=digest(next_proof)
             session.expires_at=min(utc(state.absolute_expires_at),now+timedelta(days=7));state.csrf_hash=digest(csrf)
             db.add(RefreshProof(credential_hash=digest(next_proof),auth_session_id=found,issued_at=now,expires_at=session.expires_at))
@@ -199,6 +222,25 @@ class AccountService:
             db.execute(query.values(revoked_at=now));db.flush()
         return self._run(factory,operation)
 
+    def confirm_browser_signed_out(self,factory,*,refresh_token,browser_context,now):
+        self._platform('h5');now=clock(now);self.browser_gate.verify_origin(browser_context)
+        if (not isinstance(refresh_token,str) or len(refresh_token)!=43
+            or any(c not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_' for c in refresh_token)):return
+        hashed=digest(refresh_token)
+        def operation(db):
+            row=db.execute(select(RefreshProof,AuthSession,RegisteredSessionState,UserIdentity)
+                .join(AuthSession,AuthSession.auth_session_id==RefreshProof.auth_session_id)
+                .join(RegisteredSessionState,RegisteredSessionState.auth_session_id==AuthSession.auth_session_id)
+                .join(UserIdentity,UserIdentity.internal_user_pk==AuthSession.internal_user_pk)
+                .where(RefreshProof.credential_hash==hashed)).one_or_none()
+            if row is None:return
+            proof,session,state,identity=row
+            if (identity.auth_type=='registered' and session.revoked_at is None and proof.consumed_at is None
+                and utc(session.expires_at)>now and utc(proof.expires_at)>now and utc(state.absolute_expires_at)>now
+                and state.platform=='h5' and hmac.compare_digest(session.refresh_credential_hash,hashed)):
+                raise AccountDenied()
+        return self._run(factory,operation)
+
 
     def change_password(self,factory,*,owner,current_password,new_password,now):
         now=clock(now);encoded=self._hash_password(new_password)
@@ -212,7 +254,7 @@ class AccountService:
         return self._run(factory,operation)
 
 
-    def logout_access(self,factory,*,access_token,all_devices,now):
+    def logout_access(self,factory,*,access_token,all_devices,now,browser_context=None):
         from .auth_service import _resolve_principal,_decode_verified_claims
         now=clock(now)
         if type(all_devices) is not bool:raise ValueError('boolean logout scope required')
@@ -220,6 +262,7 @@ class AccountService:
             principal=_resolve_principal(access_token,db,exclusive=True)
             if principal.auth_type!='registered':raise AccountDenied()
             sid=_decode_verified_claims(access_token)['sid']
+            self._browser_session(db,sid,browser_context,now)
             identity=self._identity(db,principal.internal_user_pk)
             query=update(AuthSession).where(AuthSession.internal_user_pk==principal.internal_user_pk,AuthSession.revoked_at.is_(None))
             if all_devices:identity.auth_epoch+=1
@@ -227,12 +270,13 @@ class AccountService:
             db.execute(query.values(revoked_at=now));db.flush()
         return self._run(factory,operation)
 
-    def change_password_access(self,factory,*,access_token,current_password,new_password,now):
-        from .auth_service import _resolve_principal
+    def change_password_access(self,factory,*,access_token,current_password,new_password,now,browser_context=None):
+        from .auth_service import _resolve_principal,_decode_verified_claims
         now=clock(now);encoded=self._hash_password(new_password)
         def operation(db):
             principal=_resolve_principal(access_token,db,exclusive=True)
             if principal.auth_type!='registered':raise AccountDenied()
+            self._browser_session(db,_decode_verified_claims(access_token)['sid'],browser_context,now)
             identity=self._identity(db,principal.internal_user_pk)
             credential=db.execute(select(AccountCredential).where(AccountCredential.internal_user_pk==principal.internal_user_pk).with_for_update().execution_options(populate_existing=True)).scalar_one_or_none()
             if credential is None or not self.passwords.verify(credential.password_hash,current_password):return AccountDenied()

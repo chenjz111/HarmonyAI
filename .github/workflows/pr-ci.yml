@@ -78,6 +78,8 @@ jobs:
         run: python -B tools/ci/run_journey.py --scenario account --evidence-dir "$RUNNER_TEMP/harmonyai-ci/account-journey"
       - name: Android-context Guest music wiring against ASGI (no APK or device acceptance)
         run: python -B tools/ci/run_journey.py --scenario android --evidence-dir "$RUNNER_TEMP/harmonyai-ci/android-journey"
+      - name: H5 Cookie account candidate against ASGI (not browser HTTPS acceptance)
+        run: python -B tools/ci/run_journey.py --scenario h5-account --evidence-dir "$RUNNER_TEMP/harmonyai-ci/h5-account-journey"
       - name: Upload sanitized logs and counts, never databases or credentials
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4, verified official tag
@@ -105,3 +107,5 @@ jobs:
             ${{ runner.temp }}/harmonyai-ci/account-journey/backend.log
             ${{ runner.temp }}/harmonyai-ci/android-journey/frontend.log
             ${{ runner.temp }}/harmonyai-ci/android-journey/backend.log
+            ${{ runner.temp }}/harmonyai-ci/h5-account-journey/frontend.log
+            ${{ runner.temp }}/harmonyai-ci/h5-account-journey/backend.log

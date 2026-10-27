@@ -18,6 +18,7 @@ if evidence.is_relative_to(source.parent) or source.parent.is_relative_to(eviden
     parser.error('evidence must be outside source')
 evidence.mkdir(parents=True,exist_ok=False)
 inventory = {
+ 'tests/s7-h5-account.test.mjs':7,
  'tests/s7-audio-lifecycle.test.mjs':7,
  'tests/s7-android-platform.test.mjs':11,
  'tests/s7-account-startup.test.mjs':12,

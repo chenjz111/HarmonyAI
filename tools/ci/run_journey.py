@@ -34,7 +34,7 @@ def child_deadline(children, seconds):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence-dir',required=True,type=Path)
-    parser.add_argument('--scenario',choices=['music','account','android'],default='music')
+    parser.add_argument('--scenario',choices=['music','account','android','h5-account'],default='music')
     args=parser.parse_args()
     evidence=args.evidence_dir.resolve()
     if evidence.is_relative_to(ROOT) or ROOT.is_relative_to(evidence):parser.error('evidence outside source required')
@@ -61,7 +61,7 @@ def main():
             backend=launch('backend',[sys.executable,'-B',str(ROOT/'tools/ci/guarded_pytest.py'),
                 '--source-root',str(ROOT),'--sandbox-root',str(sandbox),'--telemetry',str(evidence/'telemetry.json'),
                 '--','-q','-s','-p','no:cacheprovider','--basetemp',str(sandbox/'pytest'),
-                'tests/integration/s7_account_stdio.py' if args.scenario=='account' else 'tests/integration/s7_backend_stdio.py'],ROOT)
+                'tests/integration/s7_h5_account_stdio.py' if args.scenario=='h5-account' else 'tests/integration/s7_account_stdio.py' if args.scenario=='account' else 'tests/integration/s7_backend_stdio.py'],ROOT)
             frontend=None;deadline=time.monotonic()+120
             while time.monotonic()<deadline:
                 name,line=events.get(timeout=max(0.1,deadline-time.monotonic()))
@@ -84,7 +84,7 @@ def main():
                 elif line.strip()=='S7_READY':
                     assert frontend is None
                     frontend=launch('frontend',['node','--require',str(ROOT/'tools/ci/offline_node.cjs'),
-                        str(ROOT/('frontend/integration/s7-account.mjs' if args.scenario=='account' else 'frontend/integration/s7-journey.mjs'))],ROOT/'frontend')
+                        str(ROOT/('frontend/integration/s7-h5-account.mjs' if args.scenario=='h5-account' else 'frontend/integration/s7-account.mjs' if args.scenario=='account' else 'frontend/integration/s7-journey.mjs'))],ROOT/'frontend')
                 elif line.strip() in {'S7_FRONTEND_VERIFIED','S7_BACKEND_VERIFIED'}:verified.add(line.strip())
                 else:
                     logs[name].append(re.sub(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+','[REDACTED_JWT]',line))

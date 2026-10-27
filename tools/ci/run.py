@@ -26,6 +26,7 @@ FEEDBACK_INVENTORY = {
     'tests/api/v3/test_feedback_v31_api.py': 6,
 }
 ACCOUNT_INVENTORY = {
+    'tests/api/v3/test_h5_account_cookie_routes.py':13,
     'tests/api/v3/test_account_password_budget.py':6,
     'tests/api/v3/test_account_password_source.py':10,
     'tests/api/v3/test_identity_continuity.py':2,
